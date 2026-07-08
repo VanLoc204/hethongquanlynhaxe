@@ -1,0 +1,25 @@
+{
+  "name": "he-thong-quan-ly-nha-xe",
+  "version": "1.0.0",
+  "description": "Smart Bus Management System - Monorepo",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "common",
+    "frontend/*"
+  ],
+  "scripts": {
+    "gateway:dev": "npm run dev --workspace=services/api-gateway",
+    "auth:dev": "npm run dev --workspace=services/auth-service",
+    "customer:dev": "npm start --workspace=frontend/customer-app",
+    "user:dev": "npm run dev --workspace=services/user-service",
+    "trip:dev": "npm run dev --workspace=services/trip-service",
+    "trip:seed": "npm run seed --workspace=services/trip-service",
+    "booking:dev": "npm run dev --workspace=services/booking-service",
+    "docker:db:up": "docker-compose up -d",
+    "docker:db:down": "docker-compose down"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
