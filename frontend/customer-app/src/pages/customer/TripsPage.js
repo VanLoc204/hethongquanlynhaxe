@@ -21,7 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   Users,
-  Search
+  Search,
+  ArrowLeft
 } from 'lucide-react';
 
 const API_BASE = 'http://localhost:8000/api/v1/trips';
@@ -67,6 +68,22 @@ const TripsPage = () => {
   const [selectedDropoff, setSelectedDropoff] = useState('');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingStep, setBookingStep] = useState('seats'); // 'seats', 'customer-info', 'payment'
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerBirthYear, setCustomerBirthYear] = useState('');
+  const [customerCCCD, setCustomerCCCD] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [paymentType, setPaymentType] = useState('immediate'); // 'immediate', 'later'
+  const [createdBooking, setCreatedBooking] = useState(null);
+
+  useEffect(() => {
+    if (user) {
+      setCustomerName(user.name || '');
+      setCustomerPhone(user.phone || '');
+      setCustomerEmail(user.email || '');
+    }
+  }, [user]);
 
   // Expandable details state
   const [activeDetailsTripId, setActiveDetailsTripId] = useState(null);
@@ -201,8 +218,8 @@ const TripsPage = () => {
     navigate(`/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}&passengers=${passengers}&type=${tripType}`);
   };
 
-  // Handle booking submission
-  const handleBookingSubmit = () => {
+  // Handle booking submission - step 1: Validate seats & transitions to step 2
+  const handleBookingSubmit = async () => {
     if (selectedSeats.length === 0) {
       alert('Vui lòng chọn ít nhất một ghế.');
       return;
@@ -215,11 +232,70 @@ const TripsPage = () => {
     if (!isAuthenticated) {
       setShowAuthModal(true);
     } else {
-      // Find current trip details
-      const currentTrip = trips.find(t => t._id === expandedTripId);
-      if (currentTrip) {
+      setBookingStep('customer-info');
+    }
+  };
+
+  // Submit passenger details and create pending booking
+  const handleCustomerInfoSubmit = async (e) => {
+    e.preventDefault();
+    if (!customerName || !customerPhone || !customerBirthYear || !customerCCCD) {
+      alert('Vui lòng điền đầy đủ các trường thông tin bắt buộc.');
+      return;
+    }
+
+    const currentTrip = trips.find(t => t._id === expandedTripId);
+    if (currentTrip) {
+      try {
+        const res = await axios.post(`${API_BASE}/book`, {
+          tripId: currentTrip._id,
+          userId: user?.id || user?._id || 'user_guest',
+          seats: selectedSeats,
+          pickup: selectedPickup,
+          dropoff: selectedDropoff,
+          customerName,
+          customerPhone,
+          customerBirthYear: Number(customerBirthYear),
+          customerCCCD,
+          customerEmail,
+          paymentType: 'immediate'
+        });
+
+        if (res.data.success) {
+          setCreatedBooking(res.data.booking);
+          setBookingStep('payment');
+        } else {
+          alert(res.data.message || 'Lỗi lưu thông tin khách hàng.');
+        }
+      } catch (err) {
+        console.error("Lỗi đặt vé:", err);
+        alert(err.response?.data?.message || 'Có lỗi xảy ra khi gửi thông tin khách hàng.');
+      }
+    }
+  };
+
+  // Webhook Simulation (PayOS Success)
+  const handleSimulatePaymentSuccess = async () => {
+    if (!createdBooking) return;
+    const currentTrip = trips.find(t => t._id === expandedTripId);
+    try {
+      // Simulate webhook call to backend
+      const res = await axios.post(`${API_BASE}/payment/webhook`, {
+        code: '00',
+        desc: 'success',
+        data: {
+          orderCode: createdBooking.orderCode,
+          amount: currentTrip.price * selectedSeats.length,
+          description: `Thanh toan ve xe cho ma dat cho ${createdBooking._id}`
+        }
+      });
+
+      if (res.data.success) {
+        // Successful webhook processing
+        // Prepare ticket details for client history
         const newBooking = {
-          id: 'TKT-' + Math.floor(100000 + Math.random() * 900000),
+          id: createdBooking.orderCode,
+          bookingId: createdBooking._id,
           tripId: currentTrip._id,
           busName: currentTrip.busId.name,
           busType: currentTrip.busId.type,
@@ -230,33 +306,166 @@ const TripsPage = () => {
           seats: [...selectedSeats],
           pickup: selectedPickup,
           dropoff: selectedDropoff,
+          customerName,
+          customerPhone,
+          customerBirthYear,
+          customerCCCD,
+          customerEmail,
           bookingDate: new Date().toISOString(),
-          status: 'Confirmed'
+          paymentType: 'immediate',
+          status: 'paid'
         };
 
-        // Save to localStorage
         const existing = JSON.parse(localStorage.getItem('booked_tickets') || '[]');
         localStorage.setItem('booked_tickets', JSON.stringify([newBooking, ...existing]));
-      }
 
-      setBookingSuccess(true);
+        // Instantly block the seats in local state
+        setTrips(prevTrips => prevTrips.map(t => {
+          if (t._id === currentTrip._id) {
+            return {
+              ...t,
+              bookedSeats: [...(t.bookedSeats || []), ...selectedSeats]
+            };
+          }
+          return t;
+        }));
+
+        setCreatedBooking(prev => ({ ...prev, status: 'paid' }));
+        setBookingSuccess(true);
+      } else {
+        alert('Giả lập webhook thanh toán thất bại.');
+      }
+    } catch (err) {
+      console.error('Lỗi giả lập thanh toán:', err);
+      alert('Có lỗi xảy ra khi gửi dữ liệu giả lập webhook.');
     }
   };
 
-  // Generate seat map arrays
+  // Confirm Pay Later (within 5 days)
+  const handleConfirmPayLater = async () => {
+    if (!createdBooking) return;
+    const currentTrip = trips.find(t => t._id === expandedTripId);
+    try {
+      const res = await axios.patch(`${API_BASE}/book/${createdBooking._id}`, {
+        paymentType: 'later'
+      });
+
+      if (res.data.success) {
+        const expirationDate = new Date();
+        expirationDate.setDate(expirationDate.getDate() + 5);
+
+        const newBooking = {
+          id: createdBooking.orderCode,
+          bookingId: createdBooking._id,
+          tripId: currentTrip._id,
+          busName: currentTrip.busId.name,
+          busType: currentTrip.busId.type,
+          from: currentTrip.routeId?.startPoint || fromParam || 'Hồ Chí Minh',
+          to: currentTrip.routeId?.endPoint || toParam || 'Đà Lạt',
+          departureTime: currentTrip.departureTime,
+          price: currentTrip.price,
+          seats: [...selectedSeats],
+          pickup: selectedPickup,
+          dropoff: selectedDropoff,
+          customerName,
+          customerPhone,
+          customerBirthYear,
+          customerCCCD,
+          customerEmail,
+          bookingDate: new Date().toISOString(),
+          paymentType: 'later',
+          paymentExpiresAt: expirationDate.toISOString(),
+          status: 'pending'
+        };
+
+        const existing = JSON.parse(localStorage.getItem('booked_tickets') || '[]');
+        localStorage.setItem('booked_tickets', JSON.stringify([newBooking, ...existing]));
+
+        // Block seats in local state
+        setTrips(prevTrips => prevTrips.map(t => {
+          if (t._id === currentTrip._id) {
+            return {
+              ...t,
+              bookedSeats: [...(t.bookedSeats || []), ...selectedSeats]
+            };
+          }
+          return t;
+        }));
+
+        setCreatedBooking(prev => ({
+          ...prev,
+          paymentType: 'later',
+          paymentExpiresAt: expirationDate.toISOString(),
+          status: 'pending'
+        }));
+        setBookingSuccess(true);
+      } else {
+        alert(res.data.message || 'Lỗi cập nhật hình thức thanh toán.');
+      }
+    } catch (err) {
+      console.error('Lỗi thiết lập thanh toán sau:', err);
+      alert('Có lỗi xảy ra khi thiết lập thanh toán sau.');
+    }
+  };
+
+  // Generate seat map arrays (VIP 2-column or 3-column layout)
   const getSeatLayout = (totalSeats) => {
-    const seatsPerFloor = Math.ceil(totalSeats / 2);
     const lowerFloor = [];
     const upperFloor = [];
 
-    for (let i = 1; i <= seatsPerFloor; i++) {
-      lowerFloor.push(`A${i}`);
-    }
-    for (let i = 1; i <= seatsPerFloor; i++) {
-      upperFloor.push(`B${i}`);
-    }
+    if (totalSeats === 22) {
+      // 22 seats: 11 per floor. Let's make it a 3-column layout (Left seat, aisle, Right seat)
+      const oddNumbers = [1, 3, 5, 7, 9];
+      for (let i = 0; i < 5; i++) {
+        lowerFloor.push(['A' + oddNumbers[i], null, 'B' + oddNumbers[i]]);
+      }
+      lowerFloor.push(['A11', null, null]);
 
-    return { lowerFloor, upperFloor };
+      const evenNumbers = [2, 4, 6, 8, 10];
+      for (let i = 0; i < 5; i++) {
+        upperFloor.push(['A' + evenNumbers[i], null, 'B' + evenNumbers[i]]);
+      }
+      upperFloor.push(['A12', null, null]);
+
+      return { lowerFloor, upperFloor, columns: 3 };
+    } else {
+      // 34 or 40 seats.
+      if (totalSeats === 34) {
+        // 34 seats = 17 per floor.
+        // Floor 1: A1..A7, B1..B7, C1..C7. Last row: A9, A11, B9, C11, C9
+        lowerFloor.push(['A1', null, 'B1', null, 'C1']);
+        lowerFloor.push(['A3', null, 'B3', null, 'C3']);
+        lowerFloor.push(['A5', null, 'B5', null, 'C5']);
+        lowerFloor.push(['A7', null, 'B7', null, 'C7']);
+        lowerFloor.push(['A9', 'A11', 'B9', 'C11', 'C9']);
+
+        // Floor 2: A2..A8, B2..B8, C2..C8. Last row: A10, A12, B10, C12, C10
+        upperFloor.push(['A2', null, 'B2', null, 'C2']);
+        upperFloor.push(['A4', null, 'B4', null, 'C4']);
+        upperFloor.push(['A6', null, 'B6', null, 'C6']);
+        upperFloor.push(['A8', null, 'B8', null, 'C8']);
+        upperFloor.push(['A10', 'A12', 'B10', 'C12', 'C10']);
+      } else {
+        // 40 seats = 20 per floor.
+        // Floor 1: A1..A9, B1..B9, C1..C9. Last row: A11, A13, B11, C13, C11
+        lowerFloor.push(['A1', null, 'B1', null, 'C1']);
+        lowerFloor.push(['A3', null, 'B3', null, 'C3']);
+        lowerFloor.push(['A5', null, 'B5', null, 'C5']);
+        lowerFloor.push(['A7', null, 'B7', null, 'C7']);
+        lowerFloor.push(['A9', null, 'B9', null, 'C9']);
+        lowerFloor.push(['A11', 'A13', 'B11', 'C13', 'C11']);
+
+        // Floor 2: A2..A10, B2..B10, C2..C10. Last row: A12, A14, B12, C14, C12
+        upperFloor.push(['A2', null, 'B2', null, 'C2']);
+        upperFloor.push(['A4', null, 'B4', null, 'C4']);
+        upperFloor.push(['A6', null, 'B6', null, 'C6']);
+        upperFloor.push(['A8', null, 'B8', null, 'C8']);
+        upperFloor.push(['A10', null, 'B10', null, 'C10']);
+        upperFloor.push(['A12', 'A14', 'B12', 'C14', 'C12']);
+      }
+
+      return { lowerFloor, upperFloor, columns: 5 };
+    }
   };
 
   // Extract unique pickup/dropoff locations from all trips in the list
@@ -325,6 +534,497 @@ const TripsPage = () => {
       }
       return 0;
     });
+
+  const renderSeatSelectionView = () => {
+    const trip = trips.find(t => t._id === expandedTripId);
+    if (!trip) return null;
+
+    return (
+      <div className="glass-card animate-fade-in" style={{ padding: '2rem' }}>
+        {/* Header with back button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+          <button 
+            className="btn btn-secondary" 
+            style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
+            onClick={() => {
+              setExpandedTripId(null);
+              setSelectedSeats([]);
+              setBookingSuccess(false);
+            }}
+          >
+            <ArrowLeft size={16} /> Quay lại danh sách
+          </button>
+          <div>
+            <h3 style={{ margin: 0, fontWeight: 700 }}>Chọn Ghế & Đặt Vé</h3>
+            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+              Tuyến xe: {trip.routeId?.startPoint} → {trip.routeId?.endPoint} | Khởi hành: {new Date(trip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ({new Date(trip.departureTime).toLocaleDateString('vi-VN')})
+            </span>
+          </div>
+        </div>
+
+        {bookingSuccess ? (
+          <div className="glass-card animate-fade-in" style={{ padding: '2.5rem', maxWidth: '700px', margin: '0 auto', border: '2px solid rgba(34, 197, 94, 0.3)', backgroundColor: '#ffffff' }}>
+            <div style={{ textAlign: 'center', borderBottom: '2px dashed var(--border-color)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+              <CheckCircle size={56} style={{ color: '#22c55e', marginBottom: '1rem' }} />
+              <h3 style={{ color: '#22c55e', fontWeight: '800', margin: 0 }}>ĐẶT VÉ THÀNH CÔNG</h3>
+              <p style={{ color: 'var(--text-secondary)', margin: '5px 0 0 0', fontWeight: '500' }}>
+                Hóa Đơn Điện Tử SmartBus #{createdBooking?.orderCode || '123456'}
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem', fontSize: '0.95rem' }}>
+              <div>
+                <h5 style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '8px' }}>Thông Tin Hành Khách</h5>
+                <p style={{ margin: '4px 0' }}>Họ tên: <strong>{customerName}</strong></p>
+                <p style={{ margin: '4px 0' }}>Số điện thoại: <strong>{customerPhone}</strong></p>
+                <p style={{ margin: '4px 0' }}>Năm sinh: <strong>{customerBirthYear}</strong></p>
+                <p style={{ margin: '4px 0' }}>Số CCCD: <strong>{customerCCCD}</strong></p>
+                {customerEmail && <p style={{ margin: '4px 0' }}>Email: <strong>{customerEmail}</strong></p>}
+              </div>
+
+              <div>
+                <h5 style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '8px' }}>Thông Tin Chuyến Xe</h5>
+                <p style={{ margin: '4px 0' }}>Tuyến: <strong>{trip.routeId?.startPoint} → {trip.routeId?.endPoint}</strong></p>
+                <p style={{ margin: '4px 0' }}>Xe: <strong>{trip.busId?.name} ({trip.busId?.type})</strong></p>
+                <p style={{ margin: '4px 0' }}>Khởi hành: <strong>{new Date(trip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} ({new Date(trip.departureTime).toLocaleDateString('vi-VN')})</strong></p>
+                <p style={{ margin: '4px 0' }}>Mã ghế: <strong style={{ color: 'var(--accent)' }}>{selectedSeats.join(', ')}</strong></p>
+              </div>
+            </div>
+
+            <div style={{ borderBottom: '2px dashed var(--border-color)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span>Điểm đón khách:</span>
+                <span style={{ fontWeight: '500', textAlign: 'right' }}>{selectedPickup}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Điểm trả khách:</span>
+                <span style={{ fontWeight: '500', textAlign: 'right' }}>{selectedDropoff}</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+              <div>
+                <span style={{ fontSize: '1rem', fontWeight: '700' }}>Trạng thái thanh toán:</span>
+                <div style={{ marginTop: '4px' }}>
+                  {createdBooking?.status === 'paid' ? (
+                    <span style={{ padding: '6px 12px', borderRadius: '20px', backgroundColor: '#e8f5e9', color: '#2e7d32', fontWeight: '700', fontSize: '0.85rem' }}>
+                      ĐÃ THANH TOÁN (MBBank)
+                    </span>
+                  ) : (
+                    <span style={{ padding: '6px 12px', borderRadius: '20px', backgroundColor: '#fff3e0', color: '#ef6c00', fontWeight: '700', fontSize: '0.85rem' }}>
+                      THANH TOÁN SAU (Hạn chót: {new Date(new Date().setDate(new Date().getDate() + 5)).toLocaleDateString('vi-VN')})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Tổng tiền:</span>
+                <h3 style={{ margin: 0, fontWeight: '800', color: 'var(--accent)' }}>{formatCurrency(trip.price * selectedSeats.length)}</h3>
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', display: 'flex', gap: '15px', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ padding: '10px 24px' }} 
+                onClick={() => {
+                  window.print();
+                }}
+              >
+                In Hóa Đơn
+              </button>
+              <button 
+                className="btn btn-primary" 
+                style={{ padding: '10px 24px' }} 
+                onClick={() => {
+                  setBookingSuccess(false);
+                  setBookingStep('seats');
+                  setExpandedTripId(null);
+                  setSelectedSeats([]);
+                  setCreatedBooking(null);
+                }}
+              >
+                Hoàn tất & Quay lại
+              </button>
+            </div>
+          </div>
+        ) : bookingStep === 'customer-info' ? (
+          <div className="booking-layout">
+            {/* Passenger Info Form */}
+            <div>
+              <h4 style={{ fontWeight: '700', marginBottom: '1.5rem', textAlign: 'center' }}>Thông Tin Khách Hàng</h4>
+              <form onSubmit={handleCustomerInfoSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '450px', margin: '0 auto' }}>
+                <div className="form-group">
+                  <label className="form-label">Họ và tên hành khách <span style={{ color: 'red' }}>*</span></label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    placeholder="Nhập họ và tên đầy đủ"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    required 
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Số điện thoại <span style={{ color: 'red' }}>*</span></label>
+                  <input 
+                    type="tel" 
+                    className="form-control" 
+                    placeholder="Nhập số điện thoại liên hệ"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    required 
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Năm sinh <span style={{ color: 'red' }}>*</span></label>
+                    <input 
+                      type="number" 
+                      className="form-control" 
+                      placeholder="VD: 2002"
+                      value={customerBirthYear}
+                      onChange={(e) => setCustomerBirthYear(e.target.value)}
+                      required 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Số căn cước (CCCD) <span style={{ color: 'red' }}>*</span></label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      placeholder="Nhập số CCCD"
+                      value={customerCCCD}
+                      onChange={(e) => setCustomerCCCD(e.target.value)}
+                      required 
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email (Không bắt buộc - nhận thông tin hóa đơn)</label>
+                  <input 
+                    type="email" 
+                    className="form-control" 
+                    placeholder="email@example.com"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                  />
+                </div>
+                
+                <div style={{ display: 'flex', gap: '15px', marginTop: '1rem' }}>
+                  <button 
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ flex: 1, padding: '12px' }}
+                    onClick={() => setBookingStep('seats')}
+                  >
+                    Quay lại
+                  </button>
+                  <button 
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ flex: 1, padding: '12px' }}
+                  >
+                    Tiếp tục
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Sidebar Summary */}
+            <div className="booking-sidebar" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Chi tiết đặt chỗ</h4>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Ghế đã chọn:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{selectedSeats.join(', ')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Điểm đón:</span>
+                  <span style={{ fontWeight: '600', textAlign: 'right', fontSize: '0.9rem' }}>{selectedPickup}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Điểm trả:</span>
+                  <span style={{ fontWeight: '600', textAlign: 'right', fontSize: '0.9rem' }}>{selectedDropoff}</span>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <span style={{ fontWeight: '700' }}>Tạm tính:</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--accent)' }}>
+                    {formatCurrency(trip.price * selectedSeats.length)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : bookingStep === 'payment' ? (
+          <div className="booking-layout">
+            {/* PayOS QR Payment Screen */}
+            <div>
+              <h4 style={{ fontWeight: '700', marginBottom: '1.25rem', textAlign: 'center' }}>Thanh Toán Vé Xe</h4>
+              
+              <div className="glass-card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', margin: '0 auto' }}>
+                <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
+                
+                <img 
+                  src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${trip.price * selectedSeats.length}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`} 
+                  alt="VietQR PayOS" 
+                  style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
+                />
+                
+                <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '6px', margin: '0 auto', maxWidth: '300px' }}>
+                  <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
+                  <div>Số tài khoản: <strong>0919210046</strong></div>
+                  <div>Chủ tài khoản: <strong>HO VAN LOC</strong></div>
+                  <div>Số tiền: <strong style={{ color: 'var(--accent)' }}>{formatCurrency(trip.price * selectedSeats.length)}</strong></div>
+                  <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartBus {createdBooking?.orderCode}</strong></div>
+                </div>
+
+                <div style={{ marginTop: '1.5rem' }}>
+                  <button 
+                    className="btn btn-success" 
+                    style={{ width: '100%', padding: '10px', fontWeight: '700' }}
+                    onClick={handleSimulatePaymentSuccess}
+                  >
+                    Giả lập chuyển khoản thành công (Webhook)
+                  </button>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
+                    Hệ thống tự động kích hoạt PayOS Webhook cập nhật trạng thái sau khi chuyển khoản thành công.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Pay Later Option Sidebar */}
+            <div className="booking-sidebar" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Lựa chọn thanh toán</h4>
+                
+                <div className="glass-card" style={{ padding: '1.25rem', border: '1px solid #fed7aa', backgroundColor: '#fff7ed', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                  <h5 style={{ fontWeight: '700', color: '#c2410c', fontSize: '0.95rem', marginBottom: '6px' }}>Hoặc Thanh Toán Sau (Trong 5 ngày)</h5>
+                  <p style={{ fontSize: '0.85rem', color: '#9a3412', margin: 0 }}>
+                    Bạn có thể giữ chỗ trước và hoàn tất chuyển khoản trong vòng 5 ngày. Nếu quá thời hạn này hệ thống sẽ tự động hủy vé để nhường chỗ cho hành khách khác.
+                  </p>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ width: '100%', marginTop: '12px', border: '1px solid #ef6c00', color: '#ef6c00', backgroundColor: '#ffffff', fontWeight: '700' }}
+                    onClick={handleConfirmPayLater}
+                  >
+                    Chọn Thanh Toán Sau
+                  </button>
+                </div>
+                
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Mã đặt chỗ:</span>
+                  <span style={{ fontWeight: '700' }}>#{createdBooking?.orderCode}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Hành khách:</span>
+                  <span style={{ fontWeight: '700' }}>{customerName}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Số ghế:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--primary)' }}>{selectedSeats.join(', ')}</span>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <span style={{ fontWeight: '700' }}>Tổng tiền:</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--accent)' }}>
+                    {formatCurrency(trip.price * selectedSeats.length)}
+                  </span>
+                </div>
+
+                <button 
+                  className="btn btn-secondary" 
+                  style={{ width: '100%', padding: '12px' }}
+                  onClick={() => setBookingStep('customer-info')}
+                >
+                  Quay lại thông tin
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="booking-layout">
+            
+            {/* Seat Selector Grid */}
+            <div>
+              <h4 style={{ fontWeight: '700', marginBottom: '1.5rem', textAlign: 'center' }}>Sơ Đồ Ghế Ngồi</h4>
+              
+              {/* Floor Tabs Selector */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+                <button 
+                  className={`btn ${selectedFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
+                  onClick={() => setSelectedFloor('lower')}
+                >
+                  Tầng Dưới (Tầng 1)
+                </button>
+                <button 
+                  className={`btn ${selectedFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
+                  onClick={() => setSelectedFloor('upper')}
+                >
+                  Tầng Trên (Tầng 2)
+                </button>
+              </div>
+
+              {/* Grid Layout of seats */}
+              {(() => {
+                const { lowerFloor, upperFloor, columns } = getSeatLayout(trip.busId?.totalSeats || 34);
+                const currentFloorRows = selectedFloor === 'lower' ? lowerFloor : upperFloor;
+
+                return (
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: `repeat(${columns}, 1fr)`, 
+                    gap: '14px', 
+                    maxWidth: '360px', 
+                    margin: '0 auto',
+                    padding: '1.5rem',
+                    border: '2px solid var(--border-color)',
+                    borderRadius: '12px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.6)'
+                  }}>
+                    {currentFloorRows.flat().map((seat, index) => {
+                      if (seat === null) {
+                        return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
+                      }
+
+                      const isBooked = (trip.bookedSeats || []).includes(seat);
+                      const isSelected = selectedSeats.includes(seat);
+
+                      let seatBg = 'rgba(59, 130, 246, 0.1)'; 
+                      let seatBorder = 'var(--primary)';
+                      let seatColor = 'var(--primary)';
+
+                      if (isBooked) {
+                        seatBg = '#e5e7eb'; 
+                        seatBorder = '#d1d5db';
+                        seatColor = '#9ca3af';
+                      } else if (isSelected) {
+                        seatBg = 'var(--accent)'; 
+                        seatBorder = 'var(--accent)';
+                        seatColor = '#ffffff';
+                      }
+
+                      return (
+                        <button 
+                          key={seat}
+                          disabled={isBooked}
+                          style={{
+                            height: '56px',
+                            borderRadius: '8px',
+                            border: `2px solid ${seatBorder}`,
+                            backgroundColor: seatBg,
+                            color: seatColor,
+                            fontWeight: '700',
+                            fontSize: '0.95rem',
+                            cursor: isBooked ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s ease-in-out'
+                          }}
+                          onClick={() => handleSeatClick(seat, isBooked)}
+                        >
+                          {seat}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Color guide */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '16px', height: '16px', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '2px solid var(--primary)', borderRadius: '4px' }}></div>
+                  <span>Trống</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '16px', height: '16px', backgroundColor: 'var(--accent)', border: '2px solid var(--accent)', borderRadius: '4px' }}></div>
+                  <span>Đang chọn</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ width: '16px', height: '16px', backgroundColor: '#e5e7eb', border: '2px solid #d1d5db', borderRadius: '4px' }}></div>
+                  <span>Đã mua</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Booking checkout details (right panel) */}
+            <div className="booking-sidebar" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Thông tin đặt vé</h4>
+                
+                {/* Selected seats list */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Ghế đã chọn:</span>
+                  <span style={{ fontWeight: '700', color: 'var(--primary)' }}>
+                    {selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế nào'}
+                  </span>
+                </div>
+
+                {/* Pickup points dropdown */}
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label className="form-label">Chọn điểm đón:</label>
+                  <select 
+                    className="form-control" 
+                    value={selectedPickup} 
+                    onChange={(e) => setSelectedPickup(e.target.value)}
+                  >
+                    {(trip.pickupPoints || []).map((p, idx) => (
+                      <option key={idx} value={p.location}>
+                        {p.time} - {p.location} ({p.address})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Dropoff points dropdown */}
+                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                  <label className="form-label">Chọn điểm trả:</label>
+                  <select 
+                    className="form-control" 
+                    value={selectedDropoff} 
+                    onChange={(e) => setSelectedDropoff(e.target.value)}
+                  >
+                    {(trip.dropoffPoints || []).map((d, idx) => (
+                      <option key={idx} value={d.location}>
+                        {d.time} - {d.location} ({d.address})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                  <span style={{ fontWeight: '700' }}>Tạm tính:</span>
+                  <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--accent)' }}>
+                    {formatCurrency(trip.price * selectedSeats.length)}
+                  </span>
+                </div>
+
+                <button 
+                  className="btn btn-primary" 
+                  style={{ width: '100%', padding: '12px' }}
+                  onClick={handleBookingSubmit}
+                >
+                  Tiếp tục mua vé
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="placeholder-page animate-fade-in" style={{ paddingBottom: '5rem' }}>
@@ -452,7 +1152,7 @@ const TripsPage = () => {
               Quay lại Trang chủ
             </button>
           </div>
-        ) : filteredTrips.length === 0 ? (
+        ) : trips.length === 0 ? (
           <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
             <AlertCircle size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
             <h3>Không tìm thấy chuyến đi nào</h3>
@@ -464,7 +1164,7 @@ const TripsPage = () => {
             </button>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '2rem', alignItems: 'start' }}>
+          <div className="search-results-layout">
             
             {/* Left side: Filter Panel */}
             <div className="glass-card" style={{ padding: '1.5rem', position: 'sticky', top: '20px', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
@@ -694,9 +1394,23 @@ const TripsPage = () => {
               </div>
             </div>
 
-            {/* Right side: Trips List */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {filteredTrips.map((trip) => {
+            {/* Right side: Trips List or Empty State */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flexGrow: 1 }}>
+              {expandedTripId ? (
+                renderSeatSelectionView()
+              ) : filteredTrips.length === 0 ? (
+                <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
+                  <AlertCircle size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
+                  <h3>Không có chuyến xe nào khớp với bộ lọc</h3>
+                  <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
+                    Không tìm thấy kết quả phù hợp. Bạn vui lòng thay đổi hoặc xóa các tiêu chí lọc ở cột bên trái để hiển thị lại chuyến đi.
+                  </p>
+                  <button className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={handleClearFilters}>
+                    Xóa tất cả bộ lọc
+                  </button>
+                </div>
+              ) : (
+                filteredTrips.map((trip) => {
                 const isExpanded = expandedTripId === trip._id;
                 const remainingSeatsCount = trip.busId.totalSeats - trip.bookedSeats.length;
                 const departureDate = new Date(trip.departureTime);
@@ -711,7 +1425,7 @@ const TripsPage = () => {
                   <div key={trip._id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
                     
                     {/* Upper Trip Summary Card */}
-                    <div style={{ padding: '1.75rem', display: 'grid', gridTemplateColumns: '150px 1fr 180px', gap: '1.5rem', alignItems: 'center' }}>
+                    <div className="trip-card-inner-layout" style={{ padding: '1.75rem' }}>
                       {/* Left: Bus Image */}
                       <div>
                         <img 
@@ -935,7 +1649,7 @@ const TripsPage = () => {
                               // Tab 3: Điểm đón, trả
                               if (activeDetailTab === 'pickup-dropoff') {
                                 return (
-                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }} className="animate-fade-in">
+                                  <div className="timeline-layout animate-fade-in">
                                     {/* Pickup timeline */}
                                     <div>
                                       <h5 style={{ fontWeight: '700', color: 'var(--primary)', borderBottom: '2px solid rgba(59,130,246,0.1)', paddingBottom: '8px', marginBottom: '15px' }}>
@@ -1022,28 +1736,30 @@ const TripsPage = () => {
 
                               // Tab 5: Đánh giá
                               if (activeDetailTab === 'reviews') {
+                                const totalReviewsCount = reviewsList.length;
+                                const avgRating = totalReviewsCount > 0 
+                                  ? (reviewsList.reduce((acc, curr) => acc + curr.rating, 0) / totalReviewsCount).toFixed(1) 
+                                  : (currentTrip.ratings?.average || 5.0).toFixed(1);
+                                const totalCount = totalReviewsCount > 0 ? totalReviewsCount : (currentTrip.ratings?.count || 0);
+
                                 return (
                                   <div className="animate-fade-in">
                                     {/* Overall Rating Section */}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '30px', backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px 25px', marginBottom: '20px' }}>
                                       <div style={{ textAlign: 'center' }}>
-                                        <div style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--primary)', lineHeight: '1' }}>{currentTrip.ratings.average}</div>
+                                        <div style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--primary)', lineHeight: '1' }}>{avgRating}</div>
                                         <div style={{ display: 'flex', gap: '2px', margin: '6px 0', color: '#eab308' }}>
                                           {[1, 2, 3, 4, 5].map(star => (
-                                            <Star key={star} size={16} fill={star <= Math.round(currentTrip.ratings.average) ? '#eab308' : 'none'} stroke="#eab308" />
+                                            <Star key={star} size={16} fill={star <= Math.round(parseFloat(avgRating)) ? '#eab308' : 'none'} stroke="#eab308" />
                                           ))}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({currentTrip.ratings.count} đánh giá)</div>
+                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({totalCount} đánh giá)</div>
                                       </div>
 
                                       <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                         {[5, 4, 3, 2, 1].map(stars => {
-                                          let percentage = 0;
-                                          if (stars === 5) percentage = 75;
-                                          else if (stars === 4) percentage = 15;
-                                          else if (stars === 3) percentage = 7;
-                                          else if (stars === 2) percentage = 2;
-                                          else percentage = 1;
+                                          const countOfStars = reviewsList.filter(r => r.rating === stars).length;
+                                          const percentage = totalReviewsCount > 0 ? Math.round((countOfStars / totalReviewsCount) * 100) : 0;
 
                                           return (
                                             <div key={stars} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
@@ -1116,7 +1832,7 @@ const TripsPage = () => {
                             </button>
                           </div>
                         ) : (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2rem' }}>
+                          <div className="booking-layout">
                             
                             {/* Seat Selector Grid */}
                             <div>
@@ -1141,65 +1857,71 @@ const TripsPage = () => {
                               </div>
 
                               {/* Grid Layout of seats */}
-                              <div style={{ 
-                                display: 'grid', 
-                                gridTemplateColumns: 'repeat(4, 1fr)', 
-                                gap: '14px', 
-                                maxWidth: '360px', 
-                                margin: '0 auto',
-                                padding: '1rem',
-                                border: '2px solid var(--border-color)',
-                                borderRadius: '12px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.6)'
-                              }}>
-                                {(() => {
-                                  const { lowerFloor, upperFloor } = getSeatLayout(trip.busId.totalSeats);
-                                  const currentFloorSeats = selectedFloor === 'lower' ? lowerFloor : upperFloor;
+                              {(() => {
+                                const { lowerFloor, upperFloor, columns } = getSeatLayout(trip.busId.totalSeats);
+                                const currentFloorRows = selectedFloor === 'lower' ? lowerFloor : upperFloor;
 
-                                  return currentFloorSeats.map(seat => {
-                                    const isBooked = trip.bookedSeats.includes(seat);
-                                    const isSelected = selectedSeats.includes(seat);
+                                return (
+                                  <div style={{ 
+                                    display: 'grid', 
+                                    gridTemplateColumns: `repeat(${columns}, 1fr)`, 
+                                    gap: '14px', 
+                                    maxWidth: '360px', 
+                                    margin: '0 auto',
+                                    padding: '1rem',
+                                    border: '2px solid var(--border-color)',
+                                    borderRadius: '12px',
+                                    backgroundColor: 'rgba(255, 255, 255, 0.6)'
+                                  }}>
+                                    {currentFloorRows.flat().map((seat, index) => {
+                                      if (seat === null) {
+                                        return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
+                                      }
 
-                                    let seatBg = 'rgba(59, 130, 246, 0.1)'; // Blue light tint for available
-                                    let seatBorder = 'var(--primary)';
-                                    let seatColor = 'var(--primary)';
+                                      const isBooked = trip.bookedSeats.includes(seat);
+                                      const isSelected = selectedSeats.includes(seat);
 
-                                    if (isBooked) {
-                                      seatBg = '#e5e7eb'; // Gray for booked
-                                      seatBorder = '#d1d5db';
-                                      seatColor = '#9ca3af';
-                                    } else if (isSelected) {
-                                      seatBg = 'var(--accent)'; // Orange/accent for selected
-                                      seatBorder = 'var(--accent)';
-                                      seatColor = '#ffffff';
-                                    }
+                                      let seatBg = 'rgba(59, 130, 246, 0.1)'; // Blue light tint for available
+                                      let seatBorder = 'var(--primary)';
+                                      let seatColor = 'var(--primary)';
 
-                                    return (
-                                      <button 
-                                        key={seat}
-                                        disabled={isBooked}
-                                        style={{
-                                          height: '56px',
-                                          borderRadius: '8px',
-                                          border: `2px solid ${seatBorder}`,
-                                          backgroundColor: seatBg,
-                                          color: seatColor,
-                                          fontWeight: '700',
-                                          fontSize: '0.9rem',
-                                          cursor: isBooked ? 'not-allowed' : 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'center',
-                                          transition: 'all 0.2s ease-in-out'
-                                        }}
-                                        onClick={() => handleSeatClick(seat, isBooked)}
-                                      >
-                                        {seat}
-                                      </button>
-                                    );
-                                  });
-                                })()}
-                              </div>
+                                      if (isBooked) {
+                                        seatBg = '#e5e7eb'; // Gray for booked
+                                        seatBorder = '#d1d5db';
+                                        seatColor = '#9ca3af';
+                                      } else if (isSelected) {
+                                        seatBg = 'var(--accent)'; // Orange/accent for selected
+                                        seatBorder = 'var(--accent)';
+                                        seatColor = '#ffffff';
+                                      }
+
+                                      return (
+                                        <button 
+                                          key={seat}
+                                          disabled={isBooked}
+                                          style={{
+                                            height: '56px',
+                                            borderRadius: '8px',
+                                            border: `2px solid ${seatBorder}`,
+                                            backgroundColor: seatBg,
+                                            color: seatColor,
+                                            fontWeight: '700',
+                                            fontSize: '0.9rem',
+                                            cursor: isBooked ? 'not-allowed' : 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            transition: 'all 0.2s ease-in-out'
+                                          }}
+                                          onClick={() => handleSeatClick(seat, isBooked)}
+                                        >
+                                          {seat}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
 
                               {/* Color guide */}
                               <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>
@@ -1288,7 +2010,8 @@ const TripsPage = () => {
                     )}
                   </div>
                 );
-              })}
+              })
+              )}
             </div>
 
           </div>

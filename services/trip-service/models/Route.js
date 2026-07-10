@@ -24,4 +24,6 @@ const routeSchema = new mongoose.Schema(
   }
 );
 
+routeSchema.index({ startPoint: 1, endPoint: 1 });
+
 module.exports = mongoose.model('Route', routeSchema);

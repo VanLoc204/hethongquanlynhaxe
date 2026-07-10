@@ -57,4 +57,10 @@ const tripSchema = new mongoose.Schema(
   }
 );
 
+tripSchema.index({ routeId: 1 });
+tripSchema.index({ departureTime: 1 });
+tripSchema.index({ 'pickupPoints.location': 1 });
+tripSchema.index({ 'dropoffPoints.location': 1 });
+tripSchema.index({ routeId: 1, departureTime: 1 });
+
 module.exports = mongoose.model('Trip', tripSchema);

@@ -466,6 +466,33 @@
   align-items: start;
 }
 
+.booking-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.search-results-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.trip-card-inner-layout {
+  display: grid;
+  grid-template-columns: 150px 1fr 180px;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.timeline-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
 .ai-chat-layout {
   display: grid;
   grid-template-columns: 1fr 280px;
@@ -593,6 +620,10 @@
   .grid-3-col,
   .grid-auto-fit,
   .profile-layout,
+  .booking-layout,
+  .search-results-layout,
+  .trip-card-inner-layout,
+  .timeline-layout,
   .ai-chat-layout,
   .track-layout,
   .ticket-detail-layout {
@@ -646,4 +677,17 @@
     grid-template-columns: 1fr !important;
     gap: 25px;
   }
+
+  .booking-sidebar {
+    border-left: none !important;
+    border-top: 1px dashed var(--border-color) !important;
+    padding-left: 0 !important;
+    padding-top: 1.5rem !important;
+    margin-top: 1.5rem !important;
+  }
+}
+
+.booking-sidebar {
+  border-left: 1px solid var(--border-color);
+  padding-left: 2rem;
 }

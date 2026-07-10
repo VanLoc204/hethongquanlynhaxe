@@ -16,8 +16,10 @@
     "trip:dev": "npm run dev --workspace=services/trip-service",
     "trip:seed": "npm run seed --workspace=services/trip-service",
     "booking:dev": "npm run dev --workspace=services/booking-service",
-    "docker:db:up": "docker-compose up -d",
-    "docker:db:down": "docker-compose down"
+    "docker:db:up": "docker-compose up -d mysql mongodb redis rabbitmq",
+    "docker:db:down": "docker-compose down",
+    "docker:up": "docker-compose up -d --build",
+    "docker:down": "docker-compose down"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

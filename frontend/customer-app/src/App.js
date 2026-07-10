@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import { Compass, User, LogIn, LogOut, Loader, Ticket, Map, Package, MessageSquare, Bell, Menu, X } from 'lucide-react';
 import './App.css';
 
@@ -17,6 +17,26 @@ import ShipmentPage from './pages/customer/ShipmentPage';
 import AIAssistantPage from './pages/customer/AIAssistantPage';
 import NotificationsPage from './pages/customer/NotificationsPage';
 import ProfilePage from './pages/customer/ProfilePage';
+
+// Protected Route - chỉ dành cho khách hàng đã đăng nhập
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useContext(AuthContext);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh', color: 'var(--text-primary)' }}>
+        <Loader className="logo-icon animate-spin" size={32} />
+        <span style={{ marginLeft: '10px', fontWeight: '600' }}>Đang tải...</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
 
 const Navigation = () => {
   const { user, isAuthenticated, logout, loading } = useContext(AuthContext);
@@ -128,12 +148,12 @@ function App() {
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/trips" element={<TripsPage />} />
-              <Route path="/my-tickets" element={<MyTicketsPage />} />
-              <Route path="/track-journey" element={<TrackJourneyPage />} />
-              <Route path="/shipment" element={<ShipmentPage />} />
-              <Route path="/ai-assistant" element={<AIAssistantPage />} />
-              <Route path="/notifications" element={<NotificationsPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
+              <Route path="/track-journey" element={<ProtectedRoute><TrackJourneyPage /></ProtectedRoute>} />
+              <Route path="/shipment" element={<ProtectedRoute><ShipmentPage /></ProtectedRoute>} />
+              <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistantPage /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             </Routes>
           </main>
 

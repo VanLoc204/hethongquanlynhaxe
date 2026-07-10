@@ -196,3 +196,73 @@ he-thong-quan-ly-nha-xe/
 - [ ] **Phase 7: Dockerize & Test**
   - Viết `Dockerfile` cho từng Service và React App.
   - Kiểm thử hiệu năng và liên kết dịch vụ.
+
+---
+
+## 5. Cơ Sở Dữ Liệu & Các Bảng (Database Schemas & Models)
+
+Hệ thống sử dụng MongoDB làm cơ sở dữ liệu chính. Dưới đây là cấu trúc các bảng (Collections) chính đang hoạt động trong `trip-service`:
+
+### A. Tuyến Đường (`routes`)
+Quản lý hành trình di chuyển cố định của nhà xe.
+- `startPoint` (String, Required): Điểm xuất phát (VD: Hồ Chí Minh).
+- `endPoint` (String, Required): Điểm đến (VD: Đà Lạt).
+- `distance` (String, Required): Khoảng cách (VD: 310km).
+- `duration` (String, Required): Thời gian chạy trung bình (VD: 7 giờ 50 phút).
+
+### B. Xe Khách (`buses`)
+Thông tin chi tiết về từng phương tiện vận chuyển.
+- `plateNumber` (String, Unique, Required): Biển kiểm soát xe (VD: 49B-022.22).
+- `type` (String, Required): Loại xe (Limousine 22 Phòng, Limousine 34 Giường...).
+- `totalSeats` (Number, Required): Tổng số ghế ngồi/giường nằm.
+- `amenities` (Array of Strings): Tiện ích đi kèm (Wifi, cổng sạc, Toilet, chăn đắp...).
+- `images` (Array of Strings): Liên kết ảnh thực tế của phương tiện.
+
+### C. Chuyến Xe (`trips`)
+Một chuyến chạy cụ thể được cấu hình thời gian và giá bán.
+- `routeId` (ObjectId, Ref: Route): Liên kết đến Tuyến đường.
+- `busId` (ObjectId, Ref: Bus): Liên kết đến Xe khách.
+- `departureTime` (Date, Required): Thời điểm xe chạy.
+- `arrivalTime` (Date, Required): Thời điểm xe dự kiến đến trạm cuối.
+- `price` (Number, Required): Giá vé sàn của chuyến đi.
+- `pickupPoints` (Array of Objects): Các điểm đón dọc đường cùng khung giờ đón dự kiến.
+- `dropoffPoints` (Array of Objects): Các điểm trả dọc đường cùng khung giờ trả dự kiến.
+- `bookedSeats` (Array of Strings): Danh sách mã ghế đã được đặt.
+- `ratings` (Object): Đánh giá trung bình và số lượng đánh giá của chuyến xe.
+- `policy` (Object): Chính sách hủy vé và chính sách hành lý.
+
+### D. Đặt Vé Xe (`bookings`)
+Quản lý yêu cầu giữ chỗ, thanh toán vé xe của hành khách.
+- `tripId` (ObjectId, Ref: Trip, Required): Liên kết đến Chuyến xe đã đặt.
+- `userId` (String, Required): ID người đặt vé (nếu là khách vãng lai sẽ là `user_guest`).
+- `seats` (Array of Strings, Required): Danh sách các ghế ngồi được chọn (VD: `["A1", "A2"]`).
+- `pickup` (String, Required): Điểm đón khách lựa chọn.
+- `dropoff` (String, Required): Điểm trả khách lựa chọn.
+- `customerName` (String, Required): Họ tên hành khách.
+- `customerPhone` (String, Required): Số điện thoại hành khách.
+- `customerBirthYear` (Number, Required): Năm sinh hành khách.
+- `customerCCCD` (String, Required): Số căn cước công dân.
+- `customerEmail` (String, Optional): Email nhận hóa đơn và mã QR vé xe.
+- `status` (String): Trạng thái vé (`pending` - Chờ thanh toán, `paid` - Đã thanh toán, `cancelled` - Đã hủy vé).
+- `paymentType` (String): Hình thức thanh toán (`immediate` - Chuyển khoản VietQR, `later` - Thanh toán sau trong 5 ngày).
+- `orderCode` (Number, Unique): Mã số giao dịch thanh toán gửi qua PayOS.
+
+### E. Ký Gửi Hàng Hóa (`shipments`)
+Quản lý thông tin gửi nhận và thanh toán cước phí hàng bưu gửi.
+- `shipmentId` (String, Unique): Mã vận đơn tra cứu bưu gửi (VD: `SHIP-123456`).
+- `senderName` (String, Required): Họ tên người gửi hàng.
+- `senderPhone` (String, Required): Số điện thoại người gửi.
+- `senderEmail` (String, Optional): Email người gửi để nhận hóa đơn vận đơn.
+- `receiverName` (String, Required): Họ tên người nhận hàng.
+- `receiverPhone` (String, Required): Số điện thoại người nhận.
+- `fromCity` (String, Required): Thành phố gửi bưu bưu gửi.
+- `toCity` (String, Required): Thành phố nhận bưu gửi.
+- `weight` (Number, Required): Khối lượng bưu gửi (kg).
+- `content` (String): Mô tả chi tiết hàng hóa ký gửi.
+- `fee` (Number, Required): Tổng cước phí vận chuyển.
+- `status` (String): Trạng thái vận tải (`Collected` - Đã thu gom, `In Transit` - Đang vận chuyển, `Arrived` - Đã tới trạm đích, `Delivered` - Đã giao thành công).
+- `paymentStatus` (String): Trạng thái cước phí (`pending` - Chưa thanh toán, `paid` - Đã thanh toán).
+- `paymentType` (String): Phương thức thanh toán (`immediate` - Quét mã VietQR tại quầy/online, `later` - Thanh toán khi nhận hàng).
+- `history` (Array of Objects): Nhật ký hành trình vận chuyển hàng hóa, ghi nhận chi tiết thời gian và địa điểm thực tế của bưu gửi.
+- `orderCode` (Number, Unique): Mã giao dịch thanh toán qua PayOS của bưu gửi.
+
