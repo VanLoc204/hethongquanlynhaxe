@@ -673,3 +673,298 @@ exports.deleteBus = async (req, res) => {
     });
   }
 };
+
+// @desc    Get all routes
+// @route   GET /api/v1/trips/ops/routes
+// @access  Private (Ops Manager)
+exports.getRoutes = async (req, res) => {
+  try {
+    const routes = await Route.find().sort({ createdAt: -1 });
+    res.status(200).json({
+      success: true,
+      count: routes.length,
+      routes
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách tuyến đường:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi lấy danh sách tuyến đường.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Create a new route
+// @route   POST /api/v1/trips/ops/routes
+// @access  Private (Ops Manager)
+exports.createRoute = async (req, res) => {
+  try {
+    const { startPoint, endPoint, distance, duration } = req.body;
+    if (!startPoint || !endPoint || !distance || !duration) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp đầy đủ thông tin tuyến đường.'
+      });
+    }
+
+    const route = await Route.create({
+      startPoint,
+      endPoint,
+      distance,
+      duration
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Tạo tuyến đường thành công.',
+      route
+    });
+  } catch (error) {
+    console.error('Lỗi tạo tuyến đường:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi tạo tuyến đường.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update a route
+// @route   PUT /api/v1/trips/ops/routes/:id
+// @access  Private (Ops Manager)
+exports.updateRoute = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startPoint, endPoint, distance, duration } = req.body;
+
+    let route = await Route.findById(id);
+    if (!route) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tuyến đường.'
+      });
+    }
+
+    if (startPoint) route.startPoint = startPoint;
+    if (endPoint) route.endPoint = endPoint;
+    if (distance) route.distance = distance;
+    if (duration) route.duration = duration;
+
+    await route.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật tuyến đường thành công.',
+      route
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật tuyến đường:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi cập nhật tuyến đường.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete a route
+// @route   DELETE /api/v1/trips/ops/routes/:id
+// @access  Private (Ops Manager)
+exports.deleteRoute = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const route = await Route.findById(id);
+    if (!route) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy tuyến đường.'
+      });
+    }
+
+    // Check if any trip is associated with this route
+    const tripCount = await Trip.countDocuments({ routeId: id });
+    if (tripCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể xóa tuyến đường này vì có chuyến xe đang hoạt động.'
+      });
+    }
+
+    await route.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: 'Xóa tuyến đường thành công.'
+    });
+  } catch (error) {
+    console.error('Lỗi xóa tuyến đường:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi xóa tuyến đường.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get all trips (ops view)
+// @route   GET /api/v1/trips/ops/trips
+// @access  Private (Ops Manager)
+exports.getTrips = async (req, res) => {
+  try {
+    const trips = await Trip.find()
+      .populate('routeId')
+      .populate('busId')
+      .sort({ departureTime: -1 });
+    
+    // Add bookedSeats dynamically for dashboard monitoring
+    const tripsWithBookings = await Promise.all(trips.map(async (t) => {
+      const bookingsForTrip = await Booking.find({ tripId: t._id, status: { $ne: 'cancelled' } });
+      const seatsList = bookingsForTrip.flatMap(b => b.seats);
+      const tripObj = t.toObject();
+      tripObj.bookedSeats = seatsList;
+      return tripObj;
+    }));
+
+    res.status(200).json({
+      success: true,
+      count: tripsWithBookings.length,
+      trips: tripsWithBookings
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách chuyến xe:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi lấy danh sách chuyến xe.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Create a new trip
+// @route   POST /api/v1/trips/ops/trips
+// @access  Private (Ops Manager)
+exports.createTrip = async (req, res) => {
+  try {
+    const { routeId, busId, departureTime, arrivalTime, price, pickupPoints, dropoffPoints, policy } = req.body;
+
+    if (!routeId || !busId || !departureTime || !arrivalTime || !price) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp các trường bắt buộc: Tuyến đường, Xe, Giờ đi, Giờ đến và Giá vé.'
+      });
+    }
+
+    const trip = await Trip.create({
+      routeId,
+      busId,
+      departureTime: new Date(departureTime),
+      arrivalTime: new Date(arrivalTime),
+      price: Number(price),
+      pickupPoints: pickupPoints || [],
+      dropoffPoints: dropoffPoints || [],
+      policy: policy || {
+        cancellation: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.',
+        luggage: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.'
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Tạo chuyến xe thành công.',
+      trip
+    });
+  } catch (error) {
+    console.error('Lỗi tạo chuyến xe:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi tạo chuyến xe.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update a trip
+// @route   PUT /api/v1/trips/ops/trips/:id
+// @access  Private (Ops Manager)
+exports.updateTrip = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { routeId, busId, departureTime, arrivalTime, price, pickupPoints, dropoffPoints, policy, driver, assistant } = req.body;
+
+    let trip = await Trip.findById(id);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy chuyến xe.'
+      });
+    }
+
+    if (routeId) trip.routeId = routeId;
+    if (busId) trip.busId = busId;
+    if (departureTime) trip.departureTime = new Date(departureTime);
+    if (arrivalTime) trip.arrivalTime = new Date(arrivalTime);
+    if (price !== undefined) trip.price = Number(price);
+    if (pickupPoints) trip.pickupPoints = pickupPoints;
+    if (dropoffPoints) trip.dropoffPoints = dropoffPoints;
+    if (policy) trip.policy = policy;
+    if (driver) trip.driver = driver;
+    if (assistant) trip.assistant = assistant;
+
+    await trip.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật chuyến xe thành công.',
+      trip
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật chuyến xe:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi cập nhật chuyến xe.',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Delete a trip
+// @route   DELETE /api/v1/trips/ops/trips/:id
+// @access  Private (Ops Manager)
+exports.deleteTrip = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const trip = await Trip.findById(id);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy chuyến xe.'
+      });
+    }
+
+    // Check if trip has any active bookings (status !== cancelled)
+    const bookingsCount = await Booking.countDocuments({ tripId: id, status: { $ne: 'cancelled' } });
+    if (bookingsCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể xóa chuyến xe vì có hành khách đã đặt vé.'
+      });
+    }
+
+    await trip.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: 'Xóa chuyến xe thành công.'
+    });
+  } catch (error) {
+    console.error('Lỗi xóa chuyến xe:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi xóa chuyến xe.',
+      error: error.message
+    });
+  }
+};

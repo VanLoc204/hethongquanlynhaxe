@@ -409,63 +409,237 @@ const TripsPage = () => {
   };
 
   // Generate seat map arrays (VIP 2-column or 3-column layout)
-  const getSeatLayout = (totalSeats) => {
+  const getSeatLayout = (totalSeats, busType = '') => {
     const lowerFloor = [];
     const upperFloor = [];
+    const typeStr = (busType || '').toLowerCase();
 
-    if (totalSeats === 22) {
-      // 22 seats: 11 per floor. Let's make it a 3-column layout (Left seat, aisle, Right seat)
-      const oddNumbers = [1, 3, 5, 7, 9];
-      for (let i = 0; i < 5; i++) {
-        lowerFloor.push(['A' + oddNumbers[i], null, 'B' + oddNumbers[i]]);
+    // Determine if it is a double-decker (giường nằm hoặc limousine phòng cabin)
+    const isDoubleDecker = 
+      typeStr.includes('giường') || 
+      typeStr.includes('phòng') || 
+      typeStr.includes('cabin') || 
+      totalSeats === 20 || 
+      totalSeats === 22 || 
+      totalSeats === 24 || 
+      totalSeats === 32 || 
+      totalSeats === 34 || 
+      totalSeats === 40 || 
+      totalSeats === 44;
+
+    if (isDoubleDecker) {
+      // 1. Xe giường phòng cabin VIP: 20, 22, 24 phòng (3 cột, 2 dãy cabin, 2 tầng)
+      if (totalSeats === 20 || totalSeats === 22 || totalSeats === 24) {
+        if (totalSeats === 20) {
+          // 10 cabin per floor. Row 1: 1 cabin, Row 2-4: 2 cabins, Row 5 (back row): 3 cabins.
+          lowerFloor.push(['A1', null, null]);
+          lowerFloor.push(['A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7']);
+          lowerFloor.push(['A8', 'A9', 'A10']);
+
+          upperFloor.push(['B1', null, null]);
+          upperFloor.push(['B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7']);
+          upperFloor.push(['B8', 'B9', 'B10']);
+        } else if (totalSeats === 22) {
+          // 11 cabin per floor. Row 1-4: 2 cabins, Row 5 (back row): 3 cabins.
+          lowerFloor.push(['A1', null, 'A2']);
+          lowerFloor.push(['A3', null, 'A4']);
+          lowerFloor.push(['A5', null, 'A6']);
+          lowerFloor.push(['A7', null, 'A8']);
+          lowerFloor.push(['A9', 'A10', 'A11']);
+
+          upperFloor.push(['B1', null, 'B2']);
+          upperFloor.push(['B3', null, 'B4']);
+          upperFloor.push(['B5', null, 'B6']);
+          upperFloor.push(['B7', null, 'B8']);
+          upperFloor.push(['B9', 'B10', 'B11']);
+        } else if (totalSeats === 24) {
+          // 12 cabin per floor. Row 1: 1 cabin, Row 2-5: 2 cabins, Row 6 (back row): 3 cabins.
+          lowerFloor.push(['A1', null, null]);
+          lowerFloor.push(['A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7']);
+          lowerFloor.push(['A8', null, 'A9']);
+          lowerFloor.push(['A10', 'A11', 'A12']);
+
+          upperFloor.push(['B1', null, null]);
+          upperFloor.push(['B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7']);
+          upperFloor.push(['B8', null, 'B9']);
+          upperFloor.push(['B10', 'B11', 'B12']);
+        }
+        return { lowerFloor, upperFloor, columns: 3 };
       }
-      lowerFloor.push(['A11', null, null]);
 
-      const evenNumbers = [2, 4, 6, 8, 10];
-      for (let i = 0; i < 5; i++) {
-        upperFloor.push(['A' + evenNumbers[i], null, 'B' + evenNumbers[i]]);
+      // 2. Xe Giường nằm truyền thống: 32, 34, 40, 44 chỗ (5 cột, 3 dãy giường, 2 tầng)
+      if (totalSeats === 32 || totalSeats === 34 || totalSeats === 40 || totalSeats === 44) {
+        if (totalSeats === 32) {
+          // 16 per floor. Row 1: 2 seats, Row 2-4: 3 seats, Row 5 (back row): 5 seats.
+          lowerFloor.push(['A1', null, null, null, 'A2']);
+          lowerFloor.push(['A3', null, 'A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7', null, 'A8']);
+          lowerFloor.push(['A9', null, 'A10', null, 'A11']);
+          lowerFloor.push(['A12', 'A13', 'A14', 'A15', 'A16']);
+
+          upperFloor.push(['B1', null, null, null, 'B2']);
+          upperFloor.push(['B3', null, 'B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7', null, 'B8']);
+          upperFloor.push(['B9', null, 'B10', null, 'B11']);
+          upperFloor.push(['B12', 'B13', 'B14', 'B15', 'B16']);
+        } else if (totalSeats === 34) {
+          // 17 per floor. Row 1-4: 3 seats, Row 5 (back row): 5 seats.
+          lowerFloor.push(['A1', null, 'A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5', null, 'A6']);
+          lowerFloor.push(['A7', null, 'A8', null, 'A9']);
+          lowerFloor.push(['A10', null, 'A11', null, 'A12']);
+          lowerFloor.push(['A13', 'A14', 'A15', 'A16', 'A17']);
+
+          upperFloor.push(['B1', null, 'B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5', null, 'B6']);
+          upperFloor.push(['B7', null, 'B8', null, 'B9']);
+          upperFloor.push(['B10', null, 'B11', null, 'B12']);
+          upperFloor.push(['B13', 'B14', 'B15', 'B16', 'B17']);
+        } else if (totalSeats === 40) {
+          // 20 per floor. Row 1-5: 3 seats, Row 6 (back row): 5 seats.
+          lowerFloor.push(['A1', null, 'A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5', null, 'A6']);
+          lowerFloor.push(['A7', null, 'A8', null, 'A9']);
+          lowerFloor.push(['A10', null, 'A11', null, 'A12']);
+          lowerFloor.push(['A13', null, 'A14', null, 'A15']);
+          lowerFloor.push(['A16', 'A17', 'A18', 'A19', 'A20']);
+
+          upperFloor.push(['B1', null, 'B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5', null, 'B6']);
+          upperFloor.push(['B7', null, 'B8', null, 'B9']);
+          upperFloor.push(['B10', null, 'B11', null, 'B12']);
+          upperFloor.push(['B13', null, 'B14', null, 'B15']);
+          upperFloor.push(['B16', 'B17', 'B18', 'B19', 'B20']);
+        } else if (totalSeats === 44) {
+          // 22 per floor. Row 1: 2 seats, Row 2-6: 3 seats, Row 7 (back row): 5 seats.
+          lowerFloor.push(['A1', null, null, null, 'A2']);
+          lowerFloor.push(['A3', null, 'A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7', null, 'A8']);
+          lowerFloor.push(['A9', null, 'A10', null, 'A11']);
+          lowerFloor.push(['A12', null, 'A13', null, 'A14']);
+          lowerFloor.push(['A15', null, 'A16', null, 'A17']);
+          lowerFloor.push(['A18', 'A19', 'A20', 'A21', 'A22']);
+
+          upperFloor.push(['B1', null, null, null, 'B2']);
+          upperFloor.push(['B3', null, 'B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7', null, 'B8']);
+          upperFloor.push(['B9', null, 'B10', null, 'B11']);
+          upperFloor.push(['B12', null, 'B13', null, 'B14']);
+          upperFloor.push(['B15', null, 'B16', null, 'B17']);
+          upperFloor.push(['B18', 'B19', 'B20', 'B21', 'B22']);
+        }
+        return { lowerFloor, upperFloor, columns: 5 };
       }
-      upperFloor.push(['A12', null, null]);
-
-      return { lowerFloor, upperFloor, columns: 3 };
-    } else {
-      // 34 or 40 seats.
-      if (totalSeats === 34) {
-        // 34 seats = 17 per floor.
-        // Floor 1: A1..A7, B1..B7, C1..C7. Last row: A9, A11, B9, C11, C9
-        lowerFloor.push(['A1', null, 'B1', null, 'C1']);
-        lowerFloor.push(['A3', null, 'B3', null, 'C3']);
-        lowerFloor.push(['A5', null, 'B5', null, 'C5']);
-        lowerFloor.push(['A7', null, 'B7', null, 'C7']);
-        lowerFloor.push(['A9', 'A11', 'B9', 'C11', 'C9']);
-
-        // Floor 2: A2..A8, B2..B8, C2..C8. Last row: A10, A12, B10, C12, C10
-        upperFloor.push(['A2', null, 'B2', null, 'C2']);
-        upperFloor.push(['A4', null, 'B4', null, 'C4']);
-        upperFloor.push(['A6', null, 'B6', null, 'C6']);
-        upperFloor.push(['A8', null, 'B8', null, 'C8']);
-        upperFloor.push(['A10', 'A12', 'B10', 'C12', 'C10']);
-      } else {
-        // 40 seats = 20 per floor.
-        // Floor 1: A1..A9, B1..B9, C1..C9. Last row: A11, A13, B11, C13, C11
-        lowerFloor.push(['A1', null, 'B1', null, 'C1']);
-        lowerFloor.push(['A3', null, 'B3', null, 'C3']);
-        lowerFloor.push(['A5', null, 'B5', null, 'C5']);
-        lowerFloor.push(['A7', null, 'B7', null, 'C7']);
-        lowerFloor.push(['A9', null, 'B9', null, 'C9']);
-        lowerFloor.push(['A11', 'A13', 'B11', 'C13', 'C11']);
-
-        // Floor 2: A2..A10, B2..B10, C2..C10. Last row: A12, A14, B12, C14, C12
-        upperFloor.push(['A2', null, 'B2', null, 'C2']);
-        upperFloor.push(['A4', null, 'B4', null, 'C4']);
-        upperFloor.push(['A6', null, 'B6', null, 'C6']);
-        upperFloor.push(['A8', null, 'B8', null, 'C8']);
-        upperFloor.push(['A10', null, 'B10', null, 'C10']);
-        upperFloor.push(['A12', 'A14', 'B12', 'C14', 'C12']);
-      }
-
-      return { lowerFloor, upperFloor, columns: 5 };
     }
+
+    // 3. Single Decker Layouts (1 Floor)
+    // 3.1 Limousine ghế ngồi: 9 chỗ (3 cột)
+    if (totalSeats === 9) {
+      lowerFloor.push(['A1', null, 'A2']);
+      lowerFloor.push(['A3', null, 'A4']);
+      lowerFloor.push(['A5', null, 'A6']);
+      lowerFloor.push(['A7', 'A8', 'A9']);
+      return { lowerFloor, upperFloor: [], columns: 3 };
+    }
+    
+    // 3.2 Limousine ghế ngồi: 19 chỗ (3 cột)
+    if (totalSeats === 19) {
+      lowerFloor.push(['A1', null, 'A2']);
+      lowerFloor.push(['A3', null, 'A4']);
+      lowerFloor.push(['A5', null, 'A6']);
+      lowerFloor.push(['A7', null, 'A8']);
+      lowerFloor.push(['A9', null, 'A10']);
+      lowerFloor.push(['A11', null, 'A12']);
+      lowerFloor.push(['A13', null, 'A14']);
+      lowerFloor.push(['A15', null, 'A16']);
+      lowerFloor.push(['A17', 'A18', 'A19']);
+      return { lowerFloor, upperFloor: [], columns: 3 };
+    }
+
+    // 3.3 Xe ghế ngồi 16 chỗ (4 cột)
+    if (totalSeats === 16) {
+      lowerFloor.push(['A1', 'A2', null, 'A3']);
+      lowerFloor.push(['A4', 'A5', null, 'A6']);
+      lowerFloor.push(['A7', 'A8', null, 'A9']);
+      lowerFloor.push(['A10', 'A11', null, 'A12']);
+      lowerFloor.push(['A13', 'A14', 'A15', 'A16']);
+      return { lowerFloor, upperFloor: [], columns: 4 };
+    }
+
+    // 3.4 Xe ghế ngồi 29 chỗ (5 cột)
+    if (totalSeats === 29) {
+      lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
+      lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
+      lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
+      lowerFloor.push(['A13', 'A14', null, 'A15', 'A16']);
+      lowerFloor.push(['A17', 'A18', null, 'A19', 'A20']);
+      lowerFloor.push(['A21', 'A22', null, 'A23', 'A24']);
+      lowerFloor.push(['A25', 'A26', 'A27', 'A28', 'A29']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // 3.5 Xe ghế ngồi 35 chỗ (5 cột)
+    if (totalSeats === 35) {
+      lowerFloor.push([null, null, null, 'A1', 'A2']);
+      lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
+      lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
+      lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
+      lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
+      lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
+      lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
+      lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
+      lowerFloor.push(['A31', 'A32', 'A33', 'A34', 'A35']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // 3.6 Xe ghế ngồi 45 chỗ (5 cột)
+    if (totalSeats === 45) {
+      lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
+      lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
+      lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
+      lowerFloor.push(['A13', 'A14', null, 'A15', 'A16']);
+      lowerFloor.push(['A17', 'A18', null, 'A19', 'A20']);
+      lowerFloor.push(['A21', 'A22', null, 'A23', 'A24']);
+      lowerFloor.push(['A25', 'A26', null, 'A27', 'A28']);
+      lowerFloor.push(['A29', 'A30', null, 'A31', 'A32']);
+      lowerFloor.push(['A33', 'A34', null, 'A35', 'A36']);
+      lowerFloor.push(['A37', 'A38', null, 'A39', 'A40']);
+      lowerFloor.push(['A41', 'A42', 'A43', 'A44', 'A45']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // 3.7 Xe ghế ngồi 47 chỗ (5 cột)
+    if (totalSeats === 47) {
+      lowerFloor.push([null, null, null, 'A1', 'A2']);
+      lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
+      lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
+      lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
+      lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
+      lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
+      lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
+      lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
+      lowerFloor.push(['A31', 'A32', null, 'A33', 'A34']);
+      lowerFloor.push(['A35', 'A36', null, 'A37', 'A38']);
+      lowerFloor.push(['A39', 'A40', null, 'A41', 'A42']);
+      lowerFloor.push(['A43', 'A44', 'A45', 'A46', 'A47']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // Default fallback
+    for (let r = 1; r <= 8; r++) {
+      const idx = (r - 1) * 2;
+      lowerFloor.push([`A${idx + 1}`, null, `B${idx + 1}`, null, `C${idx + 1}`]);
+      upperFloor.push([`A${idx + 2}`, null, `B${idx + 2}`, null, `C${idx + 2}`]);
+    }
+    return { lowerFloor, upperFloor, columns: 5 };
   };
 
   // Extract unique pickup/dropoff locations from all trips in the list
@@ -484,8 +658,10 @@ const TripsPage = () => {
     .filter(trip => {
       // 1. Bus Type
       if (busTypeFilter !== 'all') {
-        if (busTypeFilter === '22' && !trip.busId.type.includes('22')) return false;
-        if (busTypeFilter === '34' && !trip.busId.type.includes('34')) return false;
+        const typeL = trip.busId.type.toLowerCase();
+        if (busTypeFilter === 'limousine' && !typeL.includes('limousine') && !typeL.includes('phòng') && !typeL.includes('cabin')) return false;
+        if (busTypeFilter === 'sleeper' && !typeL.includes('giường') && !typeL.includes('nằm')) return false;
+        if (busTypeFilter === 'seater' && !typeL.includes('ghế') && !typeL.includes('ngồi')) return false;
       }
       
       // 2. Giảm giá (Discount check - simulate discount for trips priced < 300,000 or rating counts > 1000)
@@ -855,41 +1031,48 @@ const TripsPage = () => {
             <div>
               <h4 style={{ fontWeight: '700', marginBottom: '1.5rem', textAlign: 'center' }}>Sơ Đồ Ghế Ngồi</h4>
               
-              {/* Floor Tabs Selector */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
-                <button 
-                  className={`btn ${selectedFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
-                  onClick={() => setSelectedFloor('lower')}
-                >
-                  Tầng Dưới (Tầng 1)
-                </button>
-                <button 
-                  className={`btn ${selectedFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
-                  onClick={() => setSelectedFloor('upper')}
-                >
-                  Tầng Trên (Tầng 2)
-                </button>
-              </div>
-
               {/* Grid Layout of seats */}
               {(() => {
-                const { lowerFloor, upperFloor, columns } = getSeatLayout(trip.busId?.totalSeats || 34);
-                const currentFloorRows = selectedFloor === 'lower' ? lowerFloor : upperFloor;
+                const { lowerFloor, upperFloor, columns } = (trip.busId?.seatLayout && trip.busId.seatLayout.lowerFloor) 
+                  ? trip.busId.seatLayout 
+                  : getSeatLayout(trip.busId?.totalSeats || 34, trip.busId?.type || '');
+                const hasUpperFloor = upperFloor && upperFloor.length > 0;
+                const activeFloor = (selectedFloor === 'upper' && hasUpperFloor) ? 'upper' : 'lower';
+                const currentFloorRows = activeFloor === 'lower' ? lowerFloor : upperFloor;
 
                 return (
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: `repeat(${columns}, 1fr)`, 
-                    gap: '14px', 
-                    maxWidth: '360px', 
-                    margin: '0 auto',
-                    padding: '1.5rem',
-                    border: '2px solid var(--border-color)',
-                    borderRadius: '12px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.6)'
-                  }}>
+                  <>
+                    {/* Floor Tabs Selector */}
+                    {hasUpperFloor && (
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+                        <button 
+                          className={`btn ${activeFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
+                          onClick={() => setSelectedFloor('lower')}
+                        >
+                          Tầng Dưới (Tầng 1)
+                        </button>
+                        <button 
+                          className={`btn ${activeFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
+                          onClick={() => setSelectedFloor('upper')}
+                        >
+                          Tầng Trên (Tầng 2)
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: `repeat(${columns}, 1fr)`, 
+                      gap: '14px', 
+                      maxWidth: '360px', 
+                      margin: '0 auto',
+                      padding: '1.5rem',
+                      border: '2px solid var(--border-color)',
+                      borderRadius: '12px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.6)'
+                    }}>
                     {currentFloorRows.flat().map((seat, index) => {
                       if (seat === null) {
                         return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
@@ -937,8 +1120,9 @@ const TripsPage = () => {
                       );
                     })}
                   </div>
-                );
-              })()}
+                </>
+              );
+            })()}
 
               {/* Color guide */}
               <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>
@@ -1365,19 +1549,28 @@ const TripsPage = () => {
                     <input 
                       type="radio" 
                       name="busType" 
-                      checked={busTypeFilter === '22'} 
-                      onChange={() => setBusTypeFilter('22')} 
+                      checked={busTypeFilter === 'limousine'} 
+                      onChange={() => setBusTypeFilter('limousine')} 
                     />
-                    Limousine 22 Phòng VIP
+                    Xe Limousine (9, 19, 22 VIP...)
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
                     <input 
                       type="radio" 
                       name="busType" 
-                      checked={busTypeFilter === '34'} 
-                      onChange={() => setBusTypeFilter('34')} 
+                      checked={busTypeFilter === 'sleeper'} 
+                      onChange={() => setBusTypeFilter('sleeper')} 
                     />
-                    Limousine 34 Giường thường
+                    Xe Giường Nằm (34, 40, 44 chỗ...)
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input 
+                      type="radio" 
+                      name="busType" 
+                      checked={busTypeFilter === 'seater'} 
+                      onChange={() => setBusTypeFilter('seater')} 
+                    />
+                    Xe Ghế Ngồi (16, 29, 45 chỗ...)
                   </label>
                 </div>
               </div>
@@ -1838,41 +2031,48 @@ const TripsPage = () => {
                             <div>
                               <h4 style={{ fontWeight: '700', marginBottom: '1.25rem', textAlign: 'center' }}>Sơ Đồ Ghế Ngồi</h4>
                               
-                              {/* Floor Tabs Selector */}
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
-                                <button 
-                                  className={`btn ${selectedFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
-                                  style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
-                                  onClick={() => setSelectedFloor('lower')}
-                                >
-                                  Tầng Dưới (A)
-                                </button>
-                                <button 
-                                  className={`btn ${selectedFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
-                                  style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
-                                  onClick={() => setSelectedFloor('upper')}
-                                >
-                                  Tầng Trên (B)
-                                </button>
-                              </div>
-
                               {/* Grid Layout of seats */}
                               {(() => {
-                                const { lowerFloor, upperFloor, columns } = getSeatLayout(trip.busId.totalSeats);
-                                const currentFloorRows = selectedFloor === 'lower' ? lowerFloor : upperFloor;
+                                const { lowerFloor, upperFloor, columns } = (trip.busId?.seatLayout && trip.busId.seatLayout.lowerFloor)
+                                  ? trip.busId.seatLayout
+                                  : getSeatLayout(trip.busId.totalSeats, trip.busId.type || '');
+                                const hasUpperFloor = upperFloor && upperFloor.length > 0;
+                                const activeFloor = (selectedFloor === 'upper' && hasUpperFloor) ? 'upper' : 'lower';
+                                const currentFloorRows = activeFloor === 'lower' ? lowerFloor : upperFloor;
 
                                 return (
-                                  <div style={{ 
-                                    display: 'grid', 
-                                    gridTemplateColumns: `repeat(${columns}, 1fr)`, 
-                                    gap: '14px', 
-                                    maxWidth: '360px', 
-                                    margin: '0 auto',
-                                    padding: '1rem',
-                                    border: '2px solid var(--border-color)',
-                                    borderRadius: '12px',
-                                    backgroundColor: 'rgba(255, 255, 255, 0.6)'
-                                  }}>
+                                  <>
+                                    {/* Floor Tabs Selector */}
+                                    {hasUpperFloor && (
+                                      <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+                                        <button 
+                                          className={`btn ${activeFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
+                                          style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
+                                          onClick={() => setSelectedFloor('lower')}
+                                        >
+                                          Tầng Dưới (A)
+                                        </button>
+                                        <button 
+                                          className={`btn ${activeFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
+                                          style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
+                                          onClick={() => setSelectedFloor('upper')}
+                                        >
+                                          Tầng Trên (B)
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    <div style={{ 
+                                      display: 'grid', 
+                                      gridTemplateColumns: `repeat(${columns}, 1fr)`, 
+                                      gap: '14px', 
+                                      maxWidth: '360px', 
+                                      margin: '0 auto',
+                                      padding: '1rem',
+                                      border: '2px solid var(--border-color)',
+                                      borderRadius: '12px',
+                                      backgroundColor: 'rgba(255, 255, 255, 0.6)'
+                                    }}>
                                     {currentFloorRows.flat().map((seat, index) => {
                                       if (seat === null) {
                                         return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
@@ -1920,8 +2120,9 @@ const TripsPage = () => {
                                       );
                                     })}
                                   </div>
-                                );
-                              })()}
+                                </>
+                              );
+                            })()}
 
                               {/* Color guide */}
                               <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>

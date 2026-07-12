@@ -24,7 +24,12 @@ const busSchema = new mongoose.Schema(
       {
         type: String
       }
-    ]
+    ],
+    seatLayout: {
+      columns: { type: Number },
+      lowerFloor: { type: mongoose.Schema.Types.Mixed },
+      upperFloor: { type: mongoose.Schema.Types.Mixed }
+    }
   },
   {
     timestamps: true

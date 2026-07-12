@@ -50,6 +50,14 @@ const tripSchema = new mongoose.Schema(
     policy: {
       cancellation: { type: String, default: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.' },
       luggage: { type: String, default: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.' }
+    },
+    driver: {
+      name: { type: String, default: '' },
+      phone: { type: String, default: '' }
+    },
+    assistant: {
+      name: { type: String, default: '' },
+      phone: { type: String, default: '' }
     }
   },
   {

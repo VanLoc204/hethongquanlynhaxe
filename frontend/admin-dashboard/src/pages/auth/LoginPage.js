@@ -60,7 +60,7 @@ const LoginPage = () => {
         <div style={{ marginTop: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: '1.8' }}>
           <strong>Tài khoản thử nghiệm</strong><br />
           Quản lý xe: <strong>0988888888</strong> / 123456<br />
-          Admin: <strong>0955555555</strong> / 123456
+          Admin: <strong>0955555666</strong> / 123456
         </div>
       </div>
     </div>

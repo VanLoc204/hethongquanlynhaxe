@@ -5,72 +5,13 @@ const bcrypt = require('bcryptjs');
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27018/bus_management';
 
 // ----------------------------------------
-// 1. SCHEMAS
+// 1. MODELS
 // ----------------------------------------
-
-const RouteSchema = new mongoose.Schema({
-  startPoint: { type: String, required: true },
-  endPoint: { type: String, required: true },
-  distance: { type: String, required: true },
-  duration: { type: String, required: true }
-}, { timestamps: true });
-
-const BusSchema = new mongoose.Schema({
-  plateNumber: { type: String, required: true, unique: true },
-  type: { type: String, required: true }, // e.g. Limousine 22 Phòng (WC)
-  totalSeats: { type: Number, required: true },
-  amenities: [{ type: String }],
-  images: [{ type: String }]
-}, { timestamps: true });
-
-const TripSchema = new mongoose.Schema({
-  routeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Route', required: true },
-  busId: { type: mongoose.Schema.Types.ObjectId, ref: 'Bus', required: true },
-  departureTime: { type: Date, required: true },
-  arrivalTime: { type: Date, required: true },
-  price: { type: Number, required: true },
-  pickupPoints: [{
-    time: { type: String, required: true },
-    location: { type: String, required: true },
-    address: { type: String, required: true }
-  }],
-  dropoffPoints: [{
-    time: { type: String, required: true },
-    location: { type: String, required: true },
-    address: { type: String, required: true }
-  }],
-  bookedSeats: [{ type: String }],
-  ratings: {
-    average: { type: Number, default: 5.0 },
-    count: { type: Number, default: 0 }
-  },
-  policy: {
-    cancellation: { type: String, default: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.' },
-    luggage: { type: String, default: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.' }
-  }
-}, { timestamps: true });
-
-const ReviewSchema = new mongoose.Schema({
-  tripId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trip', required: true },
-  userName: { type: String, required: true },
-  rating: { type: Number, required: true },
-  comment: { type: String, required: true }
-}, { timestamps: true });
-
-const BookingSchema = new mongoose.Schema({
-  tripId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trip', required: true },
-  userId: { type: String, required: true },
-  seats: [{ type: String, required: true }],
-  pickup: { type: String, required: true },
-  dropoff: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'paid', 'cancelled'], default: 'paid' }
-}, { timestamps: true });
-
-const Route = mongoose.model('Route', RouteSchema);
-const Bus = mongoose.model('Bus', BusSchema);
-const Trip = mongoose.model('Trip', TripSchema);
-const Review = mongoose.model('Review', ReviewSchema);
-const Booking = mongoose.model('Booking', BookingSchema);
+const Route = require('./models/Route');
+const Bus = require('./models/Bus');
+const Trip = require('./models/Trip');
+const Review = require('./models/Review');
+const Booking = require('./models/Booking');
 
 const mockReviewsList = [
   { userName: "Nguyễn Văn Hùng", rating: 5, comment: "Xe đi rất êm, sạch sẽ, lái xe cẩn thận và đúng giờ. Tôi rất hài lòng." },
@@ -109,90 +50,158 @@ async function seedDB() {
     await Trip.deleteMany({});
     await Review.deleteMany({});
     await Booking.deleteMany({});
+    
     try {
       await mongoose.connection.collection('shipments').deleteMany({});
       console.log('Cleared all existing Shipment data.');
     } catch (e) {
       // shipments collection might not exist yet
     }
-    console.log('Cleared all existing Route, Bus, Trip, Review and Booking data.');
 
-    // ========================================
-    // Seed Tài Khoản Hệ Thống (All Roles)
-    // Mật khẩu mặc định: 123456
-    // ========================================
     try {
-      const hashedPassword = await bcrypt.hash('123456', 10);
-
-      const systemUsers = [
-        {
-          name: 'Quản Lý Xe Á Đông',
-          email: 'fleet@smartbus.vn',
-          phone: '0988888888',
-          role: 'fleet_manager',
-        },
-        {
-          name: 'Quản Lý Vận Tải Á Đông',
-          email: 'ops@smartbus.vn',
-          phone: '0977777777',
-          role: 'ops_manager',
-        },
-        {
-          name: 'Giám Đốc Á Đông',
-          email: 'director@smartbus.vn',
-          phone: '0966666666',
-          role: 'general_manager',
-        },
-        {
-          name: 'Quản Trị Viên Hệ Thống',
-          email: 'admin@smartbus.vn',
-          phone: '0955555555',
-          role: 'admin',
-        },
-        {
-          name: 'Nhân Viên Bán Vé',
-          email: 'ticket@smartbus.vn',
-          phone: '0944444444',
-          role: 'ticket_agent',
-        },
-        {
-          name: 'Tài Xế Nguyễn Văn A',
-          email: 'driver@smartbus.vn',
-          phone: '0933333333',
-          role: 'driver',
-        }
-      ];
-
-      // Remove old system accounts (keep customer accounts untouched)
-      const systemRoles = ['fleet_manager', 'ops_manager', 'general_manager', 'admin', 'ticket_agent', 'driver'];
-      await mongoose.connection.collection('users').deleteMany({ role: { $in: systemRoles } });
-
-      for (const u of systemUsers) {
-        await mongoose.connection.collection('users').insertOne({
-          ...u,
-          password: hashedPassword,
-          status: 'active',
-          points: 150,
-          membershipTier: 'Bronze',
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-
-      console.log('');
-      console.log('===== TÀI KHOẢN HỆ THỐNG (mật khẩu: 123456) =====');
-      console.log('fleet_manager   -> SĐT: 0988888888');
-      console.log('ops_manager     -> SĐT: 0977777777');
-      console.log('general_manager -> SĐT: 0966666666');
-      console.log('admin           -> SĐT: 0955555555');
-      console.log('ticket_agent    -> SĐT: 0944444444');
-      console.log('driver          -> SĐT: 0933333333');
-      console.log('===================================================');
-      console.log('');
-    } catch (userErr) {
-      console.error('Error seeding system users:', userErr);
+      // Reset the users collection completely
+      await mongoose.connection.collection('users').deleteMany({});
+      console.log('Cleared all existing User data.');
+    } catch (e) {
+      // users collection might not exist yet
     }
 
+    console.log('Cleared all existing database collections.');
+
+    // ========================================
+    // Seed System and Customer Accounts
+    // Mật khẩu mặc định: 123456
+    // ========================================
+    const hashedPassword = await bcrypt.hash('123456', 10);
+
+    const systemUsers = [
+      // Managers & Admin
+      {
+        name: 'Quản Lý Xe Á Đông',
+        email: 'fleet@smartbus.vn',
+        phone: '0988888888',
+        role: 'fleet_manager',
+      },
+      {
+        name: 'Quản Lý Vận Tải Á Đông',
+        email: 'ops@smartbus.vn',
+        phone: '0977777777',
+        role: 'ops_manager',
+      },
+      {
+        name: 'Giám Đốc Á Đông',
+        email: 'director@smartbus.vn',
+        phone: '0966555666', // Unique phone for GM
+        role: 'general_manager',
+      },
+      {
+        name: 'Quản Trị Viên Hệ Thống',
+        email: 'admin@smartbus.vn',
+        phone: '0955555666', // Unique phone for Admin
+        role: 'admin',
+      },
+      {
+        name: 'Nhân Viên Bán Vé',
+        email: 'ticket@smartbus.vn',
+        phone: '0944555666', // Unique phone for Ticket Agent
+        role: 'ticket_agent',
+      },
+      // Drivers (Tài xế)
+      {
+        name: 'Tài xế Á Đông',
+        email: 'driver1@smartbus.vn',
+        phone: '0933333333',
+        role: 'driver',
+      },
+      {
+        name: 'Trần Minh Tâm',
+        email: 'driver2@smartbus.vn',
+        phone: '0987654321',
+        role: 'driver',
+      },
+      {
+        name: 'Nguyễn Văn Hùng',
+        email: 'driver3@smartbus.vn',
+        phone: '0912345678',
+        role: 'driver',
+      },
+      {
+        name: 'Lê Hoàng Nam',
+        email: 'driver4@smartbus.vn',
+        phone: '0909090909',
+        role: 'driver',
+      },
+      // Attendants (Phụ xe)
+      {
+        name: 'Phạm Quốc Bảo',
+        email: 'attendant1@smartbus.vn',
+        phone: '0944444444',
+        role: 'attendant',
+      },
+      {
+        name: 'Hoàng Văn Tuấn',
+        email: 'attendant2@smartbus.vn',
+        phone: '0966666666',
+        role: 'attendant',
+      },
+      {
+        name: 'Đỗ Đức Mạnh',
+        email: 'attendant3@smartbus.vn',
+        phone: '0955555555',
+        role: 'attendant',
+      },
+      {
+        name: 'Nguyễn Tiến Dũng',
+        email: 'attendant4@smartbus.vn',
+        phone: '0977889900',
+        role: 'attendant',
+      }
+    ];
+
+    // Seed all staff/system users
+    for (const u of systemUsers) {
+      await mongoose.connection.collection('users').insertOne({
+        ...u,
+        password: hashedPassword,
+        status: 'active',
+        points: 150,
+        membershipTier: 'Bronze',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+
+    // Seed Customer accounts
+    const cust1 = await mongoose.connection.collection('users').insertOne({
+      name: 'Nguyễn Văn Khách',
+      email: 'khach1@gmail.com',
+      phone: '0901234567',
+      password: hashedPassword,
+      role: 'customer',
+      status: 'active',
+      points: 150,
+      membershipTier: 'Bronze',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    const cust2 = await mongoose.connection.collection('users').insertOne({
+      name: 'Trần Thị Khách',
+      email: 'khach2@gmail.com',
+      phone: '0902345678',
+      password: hashedPassword,
+      role: 'customer',
+      status: 'active',
+      points: 450,
+      membershipTier: 'Silver',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    const customer1Id = cust1.insertedId.toString();
+    const customer2Id = cust2.insertedId.toString();
+
+    console.log('Successfully seeded system users, drivers, assistants, and customers.');
 
     // 2.1 Seed Routes
     const r1 = await Route.create({
@@ -220,30 +229,43 @@ async function seedDB() {
 
     // 2.2 Seed Buses
     const b1 = await Bus.create({
-      plateNumber: '49B-022.22',
-      type: 'Limousine 22 Phòng (WC)',
-      totalSeats: 22,
-      amenities: [
-        'Tivi LED', 'Toilet', 'Sạc điện thoại', 'Đèn đọc sách', 'Rèm cửa',
-        'Chăn đắp', 'Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh', 'Gối nằm',
-        'Búa phá kính'
-      ],
-      images: [
-        'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80',
-        'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?auto=format&fit=crop&w=800&q=80'
-      ]
+      plateNumber: '51B-016.16',
+      type: 'Xe Ghế Ngồi 16 Chỗ',
+      totalSeats: 16,
+      amenities: ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh'],
+      images: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80']
     });
 
     const b2 = await Bus.create({
-      plateNumber: '51B-123.45',
-      type: 'Limousine 34 Giường',
-      totalSeats: 34,
-      amenities: [
-        'Sạc điện thoại', 'Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh', 'Gối nằm'
-      ],
-      images: [
-        'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80'
-      ]
+      plateNumber: '51B-029.29',
+      type: 'Xe Ghế Ngồi 29 Chỗ',
+      totalSeats: 29,
+      amenities: ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh'],
+      images: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80']
+    });
+
+    const b3 = await Bus.create({
+      plateNumber: '51B-045.45',
+      type: 'Xe Ghế Ngồi 45 Chỗ',
+      totalSeats: 45,
+      amenities: ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh'],
+      images: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80']
+    });
+
+    const b4 = await Bus.create({
+      plateNumber: '51B-009.09',
+      type: 'Limousine Ghế Ngồi 9 Chỗ',
+      totalSeats: 9,
+      amenities: ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh', 'Sạc điện thoại'],
+      images: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80']
+    });
+
+    const b5 = await Bus.create({
+      plateNumber: '51B-044.44',
+      type: 'Xe Giường Nằm 44 Chỗ',
+      totalSeats: 44,
+      amenities: ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh', 'Gối nằm', 'Chăn đắp'],
+      images: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80']
     });
 
     console.log('Created Buses.');
@@ -257,14 +279,20 @@ async function seedDB() {
       return d;
     };
 
+    // Staff pairs for assignment:
+    const pair1 = { driver: { name: 'Tài xế Á Đông', phone: '0933333333' }, assistant: { name: 'Phạm Quốc Bảo', phone: '0944444444' } };
+    const pair2 = { driver: { name: 'Trần Minh Tâm', phone: '0987654321' }, assistant: { name: 'Hoàng Văn Tuấn', phone: '0966666666' } };
+    const pair3 = { driver: { name: 'Nguyễn Văn Hùng', phone: '0912345678' }, assistant: { name: 'Đỗ Đức Mạnh', phone: '0955555555' } };
+    const pair4 = { driver: { name: 'Lê Hoàng Nam', phone: '0909090909' }, assistant: { name: 'Nguyễn Tiến Dũng', phone: '0977889900' } };
+
     // We will seed trips for today, tomorrow and the next 5 days
     for (let i = 0; i < 7; i++) {
-      // Trip 1: HCM to Da Lat - Limousine 22
+      // Trip 1: HCM to Da Lat - Xe Giường Nằm 44 Chỗ (23:00)
       const t1 = await Trip.create({
         routeId: r1._id,
-        busId: b1._id,
-        departureTime: getDateAt(i, 23, 0), // 23:00
-        arrivalTime: getDateAt(i + 1, 6, 50), // 06:50 next day
+        busId: b5._id,
+        departureTime: getDateAt(i, 23, 0),
+        arrivalTime: getDateAt(i + 1, 6, 50),
         price: 400000,
         pickupPoints: [
           { time: '23:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' },
@@ -280,37 +308,17 @@ async function seedDB() {
           { time: '06:50', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }
         ],
         bookedSeats: [],
-        ratings: {
-          average: 4.7,
-          count: 44
-        }
+        ratings: { average: 4.7, count: 44 },
+        ...pair1
       });
       await seedReviewsForTrip(t1._id);
 
-      // Seed bookings dynamically for t1
-      await Booking.create({
-        tripId: t1._id,
-        userId: 'user_mock_1',
-        seats: ['A1', 'A3'],
-        pickup: 'Văn Phòng Tân Bình',
-        dropoff: 'Văn Phòng Đà Lạt',
-        status: 'paid'
-      });
-      await Booking.create({
-        tripId: t1._id,
-        userId: 'user_mock_2',
-        seats: ['B5'],
-        pickup: 'Văn Phòng Thủ Đức',
-        dropoff: 'Di Linh',
-        status: 'paid'
-      });
-
-      // Trip 2: HCM to Da Lat - Limousine 34
+      // Trip 2: HCM to Da Lat - Xe Giường Nằm 44 Chỗ (08:00)
       const t2 = await Trip.create({
         routeId: r1._id,
-        busId: b2._id,
-        departureTime: getDateAt(i, 8, 0), // 08:00
-        arrivalTime: getDateAt(i, 15, 30), // 15:30 same day
+        busId: b5._id,
+        departureTime: getDateAt(i, 8, 0),
+        arrivalTime: getDateAt(i, 15, 30),
         price: 290000,
         pickupPoints: [
           { time: '08:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' },
@@ -321,37 +329,17 @@ async function seedDB() {
           { time: '15:30', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }
         ],
         bookedSeats: [],
-        ratings: {
-          average: 4.5,
-          count: 22
-        }
+        ratings: { average: 4.5, count: 22 },
+        ...pair2
       });
       await seedReviewsForTrip(t2._id);
 
-      // Seed bookings dynamically for t2
-      await Booking.create({
-        tripId: t2._id,
-        userId: 'user_mock_3',
-        seats: ['A5', 'A7'],
-        pickup: 'Văn Phòng Tân Bình',
-        dropoff: 'Văn Phòng Đà Lạt',
-        status: 'paid'
-      });
-      await Booking.create({
-        tripId: t2._id,
-        userId: 'user_mock_4',
-        seats: ['A11'],
-        pickup: 'Bến Xe Miền Đông Mới',
-        dropoff: 'Bảo Lộc',
-        status: 'paid'
-      });
-
-      // Trip 3: HCM to Can Tho - Limousine 34
+      // Trip 3: HCM to Can Tho - Xe Giường Nằm 44 Chỗ (13:00)
       const t3 = await Trip.create({
         routeId: r2._id,
-        busId: b2._id,
-        departureTime: getDateAt(i, 13, 0), // 13:00
-        arrivalTime: getDateAt(i, 16, 0), // 16:00
+        busId: b5._id,
+        departureTime: getDateAt(i, 13, 0),
+        arrivalTime: getDateAt(i, 16, 0),
         price: 165000,
         pickupPoints: [
           { time: '13:00', location: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, An Lạc, Bình Tân, Hồ Chí Minh' }
@@ -360,19 +348,17 @@ async function seedDB() {
           { time: '16:00', location: 'Bến Xe Trung Tâm Cần Thơ', address: 'Đường dẫn cầu Cần Thơ, Hưng Thành, Cái Răng, Cần Thơ' }
         ],
         bookedSeats: [],
-        ratings: {
-          average: 4.6,
-          count: 15
-        }
+        ratings: { average: 4.6, count: 15 },
+        ...pair3
       });
       await seedReviewsForTrip(t3._id);
 
-      // Trip 4: Da Lat to HCM - Limousine 22
+      // Trip 4: Da Lat to HCM - Xe Giường Nằm 44 Chỗ (22:30)
       const t4 = await Trip.create({
         routeId: r3._id,
-        busId: b1._id,
-        departureTime: getDateAt(i, 22, 30), // 22:30
-        arrivalTime: getDateAt(i + 1, 5, 30), // 05:30 next day
+        busId: b5._id,
+        departureTime: getDateAt(i, 22, 30),
+        arrivalTime: getDateAt(i + 1, 5, 30),
         price: 400000,
         pickupPoints: [
           { time: '22:30', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }
@@ -382,22 +368,164 @@ async function seedDB() {
           { time: '05:30', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Hồ Chí Minh' }
         ],
         bookedSeats: [],
-        ratings: {
-          average: 4.8,
-          count: 32
-        }
+        ratings: { average: 4.8, count: 32 },
+        ...pair4
       });
       await seedReviewsForTrip(t4._id);
 
-      // Seed bookings dynamically for t4
-      await Booking.create({
-        tripId: t4._id,
-        userId: 'user_mock_5',
-        seats: ['A1', 'B1'],
-        pickup: 'Văn Phòng Đà Lạt',
-        dropoff: 'Văn Phòng Tân Bình',
-        status: 'paid'
+      // Trip 5: HCM to Can Tho - Xe Ghế Ngồi 16 Chỗ (09:30)
+      const t5 = await Trip.create({
+        routeId: r2._id,
+        busId: b1._id,
+        departureTime: getDateAt(i, 9, 30),
+        arrivalTime: getDateAt(i, 12, 30),
+        price: 150000,
+        pickupPoints: [{ time: '09:30', location: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, An Lạc, Bình Tân, Hồ Chí Minh' }],
+        dropoffPoints: [{ time: '12:30', location: 'Bến Xe Trung Tâm Cần Thơ', address: 'Đường dẫn cầu Cần Thơ, Hưng Thành, Cái Răng, Cần Thơ' }],
+        bookedSeats: [],
+        ratings: { average: 4.4, count: 12 },
+        ...pair1
       });
+      await seedReviewsForTrip(t5._id);
+
+      // Trip 6: HCM to Da Lat - Xe Ghế Ngồi 29 Chỗ (06:30)
+      const t6 = await Trip.create({
+        routeId: r1._id,
+        busId: b2._id,
+        departureTime: getDateAt(i, 6, 30),
+        arrivalTime: getDateAt(i, 14, 20),
+        price: 220000,
+        pickupPoints: [{ time: '06:30', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }],
+        dropoffPoints: [{ time: '14:20', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
+        bookedSeats: [],
+        ratings: { average: 4.2, count: 8 },
+        ...pair2
+      });
+      await seedReviewsForTrip(t6._id);
+
+      // Trip 7: HCM to Da Lat - Xe Ghế Ngồi 45 Chỗ (12:00)
+      const t7 = await Trip.create({
+        routeId: r1._id,
+        busId: b3._id,
+        departureTime: getDateAt(i, 12, 0),
+        arrivalTime: getDateAt(i, 19, 50),
+        price: 200000,
+        pickupPoints: [{ time: '12:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }],
+        dropoffPoints: [{ time: '19:50', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
+        bookedSeats: [],
+        ratings: { average: 4.1, count: 19 },
+        ...pair3
+      });
+      await seedReviewsForTrip(t7._id);
+
+      // Trip 8: HCM to Da Lat - Limousine Ghế Ngồi 9 Chỗ (16:00)
+      const t8 = await Trip.create({
+        routeId: r1._id,
+        busId: b4._id,
+        departureTime: getDateAt(i, 16, 0),
+        arrivalTime: getDateAt(i, 23, 0),
+        price: 350000,
+        pickupPoints: [{ time: '16:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }],
+        dropoffPoints: [{ time: '23:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
+        bookedSeats: [],
+        ratings: { average: 4.9, count: 5 },
+        ...pair4
+      });
+      await seedReviewsForTrip(t8._id);
+
+      // Trip 9: HCM to Da Lat - Xe Giường Nằm 44 Chỗ (21:30)
+      const t9 = await Trip.create({
+        routeId: r1._id,
+        busId: b5._id,
+        departureTime: getDateAt(i, 21, 30),
+        arrivalTime: getDateAt(i + 1, 5, 20),
+        price: 260000,
+        pickupPoints: [{ time: '21:30', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }],
+        dropoffPoints: [{ time: '05:20', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
+        bookedSeats: [],
+        ratings: { average: 4.5, count: 35 },
+        ...pair1
+      });
+      await seedReviewsForTrip(t9._id);
+
+      // Seed bookings and sync bookedSeats for day 0 (today) and day 1 (tomorrow)
+      if (i === 0) {
+        // Bookings for t1 (today)
+        await Booking.create({
+          tripId: t1._id,
+          userId: customer1Id,
+          seats: ['A01', 'A02'],
+          pickup: 'Văn Phòng Tân Bình',
+          dropoff: 'Văn Phòng Đà Lạt',
+          status: 'paid',
+          customerName: 'Nguyễn Văn Khách',
+          customerPhone: '0901234567',
+          customerBirthYear: 1990,
+          customerCCCD: '123456789012',
+          customerEmail: 'khach1@gmail.com',
+          paymentType: 'immediate',
+          orderCode: 100001
+        });
+        t1.bookedSeats.push('A01', 'A02');
+        await t1.save();
+
+        await Booking.create({
+          tripId: t1._id,
+          userId: customer2Id,
+          seats: ['A05'],
+          pickup: 'Văn Phòng Tân Bình',
+          dropoff: 'Văn Phòng Đà Lạt',
+          status: 'pending',
+          customerName: 'Trần Thị Khách',
+          customerPhone: '0902345678',
+          customerBirthYear: 1995,
+          customerCCCD: '987654321098',
+          customerEmail: 'khach2@gmail.com',
+          paymentType: 'later',
+          paymentExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          orderCode: 100002
+        });
+        t1.bookedSeats.push('A05');
+        await t1.save();
+
+        // Bookings for t2 (today)
+        await Booking.create({
+          tripId: t2._id,
+          userId: customer1Id,
+          seats: ['A03'],
+          pickup: 'Văn Phòng Tân Bình',
+          dropoff: 'Văn Phòng Đà Lạt',
+          status: 'paid',
+          customerName: 'Nguyễn Văn Khách',
+          customerPhone: '0901234567',
+          customerBirthYear: 1990,
+          customerCCCD: '123456789012',
+          customerEmail: 'khach1@gmail.com',
+          paymentType: 'immediate',
+          orderCode: 100003
+        });
+        t2.bookedSeats.push('A03');
+        await t2.save();
+      } else if (i === 1) {
+        // Bookings for t6 (tomorrow)
+        await Booking.create({
+          tripId: t6._id,
+          userId: customer2Id,
+          seats: ['01', '02'],
+          pickup: 'Văn Phòng Tân Bình',
+          dropoff: 'Văn Phòng Đà Lạt',
+          status: 'paid',
+          customerName: 'Trần Thị Khách',
+          customerPhone: '0902345678',
+          customerBirthYear: 1995,
+          customerCCCD: '987654321098',
+          customerEmail: 'khach2@gmail.com',
+          paymentType: 'immediate',
+          orderCode: 100004
+        });
+        t6.bookedSeats.push('01', '02');
+        await t6.save();
+      }
     }
 
     console.log('Successfully seeded all Route, Bus, Trip, Review and Booking data!');
@@ -410,3 +538,4 @@ async function seedDB() {
 }
 
 seedDB();
+

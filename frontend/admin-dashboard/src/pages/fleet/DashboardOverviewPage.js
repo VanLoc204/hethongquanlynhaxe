@@ -112,9 +112,76 @@ const FleetManagerOverview = ({ busCount }) => {
   );
 };
 
+const OpsManagerOverview = ({ routeCount, tripCount, busCount, totalBookedSeats, recentTrips, activeRoutes }) => {
+  return (
+    <>
+      <section className="stats-grid">
+        <StatCard label="Tuyến đường khai thác" value={`${routeCount} tuyến`} trend="Kết nối liên tỉnh" colorClass="blue" />
+        <StatCard label="Chuyến xe lên lịch" value={`${tripCount} chuyến`} trend="Lên lịch vận hành" colorClass="green" />
+        <StatCard label="Đội xe khả dụng" value={`${busCount} phương tiện`} trend="Đang hoạt động" colorClass="purple" />
+        <StatCard label="Tổng vé đã đặt" value={`${totalBookedSeats} vé`} trend="Tỷ lệ lấp đầy ghế" colorClass="yellow" />
+      </section>
+
+      <section className="content-section" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+        {/* Chuyến xe sắp khởi hành */}
+        <div className="panel" style={{ padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--card-border)' }}>
+          <h2 style={{ marginBottom: '1.25rem', fontSize: '1.25rem' }}>Các chuyến xe mới lên lịch</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {recentTrips.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Chưa có chuyến xe nào được lên lịch.</p>
+            ) : (
+              recentTrips.slice(0, 3).map((trip) => {
+                const depTime = new Date(trip.departureTime).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+                return (
+                  <div key={trip._id} style={{ padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--card-border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <strong>{trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'Không rõ tuyến'}</strong>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--primary)' }}>{depTime}</span>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                      Xe: {trip.busId?.plateNumber || 'Chưa gán'} | Đã đặt: {trip.bookedSeats?.length || 0}/{trip.busId?.totalSeats || 0} ghế
+                    </p>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Danh sách tuyến đường hoạt động */}
+        <div className="panel" style={{ padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--card-border)' }}>
+          <h2 style={{ marginBottom: '1.25rem', fontSize: '1.25rem' }}>Tuyến đường đang khai thác</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {activeRoutes.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Chưa có tuyến đường nào được cấu hình.</p>
+            ) : (
+              activeRoutes.slice(0, 3).map((route) => (
+                <div key={route._id} style={{ padding: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--card-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <strong>{route.startPoint} — {route.endPoint}</strong>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>Thời gian đi: {route.duration}</p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ color: 'var(--primary)', fontWeight: '700' }}>{route.distance}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+    </>
+  );
+};
+
 const DashboardOverviewPage = () => {
   const { user, token } = useContext(AuthContext);
   const [busCount, setBusCount] = useState(0);
+  const [routeCount, setRouteCount] = useState(0);
+  const [tripCount, setTripCount] = useState(0);
+  const [totalBookedSeats, setTotalBookedSeats] = useState(0);
+  const [recentTrips, setRecentTrips] = useState([]);
+  const [activeRoutes, setActiveRoutes] = useState([]);
 
   useEffect(() => {
     const fetchBuses = async () => {
@@ -128,11 +195,58 @@ const DashboardOverviewPage = () => {
         console.error(err);
       }
     };
-    if (token) fetchBuses();
-  }, [token]);
+
+    const fetchOpsData = async () => {
+      try {
+        // Fetch routes
+        const routesRes = await fetch(`${API_BASE}/trips/ops/routes`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const routesData = await routesRes.json();
+        if (routesData.success) {
+          setRouteCount(routesData.routes.length);
+          setActiveRoutes(routesData.routes);
+        }
+
+        // Fetch trips
+        const tripsRes = await fetch(`${API_BASE}/trips/ops/trips`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const tripsData = await tripsRes.json();
+        if (tripsData.success) {
+          setTripCount(tripsData.trips.length);
+          setRecentTrips(tripsData.trips);
+          const totalSeatsBooked = tripsData.trips.reduce((acc, trip) => acc + (trip.bookedSeats?.length || 0), 0);
+          setTotalBookedSeats(totalSeatsBooked);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    if (token) {
+      fetchBuses();
+      if (user?.role === 'ops_manager' || user?.role === 'admin' || user?.role === 'general_manager') {
+        fetchOpsData();
+      }
+    }
+  }, [token, user]);
 
   if (user?.role === 'admin') {
     return <AdminOverview />;
+  }
+
+  if (user?.role === 'ops_manager') {
+    return (
+      <OpsManagerOverview 
+        routeCount={routeCount}
+        tripCount={tripCount}
+        busCount={busCount}
+        totalBookedSeats={totalBookedSeats}
+        recentTrips={recentTrips}
+        activeRoutes={activeRoutes}
+      />
+    );
   }
 
   // Fleet Manager and other fallback roles see Fleet overview metrics

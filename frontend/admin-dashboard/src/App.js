@@ -11,6 +11,17 @@ import FleetStatusPage from './pages/fleet/FleetStatusPage';
 import FleetInventoryPage from './pages/fleet/FleetInventoryPage';
 import FleetForecastPage from './pages/fleet/FleetForecastPage';
 
+// Ops Pages
+import OpsRoutesPage from './pages/ops/OpsRoutesPage';
+import OpsTripsPage from './pages/ops/OpsTripsPage';
+import OpsStaffPage from './pages/ops/OpsStaffPage';
+import OpsReportsPage from './pages/ops/OpsReportsPage';
+import OpsTrackingPage from './pages/ops/OpsTrackingPage';
+
+// GM Pages
+import GmStaffPage from './pages/gm/GmStaffPage';
+import GmPricingPage from './pages/gm/GmPricingPage';
+
 function DashboardLayout() {
   const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -29,6 +40,25 @@ function DashboardLayout() {
         return <FleetInventoryPage />;
       case 'fleet-forecast':
         return <FleetForecastPage />;
+      
+      // Ops views
+      case 'ops-routes':
+        return <OpsRoutesPage />;
+      case 'ops-trips':
+        return <OpsTripsPage />;
+      case 'ops-staff':
+        return <OpsStaffPage />;
+      case 'ops-reports':
+        return <OpsReportsPage />;
+      case 'ops-tracking':
+        return <OpsTrackingPage />;
+      
+      // GM views
+      case 'gm-staff':
+        return <GmStaffPage />;
+      case 'gm-pricing':
+        return <GmPricingPage />;
+
       default:
         // Generic fallback placeholder for other role views under development
         return (
@@ -56,6 +86,25 @@ function DashboardLayout() {
         return 'Quản lý kho và phụ tùng';
       case 'fleet-forecast':
         return 'Xem dự báo bảo trì';
+      
+      // Ops views
+      case 'ops-routes':
+        return 'Quản lý tuyến đường';
+      case 'ops-trips':
+        return 'Quản lý chuyến xe';
+      case 'ops-staff':
+        return 'Quản lý nhân sự chuyến';
+      case 'ops-reports':
+        return 'Xem báo cáo';
+      case 'ops-tracking':
+        return 'Định vị giám sát lộ trình';
+
+      // GM views
+      case 'gm-staff':
+        return 'Quản lý nhân viên';
+      case 'gm-pricing':
+        return 'Quản lý giá vé';
+
       default:
         return 'Chức năng đang phát triển';
     }

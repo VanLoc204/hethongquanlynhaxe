@@ -31,6 +31,39 @@ Hệ thống được chia nhỏ thành các dịch vụ độc lập giao tiế
 
 ---
 
+## 1.5. Thông Tin Đăng Nhập Thử Nghiệm (Test Accounts)
+
+Tất cả tài khoản dưới đây đều sử dụng mật khẩu mặc định là: **`123456`**
+
+### A. Tài Khoản Quản Lý & Bán Vé (Admin & Staff)
+| Chức vụ (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email |
+| :--- | :--- | :--- | :--- |
+| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@smartbus.vn` |
+| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe Á Đông | **`0988888888`** | `fleet@smartbus.vn` |
+| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải Á Đông | **`0977777777`** | `ops@smartbus.vn` |
+| **Giám Đốc** (`general_manager`) | Giám Đốc Á Đông | **`0966555666`** | `director@smartbus.vn` |
+| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@smartbus.vn` |
+
+### B. Đội Ngũ Tài Xế & Phụ Xe (Drivers & Attendants)
+| Vai trò | Họ tên | Số Điện Thoại (Username) | Email |
+| :--- | :--- | :--- | :--- |
+| **Tài xế** | Tài xế Á Đông | **`0933333333`** | `driver1@smartbus.vn` |
+| **Tài xế** | Trần Minh Tâm | **`0987654321`** | `driver2@smartbus.vn` |
+| **Tài xế** | Nguyễn Văn Hùng | **`0912345678`** | `driver3@smartbus.vn` |
+| **Tài xế** | Lê Hoàng Nam | **`0909090909`** | `driver4@smartbus.vn` |
+| **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | `attendant1@smartbus.vn` |
+| **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | `attendant2@smartbus.vn` |
+| **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | `attendant3@smartbus.vn` |
+| **Phụ xe** | Nguyễn Tiến Dũng | **`0977889900`** | `attendant4@smartbus.vn` |
+
+### C. Khách Hàng Thử Nghiệm (Customers)
+| Họ tên | Số Điện Thoại (Username) | Email | Điểm tích lũy / Hạng |
+| :--- | :--- | :--- | :--- |
+| Nguyễn Văn Khách | **`0901234567`** | `khach1@gmail.com` | 150 điểm / Bronze |
+| Trần Thị Khách | **`0902345678`** | `khach2@gmail.com` | 450 điểm / Silver |
+
+---
+
 ## 2. Phân Chia Chức Năng Theo Actor và Service (Actor & Service Mapping)
 
 Dưới đây là bảng phân chia chi tiết các chức năng (Use Cases) thu thập từ sơ đồ nghiệp vụ hệ thống, ánh xạ tới **Actor** (Người dùng) tương ứng và **Microservice** chịu trách nhiệm xử lý logic:
