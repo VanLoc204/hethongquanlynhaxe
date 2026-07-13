@@ -25,7 +25,7 @@ const LoginPage = () => {
       <div className="login-card">
         <div className="login-header">
           <h2>Đăng Nhập Hệ Thống</h2>
-          <p>Dành cho Quản lý & Nhân viên Á Đông SmartBus</p>
+          <p>Dành cho Quản lý & Nhân viên Á Đông Travel</p>
         </div>
 
         <form onSubmit={handleSubmit}>

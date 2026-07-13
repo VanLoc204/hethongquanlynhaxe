@@ -11,6 +11,7 @@ const FleetBusesPage = () => {
   const [loading, setLoading] = useState(false);
   const [modalBus, setModalBus] = useState(undefined); // undefined=closed, null=add new, object=edit
   const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -34,23 +35,29 @@ const FleetBusesPage = () => {
 
   useEffect(() => { fetchBuses(); }, []);
 
-  const handleDelete = async (bus) => {
-    if (!window.confirm(`Xóa xe biển số ${bus.plateNumber}?`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/trips/fleet/buses/${bus._id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Đã xóa phương tiện thành công.');
-        fetchBuses();
-      } else {
-        showToast(data.message || 'Lỗi xóa phương tiện.', 'error');
+  const handleDelete = (bus) => {
+    setConfirmModal({
+      show: true,
+      title: 'Xác nhận xóa phương tiện',
+      message: `Bạn có chắc chắn muốn xóa phương tiện biển số ${bus.plateNumber}?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/trips/fleet/buses/${bus._id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Đã xóa phương tiện thành công.');
+            fetchBuses();
+          } else {
+            showToast(data.message || 'Lỗi xóa phương tiện.', 'error');
+          }
+        } catch {
+          showToast('Lỗi kết nối máy chủ.', 'error');
+        }
       }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    }
+    });
   };
 
   const handleSaved = () => {
@@ -160,6 +167,23 @@ const FleetBusesPage = () => {
           onClose={() => setModalBus(undefined)}
           onSaved={handleSaved}
         />
+      )}
+
+      {confirmModal.show && (
+        <div className="confirm-backdrop">
+          <div className="confirm-card">
+            <div className="confirm-header">{confirmModal.title}</div>
+            <div className="confirm-body">{confirmModal.message}</div>
+            <div className="confirm-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+                Hủy
+              </button>
+              <button className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );

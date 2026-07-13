@@ -118,6 +118,8 @@ services:
     restart: always
     ports:
       - "8004:8004"
+    env_file:
+      - ./services/booking-service/.env
     environment:
       - PORT=8004
       - MONGO_URI=mongodb://mongodb:27017/bus_management

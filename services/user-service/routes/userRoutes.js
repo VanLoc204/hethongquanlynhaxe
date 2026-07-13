@@ -1,8 +1,12 @@
 const express = require('express');
-const { getStaff, createStaff, updateStaff, deleteStaff } = require('../controllers/userController');
+const { getStaff, createStaff, updateStaff, deleteStaff, updateUserPoints, getUserById } = require('../controllers/userController');
 const { protect, restrictTo } = require('../utils/authMiddleware');
 
 const router = express.Router();
+
+// Internal/public routes
+router.patch('/:id/points', updateUserPoints);
+router.get('/:id', getUserById);
 
 // Apply protect to all staff routes
 router.use(protect);

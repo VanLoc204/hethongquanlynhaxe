@@ -31,6 +31,36 @@ const services = [
   { path: '/api/v1/reviews', url: process.env.REVIEW_SERVICE_URL || 'http://localhost:8009' }
 ];
 
+// Intercept legacy booking endpoints under /api/v1/trips/book and route them to booking-service
+app.use('/api/v1/trips/book', proxy(process.env.BOOKING_SERVICE_URL || 'http://localhost:8004', {
+  proxyReqPathResolver: (req) => {
+    const forwardPath = '/book' + req.url;
+    console.log(`[API Gateway Intercept] Routing /api/v1/trips/book${req.url} to booking-service:${forwardPath}`);
+    return forwardPath;
+  },
+  userResErrorResolver: (err, res, next) => {
+    console.error(`[API Gateway Intercept] Error forwarding to booking-service:`, err.message);
+    res.status(502).json({
+      success: false,
+      message: 'Bad Gateway. The booking-service is currently unavailable.',
+      error: err.message
+    });
+  }
+}));
+
+// Intercept /api/v1/trips/my-bookings/:userId → booking-service /my-bookings/:userId
+app.use('/api/v1/trips/my-bookings', proxy(process.env.BOOKING_SERVICE_URL || 'http://localhost:8004', {
+  proxyReqPathResolver: (req) => {
+    const forwardPath = '/my-bookings' + req.url;
+    console.log(`[API Gateway Intercept] Routing /api/v1/trips/my-bookings${req.url} to booking-service:${forwardPath}`);
+    return forwardPath;
+  },
+  userResErrorResolver: (err, res, next) => {
+    console.error(`[API Gateway Intercept] Error forwarding /my-bookings to booking-service:`, err.message);
+    res.status(502).json({ success: false, message: 'Bad Gateway.', error: err.message });
+  }
+}));
+
 services.forEach(service => {
   app.use(service.path, proxy(service.url, {
     proxyReqPathResolver: (req) => {

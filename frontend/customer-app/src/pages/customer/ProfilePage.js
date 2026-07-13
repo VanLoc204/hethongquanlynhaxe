@@ -129,6 +129,36 @@ const ProfilePage = () => {
   const activeBenefits = getTierBenefits(user.membershipTier);
   const badgeInfo = getTierBadge(user.membershipTier);
 
+  // Dynamic next tier stats
+  const points = user.points || 0;
+  const tier = user.membershipTier || 'Bronze';
+  
+  let nextTierName = '';
+  let nextTierPoints = 0;
+  let prevTierPoints = 0;
+
+  if (tier.toLowerCase() === 'bronze') {
+    nextTierName = 'Bạc (Silver)';
+    nextTierPoints = 500;
+    prevTierPoints = 0;
+  } else if (tier.toLowerCase() === 'silver') {
+    nextTierName = 'Vàng (Gold)';
+    nextTierPoints = 1000;
+    prevTierPoints = 500;
+  } else if (tier.toLowerCase() === 'gold') {
+    nextTierName = 'Bạch Kim (Platinum)';
+    nextTierPoints = 1500;
+    prevTierPoints = 1000;
+  } else {
+    nextTierName = 'Tối đa';
+    nextTierPoints = 1500;
+    prevTierPoints = 1500;
+  }
+
+  const range = nextTierPoints - prevTierPoints;
+  const progressPercent = range > 0 ? Math.min(((points - prevTierPoints) / range) * 100, 100) : 100;
+  const pointsNeeded = Math.max(nextTierPoints - points, 0);
+
   return (
     <div className="section-container animate-fade-in" style={{ maxWidth: '1000px', paddingBottom: '5rem' }}>
       
@@ -320,7 +350,7 @@ const ProfilePage = () => {
             <div style={{ marginTop: '3rem' }}>
               <span style={{ fontSize: '0.8rem', opacity: '0.8' }}>ĐIỂM TÍCH LŨY</span>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-                <h2 style={{ fontSize: '2.5rem', fontWeight: '900', margin: '0' }}>{user.points || 150}</h2>
+                <h2 style={{ fontSize: '2.5rem', fontWeight: '900', margin: '0' }}>{points}</h2>
                 <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>điểm</span>
               </div>
             </div>
@@ -329,13 +359,21 @@ const ProfilePage = () => {
             <div style={{ marginTop: '1.5rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', opacity: '0.9', marginBottom: '5px' }}>
                 <span>Tiến trình thăng hạng</span>
-                <span>{user.points || 150} / 500đ</span>
+                {tier.toLowerCase() !== 'platinum' ? (
+                  <span>{points} / {nextTierPoints} điểm</span>
+                ) : (
+                  <span>Tối đa</span>
+                )}
               </div>
               <div style={{ height: '6px', backgroundColor: 'rgba(255, 255, 255, 0.25)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(((user.points || 150) / 500) * 100, 100)}%`, height: '100%', backgroundColor: '#ffffff' }}></div>
+                <div style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#ffffff' }}></div>
               </div>
               <p style={{ fontSize: '0.7rem', opacity: '0.85', marginTop: '6px', margin: '0' }}>
-                Cần tích thêm {Math.max(500 - (user.points || 150), 0)} điểm để thăng lên hạng {user.membershipTier === 'Bronze' ? 'Bạc (Silver)' : 'Vàng (Gold)'}.
+                {tier.toLowerCase() !== 'platinum' ? (
+                  `Cần tích thêm ${pointsNeeded} điểm để thăng lên hạng ${nextTierName}.`
+                ) : (
+                  "Bạn đã đạt hạng thành viên cao nhất!"
+                )}
               </p>
             </div>
           </div>

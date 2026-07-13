@@ -29,11 +29,11 @@ const AIAssistantPage = () => {
     const text = userText.toLowerCase();
     
     if (text.includes('đà lạt') || text.includes('lịch trình') || text.includes('chuyến đi')) {
-      return 'Á Đông SmartBus hiện khai thác tuyến TP. Hồ Chí Minh ↔ Đà Lạt liên tục mỗi 1 tiếng từ 05:00 sáng đến 23:30 đêm. Quý khách có thể lựa chọn dòng xe Limousine 22 Phòng VIP (giá 400.000đ) hoặc Limousine 34 Giường nằm (giá 290.000đ). Thời gian di chuyển trung bình khoảng 6.5 - 7 tiếng.';
+      return 'Á Đông Travel hiện khai thác tuyến TP. Hồ Chí Minh ↔ Đà Lạt liên tục mỗi 1 tiếng từ 05:00 sáng đến 23:30 đêm. Quý khách có thể lựa chọn dòng xe Limousine 22 Phòng VIP (giá 400.000đ) hoặc Limousine 34 Giường nằm (giá 290.000đ). Thời gian di chuyển trung bình khoảng 6.5 - 7 tiếng.';
     }
     
     if (text.includes('hành lý') || text.includes('đồ đạc') || text.includes('mang theo')) {
-      return 'Theo quy định của Á Đông Bus Lines, mỗi hành khách được miễn phí tối đa 20kg hành lý ký gửi. Hành lý xách tay gọn nhẹ không cản trở lối đi. Quý khách vui lòng không mang theo các chất dễ cháy nổ, chất cấm hoặc động vật nuôi lên khoang hành khách.';
+      return 'Theo quy định của Á Đông Travel, mỗi hành khách được miễn phí tối đa 20kg hành lý ký gửi. Hành lý xách tay gọn nhẹ không cản trở lối đi. Quý khách vui lòng không mang theo các chất dễ cháy nổ, chất cấm hoặc động vật nuôi lên khoang hành khách.';
     }
 
     if (text.includes('hủy vé') || text.includes('hoàn vé') || text.includes('trả vé')) {

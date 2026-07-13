@@ -110,28 +110,46 @@ function DashboardLayout() {
     }
   };
 
-  return (
-    <div className="dashboard-container">
-      {/* Sidebar */}
-      <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+  const ROLE_LABEL = {
+    fleet_manager: 'Quản lý Đội xe',
+    ops_manager: 'Quản lý Vận tải',
+    general_manager: 'Ban Giám đốc',
+    admin: 'Quản trị viên',
+    ticket_agent: 'Nhân viên bán vé',
+  };
 
-      {/* Main Content */}
-      <main className="main-content">
-        <header className="main-header">
-          <div>
-            <h1>{getHeaderTitle()}</h1>
-            <p className="subtitle">
-              Chào mừng trở lại, {user?.name}! Hệ thống vận hành Á Đông SmartBus
-            </p>
+  return (
+    <div className="dashboard-wrapper">
+      {/* Top Header */}
+      <header className="top-header">
+        <div className="logo-block">
+          <span className="logo-concept">Á ĐÔNG TRAVEL</span>
+        </div>
+        <div className="header-right">
+          <div className="role-indicator-header" style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+            {ROLE_LABEL[user?.role] || user?.role}
           </div>
           <div className="user-profile">
             <span className="avatar">AD</span>
-            <span className="user-name">{user?.name}</span>
           </div>
-        </header>
+        </div>
+      </header>
 
-        {renderContent()}
-      </main>
+      <div className="dashboard-container">
+        {/* Sidebar */}
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+
+        {/* Main Content */}
+        <main className="main-content">
+          <div className="content-header">
+            <h1>{getHeaderTitle()}</h1>
+            <p className="subtitle">
+              Chào mừng trở lại, {user?.name}! Hệ thống vận hành Á Đông Travel
+            </p>
+          </div>
+          {renderContent()}
+        </main>
+      </div>
     </div>
   );
 }

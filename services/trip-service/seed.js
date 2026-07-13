@@ -59,6 +59,13 @@ async function seedDB() {
     }
 
     try {
+      await mongoose.connection.collection('baseprices').deleteMany({});
+      console.log('Cleared all existing BasePrice data.');
+    } catch (e) {
+      // baseprices collection might not exist yet
+    }
+
+    try {
       // Reset the users collection completely
       await mongoose.connection.collection('users').deleteMany({});
       console.log('Cleared all existing User data.');
@@ -78,81 +85,81 @@ async function seedDB() {
       // Managers & Admin
       {
         name: 'Quản Lý Xe Á Đông',
-        email: 'fleet@smartbus.vn',
+        email: 'fleet@adongtravel.vn',
         phone: '0988888888',
         role: 'fleet_manager',
       },
       {
         name: 'Quản Lý Vận Tải Á Đông',
-        email: 'ops@smartbus.vn',
+        email: 'ops@adongtravel.vn',
         phone: '0977777777',
         role: 'ops_manager',
       },
       {
         name: 'Giám Đốc Á Đông',
-        email: 'director@smartbus.vn',
+        email: 'director@adongtravel.vn',
         phone: '0966555666', // Unique phone for GM
         role: 'general_manager',
       },
       {
         name: 'Quản Trị Viên Hệ Thống',
-        email: 'admin@smartbus.vn',
+        email: 'admin@adongtravel.vn',
         phone: '0955555666', // Unique phone for Admin
         role: 'admin',
       },
       {
         name: 'Nhân Viên Bán Vé',
-        email: 'ticket@smartbus.vn',
+        email: 'ticket@adongtravel.vn',
         phone: '0944555666', // Unique phone for Ticket Agent
         role: 'ticket_agent',
       },
       // Drivers (Tài xế)
       {
         name: 'Tài xế Á Đông',
-        email: 'driver1@smartbus.vn',
+        email: 'driver1@adongtravel.vn',
         phone: '0933333333',
         role: 'driver',
       },
       {
         name: 'Trần Minh Tâm',
-        email: 'driver2@smartbus.vn',
+        email: 'driver2@adongtravel.vn',
         phone: '0987654321',
         role: 'driver',
       },
       {
         name: 'Nguyễn Văn Hùng',
-        email: 'driver3@smartbus.vn',
+        email: 'driver3@adongtravel.vn',
         phone: '0912345678',
         role: 'driver',
       },
       {
         name: 'Lê Hoàng Nam',
-        email: 'driver4@smartbus.vn',
+        email: 'driver4@adongtravel.vn',
         phone: '0909090909',
         role: 'driver',
       },
       // Attendants (Phụ xe)
       {
         name: 'Phạm Quốc Bảo',
-        email: 'attendant1@smartbus.vn',
+        email: 'attendant1@adongtravel.vn',
         phone: '0944444444',
         role: 'attendant',
       },
       {
         name: 'Hoàng Văn Tuấn',
-        email: 'attendant2@smartbus.vn',
+        email: 'attendant2@adongtravel.vn',
         phone: '0966666666',
         role: 'attendant',
       },
       {
         name: 'Đỗ Đức Mạnh',
-        email: 'attendant3@smartbus.vn',
+        email: 'attendant3@adongtravel.vn',
         phone: '0955555555',
         role: 'attendant',
       },
       {
         name: 'Nguyễn Tiến Dũng',
-        email: 'attendant4@smartbus.vn',
+        email: 'attendant4@adongtravel.vn',
         phone: '0977889900',
         role: 'attendant',
       }
@@ -270,6 +277,25 @@ async function seedDB() {
 
     console.log('Created Buses.');
 
+    // Seed Base Prices for all combinations of Route + Bus Type
+    const basePrices = [
+      // Route r1 (HCM -> Da Lat)
+      { routeId: r1._id, routeName: `${r1.startPoint} → ${r1.endPoint}`, busType: b5.type, price: 400000, createdAt: new Date(), updatedAt: new Date() },
+      { routeId: r1._id, routeName: `${r1.startPoint} → ${r1.endPoint}`, busType: b2.type, price: 220000, createdAt: new Date(), updatedAt: new Date() },
+      { routeId: r1._id, routeName: `${r1.startPoint} → ${r1.endPoint}`, busType: b3.type, price: 200000, createdAt: new Date(), updatedAt: new Date() },
+      { routeId: r1._id, routeName: `${r1.startPoint} → ${r1.endPoint}`, busType: b4.type, price: 350000, createdAt: new Date(), updatedAt: new Date() },
+      
+      // Route r2 (HCM -> Can Tho)
+      { routeId: r2._id, routeName: `${r2.startPoint} → ${r2.endPoint}`, busType: b5.type, price: 165000, createdAt: new Date(), updatedAt: new Date() },
+      { routeId: r2._id, routeName: `${r2.startPoint} → ${r2.endPoint}`, busType: b1.type, price: 150000, createdAt: new Date(), updatedAt: new Date() },
+      
+      // Route r3 (Da Lat -> HCM)
+      { routeId: r3._id, routeName: `${r3.startPoint} → ${r3.endPoint}`, busType: b5.type, price: 400000, createdAt: new Date(), updatedAt: new Date() },
+    ];
+
+    await mongoose.connection.collection('baseprices').insertMany(basePrices);
+    console.log('Seeded Base Prices.');
+
     // 2.3 Seed Trips
     const today = new Date();
     const getDateAt = (daysFromToday, hours, minutes) => {
@@ -319,7 +345,7 @@ async function seedDB() {
         busId: b5._id,
         departureTime: getDateAt(i, 8, 0),
         arrivalTime: getDateAt(i, 15, 30),
-        price: 290000,
+        price: 400000,
         pickupPoints: [
           { time: '08:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' },
           { time: '08:45', location: 'Bến Xe Miền Đông Mới', address: '501 Hoàng Hữu Nam, Long Thạnh Mỹ, Quận 9, Hồ Chí Minh' }
@@ -439,7 +465,7 @@ async function seedDB() {
         busId: b5._id,
         departureTime: getDateAt(i, 21, 30),
         arrivalTime: getDateAt(i + 1, 5, 20),
-        price: 260000,
+        price: 400000,
         pickupPoints: [{ time: '21:30', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }],
         dropoffPoints: [{ time: '05:20', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
         bookedSeats: [],

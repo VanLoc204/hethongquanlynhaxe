@@ -234,6 +234,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
   const [amenities, setAmenities] = useState(bus?.amenities || ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
   // Interactive Seat Layout states
   const initialLayout = bus?.seatLayout || generateDefaultSeatLayout(bus?.totalSeats || 22, bus?.type || 'Limousine 22 Phòng (WC)');
@@ -336,24 +337,34 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
   };
 
   const resetToDefaultTemplate = () => {
-    if (window.confirm('Cảnh báo: Sơ đồ ghế hiện tại sẽ bị ghi đè bằng mẫu chuẩn của loại xe này. Tiếp tục?')) {
-      const match = busType.match(/\d+/);
-      const seatsVal = match ? Number(match[0]) : 22;
-      const template = generateDefaultSeatLayout(seatsVal, busType);
-      setColumns(template.columns);
-      setLowerFloor(template.lowerFloor);
-      setUpperFloor(template.upperFloor);
-      setActiveFloor('lower');
-    }
+    setConfirmModal({
+      show: true,
+      title: 'Thiết lập lại sơ đồ',
+      message: 'Cảnh báo: Sơ đồ ghế hiện tại sẽ bị ghi đè bằng mẫu chuẩn của loại xe này. Tiếp tục?',
+      onConfirm: () => {
+        const match = busType.match(/\d+/);
+        const seatsVal = match ? Number(match[0]) : 22;
+        const template = generateDefaultSeatLayout(seatsVal, busType);
+        setColumns(template.columns);
+        setLowerFloor(template.lowerFloor);
+        setUpperFloor(template.upperFloor);
+        setActiveFloor('lower');
+      }
+    });
   };
 
   // Toggle second deck configuration
   const toggleDoubleDecker = () => {
     if (upperFloor && upperFloor.length > 0) {
-      if (window.confirm('Bạn có chắc muốn xóa Tầng 2? Mọi ghế đã đặt trên tầng này sẽ mất.')) {
-        setUpperFloor([]);
-        setActiveFloor('lower');
-      }
+      setConfirmModal({
+        show: true,
+        title: 'Xóa Tầng 2',
+        message: 'Bạn có chắc muốn xóa Tầng 2? Mọi ghế đã đặt trên tầng này sẽ mất.',
+        onConfirm: () => {
+          setUpperFloor([]);
+          setActiveFloor('lower');
+        }
+      });
     } else {
       const newUpper = lowerFloor.map((row, rIdx) => 
         row.map((cell, cIdx) => cell ? `B${rIdx * columns + cIdx + 1}` : null)
@@ -686,6 +697,22 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
           </div>
         </form>
       </div>
+      {confirmModal.show && (
+        <div className="confirm-backdrop" style={{ zIndex: 1200 }}>
+          <div className="confirm-card">
+            <div className="confirm-header">{confirmModal.title}</div>
+            <div className="confirm-body">{confirmModal.message}</div>
+            <div className="confirm-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+                Hủy
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -12,6 +12,7 @@ const OpsTripsPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingTrip, setEditingTrip] = useState(null); // null = add new, object = edit
   const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
   // Form states
   const [routeId, setRouteId] = useState('');
@@ -82,6 +83,27 @@ const OpsTripsPage = () => {
     }
   }, [token]);
 
+  // Auto-fetch price when routeId or busId changes
+  useEffect(() => {
+    const fetchBasePrice = async () => {
+      if (!routeId || !busId) return;
+      try {
+        const res = await fetch(`${API_BASE}/pricing/base-prices/lookup?routeId=${routeId}&busId=${busId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.price !== null) {
+          setPrice(data.price);
+        } else {
+          setPrice('');
+        }
+      } catch (err) {
+        console.error('Lỗi tải giá vé cơ bản:', err);
+      }
+    };
+    fetchBasePrice();
+  }, [routeId, busId, token]);
+
   // Helper to format ISO datetime to local string suitable for input
   const formatDatetimeForInput = (isoString) => {
     if (!isoString) return '';
@@ -119,23 +141,29 @@ const OpsTripsPage = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (trip) => {
-    if (!window.confirm(`Xóa chuyến xe ngày ${new Date(trip.departureTime).toLocaleDateString('vi-VN')}?`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/trips/ops/trips/${trip._id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Xóa chuyến xe thành công!');
-        fetchTrips();
-      } else {
-        showToast(data.message || 'Lỗi xóa chuyến xe.', 'error');
+  const handleDelete = (trip) => {
+    setConfirmModal({
+      show: true,
+      title: 'Xác nhận xóa chuyến xe',
+      message: `Bạn có chắc chắn muốn xóa chuyến xe ngày ${new Date(trip.departureTime).toLocaleDateString('vi-VN')}?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/trips/ops/trips/${trip._id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Xóa chuyến xe thành công!');
+            fetchTrips();
+          } else {
+            showToast(data.message || 'Lỗi xóa chuyến xe.', 'error');
+          }
+        } catch {
+          showToast('Lỗi kết nối máy chủ.', 'error');
+        }
       }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    }
+    });
   };
 
   const handleAddPickupPoint = () => {
@@ -415,9 +443,16 @@ const OpsTripsPage = () => {
                   className="form-control" 
                   value={price} 
                   onChange={(e) => setPrice(e.target.value)} 
-                  placeholder="Ví dụ: 250000"
+                  placeholder={price === '' ? "Chưa thiết lập giá vé cho Tuyến & Loại xe này" : "Giá vé"}
+                  disabled
                   required
                 />
+                <small style={{ color: price === '' ? '#ef4444' : '#10b981', display: 'block', marginTop: '4px', fontWeight: '600' }}>
+                  {price === '' 
+                    ? "⚠️ Tuyến đường & loại xe này chưa được thiết lập giá vé bởi quản lý!" 
+                    : "✓ Giá vé tự động áp dụng theo quy định của quản lý nhà xe."
+                  }
+                </small>
               </div>
 
               {/* Pickup points builder */}
@@ -521,6 +556,23 @@ const OpsTripsPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {confirmModal.show && (
+        <div className="confirm-backdrop">
+          <div className="confirm-card">
+            <div className="confirm-header">{confirmModal.title}</div>
+            <div className="confirm-body">{confirmModal.message}</div>
+            <div className="confirm-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+                Hủy
+              </button>
+              <button className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+                Xác nhận
+              </button>
+            </div>
           </div>
         </div>
       )}

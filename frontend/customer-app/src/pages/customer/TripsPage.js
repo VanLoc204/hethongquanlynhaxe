@@ -345,6 +345,16 @@ const TripsPage = () => {
   const handleConfirmPayLater = async () => {
     if (!createdBooking) return;
     const currentTrip = trips.find(t => t._id === expandedTripId);
+
+    // Block pay-later if departure < 24h to prevent immediate auto-cancellation
+    if (currentTrip) {
+      const hoursUntilDep = (new Date(currentTrip.departureTime) - new Date()) / 3600000;
+      if (hoursUntilDep < 24) {
+        alert(`Không thể chọn thanh toán sau!\nChuyến xe khởi hành trong ${Math.floor(hoursUntilDep)} giờ nữa – không đủ thời gian để thanh toán sau.\nVui lòng thanh toán ngay bây giờ.`);
+        return;
+      }
+    }
+
     try {
       const res = await axios.patch(`${API_BASE}/book/${createdBooking._id}`, {
         paymentType: 'later'
@@ -978,19 +988,42 @@ const TripsPage = () => {
               <div>
                 <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Lựa chọn thanh toán</h4>
                 
-                <div className="glass-card" style={{ padding: '1.25rem', border: '1px solid #fed7aa', backgroundColor: '#fff7ed', borderRadius: '8px', marginBottom: '1.5rem' }}>
-                  <h5 style={{ fontWeight: '700', color: '#c2410c', fontSize: '0.95rem', marginBottom: '6px' }}>Hoặc Thanh Toán Sau (Trong 5 ngày)</h5>
-                  <p style={{ fontSize: '0.85rem', color: '#9a3412', margin: 0 }}>
-                    Bạn có thể giữ chỗ trước và hoàn tất chuyển khoản trong vòng 5 ngày. Nếu quá thời hạn này hệ thống sẽ tự động hủy vé để nhường chỗ cho hành khách khác.
-                  </p>
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ width: '100%', marginTop: '12px', border: '1px solid #ef6c00', color: '#ef6c00', backgroundColor: '#ffffff', fontWeight: '700' }}
-                    onClick={handleConfirmPayLater}
-                  >
-                    Chọn Thanh Toán Sau
-                  </button>
-                </div>
+                {(() => {
+                  const ct = trips.find(t => t._id === expandedTripId);
+                  const hoursUntilDep = ct ? (new Date(ct.departureTime) - new Date()) / 3600000 : 999;
+                  const payLaterAllowed = hoursUntilDep >= 24;
+                  return (
+                    <div className="glass-card" style={{ padding: '1.25rem', border: `1px solid ${payLaterAllowed ? '#fed7aa' : '#fecaca'}`, backgroundColor: payLaterAllowed ? '#fff7ed' : '#fef2f2', borderRadius: '8px', marginBottom: '1.5rem' }}>
+                      <h5 style={{ fontWeight: '700', color: payLaterAllowed ? '#c2410c' : '#991b1b', fontSize: '0.95rem', marginBottom: '6px' }}>Hoặc Thanh Toán Sau (Trong 5 ngày)</h5>
+                      {payLaterAllowed ? (
+                        <>
+                          <p style={{ fontSize: '0.85rem', color: '#9a3412', margin: 0 }}>
+                            Bạn có thể giữ chỗ trước và hoàn tất chuyển khoản trong vòng 5 ngày. Nếu quá thời hạn hệ thống sẽ tự động hủy vé.
+                          </p>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ width: '100%', marginTop: '12px', border: '1px solid #ef6c00', color: '#ef6c00', backgroundColor: '#ffffff', fontWeight: '700' }}
+                            onClick={handleConfirmPayLater}
+                          >
+                            Chọn Thanh Toán Sau
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p style={{ fontSize: '0.85rem', color: '#991b1b', margin: '0 0 6px 0', fontWeight: '600' }}>
+                            Không thể thanh toán sau cho chuyến này.
+                          </p>
+                          <p style={{ fontSize: '0.8rem', color: '#7f1d1d', margin: 0 }}>
+                            Chuyến khởi hành trong {Math.floor(hoursUntilDep)} giờ nữa – phải thanh toán ngay để giữ vé.
+                          </p>
+                          <button className="btn" style={{ width: '100%', marginTop: '12px', backgroundColor: '#f3f4f6', color: '#9ca3af', cursor: 'not-allowed', fontWeight: '700' }} disabled>
+                            Không khả dụng
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Mã đặt chỗ:</span>

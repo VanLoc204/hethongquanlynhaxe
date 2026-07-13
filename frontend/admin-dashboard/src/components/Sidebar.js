@@ -72,14 +72,6 @@ const Sidebar = ({ activeTab, onTabChange }) => {
 
   return (
     <aside className="sidebar">
-      <div className="logo-section">
-        <h2 className="logo-text">Á Đông <span className="highlight">SmartBus</span></h2>
-        {user && (
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-            {ROLE_LABEL[user.role] || user.role}
-          </p>
-        )}
-      </div>
 
       <nav className="nav-menu">
         {navItems.map(item => (

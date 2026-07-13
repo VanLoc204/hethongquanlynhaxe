@@ -7,14 +7,20 @@ const DAYS_MAP = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'T
 
 const GmPricingPage = () => {
   const { token } = useContext(AuthContext);
+  
+  // Navigation tabs
+  const [activeTab, setActiveTab] = useState('rules'); // 'rules' or 'base-prices'
+
+  // Rules states
   const [rules, setRules] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState(null); // null = add new
   const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
-  // Form states
+  // Form states (Rules)
   const [name, setName] = useState('');
   const [routeId, setRouteId] = useState('all');
   const [busType, setBusType] = useState('all');
@@ -22,6 +28,13 @@ const GmPricingPage = () => {
   const [adjustmentType, setAdjustmentType] = useState('percentage');
   const [adjustmentValue, setAdjustmentValue] = useState('');
   const [isActive, setIsActive] = useState(true);
+
+  // Base Prices states
+  const [basePrices, setBasePrices] = useState([]);
+  const [loadingBasePrices, setLoadingBasePrices] = useState(false);
+  const [showBasePriceModal, setShowBasePriceModal] = useState(false);
+  const [selectedCombo, setSelectedCombo] = useState(null);
+  const [newBasePrice, setNewBasePrice] = useState('');
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -57,10 +70,28 @@ const GmPricingPage = () => {
     }
   };
 
+  const fetchBasePrices = async () => {
+    setLoadingBasePrices(true);
+    try {
+      const res = await fetch(`${API_BASE}/pricing/base-prices`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBasePrices(data.basePrices);
+      }
+    } catch {
+      showToast('Không thể tải danh sách giá vé cơ bản.', 'error');
+    } finally {
+      setLoadingBasePrices(false);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchRules();
       fetchRoutes();
+      fetchBasePrices();
     }
   }, [token]);
 
@@ -88,23 +119,29 @@ const GmPricingPage = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (rule) => {
-    if (!window.confirm(`Xóa quy định giá "${rule.name}"?`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/pricing/rules/${rule._id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Xóa quy định giá thành công!');
-        fetchRules();
-      } else {
-        showToast(data.message || 'Lỗi xóa quy định giá.', 'error');
+  const handleDelete = (rule) => {
+    setConfirmModal({
+      show: true,
+      title: 'Xác nhận xóa quy định giá',
+      message: `Bạn có chắc chắn muốn xóa quy định giá "${rule.name}"?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/pricing/rules/${rule._id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Xóa quy định giá thành công!');
+            fetchRules();
+          } else {
+            showToast(data.message || 'Lỗi xóa quy định giá.', 'error');
+          }
+        } catch {
+          showToast('Lỗi kết nối máy chủ.', 'error');
+        }
       }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    }
+    });
   };
 
   const handleToggleDay = (dayNum) => {
@@ -169,8 +206,49 @@ const GmPricingPage = () => {
     }
   };
 
+  // Base Prices logic
+  const handleOpenBasePriceEdit = (combo) => {
+    setSelectedCombo(combo);
+    setNewBasePrice(combo.price || '');
+    setShowBasePriceModal(true);
+  };
+
+  const handleBasePriceSubmit = async (e) => {
+    e.preventDefault();
+    if (newBasePrice === '' || Number(newBasePrice) < 0) {
+      showToast('Vui lòng nhập giá vé cơ bản hợp lệ.', 'error');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/pricing/base-prices`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          routeId: selectedCombo.routeId,
+          routeName: selectedCombo.routeName,
+          busType: selectedCombo.busType,
+          price: Number(newBasePrice)
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Thiết lập giá vé cơ bản thành công!');
+        setShowBasePriceModal(false);
+        fetchBasePrices();
+      } else {
+        showToast(data.message || 'Lỗi thiết lập giá vé.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ.', 'error');
+    }
+  };
+
   return (
-    <section className="panel" style={{ minHeight: '400px' }}>
+    <section className="panel" style={{ minHeight: '500px' }}>
       {/* Toast */}
       {toast && (
         <div style={{
@@ -184,104 +262,203 @@ const GmPricingPage = () => {
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <div>
           <h2>Quản lý giá vé</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            Thiết lập điều chỉnh giá vé linh hoạt theo thời gian, loại xe và tuyến đường
+            Thiết lập giá vé cơ bản và điều chỉnh linh hoạt cho các loại chuyến xe của hệ thống
           </p>
         </div>
-        <button onClick={handleOpenAdd} className="btn btn-primary">
-          + Thêm quy định giá mới
+        {activeTab === 'rules' && (
+          <button onClick={handleOpenAdd} className="btn btn-primary">
+            + Thêm quy định giá mới
+          </button>
+        )}
+      </div>
+
+      {/* Navigation Tabs */}
+      <div style={{ display: 'flex', gap: '24px', borderBottom: '2px solid var(--border-color)', marginBottom: '24px' }}>
+        <button 
+          onClick={() => setActiveTab('rules')}
+          style={{
+            padding: '12px 4px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'rules' ? '3px solid var(--primary)' : '3px solid transparent',
+            color: activeTab === 'rules' ? 'var(--text-main)' : 'var(--text-muted)',
+            fontWeight: '700',
+            cursor: 'pointer',
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            outline: 'none'
+          }}
+        >
+          Quy định điều chỉnh (Surcharges & Discounts)
+        </button>
+        <button 
+          onClick={() => setActiveTab('base-prices')}
+          style={{
+            padding: '12px 4px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'base-prices' ? '3px solid var(--primary)' : '3px solid transparent',
+            color: activeTab === 'base-prices' ? 'var(--text-main)' : 'var(--text-muted)',
+            fontWeight: '700',
+            cursor: 'pointer',
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            outline: 'none'
+          }}
+        >
+          Giá vé cơ bản theo Tuyến & Loại xe
         </button>
       </div>
 
-      {/* Table */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Đang tải danh sách quy định giá...
-        </div>
-      ) : rules.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Chưa có quy định điều chỉnh giá nào. Nhấn nút để bắt đầu tạo.
-        </div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                <th style={{ padding: '12px' }}>Tên quy định</th>
-                <th style={{ padding: '12px' }}>Tuyến áp dụng</th>
-                <th style={{ padding: '12px' }}>Loại xe</th>
-                <th style={{ padding: '12px' }}>Ngày áp dụng</th>
-                <th style={{ padding: '12px' }}>Mức điều chỉnh</th>
-                <th style={{ padding: '12px' }}>Trạng thái</th>
-                <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((rule) => {
-                const daysLabel = rule.dayOfWeek.length === 0 
-                  ? 'Tất cả các ngày' 
-                  : rule.dayOfWeek.map(d => DAYS_MAP[d]).join(', ');
+      {/* Content Area */}
+      {activeTab === 'rules' ? (
+        // Pricing Rules View
+        loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Đang tải danh sách quy định giá...
+          </div>
+        ) : rules.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Chưa có quy định điều chỉnh giá nào. Nhấn nút để bắt đầu tạo.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  <th style={{ padding: '12px' }}>Tên quy định</th>
+                  <th style={{ padding: '12px' }}>Tuyến áp dụng</th>
+                  <th style={{ padding: '12px' }}>Loại xe</th>
+                  <th style={{ padding: '12px' }}>Ngày áp dụng</th>
+                  <th style={{ padding: '12px' }}>Mức điều chỉnh</th>
+                  <th style={{ padding: '12px' }}>Trạng thái</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map((rule) => {
+                  const daysLabel = rule.dayOfWeek.length === 0 
+                    ? 'Tất cả các ngày' 
+                    : rule.dayOfWeek.map(d => DAYS_MAP[d]).join(', ');
 
-                const adjustLabel = rule.adjustmentType === 'percentage' 
-                  ? `${rule.adjustmentValue > 0 ? '+' : ''}${rule.adjustmentValue}%`
-                  : `${rule.adjustmentValue > 0 ? '+' : ''}${rule.adjustmentValue.toLocaleString('vi-VN')} đ`;
+                  const adjustLabel = rule.adjustmentType === 'percentage' 
+                    ? `${rule.adjustmentValue > 0 ? '+' : ''}${rule.adjustmentValue}%`
+                    : `${rule.adjustmentValue > 0 ? '+' : ''}${rule.adjustmentValue.toLocaleString('vi-VN')} đ`;
 
-                return (
-                  <tr key={rule._id} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
-                    <td style={{ padding: '14px 12px', fontWeight: '700' }}>{rule.name}</td>
-                    <td style={{ padding: '14px 12px' }}>{rule.routeName}</td>
-                    <td style={{ padding: '14px 12px', fontWeight: '600' }}>
-                      {rule.busType === 'all' ? 'Tất cả các xe' : rule.busType}
-                    </td>
-                    <td style={{ padding: '14px 12px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      {daysLabel}
-                    </td>
-                    <td style={{ 
-                      padding: '14px 12px', 
-                      fontWeight: '800', 
-                      color: rule.adjustmentValue >= 0 ? '#10b981' : '#ef4444' 
-                    }}>
-                      {adjustLabel}
-                    </td>
-                    <td style={{ padding: '14px 12px' }}>
-                      <span style={{
-                        padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '700',
-                        backgroundColor: rule.isActive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(156, 163, 175, 0.1)',
-                        color: rule.isActive ? '#10b981' : '#9ca3af'
+                  return (
+                    <tr key={rule._id} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
+                      <td style={{ padding: '14px 12px', fontWeight: '700' }}>{rule.name}</td>
+                      <td style={{ padding: '14px 12px' }}>{rule.routeName}</td>
+                      <td style={{ padding: '14px 12px', fontWeight: '600' }}>
+                        {rule.busType === 'all' ? 'Tất cả các xe' : rule.busType}
+                      </td>
+                      <td style={{ padding: '14px 12px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                        {daysLabel}
+                      </td>
+                      <td style={{ 
+                        padding: '14px 12px', 
+                        fontWeight: '800', 
+                        color: rule.adjustmentValue >= 0 ? '#10b981' : '#ef4444' 
                       }}>
-                        {rule.isActive ? 'Kích hoạt' : 'Tạm dừng'}
-                      </span>
+                        {adjustLabel}
+                      </td>
+                      <td style={{ padding: '14px 12px' }}>
+                        <span style={{
+                          padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '700',
+                          backgroundColor: rule.isActive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+                          color: rule.isActive ? '#10b981' : '#9ca3af'
+                        }}>
+                          {rule.isActive ? 'Kích hoạt' : 'Tạm dừng'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '14px 12px', textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                          <button 
+                            onClick={() => handleOpenEdit(rule)} 
+                            className="btn btn-secondary" 
+                            style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                          >
+                            Sửa
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(rule)} 
+                            className="btn btn-secondary" 
+                            style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '6px 12px', fontSize: '0.8rem' }}
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : (
+        // Base Price View (Tuyến + Loại xe combinations)
+        loadingBasePrices ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Đang tải danh sách giá vé cơ bản...
+          </div>
+        ) : basePrices.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Chưa có tuyến đường hay phương tiện nào để thiết lập.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  <th style={{ padding: '12px' }}>Tuyến đường</th>
+                  <th style={{ padding: '12px' }}>Loại xe</th>
+                  <th style={{ padding: '12px' }}>Giá vé cơ bản hiện tại</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {basePrices.map((combo, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
+                    <td style={{ padding: '14px 12px', fontWeight: '700', color: 'var(--primary)' }}>
+                      {combo.routeName}
+                    </td>
+                    <td style={{ padding: '14px 12px', fontWeight: '600' }}>
+                      {combo.busType}
+                    </td>
+                    <td style={{ padding: '14px 12px', fontWeight: '800' }}>
+                      {combo.isSet ? (
+                        <span style={{ color: 'var(--accent)' }}>
+                          {combo.price.toLocaleString('vi-VN')} đ
+                        </span>
+                      ) : (
+                        <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                          ⚠️ Chưa thiết lập giá
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '14px 12px', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                        <button 
-                          onClick={() => handleOpenEdit(rule)} 
-                          className="btn btn-secondary" 
-                          style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                        >
-                          Sửa
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(rule)} 
-                          className="btn btn-secondary" 
-                          style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '6px 12px', fontSize: '0.8rem' }}
-                        >
-                          Xóa
-                        </button>
-                      </div>
+                      <button 
+                        onClick={() => handleOpenBasePriceEdit(combo)} 
+                        className="btn btn-primary"
+                        style={{ padding: '6px 14px', fontSize: '0.8rem', minWidth: '100px' }}
+                      >
+                        {combo.isSet ? 'Cập nhật giá' : 'Thiết lập giá'}
+                      </button>
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
       )}
 
-      {/* Add/Edit Modal */}
+      {/* Rules Modal */}
       {showModal && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -402,6 +579,85 @@ const GmPricingPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Base Price Modal */}
+      {showBasePriceModal && selectedCombo && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div className="panel" style={{ width: '100%', maxWidth: '450px', padding: '24px' }}>
+            <h3 style={{ marginBottom: '18px' }}>
+              Thiết lập giá vé cơ bản
+            </h3>
+            
+            <form onSubmit={handleBasePriceSubmit}>
+              <div className="form-group" style={{ marginBottom: '14px' }}>
+                <label className="form-label" style={{ fontWeight: '600' }}>Tuyến đường</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={selectedCombo.routeName} 
+                  disabled 
+                  style={{ opacity: 0.85, background: 'rgba(255,255,255,0.05)' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '18px' }}>
+                <label className="form-label" style={{ fontWeight: '600' }}>Loại xe</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={selectedCombo.busType} 
+                  disabled 
+                  style={{ opacity: 0.85, background: 'rgba(255,255,255,0.05)' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '24px' }}>
+                <label className="form-label" style={{ fontWeight: '700' }}>Giá vé cơ bản (VNĐ) *</label>
+                <input 
+                  type="number" 
+                  className="form-control" 
+                  value={newBasePrice} 
+                  onChange={(e) => setNewBasePrice(e.target.value)} 
+                  placeholder="Ví dụ: 300000"
+                  required 
+                  min="0"
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="button" onClick={() => setShowBasePriceModal(false)} className="btn btn-secondary">
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Lưu thiết lập
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {confirmModal.show && (
+        <div className="confirm-backdrop">
+          <div className="confirm-card">
+            <div className="confirm-header">{confirmModal.title}</div>
+            <div className="confirm-body">{confirmModal.message}</div>
+            <div className="confirm-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+                Hủy
+              </button>
+              <button className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+                Xác nhận
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,14 +1,4 @@
-const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-
-// Helper to generate JWT Token
-const generateToken = (user) => {
-  return jwt.sign(
-    { id: user._id, name: user.name, role: user.role },
-    process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026',
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-  );
-};
+const authService = require('../services/authService');
 
 // @desc    Register a new customer
 // @route   POST /api/v1/auth/register
@@ -17,7 +7,6 @@ exports.register = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Validation
     if (!name || !phone || !password) {
       return res.status(400).json({
         success: false,
@@ -25,36 +14,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Check if user already exists (by phone)
-    const existingUserByPhone = await User.findOne({ phone });
-    if (existingUserByPhone) {
-      return res.status(400).json({
-        success: false,
-        message: 'Số điện thoại này đã được sử dụng.'
-      });
-    }
-
-    // Check if user already exists (by email, if provided)
-    if (email) {
-      const existingUserByEmail = await User.findOne({ email });
-      if (existingUserByEmail) {
-        return res.status(400).json({
-          success: false,
-          message: 'Email này đã được sử dụng.'
-        });
-      }
-    }
-
-    // Create User (default role is customer)
-    const user = await User.create({
-      name,
-      email: email || undefined,
-      phone,
-      password,
-      role: 'customer' // Guest registers as customer (member)
-    });
-
-    const token = generateToken(user);
+    const { user, token } = await authService.registerUser({ name, email, phone, password });
 
     res.status(201).json({
       success: true,
@@ -72,10 +32,9 @@ exports.register = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi đăng ký:', error);
-    res.status(500).json({
+    res.status(400).json({
       success: false,
-      message: 'Lỗi hệ thống khi đăng ký tài khoản.',
-      error: error.message
+      message: error.message || 'Lỗi hệ thống khi đăng ký tài khoản.'
     });
   }
 };
@@ -85,7 +44,7 @@ exports.register = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
   try {
-    const { loginKey, password } = req.body; // loginKey can be email or phone
+    const { loginKey, password } = req.body;
 
     if (!loginKey || !password) {
       return res.status(400).json({
@@ -94,36 +53,7 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find user by phone or email
-    let user = await User.findOne({ phone: loginKey });
-    if (!user) {
-      user = await User.findOne({ email: loginKey });
-    }
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Tài khoản hoặc mật khẩu không chính xác.'
-      });
-    }
-
-    if (user.status !== 'active') {
-      return res.status(403).json({
-        success: false,
-        message: `Tài khoản của bạn đã bị ${user.status === 'suspended' ? 'đình chỉ' : 'khóa'}.`
-      });
-    }
-
-    // Check password
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Tài khoản hoặc mật khẩu không chính xác.'
-      });
-    }
-
-    const token = generateToken(user);
+    const { user, token } = await authService.loginUser({ loginKey, password });
 
     res.status(200).json({
       success: true,
@@ -141,10 +71,9 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi đăng nhập:', error);
-    res.status(500).json({
+    res.status(400).json({
       success: false,
-      message: 'Lỗi hệ thống khi đăng nhập.',
-      error: error.message
+      message: error.message || 'Lỗi hệ thống khi đăng nhập.'
     });
   }
 };
@@ -154,15 +83,7 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    // req.user will be populated by authMiddleware
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy thông tin người dùng.'
-      });
-    }
-
+    const user = await authService.getUserProfile(req.user.id);
     res.status(200).json({
       success: true,
       user: {
@@ -178,10 +99,9 @@ exports.getMe = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi lấy profile:', error);
-    res.status(500).json({
+    res.status(404).json({
       success: false,
-      message: 'Lỗi hệ thống khi lấy thông tin cá nhân.',
-      error: error.message
+      message: error.message || 'Lỗi hệ thống khi lấy thông tin cá nhân.'
     });
   }
 };
@@ -191,15 +111,8 @@ exports.getMe = async (req, res) => {
 // @access  Private
 exports.updateDetails = async (req, res) => {
   try {
-    const fieldsToUpdate = {
-      name: req.body.name,
-      email: req.body.email
-    };
-
-    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
-      new: true,
-      runValidators: true
-    });
+    const { name, email } = req.body;
+    const user = await authService.updateUserDetails(req.user.id, { name, email });
 
     res.status(200).json({
       success: true,
@@ -216,7 +129,7 @@ exports.updateDetails = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi cập nhật profile:', error);
-    res.status(500).json({
+    res.status(400).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi cập nhật thông tin cá nhân.'
     });
@@ -237,18 +150,7 @@ exports.updatePassword = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id);
-
-    // Check current password
-    if (!(await user.comparePassword(currentPassword))) {
-      return res.status(401).json({
-        success: false,
-        message: 'Mật khẩu hiện tại không chính xác.'
-      });
-    }
-
-    user.password = newPassword;
-    await user.save();
+    await authService.updatePassword(req.user.id, { currentPassword, newPassword });
 
     res.status(200).json({
       success: true,
@@ -256,7 +158,7 @@ exports.updatePassword = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi đổi mật khẩu:', error);
-    res.status(500).json({
+    res.status(400).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi đổi mật khẩu.'
     });
@@ -277,16 +179,7 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ phone });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy tài khoản với số điện thoại này.'
-      });
-    }
-
-    user.password = newPassword;
-    await user.save();
+    await authService.forgotPassword({ phone, newPassword });
 
     res.status(200).json({
       success: true,
@@ -294,7 +187,7 @@ exports.forgotPassword = async (req, res) => {
     });
   } catch (error) {
     console.error('Lỗi khôi phục mật khẩu:', error);
-    res.status(500).json({
+    res.status(400).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi phục hồi mật khẩu.'
     });

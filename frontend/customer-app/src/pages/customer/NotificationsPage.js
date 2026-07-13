@@ -28,7 +28,7 @@ const NotificationsPage = () => {
         id: 3,
         type: 'system',
         title: 'Cập nhật tính năng: Theo dõi hành trình xe thời gian thực',
-        content: 'Á Đông SmartBus vừa cập nhật tính năng định vị xe trực tuyến. Giờ đây bạn có thể theo dõi chính xác vị trí chiếc xe mình đi ngay trên giao diện Web!',
+        content: 'Á Đông Travel vừa cập nhật tính năng định vị xe trực tuyến. Giờ đây bạn có thể theo dõi chính xác vị trí chiếc xe mình đi ngay trên giao diện Web!',
         time: '1 ngày trước',
         read: true
       },

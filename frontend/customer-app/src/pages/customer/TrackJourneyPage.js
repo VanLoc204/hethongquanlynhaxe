@@ -1,57 +1,141 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
+import axios from 'axios';
 import { Map, Navigation, Compass, Truck, Phone, Star, ShieldAlert, Award, Clock, ArrowRight } from 'lucide-react';
 
 const TrackJourneyPage = () => {
+  const { user, isAuthenticated } = useContext(AuthContext);
   const [activeTrips, setActiveTrips] = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [mockProgress, setMockProgress] = useState(35); // percentage progress of the bus
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Populate with mock active journeys
-    const trips = [
-      {
-        id: 'TRK-902',
-        from: 'Hồ Chí Minh',
-        to: 'Đà Lạt',
-        busPlate: '49B-028.91',
-        driverName: 'Nguyễn Văn Hùng',
-        driverPhone: '0912.345.678',
-        departureTime: '08:00',
-        arrivalTime: '15:30',
-        speed: '62 km/h',
-        status: 'In Transit',
-        stops: [
-          { name: 'Bến xe Miền Đông', time: '08:00', completed: true },
-          { name: 'Trạm dừng chân Biên Hòa', time: '09:15', completed: true },
-          { name: 'Trạm dừng chân Madagui', time: '11:45', completed: true },
-          { name: 'Văn Phòng Bảo Lộc', time: '13:00', completed: false, current: true },
-          { name: 'Trạm Di Linh', time: '14:15', completed: false },
-          { name: 'Văn Phòng Đà Lạt', time: '15:30', completed: false }
-        ]
-      },
-      {
-        id: 'TRK-104',
-        from: 'Hồ Chí Minh',
-        to: 'Nha Trang',
-        busPlate: '79B-015.42',
-        driverName: 'Trần Thanh Sơn',
-        driverPhone: '0903.888.999',
-        departureTime: '22:30',
-        arrivalTime: '06:30',
-        speed: '0 km/h',
-        status: 'Scheduled',
-        stops: [
-          { name: 'Văn Phòng Quận 9', time: '22:30', completed: false },
-          { name: 'Trạm dừng chân Phan Thiết', time: '01:45', completed: false },
-          { name: 'Trạm dừng chân Cam Ranh', time: '04:30', completed: false },
-          { name: 'Bến xe Nha Trang', time: '06:30', completed: false }
-        ]
+    const fetchTripsAndBookings = async () => {
+      if (!isAuthenticated || !user) {
+        setLoading(false);
+        return;
       }
-    ];
-    setActiveTrips(trips);
-    // Auto select the first trip
-    setSelectedTrip(trips[0]);
-  }, []);
+      setLoading(true);
+      try {
+        const userId = user.id || user._id;
+        const res = await axios.get(`http://localhost:8000/api/v1/trips/my-bookings/${userId}`);
+        if (res.data.success) {
+          const bookings = res.data.bookings || [];
+          
+          // Keep only non-cancelled bookings
+          const activeBookings = bookings.filter(b => b.status !== 'cancelled');
+
+          const fetchedTrips = [];
+          for (const booking of activeBookings) {
+            try {
+              const tripRes = await axios.get(`http://localhost:8000/api/v1/trips/${booking.tripId}`);
+              if (tripRes.data.success && tripRes.data.trip) {
+                const tripData = tripRes.data.trip;
+
+                const fromLoc = tripData.routeId?.startPoint || 'Hồ Chí Minh';
+                const toLoc = tripData.routeId?.endPoint || 'Đà Lạt';
+                const departureDate = new Date(tripData.departureTime);
+                const arrivalDate = new Date(tripData.arrivalTime);
+
+                // Format times and dates
+                const timePart = departureDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                const datePart = departureDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const depTimeStr = `${timePart} - ${datePart}`;
+                const arrTimeStr = arrivalDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+                // Construct stops list
+                const stops = [];
+                if (tripData.pickupPoints && tripData.pickupPoints.length > 0) {
+                  tripData.pickupPoints.forEach((p, idx) => {
+                    stops.push({
+                      name: `${p.location} (${p.address})`,
+                      time: p.time,
+                      completed: idx === 0
+                    });
+                  });
+                } else {
+                  stops.push({ name: `Văn phòng ${fromLoc}`, time: timePart, completed: true });
+                }
+
+                if (tripData.dropoffPoints && tripData.dropoffPoints.length > 0) {
+                  tripData.dropoffPoints.forEach((d, idx) => {
+                    stops.push({
+                      name: `${d.location} (${d.address})`,
+                      time: d.time,
+                      completed: false
+                    });
+                  });
+                } else {
+                  stops.push({ name: `Bến xe ${toLoc}`, time: arrTimeStr, completed: false });
+                }
+
+                const now = new Date();
+                let status = 'Scheduled';
+                let speed = '0 km/h';
+                let progressPercent = 0;
+                
+                if (now >= departureDate && now <= arrivalDate) {
+                  status = 'In Transit';
+                  speed = '60 km/h';
+                  const totalDuration = arrivalDate - departureDate;
+                  const elapsed = now - departureDate;
+                  progressPercent = Math.min(100, Math.max(0, Math.floor((elapsed / totalDuration) * 100)));
+                } else if (now > arrivalDate) {
+                  status = 'Completed';
+                  speed = '0 km/h';
+                  progressPercent = 100;
+                }
+
+                let currentStopSet = false;
+                stops.forEach((stop, idx) => {
+                  if (status === 'Completed') {
+                    stop.completed = true;
+                  } else if (status === 'In Transit') {
+                    const stopProgressThreshold = (idx / (stops.length - 1)) * 100;
+                    if (progressPercent >= stopProgressThreshold) {
+                      stop.completed = true;
+                    } else if (!currentStopSet) {
+                      stop.current = true;
+                      currentStopSet = true;
+                    }
+                  }
+                });
+
+                fetchedTrips.push({
+                  id: booking._id,
+                  from: fromLoc,
+                  to: toLoc,
+                  busPlate: tripData.busId?.plateNumber || 'Đang cập nhật',
+                  driverName: tripData.driver?.name || 'Tài xế SmartBus',
+                  driverPhone: tripData.driver?.phone || '1900.6067',
+                  departureTime: depTimeStr,
+                  arrivalTime: arrTimeStr,
+                  speed: speed,
+                  status: status,
+                  progressPercent: progressPercent,
+                  stops: stops
+                });
+              }
+            } catch (err) {
+              console.error(`Failed to fetch trip details for ${booking.tripId}:`, err);
+            }
+          }
+          setActiveTrips(fetchedTrips);
+          if (fetchedTrips.length > 0) {
+            setSelectedTrip(fetchedTrips[0]);
+            setMockProgress(fetchedTrips[0].progressPercent);
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi lấy dữ liệu hành trình:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTripsAndBookings();
+  }, [isAuthenticated, user]);
 
   // Simulate progress update
   useEffect(() => {
@@ -65,6 +149,34 @@ const TrackJourneyPage = () => {
       return () => clearInterval(interval);
     }
   }, [selectedTrip]);
+
+  if (loading) {
+    return (
+      <div className="section-container animate-fade-in" style={{ maxWidth: '1100px', paddingBottom: '5rem', textAlign: 'center', marginTop: '5rem' }}>
+        <Compass size={48} className="animate-spin" style={{ color: 'var(--primary)', marginBottom: '1rem', animationDuration: '3s' }} />
+        <h3>Đang tải dữ liệu hành trình...</h3>
+      </div>
+    );
+  }
+
+  if (activeTrips.length === 0) {
+    return (
+      <div className="section-container animate-fade-in" style={{ maxWidth: '1100px', paddingBottom: '5rem', textAlign: 'center', marginTop: '5rem' }}>
+        <Compass size={64} style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }} />
+        <h3 style={{ fontWeight: '700' }}>Không tìm thấy chuyến xe nào hoạt động</h3>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', marginBottom: '2rem' }}>
+          Bạn chưa đặt vé hoặc vé của bạn đã bị hủy / hoàn tất hành trình. Hãy đặt vé để bắt đầu theo dõi!
+        </p>
+        <button 
+          className="btn btn-primary" 
+          onClick={() => window.location.href = '/'}
+          style={{ padding: '10px 24px', fontWeight: '700', borderRadius: '30px' }}
+        >
+          Đặt vé ngay
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="section-container animate-fade-in" style={{ maxWidth: '1100px', paddingBottom: '5rem' }}>

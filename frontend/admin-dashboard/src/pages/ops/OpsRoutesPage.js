@@ -10,6 +10,7 @@ const OpsRoutesPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingRoute, setEditingRoute] = useState(null); // null = add new, object = edit
   const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
   // Form states
   const [startPoint, setStartPoint] = useState('');
@@ -65,23 +66,29 @@ const OpsRoutesPage = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (route) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa tuyến đường ${route.startPoint} - ${route.endPoint}?`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/trips/ops/routes/${route._id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Xóa tuyến đường thành công!');
-        fetchRoutes();
-      } else {
-        showToast(data.message || 'Lỗi xóa tuyến đường.', 'error');
+  const handleDelete = (route) => {
+    setConfirmModal({
+      show: true,
+      title: 'Xác nhận xóa tuyến đường',
+      message: `Bạn có chắc chắn muốn xóa tuyến đường ${route.startPoint} - ${route.endPoint}?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/trips/ops/routes/${route._id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Xóa tuyến đường thành công!');
+            fetchRoutes();
+          } else {
+            showToast(data.message || 'Lỗi xóa tuyến đường.', 'error');
+          }
+        } catch {
+          showToast('Lỗi kết nối máy chủ.', 'error');
+        }
       }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    }
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -273,6 +280,23 @@ const OpsRoutesPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {confirmModal.show && (
+        <div className="confirm-backdrop">
+          <div className="confirm-card">
+            <div className="confirm-header">{confirmModal.title}</div>
+            <div className="confirm-body">{confirmModal.message}</div>
+            <div className="confirm-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+                Hủy
+              </button>
+              <button className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+                Xác nhận
+              </button>
+            </div>
           </div>
         </div>
       )}

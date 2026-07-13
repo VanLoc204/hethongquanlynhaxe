@@ -3,9 +3,7 @@ const router = express.Router();
 const { 
   searchTrips, 
   getTripById, 
-  createBooking, 
   payosWebhook, 
-  updateBookingPayment,
   createShipment,
   updateShipmentPayment,
   trackShipment,
@@ -20,17 +18,12 @@ const {
   getTrips,
   createTrip,
   updateTrip,
-  deleteTrip
+  deleteTrip,
+  releaseSeats
 } = require('../controllers/tripController');
 
 // Search Route
 router.get('/search', searchTrips);
-
-// Create Booking Route
-router.post('/book', createBooking);
-
-// Update Booking Payment Route
-router.patch('/book/:id', updateBookingPayment);
 
 // PayOS Webhook Route
 router.post('/payment/webhook', payosWebhook);
@@ -59,6 +52,9 @@ router.get('/ops/trips', protect, getTrips);
 router.post('/ops/trips', protect, restrictTo('ops_manager', 'admin', 'general_manager'), createTrip);
 router.put('/ops/trips/:id', protect, restrictTo('ops_manager', 'admin', 'general_manager'), updateTrip);
 router.delete('/ops/trips/:id', protect, restrictTo('ops_manager', 'admin', 'general_manager'), deleteTrip);
+
+// Internal: Release seats on booking cancellation (called by booking-service)
+router.patch('/:id/release-seats', releaseSeats);
 
 // Get Trip details Route (placed last due to dynamic parameter path)
 router.get('/:id', getTripById);

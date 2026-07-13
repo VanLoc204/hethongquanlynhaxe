@@ -59,7 +59,7 @@ const Navigation = () => {
     <header className="navbar glass-card">
       <Link to="/" className="nav-logo" onClick={handleLinkClick}>
         <Compass className="logo-icon" />
-        <span>Á Đông SmartBus</span>
+        <span>Á Đông Travel</span>
       </Link>
 
       <button 
@@ -172,7 +172,7 @@ function App() {
               </div>
 
               <div className="footer-col">
-                <h4>Á ĐÔNG BUS LINES</h4>
+                <h4>Á ĐÔNG TRAVEL</h4>
                 <ul>
                   <li><a href="#about">Về chúng tôi</a></li>
                   <li><a href="#schedule">Lịch trình chuyến</a></li>
@@ -195,7 +195,7 @@ function App() {
             </div>
             
             <div className="footer-bottom">
-              <p>© 2026 Bản quyền thuộc về Công ty Cổ phần Xe khách Á Đông - FUTA Bus Lines copy style. Đăng ký kinh doanh số 0302741234.</p>
+              <p>© 2026 Bản quyền thuộc về Công ty Cổ phần Xe khách Á Đông - Á Đông Travel. Đăng ký kinh doanh số 0302741234.</p>
             </div>
           </footer>
         </div>

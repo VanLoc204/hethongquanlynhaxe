@@ -26,6 +26,7 @@ const GmStaffPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null); // null = add new
   const [toast, setToast] = useState(null);
+  const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
   // Form states
   const [name, setName] = useState('');
@@ -85,23 +86,29 @@ const GmStaffPage = () => {
     setShowModal(true);
   };
 
-  const handleDelete = async (staff) => {
-    if (!window.confirm(`Xóa nhân viên ${staff.name}?`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/users/staff/${staff._id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Xóa nhân viên thành công!');
-        fetchStaff();
-      } else {
-        showToast(data.message || 'Lỗi xóa nhân viên.', 'error');
+  const handleDelete = (staff) => {
+    setConfirmModal({
+      show: true,
+      title: 'Xác nhận xóa nhân viên',
+      message: `Bạn có chắc chắn muốn xóa nhân viên ${staff.name}?`,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${API_BASE}/users/staff/${staff._id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Xóa nhân viên thành công!');
+            fetchStaff();
+          } else {
+            showToast(data.message || 'Lỗi xóa nhân viên.', 'error');
+          }
+        } catch {
+          showToast('Lỗi kết nối máy chủ.', 'error');
+        }
       }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    }
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -352,6 +359,23 @@ const GmStaffPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {confirmModal.show && (
+        <div className="confirm-backdrop">
+          <div className="confirm-card">
+            <div className="confirm-header">{confirmModal.title}</div>
+            <div className="confirm-body">{confirmModal.message}</div>
+            <div className="confirm-footer">
+              <button className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+                Hủy
+              </button>
+              <button className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+                Xác nhận
+              </button>
+            </div>
           </div>
         </div>
       )}

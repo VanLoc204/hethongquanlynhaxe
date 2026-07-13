@@ -1,6 +1,6 @@
-# Hệ Thống Quản Lý Nhà Xe Thông Minh (Smart Bus Management System)
+# Hệ Thống Quản Lý Nhà Xe Á Đông Travel (Á Đông Travel Management System)
 
-Dự án phát triển hệ thống quản lý nhà xe thông minh theo mô hình **MERN Microservices**, sẵn sàng triển khai bằng Docker/Kubernetes và tích hợp Trí tuệ nhân tạo (Gemini API), các thuật toán điều phối thông minh.
+Dự án phát triển hệ thống quản lý nhà xe Á Đông Travel theo mô hình **MERN Microservices**, sẵn sàng triển khai bằng Docker/Kubernetes và tích hợp Trí tuệ nhân tạo (Gemini API), các thuật toán điều phối thông minh.
 
 ---
 
@@ -38,23 +38,23 @@ Tất cả tài khoản dưới đây đều sử dụng mật khẩu mặc đ�
 ### A. Tài Khoản Quản Lý & Bán Vé (Admin & Staff)
 | Chức vụ (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email |
 | :--- | :--- | :--- | :--- |
-| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@smartbus.vn` |
-| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe Á Đông | **`0988888888`** | `fleet@smartbus.vn` |
-| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải Á Đông | **`0977777777`** | `ops@smartbus.vn` |
-| **Giám Đốc** (`general_manager`) | Giám Đốc Á Đông | **`0966555666`** | `director@smartbus.vn` |
-| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@smartbus.vn` |
+| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@adongtravel.vn` |
+| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe Á Đông | **`0988888888`** | `fleet@adongtravel.vn` |
+| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải Á Đông | **`0977777777`** | `ops@adongtravel.vn` |
+| **Giám Đốc** (`general_manager`) | Giám Đốc Á Đông | **`0966555666`** | `director@adongtravel.vn` |
+| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@adongtravel.vn` |
 
 ### B. Đội Ngũ Tài Xế & Phụ Xe (Drivers & Attendants)
 | Vai trò | Họ tên | Số Điện Thoại (Username) | Email |
 | :--- | :--- | :--- | :--- |
-| **Tài xế** | Tài xế Á Đông | **`0933333333`** | `driver1@smartbus.vn` |
-| **Tài xế** | Trần Minh Tâm | **`0987654321`** | `driver2@smartbus.vn` |
-| **Tài xế** | Nguyễn Văn Hùng | **`0912345678`** | `driver3@smartbus.vn` |
-| **Tài xế** | Lê Hoàng Nam | **`0909090909`** | `driver4@smartbus.vn` |
-| **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | `attendant1@smartbus.vn` |
-| **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | `attendant2@smartbus.vn` |
-| **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | `attendant3@smartbus.vn` |
-| **Phụ xe** | Nguyễn Tiến Dũng | **`0977889900`** | `attendant4@smartbus.vn` |
+| **Tài xế** | Tài xế Á Đông | **`0933333333`** | `driver1@adongtravel.vn` |
+| **Tài xế** | Trần Minh Tâm | **`0987654321`** | `driver2@adongtravel.vn` |
+| **Tài xế** | Nguyễn Văn Hùng | **`0912345678`** | `driver3@adongtravel.vn` |
+| **Tài xế** | Lê Hoàng Nam | **`0909090909`** | `driver4@adongtravel.vn` |
+| **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | `attendant1@adongtravel.vn` |
+| **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | `attendant2@adongtravel.vn` |
+| **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | `attendant3@adongtravel.vn` |
+| **Phụ xe** | Nguyễn Tiến Dũng | **`0977889900`** | `attendant4@adongtravel.vn` |
 
 ### C. Khách Hàng Thử Nghiệm (Customers)
 | Họ tên | Số Điện Thoại (Username) | Email | Điểm tích lũy / Hạng |
