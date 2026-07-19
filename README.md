@@ -299,3 +299,101 @@ Quản lý thông tin gửi nhận và thanh toán cước phí hàng bưu gửi
 - `history` (Array of Objects): Nhật ký hành trình vận chuyển hàng hóa, ghi nhận chi tiết thời gian và địa điểm thực tế của bưu gửi.
 - `orderCode` (Number, Unique): Mã giao dịch thanh toán qua PayOS của bưu gửi.
 
+---
+
+## 6. Hướng Dẫn Cài Đặt Và Chạy Dự Án (Installation & Setup Guide)
+
+Dự án này sử dụng mô hình Monorepo (npm Workspaces) để quản lý cả Frontend và các Backend Microservices. Một số file cấu hình và thư mục thư viện (`node_modules`, các file `.env` chứa thông tin nhạy cảm) đã bị ẩn (bỏ qua) khi đẩy lên GitHub để bảo mật và tối ưu dung lượng.
+
+Dưới đây là hướng dẫn chi tiết các bước thiết lập cho người mới tải dự án về để có thể chạy được trên máy cá nhân:
+
+### Bước 1: Tải mã nguồn về máy
+Mở terminal hoặc command prompt và clone dự án từ GitHub:
+```bash
+git clone <URL_REPOSITORY_CỦA_BẠN>
+cd HeThongQuanLyNhaXe
+```
+
+### Bước 2: Cài đặt các thư viện (node_modules)
+Vì dự án cấu hình Monorepo (npm Workspaces) nên bạn **chỉ cần chạy một lệnh duy nhất tại thư mục gốc** để tự động cài đặt toàn bộ package cho cả thư mục gốc, các services và frontend:
+```bash
+npm install
+```
+
+### Bước 3: Cấu hình các file môi trường (.env) bị ẩn
+Bạn cần tạo các file `.env` tại các thư mục tương ứng bên dưới (các file này đã bị bỏ qua bởi `.gitignore` để tránh rò rỉ bảo mật thông tin kết nối):
+
+#### 1. API Gateway (`services/api-gateway/.env`)
+Tạo file `.env` mới trong thư mục `services/api-gateway/` và thêm nội dung sau:
+```env
+PORT=8000
+AUTH_SERVICE_URL=http://localhost:8001
+USER_SERVICE_URL=http://localhost:8002
+TRIP_SERVICE_URL=http://localhost:8003
+BOOKING_SERVICE_URL=http://localhost:8004
+PRICING_SERVICE_URL=http://localhost:8005
+PAYMENT_SERVICE_URL=http://localhost:8006
+TRACKING_SERVICE_URL=http://localhost:8007
+NOTIFICATION_SERVICE_URL=http://localhost:8008
+REVIEW_SERVICE_URL=http://localhost:8009
+```
+
+#### 2. Auth Service (`services/auth-service/.env`)
+Tạo file `.env` mới trong thư mục `services/auth-service/` và thêm nội dung sau:
+```env
+PORT=8001
+MONGO_URI=mongodb://127.0.0.1:27018/bus_management
+JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
+JWT_EXPIRES_IN=7d
+```
+
+#### 3. Trip & Fleet Service (`services/trip-service/.env`)
+Tạo file `.env` mới trong thư mục `services/trip-service/` và thêm nội dung sau:
+```env
+PORT=8003
+MONGO_URI=mongodb://127.0.0.1:27018/bus_management
+BREVO_API_KEY=xkeysib-your_brevo_api_key_here
+JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
+```
+
+#### 4. Booking & Ticket Service (`services/booking-service/.env`)
+Tạo file `.env` mới trong thư mục `services/booking-service/` và thêm nội dung sau:
+```env
+PORT=8004
+MONGO_URI=mongodb://127.0.0.1:27018/bus_management
+BREVO_API_KEY=xkeysib-your_brevo_api_key_here
+JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
+```
+
+*(Lưu ý: Các biến MONGO_URI trên đang kết nối với cổng Docker MongoDB chạy cục bộ `27018`. Bạn có thể thay đổi tùy theo môi trường database thực tế).*
+
+### Bước 4: Khởi chạy các cơ sở dữ liệu và hạ tầng (Docker)
+Dự án sử dụng Docker để chạy các cơ sở dữ liệu (MongoDB, Redis, RabbitMQ,...). Hãy chắc chắn rằng Docker Desktop đã được mở trên máy của bạn, sau đó chạy lệnh tại thư mục gốc:
+```bash
+npm run docker:db:up
+```
+*(Lệnh này tương đương với `docker-compose up -d mysql mongodb redis rabbitmq`)*
+
+### Bước 5: Chạy các dịch vụ (Backend & Frontend)
+
+#### Cách 1: Khởi chạy thủ công từng service (Dùng cho Development)
+Bạn có thể mở các tab Terminal riêng biệt tại thư mục gốc để khởi động các thành phần chính bằng npm workspaces:
+
+*   **Chạy API Gateway:** `npm run gateway:dev`
+*   **Chạy Auth Service:** `npm run auth:dev`
+*   **Chạy User Service:** `npm run user:dev`
+*   **Chạy Trip Service:** `npm run trip:dev`
+*   **Chạy Booking Service:** `npm run booking:dev`
+*   **Chạy Frontend Customer App:** `npm run customer:dev`
+
+*(Tương tự cho các service khác như pricing, tracking, notification, review, ... nếu cần thiết).*
+
+#### Cách 2: Chạy toàn bộ bằng Docker Compose (Khuyên dùng khi triển khai)
+Nếu muốn khởi chạy nhanh toàn bộ ứng dụng (gồm cả các container node app và frontend):
+```bash
+npm run docker:up
+```
+Để tắt toàn bộ hệ thống container:
+```bash
+npm run docker:down
+```
