@@ -321,10 +321,29 @@ npm install
 ```
 
 ### Bước 3: Cấu hình các file môi trường (.env) bị ẩn
-Bạn cần tạo các file `.env` tại các thư mục tương ứng bên dưới (các file này đã bị bỏ qua bởi `.gitignore` để tránh rò rỉ bảo mật thông tin kết nối):
+Bạn cần tạo các file `.env` tại các thư mục tương ứng bên dưới để cấu hình ứng dụng hoạt động (các file này đã bị bỏ qua bởi `.gitignore` để tránh rò rỉ thông tin cấu hình nhạy cảm). 
+
+Chúng tôi đã cung cấp sẵn các file mẫu `.env.example` tại các thư mục đó. Bạn chỉ cần sao chép chúng thành file `.env` rồi cập nhật giá trị nếu cần.
+
+**Lệnh copy nhanh trên Terminal tại thư mục gốc:**
+*   **Windows (PowerShell):**
+    ```powershell
+    copy services/api-gateway/.env.example services/api-gateway/.env
+    copy services/auth-service/.env.example services/auth-service/.env
+    copy services/trip-service/.env.example services/trip-service/.env
+    copy services/booking-service/.env.example services/booking-service/.env
+    ```
+*   **Linux / macOS:**
+    ```bash
+    cp services/api-gateway/.env.example services/api-gateway/.env
+    cp services/auth-service/.env.example services/auth-service/.env
+    cp services/trip-service/.env.example services/trip-service/.env
+    cp services/booking-service/.env.example services/booking-service/.env
+    ```
+
+**Các thông số cấu hình mẫu mặc định bên trong:**
 
 #### 1. API Gateway (`services/api-gateway/.env`)
-Tạo file `.env` mới trong thư mục `services/api-gateway/` và thêm nội dung sau:
 ```env
 PORT=8000
 AUTH_SERVICE_URL=http://localhost:8001
@@ -339,7 +358,6 @@ REVIEW_SERVICE_URL=http://localhost:8009
 ```
 
 #### 2. Auth Service (`services/auth-service/.env`)
-Tạo file `.env` mới trong thư mục `services/auth-service/` và thêm nội dung sau:
 ```env
 PORT=8001
 MONGO_URI=mongodb://127.0.0.1:27018/bus_management
@@ -348,7 +366,6 @@ JWT_EXPIRES_IN=7d
 ```
 
 #### 3. Trip & Fleet Service (`services/trip-service/.env`)
-Tạo file `.env` mới trong thư mục `services/trip-service/` và thêm nội dung sau:
 ```env
 PORT=8003
 MONGO_URI=mongodb://127.0.0.1:27018/bus_management
@@ -357,7 +374,6 @@ JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
 ```
 
 #### 4. Booking & Ticket Service (`services/booking-service/.env`)
-Tạo file `.env` mới trong thư mục `services/booking-service/` và thêm nội dung sau:
 ```env
 PORT=8004
 MONGO_URI=mongodb://127.0.0.1:27018/bus_management
@@ -397,3 +413,17 @@ npm run docker:up
 ```bash
 npm run docker:down
 ```
+
+### Bước 6: Biên dịch ứng dụng Frontend (Build for Production)
+Nếu bạn cần sinh thư mục `build/` (đã bị ẩn bởi `.gitignore`) của ứng dụng Frontend để deploy lên môi trường chạy thực tế:
+
+*   **Chạy build từ thư mục gốc:**
+    ```bash
+    npm run build --workspace=frontend/customer-app
+    ```
+*   **Hoặc di chuyển trực tiếp vào thư mục frontend rồi build:**
+    ```bash
+    cd frontend/customer-app
+    npm run build
+    ```
+Sau khi chạy xong, thư mục nén tối ưu `build/` sẽ xuất hiện tại `frontend/customer-app/build/`.
