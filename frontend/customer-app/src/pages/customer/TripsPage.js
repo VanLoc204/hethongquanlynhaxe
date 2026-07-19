@@ -1,19 +1,19 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
-import { 
-  MapPin, 
-  Calendar, 
-  Clock, 
-  Shield, 
-  Star, 
-  Tv, 
-  Wifi, 
-  Coffee, 
-  Wind, 
-  Utensils, 
-  AlertCircle, 
+import {
+  MapPin,
+  Calendar,
+  Clock,
+  Shield,
+  Star,
+  Tv,
+  Wifi,
+  Coffee,
+  Wind,
+  Utensils,
+  AlertCircle,
   CheckCircle,
   HelpCircle,
   TrendingUp,
@@ -49,6 +49,40 @@ const TripsPage = () => {
   const [date, setDate] = useState(dateParam);
   const [passengers, setPassengers] = useState(Number(passengersParam));
   const [tripType, setTripType] = useState(queryParams.get('type') || 'one-way');
+
+  const fromRef = useRef(null);
+  const toRef = useRef(null);
+  const [showFromSuggestions, setShowFromSuggestions] = useState(false);
+  const [showToSuggestions, setShowToSuggestions] = useState(false);
+
+  const popularLocations = [
+    { name: 'Bến Xe Miền Đông', detail: 'Hồ Chí Minh' },
+    { name: 'Bến Xe Miền Tây', detail: 'Hồ Chí Minh' },
+    { name: 'Bến Xe An Sương', detail: 'Hồ Chí Minh' },
+    { name: 'Bến Xe Ngã Tư Ga', detail: 'Hồ Chí Minh' },
+    { name: 'Bến Xe Cần Thơ', detail: 'Cần Thơ' },
+    { name: 'Bến Xe Cà Mau', detail: 'Cà Mau' },
+    { name: 'Bến Xe Bạc Liêu', detail: 'Bạc Liêu' },
+    { name: 'Bến Xe Liên Tỉnh Đà Lạt', detail: 'Lâm Đồng (Đà Lạt)' },
+    { name: 'Bến Xe Trung Tâm Đà Nẵng', detail: 'Đà Nẵng' },
+    { name: 'Bến Xe Phía Nam Nha Trang', detail: 'Khánh Hòa (Nha Trang)' }
+  ];
+
+  // Click outside to close suggestion dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (fromRef.current && !fromRef.current.contains(event.target)) {
+        setShowFromSuggestions(false);
+      }
+      if (toRef.current && !toRef.current.contains(event.target)) {
+        setShowToSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Synchronize URL parameters to form states when search changes
   useEffect(() => {
@@ -425,16 +459,16 @@ const TripsPage = () => {
     const typeStr = (busType || '').toLowerCase();
 
     // Determine if it is a double-decker (giường nằm hoặc limousine phòng cabin)
-    const isDoubleDecker = 
-      typeStr.includes('giường') || 
-      typeStr.includes('phòng') || 
-      typeStr.includes('cabin') || 
-      totalSeats === 20 || 
-      totalSeats === 22 || 
-      totalSeats === 24 || 
-      totalSeats === 32 || 
-      totalSeats === 34 || 
-      totalSeats === 40 || 
+    const isDoubleDecker =
+      typeStr.includes('giường') ||
+      typeStr.includes('phòng') ||
+      typeStr.includes('cabin') ||
+      totalSeats === 20 ||
+      totalSeats === 22 ||
+      totalSeats === 24 ||
+      totalSeats === 32 ||
+      totalSeats === 34 ||
+      totalSeats === 40 ||
       totalSeats === 44;
 
     if (isDoubleDecker) {
@@ -559,7 +593,7 @@ const TripsPage = () => {
       lowerFloor.push(['A7', 'A8', 'A9']);
       return { lowerFloor, upperFloor: [], columns: 3 };
     }
-    
+
     // 3.2 Limousine ghế ngồi: 19 chỗ (3 cột)
     if (totalSeats === 19) {
       lowerFloor.push(['A1', null, 'A2']);
@@ -656,10 +690,10 @@ const TripsPage = () => {
   const allPickups = Array.from(new Set(trips.flatMap(t => t.pickupPoints.map(p => p.location))));
   const allDropoffs = Array.from(new Set(trips.flatMap(t => t.dropoffPoints.map(d => d.location))));
 
-  const filteredPickupLocationsList = allPickups.filter(loc => 
+  const filteredPickupLocationsList = allPickups.filter(loc =>
     loc.toLowerCase().includes(pickupSearch.toLowerCase())
   );
-  const filteredDropoffLocationsList = allDropoffs.filter(loc => 
+  const filteredDropoffLocationsList = allDropoffs.filter(loc =>
     loc.toLowerCase().includes(dropoffSearch.toLowerCase())
   );
 
@@ -673,7 +707,7 @@ const TripsPage = () => {
         if (busTypeFilter === 'sleeper' && !typeL.includes('giường') && !typeL.includes('nằm')) return false;
         if (busTypeFilter === 'seater' && !typeL.includes('ghế') && !typeL.includes('ngồi')) return false;
       }
-      
+
       // 2. Giảm giá (Discount check - simulate discount for trips priced < 300,000 or rating counts > 1000)
       if (isDiscountOnly) {
         const hasDiscount = trip.price < 300000 || trip.ratings.count > 1000;
@@ -729,8 +763,8 @@ const TripsPage = () => {
       <div className="glass-card animate-fade-in" style={{ padding: '2rem' }}>
         {/* Header with back button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-          <button 
-            className="btn btn-secondary" 
+          <button
+            className="btn btn-secondary"
             style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}
             onClick={() => {
               setExpandedTripId(null);
@@ -810,18 +844,18 @@ const TripsPage = () => {
             </div>
 
             <div style={{ textAlign: 'center', display: 'flex', gap: '15px', justifyContent: 'center' }}>
-              <button 
-                className="btn btn-secondary" 
-                style={{ padding: '10px 24px' }} 
+              <button
+                className="btn btn-secondary"
+                style={{ padding: '10px 24px' }}
                 onClick={() => {
                   window.print();
                 }}
               >
                 In Hóa Đơn
               </button>
-              <button 
-                className="btn btn-primary" 
-                style={{ padding: '10px 24px' }} 
+              <button
+                className="btn btn-primary"
+                style={{ padding: '10px 24px' }}
                 onClick={() => {
                   setBookingSuccess(false);
                   setBookingStep('seats');
@@ -842,63 +876,63 @@ const TripsPage = () => {
               <form onSubmit={handleCustomerInfoSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '450px', margin: '0 auto' }}>
                 <div className="form-group">
                   <label className="form-label">Họ và tên hành khách <span style={{ color: 'red' }}>*</span></label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
+                  <input
+                    type="text"
+                    className="form-control"
                     placeholder="Nhập họ và tên đầy đủ"
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    required 
+                    required
                   />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Số điện thoại <span style={{ color: 'red' }}>*</span></label>
-                  <input 
-                    type="tel" 
-                    className="form-control" 
+                  <input
+                    type="tel"
+                    className="form-control"
                     placeholder="Nhập số điện thoại liên hệ"
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    required 
+                    required
                   />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div className="form-group">
                     <label className="form-label">Năm sinh <span style={{ color: 'red' }}>*</span></label>
-                    <input 
-                      type="number" 
-                      className="form-control" 
+                    <input
+                      type="number"
+                      className="form-control"
                       placeholder="VD: 2002"
                       value={customerBirthYear}
                       onChange={(e) => setCustomerBirthYear(e.target.value)}
-                      required 
+                      required
                     />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Số căn cước (CCCD) <span style={{ color: 'red' }}>*</span></label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
+                    <input
+                      type="text"
+                      className="form-control"
                       placeholder="Nhập số CCCD"
                       value={customerCCCD}
                       onChange={(e) => setCustomerCCCD(e.target.value)}
-                      required 
+                      required
                     />
                   </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Email (Không bắt buộc - nhận thông tin hóa đơn)</label>
-                  <input 
-                    type="email" 
-                    className="form-control" 
+                  <input
+                    type="email"
+                    className="form-control"
                     placeholder="email@example.com"
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
                   />
                 </div>
-                
+
                 <div style={{ display: 'flex', gap: '15px', marginTop: '1rem' }}>
-                  <button 
+                  <button
                     type="button"
                     className="btn btn-secondary"
                     style={{ flex: 1, padding: '12px' }}
@@ -906,7 +940,7 @@ const TripsPage = () => {
                   >
                     Quay lại
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="btn btn-primary"
                     style={{ flex: 1, padding: '12px' }}
@@ -950,16 +984,16 @@ const TripsPage = () => {
             {/* PayOS QR Payment Screen */}
             <div>
               <h4 style={{ fontWeight: '700', marginBottom: '1.25rem', textAlign: 'center' }}>Thanh Toán Vé Xe</h4>
-              
+
               <div className="glass-card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', margin: '0 auto' }}>
                 <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
-                
-                <img 
-                  src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${trip.price * selectedSeats.length}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`} 
-                  alt="VietQR PayOS" 
+
+                <img
+                  src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${trip.price * selectedSeats.length}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`}
+                  alt="VietQR PayOS"
                   style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
                 />
-                
+
                 <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '6px', margin: '0 auto', maxWidth: '300px' }}>
                   <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
                   <div>Số tài khoản: <strong>0919210046</strong></div>
@@ -969,8 +1003,8 @@ const TripsPage = () => {
                 </div>
 
                 <div style={{ marginTop: '1.5rem' }}>
-                  <button 
-                    className="btn btn-success" 
+                  <button
+                    className="btn btn-success"
                     style={{ width: '100%', padding: '10px', fontWeight: '700' }}
                     onClick={handleSimulatePaymentSuccess}
                   >
@@ -987,7 +1021,7 @@ const TripsPage = () => {
             <div className="booking-sidebar" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Lựa chọn thanh toán</h4>
-                
+
                 {(() => {
                   const ct = trips.find(t => t._id === expandedTripId);
                   const hoursUntilDep = ct ? (new Date(ct.departureTime) - new Date()) / 3600000 : 999;
@@ -1024,7 +1058,7 @@ const TripsPage = () => {
                     </div>
                   );
                 })()}
-                
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Mã đặt chỗ:</span>
                   <span style={{ fontWeight: '700' }}>#{createdBooking?.orderCode}</span>
@@ -1047,8 +1081,8 @@ const TripsPage = () => {
                   </span>
                 </div>
 
-                <button 
-                  className="btn btn-secondary" 
+                <button
+                  className="btn btn-secondary"
                   style={{ width: '100%', padding: '12px' }}
                   onClick={() => setBookingStep('customer-info')}
                 >
@@ -1059,15 +1093,15 @@ const TripsPage = () => {
           </div>
         ) : (
           <div className="booking-layout">
-            
+
             {/* Seat Selector Grid */}
             <div>
               <h4 style={{ fontWeight: '700', marginBottom: '1.5rem', textAlign: 'center' }}>Sơ Đồ Ghế Ngồi</h4>
-              
+
               {/* Grid Layout of seats */}
               {(() => {
-                const { lowerFloor, upperFloor, columns } = (trip.busId?.seatLayout && trip.busId.seatLayout.lowerFloor) 
-                  ? trip.busId.seatLayout 
+                const { lowerFloor, upperFloor, columns } = (trip.busId?.seatLayout && trip.busId.seatLayout.lowerFloor)
+                  ? trip.busId.seatLayout
                   : getSeatLayout(trip.busId?.totalSeats || 34, trip.busId?.type || '');
                 const hasUpperFloor = upperFloor && upperFloor.length > 0;
                 const activeFloor = (selectedFloor === 'upper' && hasUpperFloor) ? 'upper' : 'lower';
@@ -1078,14 +1112,14 @@ const TripsPage = () => {
                     {/* Floor Tabs Selector */}
                     {hasUpperFloor && (
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
-                        <button 
+                        <button
                           className={`btn ${activeFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
                           style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
                           onClick={() => setSelectedFloor('lower')}
                         >
                           Tầng Dưới (Tầng 1)
                         </button>
-                        <button 
+                        <button
                           className={`btn ${activeFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
                           style={{ padding: '6px 20px', borderRadius: '20px', fontSize: '0.85rem' }}
                           onClick={() => setSelectedFloor('upper')}
@@ -1095,67 +1129,67 @@ const TripsPage = () => {
                       </div>
                     )}
 
-                    <div style={{ 
-                      display: 'grid', 
-                      gridTemplateColumns: `repeat(${columns}, 1fr)`, 
-                      gap: '14px', 
-                      maxWidth: '360px', 
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                      gap: '14px',
+                      maxWidth: '360px',
                       margin: '0 auto',
                       padding: '1.5rem',
                       border: '2px solid var(--border-color)',
                       borderRadius: '12px',
                       backgroundColor: 'rgba(255, 255, 255, 0.6)'
                     }}>
-                    {currentFloorRows.flat().map((seat, index) => {
-                      if (seat === null) {
-                        return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
-                      }
+                      {currentFloorRows.flat().map((seat, index) => {
+                        if (seat === null) {
+                          return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
+                        }
 
-                      const isBooked = (trip.bookedSeats || []).includes(seat);
-                      const isSelected = selectedSeats.includes(seat);
+                        const isBooked = (trip.bookedSeats || []).includes(seat);
+                        const isSelected = selectedSeats.includes(seat);
 
-                      let seatBg = 'rgba(59, 130, 246, 0.1)'; 
-                      let seatBorder = 'var(--primary)';
-                      let seatColor = 'var(--primary)';
+                        let seatBg = 'rgba(59, 130, 246, 0.1)';
+                        let seatBorder = 'var(--primary)';
+                        let seatColor = 'var(--primary)';
 
-                      if (isBooked) {
-                        seatBg = '#e5e7eb'; 
-                        seatBorder = '#d1d5db';
-                        seatColor = '#9ca3af';
-                      } else if (isSelected) {
-                        seatBg = 'var(--accent)'; 
-                        seatBorder = 'var(--accent)';
-                        seatColor = '#ffffff';
-                      }
+                        if (isBooked) {
+                          seatBg = '#e5e7eb';
+                          seatBorder = '#d1d5db';
+                          seatColor = '#9ca3af';
+                        } else if (isSelected) {
+                          seatBg = 'var(--accent)';
+                          seatBorder = 'var(--accent)';
+                          seatColor = '#ffffff';
+                        }
 
-                      return (
-                        <button 
-                          key={seat}
-                          disabled={isBooked}
-                          style={{
-                            height: '56px',
-                            borderRadius: '8px',
-                            border: `2px solid ${seatBorder}`,
-                            backgroundColor: seatBg,
-                            color: seatColor,
-                            fontWeight: '700',
-                            fontSize: '0.95rem',
-                            cursor: isBooked ? 'not-allowed' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            transition: 'all 0.2s ease-in-out'
-                          }}
-                          onClick={() => handleSeatClick(seat, isBooked)}
-                        >
-                          {seat}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              );
-            })()}
+                        return (
+                          <button
+                            key={seat}
+                            disabled={isBooked}
+                            style={{
+                              height: '56px',
+                              borderRadius: '8px',
+                              border: `2px solid ${seatBorder}`,
+                              backgroundColor: seatBg,
+                              color: seatColor,
+                              fontWeight: '700',
+                              fontSize: '0.95rem',
+                              cursor: isBooked ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.2s ease-in-out'
+                            }}
+                            onClick={() => handleSeatClick(seat, isBooked)}
+                          >
+                            {seat}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Color guide */}
               <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>
@@ -1178,7 +1212,7 @@ const TripsPage = () => {
             <div className="booking-sidebar" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Thông tin đặt vé</h4>
-                
+
                 {/* Selected seats list */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Ghế đã chọn:</span>
@@ -1190,9 +1224,9 @@ const TripsPage = () => {
                 {/* Pickup points dropdown */}
                 <div className="form-group" style={{ marginBottom: '12px' }}>
                   <label className="form-label">Chọn điểm đón:</label>
-                  <select 
-                    className="form-control" 
-                    value={selectedPickup} 
+                  <select
+                    className="form-control"
+                    value={selectedPickup}
                     onChange={(e) => setSelectedPickup(e.target.value)}
                   >
                     {(trip.pickupPoints || []).map((p, idx) => (
@@ -1206,9 +1240,9 @@ const TripsPage = () => {
                 {/* Dropoff points dropdown */}
                 <div className="form-group" style={{ marginBottom: '1.5rem' }}>
                   <label className="form-label">Chọn điểm trả:</label>
-                  <select 
-                    className="form-control" 
-                    value={selectedDropoff} 
+                  <select
+                    className="form-control"
+                    value={selectedDropoff}
                     onChange={(e) => setSelectedDropoff(e.target.value)}
                   >
                     {(trip.dropoffPoints || []).map((d, idx) => (
@@ -1228,8 +1262,8 @@ const TripsPage = () => {
                   </span>
                 </div>
 
-                <button 
-                  className="btn btn-primary" 
+                <button
+                  className="btn btn-primary"
                   style={{ width: '100%', padding: '12px' }}
                   onClick={handleBookingSubmit}
                 >
@@ -1245,7 +1279,7 @@ const TripsPage = () => {
 
   return (
     <div className="placeholder-page animate-fade-in" style={{ paddingBottom: '5rem' }}>
-      
+
       {/* Search Header Banner */}
       <div className="hero-section-futa" style={{ padding: '3.5rem 1rem 6rem 1rem', borderRadius: '0', minHeight: 'auto', marginBottom: '0', textAlign: 'center' }}>
         <h2 style={{ fontSize: '1.85rem', fontWeight: '800', marginBottom: '0.5rem' }}>
@@ -1263,22 +1297,22 @@ const TripsPage = () => {
           {/* Trip Type Selector */}
           <div className="trip-type-selector">
             <label className="radio-label">
-              <input 
-                type="radio" 
-                name="tripType" 
-                value="one-way" 
-                checked={tripType === 'one-way'} 
-                onChange={() => setTripType('one-way')} 
+              <input
+                type="radio"
+                name="tripType"
+                value="one-way"
+                checked={tripType === 'one-way'}
+                onChange={() => setTripType('one-way')}
               />
               Một chiều
             </label>
             <label className="radio-label">
-              <input 
-                type="radio" 
-                name="tripType" 
-                value="round-trip" 
-                checked={tripType === 'round-trip'} 
-                onChange={() => setTripType('round-trip')} 
+              <input
+                type="radio"
+                name="tripType"
+                value="round-trip"
+                checked={tripType === 'round-trip'}
+                onChange={() => setTripType('round-trip')}
               />
               Khứ hồi
             </label>
@@ -1286,42 +1320,116 @@ const TripsPage = () => {
 
           {/* Search Input Fields */}
           <div className="search-inputs-grid">
-            <div className="form-group">
+            <div className="form-group" ref={fromRef} style={{ position: 'relative' }}>
               <label className="form-label" style={{ fontWeight: '600' }}>Điểm đi</label>
               <div className="input-icon-wrapper">
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="Chọn điểm đi" 
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Chọn điểm đi"
                   value={from}
-                  onChange={(e) => setFrom(e.target.value)}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    setShowFromSuggestions(true);
+                  }}
+                  onFocus={() => setShowFromSuggestions(true)}
                   required
                 />
                 <MapPin size={18} className="input-icon" />
               </div>
+
+              {/* From Suggestions Dropdown */}
+              {showFromSuggestions && (
+                <div className="search-suggestions-dropdown">
+                  {popularLocations
+                    .filter(loc =>
+                      loc.name.toLowerCase().includes(from.toLowerCase()) ||
+                      loc.detail.toLowerCase().includes(from.toLowerCase())
+                    )
+                    .map((loc, index) => (
+                      <div
+                        key={index}
+                        className="suggestion-item"
+                        onClick={() => {
+                          setFrom(loc.name);
+                          setShowFromSuggestions(false);
+                        }}
+                      >
+                        <MapPin size={14} className="suggestion-icon" />
+                        <div className="suggestion-content">
+                          <span className="suggestion-name">{loc.name}</span>
+                          <span className="suggestion-detail">{loc.detail}</span>
+                        </div>
+                      </div>
+                    ))}
+                  {popularLocations.filter(loc =>
+                    loc.name.toLowerCase().includes(from.toLowerCase()) ||
+                    loc.detail.toLowerCase().includes(from.toLowerCase())
+                  ).length === 0 && (
+                      <div className="no-suggestions">Không tìm thấy địa điểm</div>
+                    )}
+                </div>
+              )}
             </div>
 
-            <div className="form-group">
+            <div className="form-group" ref={toRef} style={{ position: 'relative' }}>
               <label className="form-label" style={{ fontWeight: '600' }}>Điểm đến</label>
               <div className="input-icon-wrapper">
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  placeholder="Chọn điểm đến" 
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Chọn điểm đến"
                   value={to}
-                  onChange={(e) => setTo(e.target.value)}
+                  onChange={(e) => {
+                    setTo(e.target.value);
+                    setShowToSuggestions(true);
+                  }}
+                  onFocus={() => setShowToSuggestions(true)}
                   required
                 />
                 <MapPin size={18} className="input-icon" style={{ color: 'var(--accent)' }} />
               </div>
+
+              {/* To Suggestions Dropdown */}
+              {showToSuggestions && (
+                <div className="search-suggestions-dropdown">
+                  {popularLocations
+                    .filter(loc =>
+                      loc.name.toLowerCase().includes(to.toLowerCase()) ||
+                      loc.detail.toLowerCase().includes(to.toLowerCase())
+                    )
+                    .map((loc, index) => (
+                      <div
+                        key={index}
+                        className="suggestion-item"
+                        onClick={() => {
+                          setTo(loc.name);
+                          setShowToSuggestions(false);
+                        }}
+                      >
+                        <MapPin size={14} className="suggestion-icon" style={{ color: 'var(--accent)' }} />
+                        <div className="suggestion-content">
+                          <span className="suggestion-name">{loc.name}</span>
+                          <span className="suggestion-detail">{loc.detail}</span>
+                        </div>
+                      </div>
+                    ))}
+                  {popularLocations.filter(loc =>
+                    loc.name.toLowerCase().includes(to.toLowerCase()) ||
+                    loc.detail.toLowerCase().includes(to.toLowerCase())
+                  ).length === 0 && (
+                      <div className="no-suggestions">Không tìm thấy địa điểm</div>
+                    )}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: '600' }}>Ngày đi</label>
               <div className="input-icon-wrapper">
-                <input 
-                  type="date" 
-                  className="form-control" 
+                <input
+                  type="date"
+                  className="form-control"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
@@ -1333,7 +1441,7 @@ const TripsPage = () => {
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: '600' }}>Số vé</label>
               <div className="input-icon-wrapper">
-                <select 
+                <select
                   className="form-control"
                   value={passengers}
                   onChange={(e) => setPassengers(Number(e.target.value))}
@@ -1382,12 +1490,12 @@ const TripsPage = () => {
           </div>
         ) : (
           <div className="search-results-layout">
-            
+
             {/* Left side: Filter Panel */}
             <div className="glass-card" style={{ padding: '1.5rem', position: 'sticky', top: '20px', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
                 <h3 style={{ margin: 0, fontWeight: '700', fontSize: '1.15rem' }}>Bộ lọc tìm kiếm</h3>
-                <button 
+                <button
                   onClick={handleClearFilters}
                   style={{
                     background: 'none',
@@ -1407,8 +1515,8 @@ const TripsPage = () => {
               <div style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Tiêu chí phổ biến</label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={isDiscountOnly}
                     onChange={(e) => setIsDiscountOnly(e.target.checked)}
                   />
@@ -1420,19 +1528,19 @@ const TripsPage = () => {
               <div style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Giờ đi</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="24" 
-                    value={startHour} 
+                  <input
+                    type="range"
+                    min="0"
+                    max="24"
+                    value={startHour}
                     onChange={(e) => setStartHour(Math.min(Number(e.target.value), endHour))}
                     style={{ width: '100%', accentColor: 'var(--primary)' }}
                   />
-                  <input 
-                    type="range" 
-                    min="0" 
-                    max="24" 
-                    value={endHour} 
+                  <input
+                    type="range"
+                    min="0"
+                    max="24"
+                    value={endHour}
                     onChange={(e) => setEndHour(Math.max(Number(e.target.value), startHour))}
                     style={{ width: '100%', accentColor: 'var(--primary)' }}
                   />
@@ -1446,12 +1554,12 @@ const TripsPage = () => {
               {/* Price */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Giá vé</label>
-                <input 
-                  type="range" 
-                  min="100000" 
-                  max="2000000" 
+                <input
+                  type="range"
+                  min="100000"
+                  max="2000000"
                   step="50000"
-                  value={maxPrice} 
+                  value={maxPrice}
                   onChange={(e) => setMaxPrice(Number(e.target.value))}
                   style={{ width: '100%', accentColor: 'var(--primary)' }}
                 />
@@ -1464,11 +1572,11 @@ const TripsPage = () => {
               {/* Available seats */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Số chỗ trống</label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="50" 
-                  value={minSeats} 
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={minSeats}
                   onChange={(e) => setMinSeats(Number(e.target.value))}
                   style={{ width: '100%', accentColor: 'var(--primary)' }}
                 />
@@ -1487,9 +1595,9 @@ const TripsPage = () => {
               <div style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Điểm đón</label>
                 <div style={{ position: 'relative', marginBottom: '8px' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Nhập điểm đón" 
+                  <input
+                    type="text"
+                    placeholder="Nhập điểm đón"
                     className="form-control"
                     value={pickupSearch}
                     onChange={(e) => setPickupSearch(e.target.value)}
@@ -1505,8 +1613,8 @@ const TripsPage = () => {
                       const isChecked = selectedPickups.includes(loc);
                       return (
                         <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={isChecked}
                             onChange={() => {
                               if (isChecked) {
@@ -1528,9 +1636,9 @@ const TripsPage = () => {
               <div style={{ marginBottom: '1.5rem' }}>
                 <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Điểm trả</label>
                 <div style={{ position: 'relative', marginBottom: '8px' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Nhập điểm trả" 
+                  <input
+                    type="text"
+                    placeholder="Nhập điểm trả"
                     className="form-control"
                     value={dropoffSearch}
                     onChange={(e) => setDropoffSearch(e.target.value)}
@@ -1546,8 +1654,8 @@ const TripsPage = () => {
                       const isChecked = selectedDropoffs.includes(loc);
                       return (
                         <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             checked={isChecked}
                             onChange={() => {
                               if (isChecked) {
@@ -1570,38 +1678,38 @@ const TripsPage = () => {
                 <label className="form-label" style={{ fontWeight: '700' }}>Loại xe</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input 
-                      type="radio" 
-                      name="busType" 
-                      checked={busTypeFilter === 'all'} 
-                      onChange={() => setBusTypeFilter('all')} 
+                    <input
+                      type="radio"
+                      name="busType"
+                      checked={busTypeFilter === 'all'}
+                      onChange={() => setBusTypeFilter('all')}
                     />
                     Tất cả các loại xe
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input 
-                      type="radio" 
-                      name="busType" 
-                      checked={busTypeFilter === 'limousine'} 
-                      onChange={() => setBusTypeFilter('limousine')} 
+                    <input
+                      type="radio"
+                      name="busType"
+                      checked={busTypeFilter === 'limousine'}
+                      onChange={() => setBusTypeFilter('limousine')}
                     />
                     Xe Limousine (9, 19, 22 VIP...)
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input 
-                      type="radio" 
-                      name="busType" 
-                      checked={busTypeFilter === 'sleeper'} 
-                      onChange={() => setBusTypeFilter('sleeper')} 
+                    <input
+                      type="radio"
+                      name="busType"
+                      checked={busTypeFilter === 'sleeper'}
+                      onChange={() => setBusTypeFilter('sleeper')}
                     />
                     Xe Giường Nằm (34, 40, 44 chỗ...)
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input 
-                      type="radio" 
-                      name="busType" 
-                      checked={busTypeFilter === 'seater'} 
-                      onChange={() => setBusTypeFilter('seater')} 
+                    <input
+                      type="radio"
+                      name="busType"
+                      checked={busTypeFilter === 'seater'}
+                      onChange={() => setBusTypeFilter('seater')}
                     />
                     Xe Ghế Ngồi (16, 29, 45 chỗ...)
                   </label>
@@ -1637,614 +1745,614 @@ const TripsPage = () => {
                 </div>
               ) : (
                 filteredTrips.map((trip) => {
-                const isExpanded = expandedTripId === trip._id;
-                const remainingSeatsCount = trip.busId.totalSeats - trip.bookedSeats.length;
-                const departureDate = new Date(trip.departureTime);
-                const arrivalDate = new Date(trip.arrivalTime);
+                  const isExpanded = expandedTripId === trip._id;
+                  const remainingSeatsCount = trip.busId.totalSeats - trip.bookedSeats.length;
+                  const departureDate = new Date(trip.departureTime);
+                  const arrivalDate = new Date(trip.arrivalTime);
 
-                // Helper to format hours
-                const formatTime = (dateObj) => {
-                  return dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
-                };
+                  // Helper to format hours
+                  const formatTime = (dateObj) => {
+                    return dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
+                  };
 
-                return (
-                  <div key={trip._id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
-                    
-                    {/* Upper Trip Summary Card */}
-                    <div className="trip-card-inner-layout" style={{ padding: '1.75rem' }}>
-                      {/* Left: Bus Image */}
-                      <div>
-                        <img 
-                          src={trip.busId.images[0] || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80'} 
-                          alt={trip.busId.type}
-                          style={{ width: '100%', height: '90px', objectFit: 'cover', borderRadius: '8px' }}
-                        />
-                      </div>
+                  return (
+                    <div key={trip._id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
 
-                      {/* Center: Route, Time and Amenities */}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '1.15rem', color: 'var(--primary)' }}>{trip.busId.type}</span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#eab308' }}>
-                            <Star size={16} fill="#eab308" />
-                            <span style={{ fontWeight: '600' }}>{trip.ratings.average}</span>
-                            <span style={{ color: 'var(--text-muted)' }}>({trip.ratings.count})</span>
-                          </div>
+                      {/* Upper Trip Summary Card */}
+                      <div className="trip-card-inner-layout" style={{ padding: '1.75rem' }}>
+                        {/* Left: Bus Image */}
+                        <div>
+                          <img
+                            src={trip.busId.images[0] || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80'}
+                            alt={trip.busId.type}
+                            style={{ width: '100%', height: '90px', objectFit: 'cover', borderRadius: '8px' }}
+                          />
                         </div>
 
-                        {/* Journey Time Details */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', margin: '12px 0' }}>
-                          <div>
-                            <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>{formatTime(departureDate)}</span>
-                            <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{trip.pickupPoints[0]?.location || 'Điểm đi'}</span>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 0.5, position: 'relative' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                              {trip.routeId.duration}
-                            </span>
-                            {/* Horizontal Line connector */}
-                            <div style={{ height: '2px', backgroundColor: 'var(--border-color)', width: '100%', position: 'relative' }}>
-                              <div style={{ 
-                                width: '6px', 
-                                height: '6px', 
-                                borderRadius: '50%', 
-                                backgroundColor: 'var(--primary)', 
-                                position: 'absolute', 
-                                left: '0', 
-                                top: '-2px' 
-                              }}></div>
-                              <div style={{ 
-                                width: '6px', 
-                                height: '6px', 
-                                borderRadius: '50%', 
-                                backgroundColor: 'var(--accent)', 
-                                position: 'absolute', 
-                                right: '0', 
-                                top: '-2px' 
-                              }}></div>
+                        {/* Center: Route, Time and Amenities */}
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '1.15rem', color: 'var(--primary)' }}>{trip.busId.type}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#eab308' }}>
+                              <Star size={16} fill="#eab308" />
+                              <span style={{ fontWeight: '600' }}>{trip.ratings.average}</span>
+                              <span style={{ color: 'var(--text-muted)' }}>({trip.ratings.count})</span>
                             </div>
                           </div>
 
-                          <div>
-                            <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>{formatTime(arrivalDate)}</span>
-                            <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{trip.dropoffPoints[trip.dropoffPoints.length - 1]?.location || 'Điểm trả'}</span>
+                          {/* Journey Time Details */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', margin: '12px 0' }}>
+                            <div>
+                              <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>{formatTime(departureDate)}</span>
+                              <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{trip.pickupPoints[0]?.location || 'Điểm đi'}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 0.5, position: 'relative' }}>
+                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                                {trip.routeId.duration}
+                              </span>
+                              {/* Horizontal Line connector */}
+                              <div style={{ height: '2px', backgroundColor: 'var(--border-color)', width: '100%', position: 'relative' }}>
+                                <div style={{
+                                  width: '6px',
+                                  height: '6px',
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--primary)',
+                                  position: 'absolute',
+                                  left: '0',
+                                  top: '-2px'
+                                }}></div>
+                                <div style={{
+                                  width: '6px',
+                                  height: '6px',
+                                  borderRadius: '50%',
+                                  backgroundColor: 'var(--accent)',
+                                  position: 'absolute',
+                                  right: '0',
+                                  top: '-2px'
+                                }}></div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>{formatTime(arrivalDate)}</span>
+                              <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{trip.dropoffPoints[trip.dropoffPoints.length - 1]?.location || 'Điểm trả'}</span>
+                            </div>
+                          </div>
+
+                          {/* Amenities Icons */}
+                          <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)' }}>
+                            {trip.busId.amenities.includes('Tivi LED') && <Tv size={16} title="Tivi LED" />}
+                            {trip.busId.amenities.includes('Wifi') && <Wifi size={16} title="Wifi miễn phí" />}
+                            {trip.busId.amenities.includes('Toilet') && <Coffee size={16} title="Nhà vệ sinh" />}
+                            {trip.busId.amenities.includes('Điều hòa') && <Wind size={16} title="Điều hòa" />}
+                            {trip.busId.amenities.includes('Nước uống') && <Utensils size={16} title="Nước uống & Khăn lạnh" />}
+                          </div>
+
+                          {/* Toggle Details Link */}
+                          <div style={{ marginTop: '12px' }}>
+                            <button
+                              onClick={() => toggleDetails(trip._id)}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--primary)',
+                                fontSize: '0.9rem',
+                                fontWeight: '600',
+                                cursor: 'pointer',
+                                padding: '0',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'color 0.2s'
+                              }}
+                            >
+                              <span>{activeDetailsTripId === trip._id ? 'Thông tin chi tiết' : 'Thông tin chi tiết'}</span>
+                              {activeDetailsTripId === trip._id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </button>
                           </div>
                         </div>
 
-                        {/* Amenities Icons */}
-                        <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)' }}>
-                          {trip.busId.amenities.includes('Tivi LED') && <Tv size={16} title="Tivi LED" />}
-                          {trip.busId.amenities.includes('Wifi') && <Wifi size={16} title="Wifi miễn phí" />}
-                          {trip.busId.amenities.includes('Toilet') && <Coffee size={16} title="Nhà vệ sinh" />}
-                          {trip.busId.amenities.includes('Điều hòa') && <Wind size={16} title="Điều hòa" />}
-                          {trip.busId.amenities.includes('Nước uống') && <Utensils size={16} title="Nước uống & Khăn lạnh" />}
-                        </div>
-
-                        {/* Toggle Details Link */}
-                        <div style={{ marginTop: '12px' }}>
+                        {/* Right: Price & CTA */}
+                        <div style={{ textAlign: 'right', borderLeft: '1px solid var(--border-color)', paddingLeft: '1.5rem' }}>
+                          <div style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--accent)' }}>
+                            {formatCurrency(trip.price)}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '4px 0 12px 0' }}>
+                            Còn {remainingSeatsCount} chỗ trống
+                          </div>
                           <button
-                            onClick={() => toggleDetails(trip._id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: 'var(--primary)',
-                              fontSize: '0.9rem',
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              padding: '0',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              transition: 'color 0.2s'
-                            }}
+                            className={`btn ${isExpanded ? 'btn-secondary' : 'btn-primary'}`}
+                            style={{ width: '100%', padding: '10px' }}
+                            onClick={() => toggleSelectSeats(trip)}
                           >
-                            <span>{activeDetailsTripId === trip._id ? 'Thông tin chi tiết' : 'Thông tin chi tiết'}</span>
-                            {activeDetailsTripId === trip._id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            {isExpanded ? 'Đóng sơ đồ' : 'Chọn chỗ'}
                           </button>
                         </div>
                       </div>
 
-                      {/* Right: Price & CTA */}
-                      <div style={{ textAlign: 'right', borderLeft: '1px solid var(--border-color)', paddingLeft: '1.5rem' }}>
-                        <div style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--accent)' }}>
-                          {formatCurrency(trip.price)}
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '4px 0 12px 0' }}>
-                          Còn {remainingSeatsCount} chỗ trống
-                        </div>
-                        <button 
-                          className={`btn ${isExpanded ? 'btn-secondary' : 'btn-primary'}`} 
-                          style={{ width: '100%', padding: '10px' }}
-                          onClick={() => toggleSelectSeats(trip)}
-                        >
-                          {isExpanded ? 'Đóng sơ đồ' : 'Chọn chỗ'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expandable Details Drawer */}
-                    {activeDetailsTripId === trip._id && (
-                      <div style={{ borderTop: '1px solid var(--border-color)', backgroundColor: '#fafafa', padding: '1.5rem 1.75rem' }}>
-                        {/* Tab Bar headers */}
-                        <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '1.25rem', overflowX: 'auto' }}>
-                          {[
-                            { id: 'images', name: 'Hình ảnh' },
-                            { id: 'amenities', name: 'Tiện ích' },
-                            { id: 'pickup-dropoff', name: 'Điểm đón, trả' },
-                            { id: 'policy', name: 'Chính sách' },
-                            { id: 'reviews', name: 'Đánh giá' }
-                          ].map(tab => {
-                            const isActive = activeDetailTab === tab.id;
-                            return (
-                              <button
-                                key={tab.id}
-                                onClick={() => setActiveDetailTab(tab.id)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  borderBottom: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-                                  color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
-                                  fontWeight: isActive ? '700' : '500',
-                                  padding: '6px 12px 10px 12px',
-                                  cursor: 'pointer',
-                                  fontSize: '0.95rem',
-                                  whiteSpace: 'nowrap',
-                                  transition: 'all 0.2s'
-                                }}
-                              >
-                                {tab.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-
-                        {/* Tab content panel */}
-                        {detailsLoading && !loadedTripDetails[trip._id] ? (
-                          <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                            Đang tải chi tiết chuyến xe...
+                      {/* Expandable Details Drawer */}
+                      {activeDetailsTripId === trip._id && (
+                        <div style={{ borderTop: '1px solid var(--border-color)', backgroundColor: '#fafafa', padding: '1.5rem 1.75rem' }}>
+                          {/* Tab Bar headers */}
+                          <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '1.25rem', overflowX: 'auto' }}>
+                            {[
+                              { id: 'images', name: 'Hình ảnh' },
+                              { id: 'amenities', name: 'Tiện ích' },
+                              { id: 'pickup-dropoff', name: 'Điểm đón, trả' },
+                              { id: 'policy', name: 'Chính sách' },
+                              { id: 'reviews', name: 'Đánh giá' }
+                            ].map(tab => {
+                              const isActive = activeDetailTab === tab.id;
+                              return (
+                                <button
+                                  key={tab.id}
+                                  onClick={() => setActiveDetailTab(tab.id)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    borderBottom: isActive ? '3px solid var(--primary)' : '3px solid transparent',
+                                    color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                                    fontWeight: isActive ? '700' : '500',
+                                    padding: '6px 12px 10px 12px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.95rem',
+                                    whiteSpace: 'nowrap',
+                                    transition: 'all 0.2s'
+                                  }}
+                                >
+                                  {tab.name}
+                                </button>
+                              );
+                            })}
                           </div>
-                        ) : (
-                          <div>
-                            {(() => {
-                              const details = loadedTripDetails[trip._id] || { trip, reviews: [] };
-                              const currentTrip = details.trip;
-                              const reviewsList = details.reviews;
 
-                              // Tab 1: Hình ảnh
-                              if (activeDetailTab === 'images') {
-                                const busImages = currentTrip.busId.images && currentTrip.busId.images.length > 0 
-                                  ? currentTrip.busId.images 
-                                  : [
+                          {/* Tab content panel */}
+                          {detailsLoading && !loadedTripDetails[trip._id] ? (
+                            <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                              Đang tải chi tiết chuyến xe...
+                            </div>
+                          ) : (
+                            <div>
+                              {(() => {
+                                const details = loadedTripDetails[trip._id] || { trip, reviews: [] };
+                                const currentTrip = details.trip;
+                                const reviewsList = details.reviews;
+
+                                // Tab 1: Hình ảnh
+                                if (activeDetailTab === 'images') {
+                                  const busImages = currentTrip.busId.images && currentTrip.busId.images.length > 0
+                                    ? currentTrip.busId.images
+                                    : [
                                       'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80',
                                       'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?auto=format&fit=crop&w=600&q=80',
                                       'https://images.unsplash.com/photo-1561361513-2d000a50f0db?auto=format&fit=crop&w=600&q=80'
                                     ];
-                                return (
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }} className="animate-fade-in">
-                                    {busImages.map((img, idx) => (
-                                      <img 
-                                        key={idx} 
-                                        src={img} 
-                                        alt={`Bus view ${idx + 1}`} 
-                                        style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }}
-                                      />
-                                    ))}
-                                  </div>
-                                );
-                              }
-
-                              // Tab 2: Tiện ích
-                              if (activeDetailTab === 'amenities') {
-                                const amenitiesData = [
-                                  { name: 'Wifi', icon: <Wifi size={20} />, desc: 'Sóng wifi tốc độ cao kết nối ổn định suốt hành trình.' },
-                                  { name: 'Tivi LED', icon: <Tv size={20} />, desc: 'Màn hình LED giải trí cá nhân cài sẵn kho phim, ca nhạc phong phú.' },
-                                  { name: 'Toilet', icon: <Coffee size={20} />, desc: 'Buồng vệ sinh khép kín sạch sẽ, tiện lợi bố trí cuối xe.' },
-                                  { name: 'Điều hòa', icon: <Wind size={20} />, desc: 'Hệ thống máy lạnh lọc gió kháng khuẩn phân bổ đều các cabin.' },
-                                  { name: 'Nước uống', icon: <Utensils size={20} />, desc: 'Miễn phí nước uống đóng chai Aquafina cùng khăn lạnh cao cấp.' }
-                                ];
-
-                                return (
-                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }} className="animate-fade-in">
-                                    {amenitiesData.map((item, idx) => {
-                                      const hasAmenity = currentTrip.busId.amenities.some(a => a.toLowerCase().includes(item.name.toLowerCase()));
-                                      return (
-                                        <div key={idx} style={{ 
-                                          display: 'flex', 
-                                          gap: '15px', 
-                                          opacity: hasAmenity ? 1 : 0.4,
-                                          border: '1px solid var(--border-color)',
-                                          borderRadius: '8px',
-                                          padding: '12px',
-                                          backgroundColor: '#ffffff'
-                                        }}>
-                                          <div style={{ color: hasAmenity ? 'var(--primary)' : 'var(--text-muted)' }}>
-                                            {item.icon}
-                                          </div>
-                                          <div>
-                                            <h5 style={{ fontWeight: '700', marginBottom: '4px', textDecoration: hasAmenity ? 'none' : 'line-through' }}>{item.name}</h5>
-                                            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{item.desc}</p>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                );
-                              }
-
-                              // Tab 3: Điểm đón, trả
-                              if (activeDetailTab === 'pickup-dropoff') {
-                                return (
-                                  <div className="timeline-layout animate-fade-in">
-                                    {/* Pickup timeline */}
-                                    <div>
-                                      <h5 style={{ fontWeight: '700', color: 'var(--primary)', borderBottom: '2px solid rgba(59,130,246,0.1)', paddingBottom: '8px', marginBottom: '15px' }}>
-                                        Điểm đón
-                                      </h5>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', position: 'relative', paddingLeft: '20px', borderLeft: '2px solid var(--border-color)' }}>
-                                        {currentTrip.pickupPoints.map((point, idx) => (
-                                          <div key={idx} style={{ position: 'relative' }}>
-                                            {/* Bullet icon */}
-                                            <div style={{
-                                              position: 'absolute',
-                                              left: '-26px',
-                                              top: '4px',
-                                              width: '10px',
-                                              height: '10px',
-                                              borderRadius: '50%',
-                                              backgroundColor: 'var(--primary)',
-                                              border: '2px solid #ffffff'
-                                            }}></div>
-                                            <span style={{ fontWeight: '700', fontSize: '0.9rem', marginRight: '8px' }}>{point.time}</span>
-                                            <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>• {point.location}</span>
-                                            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{point.address}</p>
-                                          </div>
-                                        ))}
-                                      </div>
+                                  return (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }} className="animate-fade-in">
+                                      {busImages.map((img, idx) => (
+                                        <img
+                                          key={idx}
+                                          src={img}
+                                          alt={`Bus view ${idx + 1}`}
+                                          style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }}
+                                        />
+                                      ))}
                                     </div>
+                                  );
+                                }
 
-                                    {/* Dropoff timeline */}
-                                    <div>
-                                      <h5 style={{ fontWeight: '700', color: 'var(--accent)', borderBottom: '2px solid rgba(249,115,22,0.1)', paddingBottom: '8px', marginBottom: '15px' }}>
-                                        Điểm trả
-                                      </h5>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', position: 'relative', paddingLeft: '20px', borderLeft: '2px solid var(--border-color)' }}>
-                                        {currentTrip.dropoffPoints.map((point, idx) => (
-                                          <div key={idx} style={{ position: 'relative' }}>
-                                            {/* Bullet icon */}
-                                            <div style={{
-                                              position: 'absolute',
-                                              left: '-26px',
-                                              top: '4px',
-                                              width: '10px',
-                                              height: '10px',
-                                              borderRadius: '50%',
-                                              backgroundColor: 'var(--accent)',
-                                              border: '2px solid #ffffff'
-                                            }}></div>
-                                            <span style={{ fontWeight: '700', fontSize: '0.9rem', marginRight: '8px' }}>{point.time}</span>
-                                            <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>• {point.location}</span>
-                                            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{point.address}</p>
+                                // Tab 2: Tiện ích
+                                if (activeDetailTab === 'amenities') {
+                                  const amenitiesData = [
+                                    { name: 'Wifi', icon: <Wifi size={20} />, desc: 'Sóng wifi tốc độ cao kết nối ổn định suốt hành trình.' },
+                                    { name: 'Tivi LED', icon: <Tv size={20} />, desc: 'Màn hình LED giải trí cá nhân cài sẵn kho phim, ca nhạc phong phú.' },
+                                    { name: 'Toilet', icon: <Coffee size={20} />, desc: 'Buồng vệ sinh khép kín sạch sẽ, tiện lợi bố trí cuối xe.' },
+                                    { name: 'Điều hòa', icon: <Wind size={20} />, desc: 'Hệ thống máy lạnh lọc gió kháng khuẩn phân bổ đều các cabin.' },
+                                    { name: 'Nước uống', icon: <Utensils size={20} />, desc: 'Miễn phí nước uống đóng chai Aquafina cùng khăn lạnh cao cấp.' }
+                                  ];
+
+                                  return (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }} className="animate-fade-in">
+                                      {amenitiesData.map((item, idx) => {
+                                        const hasAmenity = currentTrip.busId.amenities.some(a => a.toLowerCase().includes(item.name.toLowerCase()));
+                                        return (
+                                          <div key={idx} style={{
+                                            display: 'flex',
+                                            gap: '15px',
+                                            opacity: hasAmenity ? 1 : 0.4,
+                                            border: '1px solid var(--border-color)',
+                                            borderRadius: '8px',
+                                            padding: '12px',
+                                            backgroundColor: '#ffffff'
+                                          }}>
+                                            <div style={{ color: hasAmenity ? 'var(--primary)' : 'var(--text-muted)' }}>
+                                              {item.icon}
+                                            </div>
+                                            <div>
+                                              <h5 style={{ fontWeight: '700', marginBottom: '4px', textDecoration: hasAmenity ? 'none' : 'line-through' }}>{item.name}</h5>
+                                              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{item.desc}</p>
+                                            </div>
                                           </div>
-                                        ))}
-                                      </div>
+                                        );
+                                      })}
                                     </div>
-                                  </div>
-                                );
-                              }
+                                  );
+                                }
 
-                              // Tab 4: Chính sách
-                              if (activeDetailTab === 'policy') {
-                                return (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="animate-fade-in">
-                                    <div style={{ backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px' }}>
-                                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                                        <Shield size={20} style={{ color: 'var(--primary)' }} />
-                                        <h5 style={{ fontWeight: '700', margin: '0' }}>Chính sách hoàn/hủy vé</h5>
-                                      </div>
-                                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0' }}>
-                                        {currentTrip.policy?.cancellation || 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.'}
-                                      </p>
-                                    </div>
-
-                                    <div style={{ backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px' }}>
-                                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-                                        <Shield size={20} style={{ color: 'var(--accent)' }} />
-                                        <h5 style={{ fontWeight: '700', margin: '0' }}>Chính sách hành lý</h5>
-                                      </div>
-                                      <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0' }}>
-                                        {currentTrip.policy?.luggage || 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                );
-                              }
-
-                              // Tab 5: Đánh giá
-                              if (activeDetailTab === 'reviews') {
-                                const totalReviewsCount = reviewsList.length;
-                                const avgRating = totalReviewsCount > 0 
-                                  ? (reviewsList.reduce((acc, curr) => acc + curr.rating, 0) / totalReviewsCount).toFixed(1) 
-                                  : (currentTrip.ratings?.average || 5.0).toFixed(1);
-                                const totalCount = totalReviewsCount > 0 ? totalReviewsCount : (currentTrip.ratings?.count || 0);
-
-                                return (
-                                  <div className="animate-fade-in">
-                                    {/* Overall Rating Section */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '30px', backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px 25px', marginBottom: '20px' }}>
-                                      <div style={{ textAlign: 'center' }}>
-                                        <div style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--primary)', lineHeight: '1' }}>{avgRating}</div>
-                                        <div style={{ display: 'flex', gap: '2px', margin: '6px 0', color: '#eab308' }}>
-                                          {[1, 2, 3, 4, 5].map(star => (
-                                            <Star key={star} size={16} fill={star <= Math.round(parseFloat(avgRating)) ? '#eab308' : 'none'} stroke="#eab308" />
+                                // Tab 3: Điểm đón, trả
+                                if (activeDetailTab === 'pickup-dropoff') {
+                                  return (
+                                    <div className="timeline-layout animate-fade-in">
+                                      {/* Pickup timeline */}
+                                      <div>
+                                        <h5 style={{ fontWeight: '700', color: 'var(--primary)', borderBottom: '2px solid rgba(59,130,246,0.1)', paddingBottom: '8px', marginBottom: '15px' }}>
+                                          Điểm đón
+                                        </h5>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', position: 'relative', paddingLeft: '20px', borderLeft: '2px solid var(--border-color)' }}>
+                                          {currentTrip.pickupPoints.map((point, idx) => (
+                                            <div key={idx} style={{ position: 'relative' }}>
+                                              {/* Bullet icon */}
+                                              <div style={{
+                                                position: 'absolute',
+                                                left: '-26px',
+                                                top: '4px',
+                                                width: '10px',
+                                                height: '10px',
+                                                borderRadius: '50%',
+                                                backgroundColor: 'var(--primary)',
+                                                border: '2px solid #ffffff'
+                                              }}></div>
+                                              <span style={{ fontWeight: '700', fontSize: '0.9rem', marginRight: '8px' }}>{point.time}</span>
+                                              <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>• {point.location}</span>
+                                              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{point.address}</p>
+                                            </div>
                                           ))}
                                         </div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({totalCount} đánh giá)</div>
                                       </div>
 
-                                      <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {[5, 4, 3, 2, 1].map(stars => {
-                                          const countOfStars = reviewsList.filter(r => r.rating === stars).length;
-                                          const percentage = totalReviewsCount > 0 ? Math.round((countOfStars / totalReviewsCount) * 100) : 0;
+                                      {/* Dropoff timeline */}
+                                      <div>
+                                        <h5 style={{ fontWeight: '700', color: 'var(--accent)', borderBottom: '2px solid rgba(249,115,22,0.1)', paddingBottom: '8px', marginBottom: '15px' }}>
+                                          Điểm trả
+                                        </h5>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', position: 'relative', paddingLeft: '20px', borderLeft: '2px solid var(--border-color)' }}>
+                                          {currentTrip.dropoffPoints.map((point, idx) => (
+                                            <div key={idx} style={{ position: 'relative' }}>
+                                              {/* Bullet icon */}
+                                              <div style={{
+                                                position: 'absolute',
+                                                left: '-26px',
+                                                top: '4px',
+                                                width: '10px',
+                                                height: '10px',
+                                                borderRadius: '50%',
+                                                backgroundColor: 'var(--accent)',
+                                                border: '2px solid #ffffff'
+                                              }}></div>
+                                              <span style={{ fontWeight: '700', fontSize: '0.9rem', marginRight: '8px' }}>{point.time}</span>
+                                              <span style={{ fontWeight: '600', fontSize: '0.9rem' }}>• {point.location}</span>
+                                              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{point.address}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                // Tab 4: Chính sách
+                                if (activeDetailTab === 'policy') {
+                                  return (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }} className="animate-fade-in">
+                                      <div style={{ backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px' }}>
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                                          <Shield size={20} style={{ color: 'var(--primary)' }} />
+                                          <h5 style={{ fontWeight: '700', margin: '0' }}>Chính sách hoàn/hủy vé</h5>
+                                        </div>
+                                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0' }}>
+                                          {currentTrip.policy?.cancellation || 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.'}
+                                        </p>
+                                      </div>
+
+                                      <div style={{ backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px' }}>
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
+                                          <Shield size={20} style={{ color: 'var(--accent)' }} />
+                                          <h5 style={{ fontWeight: '700', margin: '0' }}>Chính sách hành lý</h5>
+                                        </div>
+                                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '0' }}>
+                                          {currentTrip.policy?.luggage || 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                // Tab 5: Đánh giá
+                                if (activeDetailTab === 'reviews') {
+                                  const totalReviewsCount = reviewsList.length;
+                                  const avgRating = totalReviewsCount > 0
+                                    ? (reviewsList.reduce((acc, curr) => acc + curr.rating, 0) / totalReviewsCount).toFixed(1)
+                                    : (currentTrip.ratings?.average || 5.0).toFixed(1);
+                                  const totalCount = totalReviewsCount > 0 ? totalReviewsCount : (currentTrip.ratings?.count || 0);
+
+                                  return (
+                                    <div className="animate-fade-in">
+                                      {/* Overall Rating Section */}
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '30px', backgroundColor: '#ffffff', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '15px 25px', marginBottom: '20px' }}>
+                                        <div style={{ textAlign: 'center' }}>
+                                          <div style={{ fontSize: '2.5rem', fontWeight: '800', color: 'var(--primary)', lineHeight: '1' }}>{avgRating}</div>
+                                          <div style={{ display: 'flex', gap: '2px', margin: '6px 0', color: '#eab308' }}>
+                                            {[1, 2, 3, 4, 5].map(star => (
+                                              <Star key={star} size={16} fill={star <= Math.round(parseFloat(avgRating)) ? '#eab308' : 'none'} stroke="#eab308" />
+                                            ))}
+                                          </div>
+                                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({totalCount} đánh giá)</div>
+                                        </div>
+
+                                        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                          {[5, 4, 3, 2, 1].map(stars => {
+                                            const countOfStars = reviewsList.filter(r => r.rating === stars).length;
+                                            const percentage = totalReviewsCount > 0 ? Math.round((countOfStars / totalReviewsCount) * 100) : 0;
+
+                                            return (
+                                              <div key={stars} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
+                                                <span style={{ width: '40px', textAlign: 'right' }}>{stars} sao</span>
+                                                <div style={{ flexGrow: 1, height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
+                                                  <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: 'var(--primary)' }}></div>
+                                                </div>
+                                                <span style={{ width: '35px', color: 'var(--text-secondary)' }}>{percentage}%</span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+
+                                      {/* Reviews List */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                        {reviewsList.length === 0 ? (
+                                          <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem' }}>Chưa có nhận xét nào cho chuyến xe này.</p>
+                                        ) : (
+                                          reviewsList.map((rev) => (
+                                            <div key={rev._id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '15px' }}>
+                                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                                <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{rev.userName}</span>
+                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(rev.createdAt).toLocaleDateString('vi-VN')}</span>
+                                              </div>
+                                              <div style={{ display: 'flex', gap: '2px', marginBottom: '8px', color: '#eab308' }}>
+                                                {[1, 2, 3, 4, 5].map(star => (
+                                                  <Star key={star} size={14} fill={star <= rev.rating ? '#eab308' : 'none'} stroke="#eab308" />
+                                                ))}
+                                              </div>
+                                              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.4', margin: '0' }}>{rev.comment}</p>
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                }
+
+                                return null;
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Lower Expandable Seat Map & Point selection */}
+                      {isExpanded && (
+                        <div style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'rgba(255, 255, 255, 0.4)', padding: '2rem' }} className="animate-fade-in">
+                          {bookingSuccess ? (
+                            <div style={{ textAlign: 'center', padding: '2rem' }}>
+                              <CheckCircle size={56} style={{ color: '#22c55e', marginBottom: '1rem' }} />
+                              <h3 style={{ color: '#22c55e', fontWeight: '700' }}>ĐẶT GHẾ THÀNH CÔNG!</h3>
+                              <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)' }}>
+                                Cảm ơn bạn **{user?.name || 'khách hàng'}** đã đặt chỗ. Vé xe của bạn đã được ghi nhận trên hệ thống.
+                              </p>
+                              <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                                Mã số ghế của bạn là: **{selectedSeats.join(', ')}**
+                              </p>
+                              <button
+                                className="btn btn-primary"
+                                style={{ marginTop: '1.5rem' }}
+                                onClick={() => {
+                                  setBookingSuccess(false);
+                                  setExpandedTripId(null);
+                                  setSelectedSeats([]);
+                                }}
+                              >
+                                Tiếp tục tìm chuyến khác
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="booking-layout">
+
+                              {/* Seat Selector Grid */}
+                              <div>
+                                <h4 style={{ fontWeight: '700', marginBottom: '1.25rem', textAlign: 'center' }}>Sơ Đồ Ghế Ngồi</h4>
+
+                                {/* Grid Layout of seats */}
+                                {(() => {
+                                  const { lowerFloor, upperFloor, columns } = (trip.busId?.seatLayout && trip.busId.seatLayout.lowerFloor)
+                                    ? trip.busId.seatLayout
+                                    : getSeatLayout(trip.busId.totalSeats, trip.busId.type || '');
+                                  const hasUpperFloor = upperFloor && upperFloor.length > 0;
+                                  const activeFloor = (selectedFloor === 'upper' && hasUpperFloor) ? 'upper' : 'lower';
+                                  const currentFloorRows = activeFloor === 'lower' ? lowerFloor : upperFloor;
+
+                                  return (
+                                    <>
+                                      {/* Floor Tabs Selector */}
+                                      {hasUpperFloor && (
+                                        <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+                                          <button
+                                            className={`btn ${activeFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
+                                            style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
+                                            onClick={() => setSelectedFloor('lower')}
+                                          >
+                                            Tầng Dưới (A)
+                                          </button>
+                                          <button
+                                            className={`btn ${activeFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
+                                            style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
+                                            onClick={() => setSelectedFloor('upper')}
+                                          >
+                                            Tầng Trên (B)
+                                          </button>
+                                        </div>
+                                      )}
+
+                                      <div style={{
+                                        display: 'grid',
+                                        gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                                        gap: '14px',
+                                        maxWidth: '360px',
+                                        margin: '0 auto',
+                                        padding: '1rem',
+                                        border: '2px solid var(--border-color)',
+                                        borderRadius: '12px',
+                                        backgroundColor: 'rgba(255, 255, 255, 0.6)'
+                                      }}>
+                                        {currentFloorRows.flat().map((seat, index) => {
+                                          if (seat === null) {
+                                            return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
+                                          }
+
+                                          const isBooked = trip.bookedSeats.includes(seat);
+                                          const isSelected = selectedSeats.includes(seat);
+
+                                          let seatBg = 'rgba(59, 130, 246, 0.1)'; // Blue light tint for available
+                                          let seatBorder = 'var(--primary)';
+                                          let seatColor = 'var(--primary)';
+
+                                          if (isBooked) {
+                                            seatBg = '#e5e7eb'; // Gray for booked
+                                            seatBorder = '#d1d5db';
+                                            seatColor = '#9ca3af';
+                                          } else if (isSelected) {
+                                            seatBg = 'var(--accent)'; // Orange/accent for selected
+                                            seatBorder = 'var(--accent)';
+                                            seatColor = '#ffffff';
+                                          }
 
                                           return (
-                                            <div key={stars} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem' }}>
-                                              <span style={{ width: '40px', textAlign: 'right' }}>{stars} sao</span>
-                                              <div style={{ flexGrow: 1, height: '6px', backgroundColor: '#e5e7eb', borderRadius: '3px', overflow: 'hidden' }}>
-                                                <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: 'var(--primary)' }}></div>
-                                              </div>
-                                              <span style={{ width: '35px', color: 'var(--text-secondary)' }}>{percentage}%</span>
-                                            </div>
+                                            <button
+                                              key={seat}
+                                              disabled={isBooked}
+                                              style={{
+                                                height: '56px',
+                                                borderRadius: '8px',
+                                                border: `2px solid ${seatBorder}`,
+                                                backgroundColor: seatBg,
+                                                color: seatColor,
+                                                fontWeight: '700',
+                                                fontSize: '0.9rem',
+                                                cursor: isBooked ? 'not-allowed' : 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.2s ease-in-out'
+                                              }}
+                                              onClick={() => handleSeatClick(seat, isBooked)}
+                                            >
+                                              {seat}
+                                            </button>
                                           );
                                         })}
                                       </div>
-                                    </div>
+                                    </>
+                                  );
+                                })()}
 
-                                    {/* Reviews List */}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                      {reviewsList.length === 0 ? (
-                                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem' }}>Chưa có nhận xét nào cho chuyến xe này.</p>
-                                      ) : (
-                                        reviewsList.map((rev) => (
-                                          <div key={rev._id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '15px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                              <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{rev.userName}</span>
-                                              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(rev.createdAt).toLocaleDateString('vi-VN')}</span>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: '2px', marginBottom: '8px', color: '#eab308' }}>
-                                              {[1, 2, 3, 4, 5].map(star => (
-                                                <Star key={star} size={14} fill={star <= rev.rating ? '#eab308' : 'none'} stroke="#eab308" />
-                                              ))}
-                                            </div>
-                                            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.4', margin: '0' }}>{rev.comment}</p>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
+                                {/* Color guide */}
+                                <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ width: '16px', height: '16px', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '2px solid var(--primary)', borderRadius: '4px' }}></div>
+                                    <span>Trống</span>
                                   </div>
-                                );
-                              }
-
-                              return null;
-                            })()}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Lower Expandable Seat Map & Point selection */}
-                    {isExpanded && (
-                      <div style={{ borderTop: '1px solid var(--border-color)', backgroundColor: 'rgba(255, 255, 255, 0.4)', padding: '2rem' }} className="animate-fade-in">
-                        {bookingSuccess ? (
-                          <div style={{ textAlign: 'center', padding: '2rem' }}>
-                            <CheckCircle size={56} style={{ color: '#22c55e', marginBottom: '1rem' }} />
-                            <h3 style={{ color: '#22c55e', fontWeight: '700' }}>ĐẶT GHẾ THÀNH CÔNG!</h3>
-                            <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)' }}>
-                              Cảm ơn bạn **{user?.name || 'khách hàng'}** đã đặt chỗ. Vé xe của bạn đã được ghi nhận trên hệ thống.
-                            </p>
-                            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-                              Mã số ghế của bạn là: **{selectedSeats.join(', ')}**
-                            </p>
-                            <button 
-                              className="btn btn-primary" 
-                              style={{ marginTop: '1.5rem' }} 
-                              onClick={() => {
-                                setBookingSuccess(false);
-                                setExpandedTripId(null);
-                                setSelectedSeats([]);
-                              }}
-                            >
-                              Tiếp tục tìm chuyến khác
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="booking-layout">
-                            
-                            {/* Seat Selector Grid */}
-                            <div>
-                              <h4 style={{ fontWeight: '700', marginBottom: '1.25rem', textAlign: 'center' }}>Sơ Đồ Ghế Ngồi</h4>
-                              
-                              {/* Grid Layout of seats */}
-                              {(() => {
-                                const { lowerFloor, upperFloor, columns } = (trip.busId?.seatLayout && trip.busId.seatLayout.lowerFloor)
-                                  ? trip.busId.seatLayout
-                                  : getSeatLayout(trip.busId.totalSeats, trip.busId.type || '');
-                                const hasUpperFloor = upperFloor && upperFloor.length > 0;
-                                const activeFloor = (selectedFloor === 'upper' && hasUpperFloor) ? 'upper' : 'lower';
-                                const currentFloorRows = activeFloor === 'lower' ? lowerFloor : upperFloor;
-
-                                return (
-                                  <>
-                                    {/* Floor Tabs Selector */}
-                                    {hasUpperFloor && (
-                                      <div style={{ display: 'flex', justifyContent: 'center', gap: '15px', marginBottom: '1.5rem' }}>
-                                        <button 
-                                          className={`btn ${activeFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
-                                          style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
-                                          onClick={() => setSelectedFloor('lower')}
-                                        >
-                                          Tầng Dưới (A)
-                                        </button>
-                                        <button 
-                                          className={`btn ${activeFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
-                                          style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.85rem' }}
-                                          onClick={() => setSelectedFloor('upper')}
-                                        >
-                                          Tầng Trên (B)
-                                        </button>
-                                      </div>
-                                    )}
-
-                                    <div style={{ 
-                                      display: 'grid', 
-                                      gridTemplateColumns: `repeat(${columns}, 1fr)`, 
-                                      gap: '14px', 
-                                      maxWidth: '360px', 
-                                      margin: '0 auto',
-                                      padding: '1rem',
-                                      border: '2px solid var(--border-color)',
-                                      borderRadius: '12px',
-                                      backgroundColor: 'rgba(255, 255, 255, 0.6)'
-                                    }}>
-                                    {currentFloorRows.flat().map((seat, index) => {
-                                      if (seat === null) {
-                                        return <div key={`spacer-${index}`} style={{ height: '56px' }}></div>;
-                                      }
-
-                                      const isBooked = trip.bookedSeats.includes(seat);
-                                      const isSelected = selectedSeats.includes(seat);
-
-                                      let seatBg = 'rgba(59, 130, 246, 0.1)'; // Blue light tint for available
-                                      let seatBorder = 'var(--primary)';
-                                      let seatColor = 'var(--primary)';
-
-                                      if (isBooked) {
-                                        seatBg = '#e5e7eb'; // Gray for booked
-                                        seatBorder = '#d1d5db';
-                                        seatColor = '#9ca3af';
-                                      } else if (isSelected) {
-                                        seatBg = 'var(--accent)'; // Orange/accent for selected
-                                        seatBorder = 'var(--accent)';
-                                        seatColor = '#ffffff';
-                                      }
-
-                                      return (
-                                        <button 
-                                          key={seat}
-                                          disabled={isBooked}
-                                          style={{
-                                            height: '56px',
-                                            borderRadius: '8px',
-                                            border: `2px solid ${seatBorder}`,
-                                            backgroundColor: seatBg,
-                                            color: seatColor,
-                                            fontWeight: '700',
-                                            fontSize: '0.9rem',
-                                            cursor: isBooked ? 'not-allowed' : 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            transition: 'all 0.2s ease-in-out'
-                                          }}
-                                          onClick={() => handleSeatClick(seat, isBooked)}
-                                        >
-                                          {seat}
-                                        </button>
-                                      );
-                                    })}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ width: '16px', height: '16px', backgroundColor: 'var(--accent)', border: '2px solid var(--accent)', borderRadius: '4px' }}></div>
+                                    <span>Đang chọn</span>
                                   </div>
-                                </>
-                              );
-                            })()}
-
-                              {/* Color guide */}
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '1.5rem', fontSize: '0.85rem' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{ width: '16px', height: '16px', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '2px solid var(--primary)', borderRadius: '4px' }}></div>
-                                  <span>Trống</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{ width: '16px', height: '16px', backgroundColor: 'var(--accent)', border: '2px solid var(--accent)', borderRadius: '4px' }}></div>
-                                  <span>Đang chọn</span>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{ width: '16px', height: '16px', backgroundColor: '#e5e7eb', border: '2px solid #d1d5db', borderRadius: '4px' }}></div>
-                                  <span>Đã mua</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <div style={{ width: '16px', height: '16px', backgroundColor: '#e5e7eb', border: '2px solid #d1d5db', borderRadius: '4px' }}></div>
+                                    <span>Đã mua</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Booking checkout details (right panel) */}
-                            <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                              <div>
-                                <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Thông tin đặt vé</h4>
-                                
-                                {/* Selected seats list */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                  <span style={{ color: 'var(--text-secondary)' }}>Ghế đã chọn:</span>
-                                  <span style={{ fontWeight: '700', color: 'var(--primary)' }}>
-                                    {selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế nào'}
-                                  </span>
+                              {/* Booking checkout details (right panel) */}
+                              <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div>
+                                  <h4 style={{ fontWeight: '700', marginBottom: '1.25rem' }}>Thông tin đặt vé</h4>
+
+                                  {/* Selected seats list */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Ghế đã chọn:</span>
+                                    <span style={{ fontWeight: '700', color: 'var(--primary)' }}>
+                                      {selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế nào'}
+                                    </span>
+                                  </div>
+
+                                  {/* Pickup points dropdown */}
+                                  <div className="form-group" style={{ marginBottom: '12px' }}>
+                                    <label className="form-label">Chọn điểm đón:</label>
+                                    <select
+                                      className="form-control"
+                                      value={selectedPickup}
+                                      onChange={(e) => setSelectedPickup(e.target.value)}
+                                    >
+                                      {trip.pickupPoints.map((p, idx) => (
+                                        <option key={idx} value={p.location}>
+                                          {p.time} - {p.location} ({p.address})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  {/* Dropoff points dropdown */}
+                                  <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                    <label className="form-label">Chọn điểm trả:</label>
+                                    <select
+                                      className="form-control"
+                                      value={selectedDropoff}
+                                      onChange={(e) => setSelectedDropoff(e.target.value)}
+                                    >
+                                      {trip.dropoffPoints.map((d, idx) => (
+                                        <option key={idx} value={d.location}>
+                                          {d.time} - {d.location} ({d.address})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
                                 </div>
 
-                                {/* Pickup points dropdown */}
-                                <div className="form-group" style={{ marginBottom: '12px' }}>
-                                  <label className="form-label">Chọn điểm đón:</label>
-                                  <select 
-                                    className="form-control" 
-                                    value={selectedPickup} 
-                                    onChange={(e) => setSelectedPickup(e.target.value)}
+                                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                    <span style={{ fontWeight: '700' }}>Tạm tính:</span>
+                                    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--accent)' }}>
+                                      {formatCurrency(trip.price * selectedSeats.length)}
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    className="btn btn-primary"
+                                    style={{ width: '100%', padding: '12px' }}
+                                    onClick={handleBookingSubmit}
                                   >
-                                    {trip.pickupPoints.map((p, idx) => (
-                                      <option key={idx} value={p.location}>
-                                        {p.time} - {p.location} ({p.address})
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-
-                                {/* Dropoff points dropdown */}
-                                <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                                  <label className="form-label">Chọn điểm trả:</label>
-                                  <select 
-                                    className="form-control" 
-                                    value={selectedDropoff} 
-                                    onChange={(e) => setSelectedDropoff(e.target.value)}
-                                  >
-                                    {trip.dropoffPoints.map((d, idx) => (
-                                      <option key={idx} value={d.location}>
-                                        {d.time} - {d.location} ({d.address})
-                                      </option>
-                                    ))}
-                                  </select>
+                                    Tiếp tục mua vé
+                                  </button>
                                 </div>
                               </div>
 
-                              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                                  <span style={{ fontWeight: '700' }}>Tạm tính:</span>
-                                  <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--accent)' }}>
-                                    {formatCurrency(trip.price * selectedSeats.length)}
-                                  </span>
-                                </div>
-
-                                <button 
-                                  className="btn btn-primary" 
-                                  style={{ width: '100%', padding: '12px' }}
-                                  onClick={handleBookingSubmit}
-                                >
-                                  Tiếp tục mua vé
-                                </button>
-                              </div>
                             </div>
-
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
 
@@ -2274,9 +2382,9 @@ const TripsPage = () => {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '2rem' }}>
-              <button 
-                className="btn btn-primary" 
-                style={{ width: '100%', padding: '12px' }} 
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', padding: '12px' }}
                 onClick={() => {
                   setShowAuthModal(false);
                   navigate('/login');
@@ -2284,8 +2392,8 @@ const TripsPage = () => {
               >
                 Đăng nhập tài khoản
               </button>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 style={{ width: '100%', padding: '12px' }}
                 onClick={() => {
                   setShowAuthModal(false);
@@ -2294,12 +2402,12 @@ const TripsPage = () => {
               >
                 Đăng ký thành viên mới
               </button>
-              <button 
-                style={{ 
-                  background: 'none', 
-                  border: 'none', 
-                  color: 'var(--text-muted)', 
-                  cursor: 'pointer', 
+              <button
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
                   marginTop: '8px',
                   fontSize: '0.85rem'
                 }}

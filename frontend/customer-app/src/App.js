@@ -17,6 +17,7 @@ import ShipmentPage from './pages/customer/ShipmentPage';
 import AIAssistantPage from './pages/customer/AIAssistantPage';
 import NotificationsPage from './pages/customer/NotificationsPage';
 import ProfilePage from './pages/customer/ProfilePage';
+import AIChatbotWidget from './components/AIChatbotWidget';
 
 // Protected Route - chỉ dành cho khách hàng đã đăng nhập
 const ProtectedRoute = ({ children }) => {
@@ -156,6 +157,9 @@ function App() {
               <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
             </Routes>
           </main>
+
+          {/* Floating AI Chatbot Widget */}
+          <AIChatbotWidget />
 
           {/* Footer */}
           <footer className="footer-futa">
