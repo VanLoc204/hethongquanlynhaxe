@@ -179,8 +179,11 @@ services:
     restart: always
     ports:
       - "8009:8009"
+    env_file:
+      - ./services/review-service/.env
     environment:
       - PORT=8009
+      - MONGO_URI=mongodb://mongodb:27017/bus_management
     depends_on:
       - mongodb
 
