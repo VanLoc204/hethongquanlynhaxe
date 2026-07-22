@@ -1,4 +1,5 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const mongoose = require('mongoose');
 
 // System instructions for Gemini AI Assistant
 const SYSTEM_INSTRUCTION = `
@@ -39,7 +40,9 @@ Dưới đây là thông tin nghiệp vụ chính thức của nhà xe để b�
    - Email hỗ trợ: hotro@adongbus.vn.
 
 QUY TẮC PHẢN HỒI:
-- Trả lời bằng tiếng Việt lịch sự, ngắn gọn, súc tích và xưng hô thân mật (Ví dụ: "Á Đông AI xin chào", "Dạ thưa quý khách...", "Á Đông Travel có thể hỗ trợ...").
+- Bạn sẽ được cung cấp "DỮ LIỆU HỆ THỐNG THỜI GIAN THỰC (REAL-TIME DATA)" trước câu hỏi của khách hàng. Hãy sử dụng dữ liệu này để trả lời chính xác về các chuyến đi, giờ chạy, biển số xe, số chỗ trống thực tế và tài xế phụ xe được phân công.
+- Trả lời bằng tiếng Việt lịch sự, ngắn gọn, súc tích và xưng hô thân mật (Ví dụ: "Dạ, Á Đông AI xin chào...", "Dạ thưa quý khách...", "Á Đông Travel có thể hỗ trợ...").
+- Trả lời thẳng vào câu hỏi của khách, tuyệt đối tự nhiên như con người, không được đề cập các thuật ngữ kỹ thuật như "dữ liệu hệ thống", "database", hay "dữ liệu context" trong câu trả lời.
 - Đối với những câu hỏi ngoài lề không liên quan đến dịch vụ nhà xe (như hỏi giải bài tập, viết code, tư vấn tâm lý, hướng dẫn lập trình, ẩm thực ngoài lề...), bạn hãy khéo léo từ chối và hướng đối thoại của khách hàng quay lại các chủ đề đặt vé, tuyến đi, lịch trình hoặc ký gửi hàng của Á Đông Travel.
 - Trả lời thẳng vào câu hỏi, tối đa 3-4 câu ngắn gọn, dễ hiểu.
 `;
@@ -59,14 +62,95 @@ const initGemini = () => {
     const genAI = new GoogleGenerativeAI(apiKey);
     // get model with system instructions
     model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.5-flash',
       systemInstruction: SYSTEM_INSTRUCTION
     });
-    console.log('[Gemini Service] Successfully initialized Google Gemini 1.5 Flash.');
+    console.log('[Gemini Service] Successfully initialized Google Gemini 3.5 Flash.');
     return model;
   } catch (error) {
     console.error('[Gemini Service] Error initializing Gemini Client:', error.message);
     return null;
+  }
+};
+
+// Retrieve real-time data from MongoDB to feed into Gemini prompt
+const getSystemDataContext = async () => {
+  try {
+    const db = mongoose.connection.db;
+    if (!db) {
+      console.warn('[Gemini Service] MongoDB connection not ready yet. Skipping real-time data retrieval.');
+      return '';
+    }
+
+    // 1. Fetch all routes
+    const routes = await db.collection('routes').find({}).toArray();
+    // 2. Fetch all buses
+    const buses = await db.collection('buses').find({}).toArray();
+    
+    // 3. Fetch trips (today + tomorrow)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrowEnd = new Date(today);
+    tomorrowEnd.setDate(today.getDate() + 2); // 2 days context
+
+    const trips = await db.collection('trips').find({
+      departureTime: { $gte: today, $lt: tomorrowEnd }
+    }).toArray();
+
+    // Format the database data context
+    let context = 'DỮ LIỆU HỆ THỐNG THỜI GIAN THỰC (REAL-TIME DATA):\n';
+    
+    context += '\n[Danh Sách Tuyến Xe Hiện Có]\n';
+    routes.forEach(r => {
+      context += `- Tuyến: từ ${r.startPoint} đi ${r.endPoint} (Khoảng cách: ${r.distance}, Thời gian đi dự kiến: ${r.duration})\n`;
+    });
+
+    context += '\n[Danh Sách Xe Khách Đang Hoạt Động]\n';
+    buses.forEach(b => {
+      context += `- Xe: ${b.plateNumber} | Dòng xe: ${b.type} | Số chỗ: ${b.totalSeats} | Tiện ích: ${b.amenities.join(', ')}\n`;
+    });
+
+    context += '\n[Lịch Trình Chuyến Xe Hôm Nay Và Ngày Mai]\n';
+    if (trips.length === 0) {
+      context += '- Hiện không có chuyến xe nào khởi hành hôm nay hoặc ngày mai.\n';
+    } else {
+      trips.forEach(t => {
+        const route = routes.find(r => r._id.toString() === t.routeId.toString());
+        const bus = buses.find(b => b._id.toString() === t.busId.toString());
+        
+        // Convert dates to Vietnam Timezone strings
+        const depTime = new Date(t.departureTime).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+        const arrTime = new Date(t.arrivalTime).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+        const routeStr = route ? `${route.startPoint} ↔ ${route.endPoint}` : 'N/A';
+        const busStr = bus ? `${bus.type} (${bus.plateNumber})` : 'N/A';
+        
+        context += `- Chuyến xe: ${routeStr}\n`;
+        context += `  + Giờ xuất phát: ${depTime}\n`;
+        context += `  + Giờ đến dự kiến: ${arrTime}\n`;
+        context += `  + Giá vé: ${t.price.toLocaleString('vi-VN')} VNĐ\n`;
+        context += `  + Loại xe: ${busStr}\n`;
+        context += `  + Tài xế: ${t.driver?.name || 'Chưa phân công'} (${t.driver?.phone || ''})\n`;
+        context += `  + Phụ xe: ${t.assistant?.name || 'Chưa phân công'} (${t.assistant?.phone || ''})\n`;
+        
+        if (t.pickupPoints && t.pickupPoints.length > 0) {
+          context += `  + Điểm đón: ${t.pickupPoints.map(p => `${p.time} tại ${p.location}`).join('; ')}\n`;
+        }
+        if (t.dropoffPoints && t.dropoffPoints.length > 0) {
+          context += `  + Điểm trả: ${t.dropoffPoints.map(p => `${p.time} tại ${p.location}`).join('; ')}\n`;
+        }
+        
+        const totalSeats = bus ? bus.totalSeats : 44;
+        const bookedCount = t.bookedSeats ? t.bookedSeats.length : 0;
+        const remainingSeats = totalSeats - bookedCount;
+        context += `  + Ghế trống: Còn trống ${remainingSeats}/${totalSeats} chỗ. (Các ghế đã đặt: ${t.bookedSeats && t.bookedSeats.length > 0 ? t.bookedSeats.join(', ') : 'Chưa có'})\n`;
+        context += '\n';
+      });
+    }
+
+    return context;
+  } catch (error) {
+    console.error('[Gemini Service] Error compiling database context:', error.message);
+    return '';
   }
 };
 
@@ -83,7 +167,7 @@ const getRuleBasedResponse = (userText) => {
   }
 
   if (text.includes('hành lý') || text.includes('đồ đạc') || text.includes('mang theo')) {
-    return 'Hành khách được mang theo miễn phí tối đa 20kg hành lý gửi gầm xe. Không mang theo chất cấm,易 cháy nổ và động vật sống lên cabin chính.';
+    return 'Hành khách được mang theo miễn phí tối đa 20kg hành lý gửi gầm xe. Không mang theo chất cấm, dễ cháy nổ và động vật sống lên cabin chính.';
   }
 
   if (text.includes('hủy vé') || text.includes('hoàn vé') || text.includes('trả vé')) {
@@ -115,16 +199,24 @@ const getChatResponse = async (history, newMessage) => {
         parts: [{ text: msg.text }]
       }));
 
+      // Retrieve database real-time context
+      const dbContext = await getSystemDataContext();
+      
+      // Prepend database context to the current message
+      const promptText = dbContext 
+        ? `${dbContext}\n\nCÂU HỎI KHÁCH HÀNG: "${newMessage}"`
+        : newMessage;
+
       // Start Chat Session with history context
       const chatSession = model.startChat({
         history: geminiHistory,
         generationConfig: {
-          maxOutputTokens: 500,
+          maxOutputTokens: 2048,
           temperature: 0.7,
         }
       });
 
-      const response = await chatSession.sendMessage(newMessage);
+      const response = await chatSession.sendMessage(promptText);
       const textResponse = response.response.text();
       return textResponse;
     } catch (error) {
