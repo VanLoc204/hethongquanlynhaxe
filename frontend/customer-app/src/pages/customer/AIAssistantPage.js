@@ -1,15 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import axios from 'axios';
+import { AuthContext } from '../../context/AuthContext';
 import { MessageSquare, Send, Bot, User, Sparkles, AlertCircle } from 'lucide-react';
 
 const AIAssistantPage = () => {
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: 'bot',
-      text: 'Xin chào! Tôi là Trợ lý ảo Á Đông AI. Tôi có thể hỗ trợ gì cho hành trình của bạn ngày hôm nay? Bạn có thể hỏi tôi về lịch trình xe, chính sách hành lý, cách đặt vé hoặc hủy vé.',
-      time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-    }
-  ]);
+  const { user } = useContext(AuthContext);
+  const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef(null);
@@ -21,11 +17,34 @@ const AIAssistantPage = () => {
     'Làm sao để tích lũy điểm thành viên?'
   ];
 
+  // Initialize session and chat history
+  useEffect(() => {
+    let session = sessionStorage.getItem('assistant_page_session_id');
+    if (!session) {
+      session = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      sessionStorage.setItem('assistant_page_session_id', session);
+    }
+
+    const savedMessages = sessionStorage.getItem('assistant_page_messages');
+    if (savedMessages) {
+      setMessages(JSON.parse(savedMessages));
+    } else {
+      const welcomeMsg = {
+        id: 'welcome',
+        sender: 'bot',
+        text: `Xin chào ${user ? user.name : 'quý khách'}! Tôi là Trợ lý ảo Á Đông AI. Tôi có thể hỗ trợ gì cho hành trình của bạn ngày hôm nay? Bạn có thể hỏi tôi về lịch trình xe, chính sách hành lý, cách đặt vé hoặc hủy vé.`,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages([welcomeMsg]);
+      sessionStorage.setItem('assistant_page_messages', JSON.stringify([welcomeMsg]));
+    }
+  }, [user]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const getAIResponse = (userText) => {
+  const getOfflineResponse = (userText) => {
     const text = userText.toLowerCase();
     
     if (text.includes('đà lạt') || text.includes('lịch trình') || text.includes('chuyến đi')) {
@@ -35,7 +54,7 @@ const AIAssistantPage = () => {
     if (text.includes('hành lý') || text.includes('đồ đạc') || text.includes('mang theo')) {
       return 'Theo quy định của Á Đông Travel, mỗi hành khách được miễn phí tối đa 20kg hành lý ký gửi. Hành lý xách tay gọn nhẹ không cản trở lối đi. Quý khách vui lòng không mang theo các chất dễ cháy nổ, chất cấm hoặc động vật nuôi lên khoang hành khách.';
     }
-
+    
     if (text.includes('hủy vé') || text.includes('hoàn vé') || text.includes('trả vé')) {
       return 'Chính sách hoàn hủy của chúng tôi rất linh hoạt: Quý khách được hoàn tiền 100% khi thực hiện hủy vé trước giờ khởi hành ít nhất 24 tiếng. Hủy vé trong vòng 24 tiếng trước giờ chạy sẽ không được hỗ trợ hoàn tiền. Quý khách có thể thao tác hủy trực tiếp tại trang "Quản lý vé" trên tài khoản thành viên.';
     }
@@ -47,32 +66,81 @@ const AIAssistantPage = () => {
     return 'Cảm ơn quý khách đã gửi câu hỏi. Mọi thắc mắc cụ thể hoặc cần hỗ trợ gấp về vé xe, quý khách có thể liên hệ trực tiếp Tổng đài CSKH 1900 6067 để gặp nhân viên hỗ trợ trực tiếp 24/7.';
   };
 
-  const handleSendMessage = (textToSend) => {
-    if (!textToSend.trim()) return;
+  const handleSendMessage = async (textToSend) => {
+    if (!textToSend.trim() || isTyping) return;
 
     // Add user message
     const newMsg = {
-      id: Date.now(),
+      id: `user_${Date.now()}`,
       sender: 'user',
-      text: textToSend,
+      text: textToSend.trim(),
       time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
     };
 
-    setMessages(prev => [...prev, newMsg]);
+    const updatedMessages = [...messages, newMsg];
+    setMessages(updatedMessages);
+    sessionStorage.setItem('assistant_page_messages', JSON.stringify(updatedMessages));
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate AI typing delay
-    setTimeout(() => {
-      setIsTyping(false);
-      const replyMsg = {
-        id: Date.now() + 1,
+    try {
+      const sessionId = sessionStorage.getItem('assistant_page_session_id');
+      const token = localStorage.getItem('token');
+
+      // Map chat messages format for context API requirement
+      const historyContext = messages
+        .filter(m => m.id !== 'welcome')
+        .map(m => ({
+          sender: m.sender,
+          text: m.text
+        }));
+
+      // Call API Gateway reviews chat proxy endpoint
+      const headers = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await axios.post(
+        'http://localhost:8000/api/v1/reviews/chat',
+        {
+          message: textToSend.trim(),
+          sessionId,
+          history: historyContext
+        },
+        { headers }
+      );
+
+      if (response.data && response.data.success) {
+        const botMsg = {
+          id: `bot_${Date.now()}`,
+          sender: 'bot',
+          text: response.data.text,
+          time: new Date(response.data.timestamp || Date.now()).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        };
+        const finalMessages = [...updatedMessages, botMsg];
+        setMessages(finalMessages);
+        sessionStorage.setItem('assistant_page_messages', JSON.stringify(finalMessages));
+      } else {
+        throw new Error(response.data.message || 'Error from server');
+      }
+    } catch (err) {
+      console.error('[AI Assistant Page] API Error:', err);
+      
+      // Fallback response
+      const fallbackText = getOfflineResponse(textToSend);
+      const botMsg = {
+        id: `bot_fallback_${Date.now()}`,
         sender: 'bot',
-        text: getAIResponse(textToSend),
+        text: `${fallbackText} (Lưu ý: Hệ thống AI đang gián đoạn, tin nhắn này được trả lời tự động offline)`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
       };
-      setMessages(prev => [...prev, replyMsg]);
-    }, 1500);
+      const finalMessages = [...updatedMessages, botMsg];
+      setMessages(finalMessages);
+      sessionStorage.setItem('assistant_page_messages', JSON.stringify(finalMessages));
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleSubmit = (e) => {
