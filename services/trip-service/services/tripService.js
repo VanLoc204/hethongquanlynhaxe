@@ -69,11 +69,17 @@ class TripService {
       throw new Error('Định dạng ngày không hợp lệ. Vui lòng sử dụng định dạng YYYY-MM-DD.');
     }
 
-    // 2. Find direct Route
-    const route = await routeRepository.findOne({
-      startPoint: { $regex: new RegExp(`^${from.trim()}$`, 'i') },
-      endPoint: { $regex: new RegExp(`^${to.trim()}$`, 'i') }
+    // Find all route IDs matching the "from" startPoint
+    const routesFrom = await routeRepository.find({
+      startPoint: { $regex: new RegExp(from.trim(), 'i') }
     });
+    const routeIdsFrom = routesFrom.map(r => r._id);
+
+    // Find all route IDs matching the "to" endPoint
+    const routesTo = await routeRepository.find({
+      endPoint: { $regex: new RegExp(to.trim(), 'i') }
+    });
+    const routeIdsTo = routesTo.map(r => r._id);
 
     // 3. Build query for Trips (Only show trips in the future)
     const now = new Date();
@@ -86,21 +92,25 @@ class TripService {
       }
     };
 
-    const fromRegex = new RegExp(`^${from.trim()}$`, 'i');
-    const toRegex = new RegExp(`^${to.trim()}$`, 'i');
+    const fromRegex = new RegExp(from.trim(), 'i');
+    const toRegex = new RegExp(to.trim(), 'i');
 
-    if (route) {
-      query.$or = [
-        { routeId: route._id },
-        {
-          'pickupPoints.location': { $regex: fromRegex },
-          'dropoffPoints.location': { $regex: toRegex }
-        }
-      ];
-    } else {
-      query['pickupPoints.location'] = { $regex: fromRegex };
-      query['dropoffPoints.location'] = { $regex: toRegex };
+    const fromConditions = [];
+    if (routeIdsFrom.length > 0) {
+      fromConditions.push({ routeId: { $in: routeIdsFrom } });
     }
+    fromConditions.push({ 'pickupPoints.location': { $regex: fromRegex } });
+
+    const toConditions = [];
+    if (routeIdsTo.length > 0) {
+      toConditions.push({ routeId: { $in: routeIdsTo } });
+    }
+    toConditions.push({ 'dropoffPoints.location': { $regex: toRegex } });
+
+    query.$and = [
+      { $or: fromConditions },
+      { $or: toConditions }
+    ];
 
     const trips = await tripRepository.findWithPopulate(query, { departureTime: 1 });
 
@@ -533,6 +543,60 @@ class TripService {
 
     await tripRepository.delete(trip);
     return true;
+  }
+
+  async getSearchLocations() {
+    const routes = await routeRepository.find({});
+    const trips = await tripRepository.findWithPopulate({});
+
+    const originsMap = new Map();
+    const destinationsMap = new Map();
+
+    // 1. Add route cities/provinces
+    for (const route of routes) {
+      if (route.startPoint) {
+        originsMap.set(route.startPoint, { name: route.startPoint, type: 'city' });
+      }
+      if (route.endPoint) {
+        destinationsMap.set(route.endPoint, { name: route.endPoint, type: 'city' });
+      }
+    }
+
+    // 2. Add specific pickup/dropoff points
+    for (const trip of trips) {
+      const startPoint = trip.routeId?.startPoint;
+      const endPoint = trip.routeId?.endPoint;
+
+      if (trip.pickupPoints && Array.isArray(trip.pickupPoints)) {
+        for (const p of trip.pickupPoints) {
+          if (p.location && !originsMap.has(p.location)) {
+            originsMap.set(p.location, {
+              name: p.location,
+              type: 'station',
+              parent: startPoint || ''
+            });
+          }
+        }
+      }
+
+      if (trip.dropoffPoints && Array.isArray(trip.dropoffPoints)) {
+        for (const d of trip.dropoffPoints) {
+          if (d.location && !destinationsMap.has(d.location)) {
+            destinationsMap.set(d.location, {
+              name: d.location,
+              type: 'station',
+              parent: endPoint || ''
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      origins: Array.from(originsMap.values()),
+      destinations: Array.from(destinationsMap.values()),
+      routes
+    };
   }
 
   // Return raw Trip mongoose document for direct mutation (seat release)

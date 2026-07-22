@@ -30,6 +30,28 @@ exports.searchTrips = async (req, res) => {
   }
 };
 
+// @desc    Get all routes (public view for home search dropdown)
+// @route   GET /api/v1/trips/routes
+// @access  Public
+exports.getPublicRoutes = async (req, res) => {
+  try {
+    const data = await tripService.getSearchLocations();
+    res.status(200).json({
+      success: true,
+      routes: data.routes,
+      origins: data.origins,
+      destinations: data.destinations
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách tuyến đường công khai:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi lấy danh sách tuyến đường.'
+    });
+  }
+};
+
+
 // @desc    Get detailed trip by ID (with seat map info)
 // @route   GET /api/v1/trips/:id
 // @access  Public

@@ -151,6 +151,7 @@
   align-items: center;
   justify-content: space-between;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  flex-shrink: 0;
 }
 
 .bot-profile-info {
@@ -221,6 +222,8 @@
 /* Chat Messages Stream Area */
 .chatbot-messages-area {
   flex-grow: 1;
+  flex-shrink: 1;
+  min-height: 0;
   padding: 16px;
   overflow-y: auto;
   display: flex;
@@ -375,6 +378,7 @@
   background-color: white;
   border-top: 1px solid #f1f5f9;
   scrollbar-width: none; /* Hide scrollbar for Firefox */
+  flex-shrink: 0;
 }
 
 .chatbot-suggestions::-webkit-scrollbar {
@@ -408,6 +412,7 @@
   background-color: white;
   border-top: 1px solid #f1f5f9;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .chatbot-text-input {
