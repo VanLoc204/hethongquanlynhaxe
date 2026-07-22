@@ -20,18 +20,36 @@ const SearchBox = ({
   const [showFromSuggestions, setShowFromSuggestions] = useState(false);
   const [showToSuggestions, setShowToSuggestions] = useState(false);
 
-  const popularLocations = [
-    { name: 'Bến Xe Miền Đông', detail: 'Hồ Chí Minh' },
-    { name: 'Bến Xe Miền Tây', detail: 'Hồ Chí Minh' },
-    { name: 'Bến Xe An Sương', detail: 'Hồ Chí Minh' },
-    { name: 'Bến Xe Ngã Tư Ga', detail: 'Hồ Chí Minh' },
-    { name: 'Bến Xe Cần Thơ', detail: 'Cần Thơ' },
-    { name: 'Bến Xe Cà Mau', detail: 'Cà Mau' },
-    { name: 'Bến Xe Bạc Liêu', detail: 'Bạc Liêu' },
-    { name: 'Bến Xe Liên Tỉnh Đà Lạt', detail: 'Lâm Đồng (Đà Lạt)' },
-    { name: 'Bến Xe Trung Tâm Đà Nẵng', detail: 'Đà Nẵng' },
-    { name: 'Bến Xe Phía Nam Nha Trang', detail: 'Khánh Hòa (Nha Trang)' }
-  ];
+  const [fromLocations, setFromLocations] = useState([]);
+  const [toLocations, setToLocations] = useState([]);
+
+  // Fetch unique locations from database
+  useEffect(() => {
+    const fetchLocations = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/api/v1/trips/routes');
+        const data = await response.json();
+        if (data && data.success) {
+          setFromLocations(data.origins || []);
+          setToLocations(data.destinations || []);
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải danh sách địa điểm:', err);
+      }
+    };
+    fetchLocations();
+  }, []);
+
+  // Filter locations based on user input
+  const filteredFromLocations = fromLocations.filter(loc =>
+    loc.name.toLowerCase().includes(from.toLowerCase()) ||
+    (loc.parent && loc.parent.toLowerCase().includes(from.toLowerCase()))
+  );
+
+  const filteredToLocations = toLocations.filter(loc =>
+    loc.name.toLowerCase().includes(to.toLowerCase()) ||
+    (loc.parent && loc.parent.toLowerCase().includes(to.toLowerCase()))
+  );
 
   // Click outside to close suggestion dropdowns
   useEffect(() => {
@@ -100,33 +118,27 @@ const SearchBox = ({
             {/* From Suggestions Dropdown */}
             {showFromSuggestions && (
               <div className="search-suggestions-dropdown">
-                {popularLocations
-                  .filter(loc =>
-                    loc.name.toLowerCase().includes(from.toLowerCase()) ||
-                    loc.detail.toLowerCase().includes(from.toLowerCase())
-                  )
-                  .map((loc, index) => (
-                    <div
-                      key={index}
-                      className="suggestion-item"
-                      onClick={() => {
-                        setFrom(loc.name);
-                        setShowFromSuggestions(false);
-                      }}
-                    >
-                      <MapPin size={14} className="suggestion-icon" />
-                      <div className="suggestion-content">
-                        <span className="suggestion-name">{loc.name}</span>
-                        <span className="suggestion-detail">{loc.detail}</span>
-                      </div>
+                {filteredFromLocations.map((loc, index) => (
+                  <div
+                    key={index}
+                    className="suggestion-item"
+                    onClick={() => {
+                      setFrom(loc.name);
+                      setShowFromSuggestions(false);
+                    }}
+                  >
+                    <MapPin size={14} className="suggestion-icon" />
+                    <div className="suggestion-content">
+                      <span className="suggestion-name">{loc.name}</span>
+                      <span className="suggestion-detail">
+                        {loc.type === 'city' ? 'Tỉnh / Thành phố' : `Điểm đón tại ${loc.parent}`}
+                      </span>
                     </div>
-                  ))}
-                {popularLocations.filter(loc =>
-                  loc.name.toLowerCase().includes(from.toLowerCase()) ||
-                  loc.detail.toLowerCase().includes(from.toLowerCase())
-                ).length === 0 && (
-                    <div className="no-suggestions">Không tìm thấy địa điểm</div>
-                  )}
+                  </div>
+                ))}
+                {filteredFromLocations.length === 0 && (
+                  <div className="no-suggestions">Không tìm thấy địa điểm</div>
+                )}
               </div>
             )}
           </div>
@@ -152,33 +164,27 @@ const SearchBox = ({
             {/* To Suggestions Dropdown */}
             {showToSuggestions && (
               <div className="search-suggestions-dropdown">
-                {popularLocations
-                  .filter(loc =>
-                    loc.name.toLowerCase().includes(to.toLowerCase()) ||
-                    loc.detail.toLowerCase().includes(to.toLowerCase())
-                  )
-                  .map((loc, index) => (
-                    <div
-                      key={index}
-                      className="suggestion-item"
-                      onClick={() => {
-                        setTo(loc.name);
-                        setShowToSuggestions(false);
-                      }}
-                    >
-                      <MapPin size={14} className="suggestion-icon" style={{ color: 'var(--accent)' }} />
-                      <div className="suggestion-content">
-                        <span className="suggestion-name">{loc.name}</span>
-                        <span className="suggestion-detail">{loc.detail}</span>
-                      </div>
+                {filteredToLocations.map((loc, index) => (
+                  <div
+                    key={index}
+                    className="suggestion-item"
+                    onClick={() => {
+                      setTo(loc.name);
+                      setShowToSuggestions(false);
+                    }}
+                  >
+                    <MapPin size={14} className="suggestion-icon" style={{ color: 'var(--accent)' }} />
+                    <div className="suggestion-content">
+                      <span className="suggestion-name">{loc.name}</span>
+                      <span className="suggestion-detail">
+                        {loc.type === 'city' ? 'Tỉnh / Thành phố' : `Điểm trả tại ${loc.parent}`}
+                      </span>
                     </div>
-                  ))}
-                {popularLocations.filter(loc =>
-                  loc.name.toLowerCase().includes(to.toLowerCase()) ||
-                  loc.detail.toLowerCase().includes(to.toLowerCase())
-                ).length === 0 && (
-                    <div className="no-suggestions">Không tìm thấy địa điểm</div>
-                  )}
+                  </div>
+                ))}
+                {filteredToLocations.length === 0 && (
+                  <div className="no-suggestions">Không tìm thấy địa điểm</div>
+                )}
               </div>
             )}
           </div>

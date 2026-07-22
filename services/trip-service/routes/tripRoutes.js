@@ -19,11 +19,15 @@ const {
   createTrip,
   updateTrip,
   deleteTrip,
-  releaseSeats
+  releaseSeats,
+  getPublicRoutes
 } = require('../controllers/tripController');
 
 // Search Route
 router.get('/search', searchTrips);
+
+// Get all routes (public view for search suggestions)
+router.get('/routes', getPublicRoutes);
 
 // PayOS Webhook Route
 router.post('/payment/webhook', payosWebhook);
