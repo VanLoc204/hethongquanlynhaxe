@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import axios from 'axios';
 import { Map, Navigation, Compass, Truck, Phone, Star, ShieldAlert, Award, Clock, ArrowRight } from 'lucide-react';
@@ -9,6 +9,12 @@ const TrackJourneyPage = () => {
   const [selectedTrip, setSelectedTrip] = useState(null);
   const [mockProgress, setMockProgress] = useState(35); // percentage progress of the bus
   const [loading, setLoading] = useState(true);
+
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+  const polylineRef = useRef(null);
 
   useEffect(() => {
     const fetchTripsAndBookings = async () => {
@@ -150,6 +156,176 @@ const TrackJourneyPage = () => {
     }
   }, [selectedTrip]);
 
+  // Load Leaflet resources dynamically
+  useEffect(() => {
+    if (window.L) {
+      setMapLoaded(true);
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => {
+      setMapLoaded(true);
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      // resources kept loaded for subsequent navigation
+    };
+  }, []);
+
+  const getRouteCoordinates = (from, to) => {
+    if (from.toLowerCase().includes('hồ chí minh') && to.toLowerCase().includes('đà lạt')) {
+      return [
+        [10.8231, 106.6297], // HCM
+        [10.9574, 106.8427], // Biên Hòa
+        [10.9984, 107.2427], // Dầu Giây
+        [11.2333, 107.4500], // Định Quán
+        [11.4583, 107.5917], // Tân Phú
+        [11.5167, 107.7167], // Đạ Huoai
+        [11.5458, 107.8028], // Bảo Lộc
+        [11.5843, 108.0664], // Di Linh
+        [11.7583, 108.2667], // Đức Trọng
+        [11.9404, 108.4583]  // Đà Lạt
+      ];
+    } else if (from.toLowerCase().includes('hồ chí minh') && to.toLowerCase().includes('cần thơ')) {
+      return [
+        [10.8231, 106.6297], // HCM
+        [10.6297, 106.3636], // Tân An
+        [10.3606, 106.3708], // Mỹ Tho
+        [10.2541, 105.9722], // Vĩnh Long
+        [10.0452, 105.7469]  // Cần Thơ
+      ];
+    }
+    return [
+      [10.8231, 106.6297],
+      [11.9404, 108.4583]
+    ];
+  };
+
+  const interpolatePosition = (route, percent) => {
+    if (!route || route.length === 0) return [0, 0];
+    if (percent <= 0) return route[0];
+    if (percent >= 100) return route[route.length - 1];
+
+    const totalSegments = route.length - 1;
+    const positionInRoute = (percent / 100) * totalSegments;
+    const segmentIndex = Math.floor(positionInRoute);
+    const segmentPercent = positionInRoute - segmentIndex;
+
+    const startNode = route[segmentIndex];
+    const endNode = route[segmentIndex + 1];
+
+    const lat = startNode[0] + (endNode[0] - startNode[0]) * segmentPercent;
+    const lng = startNode[1] + (endNode[1] - startNode[1]) * segmentPercent;
+
+    return [lat, lng];
+  };
+
+  // Map lifecycle and updates
+  useEffect(() => {
+    if (!mapLoaded || !selectedTrip || !window.L) return;
+
+    const routeCoords = getRouteCoordinates(selectedTrip.from, selectedTrip.to);
+    const busPos = interpolatePosition(routeCoords, mockProgress);
+
+    if (!mapInstanceRef.current && mapRef.current) {
+      mapInstanceRef.current = window.L.map(mapRef.current, {
+        zoomControl: true,
+        scrollWheelZoom: true
+      });
+
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(mapInstanceRef.current);
+
+      // Force recalculation of container size after Leaflet initializes
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 200);
+    }
+
+    const map = mapInstanceRef.current;
+
+    // Draw route polyline
+    if (polylineRef.current) {
+      map.removeLayer(polylineRef.current);
+    }
+    polylineRef.current = window.L.polyline(routeCoords, {
+      color: '#2563eb',
+      weight: 5,
+      opacity: 0.75,
+      dashArray: '5, 8'
+    }).addTo(map);
+
+    // Zoom once when trip changes
+    const tripKey = `${selectedTrip.from}-${selectedTrip.to}-${selectedTrip.id}`;
+    if (mapRef.current && mapRef.current.dataset.currentTrip !== tripKey) {
+      mapRef.current.dataset.currentTrip = tripKey;
+      map.fitBounds(polylineRef.current.getBounds(), { padding: [40, 40] });
+    }
+
+    // Custom DivIcon
+    const busIcon = window.L.divIcon({
+      html: `
+        <div style="
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background-color: #f97316;
+          border: 3px solid #ffffff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #ffffff;
+          box-shadow: 0 4px 10px rgba(249, 115, 22, 0.5);
+        ">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-5l-4-4h-3v10h2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+        </div>
+      `,
+      className: '',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    // Draw/Move Marker
+    if (markerRef.current) {
+      markerRef.current.setLatLng(busPos);
+    } else {
+      markerRef.current = window.L.marker(busPos, { icon: busIcon }).addTo(map);
+    }
+
+    // Set popup content
+    markerRef.current.bindPopup(`
+      <div style="font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4; padding: 4px; min-width: 150px;">
+        <strong style="color: #2563eb; font-size: 13px;">Xe Á Đông Travel</strong><br/>
+        Biển số: <strong>${selectedTrip.busPlate}</strong><br/>
+        Tốc độ: <strong>${selectedTrip.speed}</strong><br/>
+        Đã đi được: <strong>${mockProgress}%</strong>
+      </div>
+    `);
+  }, [mapLoaded, selectedTrip, mockProgress]);
+
+  // Clean up map instance on unmount
+  useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markerRef.current = null;
+        polylineRef.current = null;
+      }
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="section-container animate-fade-in" style={{ maxWidth: '1100px', paddingBottom: '5rem', textAlign: 'center', marginTop: '5rem' }}>
@@ -179,7 +355,7 @@ const TrackJourneyPage = () => {
   }
 
   return (
-    <div className="section-container animate-fade-in" style={{ maxWidth: '1100px', paddingBottom: '5rem' }}>
+    <div className="section-container animate-fade-in" style={{ maxWidth: '1400px', width: '95%', paddingBottom: '5rem' }}>
       
       {/* Title */}
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
@@ -320,13 +496,34 @@ const TrackJourneyPage = () => {
               </div>
             </div>
 
+            {/* Map Card */}
+            <div className="glass-card animate-fade-in" style={{ padding: '0', overflow: 'hidden', height: '450px' }}>
+              <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ fontWeight: '700', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Map size={20} style={{ color: 'var(--primary)' }} />
+                  Bản Đồ Hành Trình Trực Tuyến
+                </h4>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cập nhật vị trí thực tế của xe</span>
+              </div>
+              <div ref={mapRef} style={{ width: '100%', height: '398px', zIndex: 1 }} />
+            </div>
+
             {/* Timelines and Stops */}
             <div className="glass-card animate-fade-in" style={{ padding: '2rem' }}>
               <h4 style={{ fontWeight: '700', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Clock size={20} style={{ color: 'var(--primary)' }} />
                 Danh Sách Các Điểm Dừng Và Thời Gian Dự Kiến
               </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', paddingLeft: '24px' }}>
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: '20px', 
+                position: 'relative', 
+                paddingLeft: '24px',
+                maxHeight: '320px',
+                overflowY: 'auto',
+                paddingRight: '10px'
+              }}>
                 {/* Visual timeline bar */}
                 <div style={{
                   position: 'absolute',
@@ -339,16 +536,17 @@ const TrackJourneyPage = () => {
 
                 {selectedTrip.stops.map((stop, idx) => {
                   let circleBg = '#e5e7eb';
-                  let textColor = 'var(--text-muted)';
+                  let textColor = '#4b5563'; // Darker gray for better contrast
                   let iconElement = null;
 
                   if (stop.completed) {
-                    circleBg = 'var(--primary)';
+                    circleBg = '#10b981'; // Green for completed stops
                     textColor = 'var(--text-secondary)';
+                    iconElement = <span style={{ color: '#ffffff', fontSize: '9px', fontWeight: 'bold' }}>✓</span>;
                   } else if (stop.current) {
                     circleBg = 'var(--accent)';
                     textColor = 'var(--text-primary)';
-                    iconElement = <Navigation size={12} className="animate-pulse" style={{ color: '#ffffff' }} />;
+                    iconElement = <Navigation size={10} className="animate-pulse" style={{ color: '#ffffff' }} />;
                   }
 
                   return (
@@ -380,7 +578,7 @@ const TrackJourneyPage = () => {
                             {stop.current && <span style={{ marginLeft: '10px', fontSize: '0.7rem', color: 'var(--accent)', backgroundColor: 'rgba(249, 115, 22, 0.1)', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>XE HIỆN TẠI ĐANG Ở ĐÂY</span>}
                           </h5>
                         </div>
-                        <span style={{ fontSize: '0.85rem', fontWeight: '700', color: stop.completed ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '700', color: stop.completed ? 'var(--text-secondary)' : '#4b5563' }}>
                           {stop.time}
                         </span>
                       </div>
