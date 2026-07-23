@@ -29,29 +29,24 @@ const HomePage = () => {
   const popularRoutes = [
     {
       title: 'Tuyến xe từ Tp Hồ Chí Minh',
-      bgImage: 'https://images.unsplash.com/photo-1509060464153-44667396260f?auto=format&fit=crop&w=500&q=80',
+      bgImage: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?auto=format&fit=crop&w=500&q=80',
       routes: [
-        { dest: 'Đà Lạt', price: '290.000đ', meta: '310km - 7 giờ' },
-        { dest: 'Cần Thơ', price: '165.000đ', meta: '172km - 3 giờ' },
-        { dest: 'Nha Trang', price: '320.000đ', meta: '435km - 8 giờ' }
+        { dest: 'Đà Lạt', price: '200.000đ', meta: '310km - 7 giờ 50 phút' },
+        { dest: 'Cần Thơ', price: '165.000đ', meta: '172km - 3 giờ' }
       ]
     },
     {
       title: 'Tuyến xe từ Đà Lạt',
       bgImage: 'https://images.unsplash.com/photo-1542856391-010fb87dcfed?auto=format&fit=crop&w=500&q=80',
       routes: [
-        { dest: 'Tp. Hồ Chí Minh', price: '290.000đ', meta: '305km - 7 giờ' },
-        { dest: 'Đà Nẵng', price: '430.000đ', meta: '700km - 14 giờ' },
-        { dest: 'Cần Thơ', price: '445.000đ', meta: '464km - 11 giờ' }
+        { dest: 'Tp. Hồ Chí Minh', price: '290.000đ', meta: '305km - 7 giờ' }
       ]
     },
     {
-      title: 'Tuyến xe từ Đà Nẵng',
-      bgImage: 'https://images.unsplash.com/photo-1559592482-b2488e7e7e96?auto=format&fit=crop&w=500&q=80',
+      title: 'Tuyến xe từ Cần Thơ',
+      bgImage: 'https://images.unsplash.com/photo-1528127269322-539801943592?auto=format&fit=crop&w=500&q=80',
       routes: [
-        { dest: 'Đà Lạt', price: '430.000đ', meta: '700km - 14 giờ' },
-        { dest: 'Tp. Hồ Chí Minh', price: '430.000đ', meta: '990km - 20 giờ' },
-        { dest: 'Nha Trang', price: '445.000đ', meta: '550km - 10 giờ' }
+        { dest: 'Tp. Hồ Chí Minh', price: '165.000đ', meta: '172km - 3 giờ' }
       ]
     }
   ];

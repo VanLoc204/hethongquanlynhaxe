@@ -4,7 +4,7 @@ import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import {
   Ticket, Calendar, Clock, CreditCard, XCircle,
-  ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Timer, Info
+  ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Timer, Info, Eye
 } from 'lucide-react';
 
 const BOOKING_API = 'http://localhost:8000/api/v1/trips';
@@ -21,6 +21,10 @@ const MyTicketsPage = () => {
   const [now, setNow] = useState(new Date());
   const [payingTicketId, setPayingTicketId] = useState(null);
   const fetchedTrips = useRef(new Set());
+
+  const [activeTab, setActiveTab] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // 1-second clock for countdown
   useEffect(() => {
@@ -142,7 +146,7 @@ const MyTicketsPage = () => {
   const formatDate = d => d ? new Date(d).toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
   const formatTime = d => d ? new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '';
   const formatDateTime = d => d ? `${formatTime(d)} ngày ${new Date(d).toLocaleDateString('vi-VN')}` : '';
-  const formatCurrency = v => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v || 0);
+  const formatCurrency = v => `${(v || 0).toLocaleString('vi-VN')}đ`;
 
   const getCountdown = (expiresAt) => {
     const diff = new Date(expiresAt) - now;
@@ -165,6 +169,44 @@ const MyTicketsPage = () => {
     return { border: 'var(--primary)', bg: 'rgba(59,130,246,0.1)', color: 'var(--primary)', label: 'Đang chờ đi' };
   };
 
+  // Filter logic
+  const getFilteredTickets = () => {
+    let list = [...tickets];
+
+    // Filter by Active Tab
+    if (activeTab === 'upcoming') {
+      list = list.filter(t => {
+        const trip = tripDetails[t.tripId];
+        const isExpired = t.status === 'pending' && t.paymentType === 'later' && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now;
+        return t.status !== 'cancelled' && !isExpired && trip && new Date(trip.departureTime) >= now;
+      });
+    } else if (activeTab === 'completed') {
+      list = list.filter(t => {
+        const trip = tripDetails[t.tripId];
+        return t.status !== 'cancelled' && trip && new Date(trip.departureTime) < now;
+      });
+    } else if (activeTab === 'cancelled') {
+      list = list.filter(t => {
+        const isExpired = t.status === 'pending' && t.paymentType === 'later' && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now;
+        return t.status === 'cancelled' || isExpired;
+      });
+    }
+
+    // Filter by Dropdown Status
+    if (statusFilter === 'paid') {
+      list = list.filter(t => t.status === 'paid');
+    } else if (statusFilter === 'pending') {
+      list = list.filter(t => t.status === 'pending' && !(t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now));
+    } else if (statusFilter === 'cancelled') {
+      list = list.filter(t => {
+        const isExpired = t.status === 'pending' && t.paymentType === 'later' && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now;
+        return t.status === 'cancelled' || isExpired;
+      });
+    }
+
+    return list;
+  };
+
   // ── Render one ticket card ──────────────────────────────────────────────
   const renderTicket = (t) => {
     const trip = tripDetails[t.tripId];
@@ -179,73 +221,146 @@ const MyTicketsPage = () => {
     const canCancel = t.status !== 'cancelled' && !isExpired && hoursUntilDep >= CANCEL_HOURS_LIMIT;
 
     return (
-      <div key={id} className="glass-card" style={{ padding: 0, overflow: 'hidden', borderLeft: `6px solid ${ss.border}` }}>
-        {/* Header */}
-        <div style={{ padding: '1.5rem 2rem', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1.5rem' }}>
-          <div style={{ flexGrow: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: '700', padding: '4px 10px', borderRadius: '12px', backgroundColor: ss.bg, color: ss.color }}>
-                {ss.label}
-              </span>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: '600' }}>#{t.orderCode || id?.slice(-6)}</span>
-            </div>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: '800', margin: '0 0 6px 0' }}>
-              {trip?.routeId?.startPoint || '...'} → {trip?.routeId?.endPoint || '...'}
-            </h3>
-
-            {trip?.departureTime && (
-              <div style={{ display: 'flex', gap: '15px', fontSize: '0.85rem', color: 'var(--text-secondary)', flexWrap: 'wrap' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Calendar size={14} />{formatDate(trip.departureTime)}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><Clock size={14} />{formatTime(trip.departureTime)}</span>
-              </div>
-            )}
-
-            {/* Countdown */}
-            {countdown && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '8px 12px', maxWidth: '380px' }}>
-                <Timer size={16} style={{ color: '#d97706', flexShrink: 0 }} />
-                <div>
-                  <span style={{ fontSize: '0.8rem', color: '#92400e', fontWeight: '600' }}>Hạn TT: {formatDateTime(t.paymentExpiresAt)}</span>
-                  <span style={{ display: 'block', fontSize: '0.75rem', color: '#b45309', fontFamily: 'monospace', fontWeight: '700' }}>Còn lại: {countdown}</span>
-                </div>
-              </div>
-            )}
-
-            {isExpired && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', padding: '8px 12px', maxWidth: '380px' }}>
-                <AlertTriangle size={16} style={{ color: '#ef4444' }} />
-                <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: '600' }}>Đã hết hạn thanh toán – vé bị hủy tự động</span>
-              </div>
-            )}
-
-            {/* Cancel time warning */}
-            {t.status !== 'cancelled' && !isExpired && trip && hoursUntilDep < CANCEL_HOURS_LIMIT && hoursUntilDep > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '8px 12px', maxWidth: '420px' }}>
-                <Info size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
-                <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: '600' }}>
-                  Đã quá thời hạn hủy vé (cần hủy trước {CANCEL_HOURS_LIMIT}h khởi hành)
+      <div 
+        key={id} 
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderLeft: `5px solid ${ss.border}`,
+          borderRadius: '12px',
+          marginBottom: '1rem',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
+          overflow: 'hidden'
+        }}
+      >
+        {/* Main Card Header */}
+        <div style={{ padding: '1.5rem 2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            
+            {/* Left side: status badge, order ID, route, date and time */}
+            <div style={{ flex: '1', minWidth: '300px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <span style={{
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  backgroundColor: ss.bg,
+                  color: ss.color
+                }}>
+                  {ss.label}
+                </span>
+                <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
+                  #{t.orderCode || id?.slice(-6)}
                 </span>
               </div>
-            )}
-          </div>
 
-          {/* Price & Seat */}
-          <div style={{ textAlign: 'right', minWidth: '140px' }}>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
-              Ghế: <strong>{t.seats?.join(', ')}</strong>
-            </p>
-            <h4 style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--accent)', margin: '4px 0 0 0' }}>{formatCurrency(totalPrice)}</h4>
-          </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#1e293b', margin: '0 0 10px 0' }}>
+                {trip?.routeId?.startPoint || '...'} → {trip?.routeId?.endPoint || '...'}
+              </h3>
 
-          <button onClick={() => setExpandedId(isExpanded ? null : id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: '10px' }}>
-            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          </button>
+              {trip?.departureTime && (
+                <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Calendar size={15} style={{ color: '#94a3b8' }} />
+                    {new Date(trip.departureTime).toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock size={15} style={{ color: '#94a3b8' }} />
+                    {formatTime(trip.departureTime)}
+                  </span>
+                </div>
+              )}
+
+              {/* Countdown */}
+              {countdown && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '8px 12px', maxWidth: '380px' }}>
+                  <Timer size={16} style={{ color: '#d97706', flexShrink: 0 }} />
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: '#92400e', fontWeight: '600' }}>Hạn TT: {formatDateTime(t.paymentExpiresAt)}</span>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: '#b45309', fontFamily: 'monospace', fontWeight: '700' }}>Còn lại: {countdown}</span>
+                  </div>
+                </div>
+              )}
+
+              {isExpired && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', padding: '8px 12px', maxWidth: '380px' }}>
+                  <AlertTriangle size={16} style={{ color: '#ef4444' }} />
+                  <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: '600' }}>Đã hết hạn thanh toán – vé bị hủy tự động</span>
+                </div>
+              )}
+
+              {/* Cancel time warning */}
+              {t.status !== 'cancelled' && !isExpired && trip && hoursUntilDep < CANCEL_HOURS_LIMIT && hoursUntilDep > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '8px 12px', maxWidth: '420px' }}>
+                  <Info size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: '600' }}>
+                    Đã quá thời hạn hủy vé (cần hủy trước {CANCEL_HOURS_LIMIT}h khởi hành)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Middle side: Seats & Price */}
+            <div style={{ minWidth: '180px', textAlign: 'left' }}>
+              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>
+                Ghế: <strong style={{ color: '#1e293b' }}>{t.seats?.join(', ')}</strong>
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--primary)', marginTop: '6px' }}>
+                {formatCurrency(totalPrice)}
+              </div>
+            </div>
+
+            {/* Right side: Action Button & Dropdown arrow */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : id)}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  color: '#334155',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  transition: 'all 0.2s',
+                  outline: 'none'
+                }}
+              >
+                <Eye size={16} style={{ color: '#64748b' }} />
+                Xem chi tiết
+              </button>
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : id)}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#64748b',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
+                  outline: 'none'
+                }}
+              >
+                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+            </div>
+
+          </div>
         </div>
 
         {/* Expanded Details */}
         {isExpanded && (
-          <div style={{ borderTop: '1px dashed var(--border-color)', backgroundColor: 'rgba(255,255,255,0.4)', padding: '2rem' }} className="ticket-detail-layout animate-fade-in">
+          <div style={{ borderTop: '1px dashed var(--border-color)', backgroundColor: '#f8fafc', padding: '2rem' }} className="ticket-detail-layout animate-fade-in">
             <div>
               <h4 style={{ fontWeight: '700', marginBottom: '1rem' }}>Thông tin chi tiết chuyến đi</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem' }}>
@@ -373,42 +488,238 @@ const MyTicketsPage = () => {
     );
   }
 
-  const active = tickets.filter(t => t.status !== 'cancelled');
-  const cancelled = tickets.filter(t => t.status === 'cancelled');
+  const filtered = getFilteredTickets();
+  const indexOfLastTicket = currentPage * 5;
+  const indexOfFirstTicket = indexOfLastTicket - 5;
+  const currentTickets = filtered.slice(indexOfFirstTicket, indexOfLastTicket);
+  const totalPages = Math.ceil(filtered.length / 5) || 1;
+
+  const tabLabels = {
+    all: 'Vé hoạt động & lịch sử',
+    upcoming: 'Vé sắp tới',
+    completed: 'Vé đã đi',
+    cancelled: 'Vé đã hủy'
+  };
 
   return (
-    <div className="section-container animate-fade-in" style={{ maxWidth: '920px', paddingBottom: '5rem' }}>
-      <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-        <h2 style={{ fontSize: '2.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-          <Ticket size={32} style={{ color: 'var(--primary)' }} />Quản Lý Vé & Lịch Sử Hành Trình
+    <div className="section-container animate-fade-in" style={{ maxWidth: '1200px', width: '95%', paddingBottom: '5rem' }}>
+      
+      {/* Visual Header - Just clean text without banner background */}
+      <div style={{ marginBottom: '2.5rem', marginTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.8rem', fontWeight: '800', margin: 0, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <Ticket size={28} /> Quản Lý Vé & Lịch Sử Hành Trình
         </h2>
-        <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>Xem chi tiết, thanh toán và quản lý vé xe của bạn.</p>
+        <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', fontSize: '0.95rem', fontWeight: '500' }}>
+          Xem chi tiết, thanh toán và quản lý vé xe của bạn.
+        </p>
+      </div>
+
+      {/* Tabs & Filters block */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderBottom: '1px solid #e2e8f0',
+        paddingBottom: '0.75rem',
+        marginBottom: '2rem',
+        flexWrap: 'wrap',
+        gap: '16px'
+      }}>
+        {/* Left Side Tabs */}
+        <div style={{ display: 'flex', gap: '24px' }}>
+          {[
+            { id: 'all', label: 'Tất cả vé' },
+            { id: 'upcoming', label: 'Vé sắp tới' },
+            { id: 'completed', label: 'Đã hoàn thành' },
+            { id: 'cancelled', label: 'Đã hủy' }
+          ].map(tab => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setCurrentPage(1); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '8px 0',
+                  fontSize: '0.95rem',
+                  fontWeight: isActive ? '700' : '600',
+                  color: isActive ? 'var(--primary)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.2s',
+                  outline: 'none'
+                }}
+              >
+                {tab.label}
+                {isActive && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '-13px',
+                    left: 0,
+                    right: 0,
+                    height: '3px',
+                    backgroundColor: 'var(--primary)',
+                    borderRadius: '2px'
+                  }} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Side Actions */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* Dropdown status */}
+          <div style={{ position: 'relative' }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+              style={{
+                appearance: 'none',
+                padding: '8px 36px 8px 16px',
+                fontSize: '0.88rem',
+                fontWeight: '600',
+                color: 'var(--text-main)',
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                outline: 'none',
+                minWidth: '160px'
+              }}
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="paid">Đã thanh toán</option>
+              <option value="pending">Chờ thanh toán</option>
+              <option value="cancelled">Đã hủy</option>
+            </select>
+            <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
+          </div>
+
+          {/* Book new ticket button */}
+          <button
+            onClick={() => navigate('/')}
+            className="btn btn-primary"
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.88rem',
+              fontWeight: '700',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 4px 12px rgba(37,99,235,0.15)'
+            }}
+          >
+            + Đặt vé mới
+          </button>
+        </div>
       </div>
 
       {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-muted)' }}>Đang tải danh sách vé...</div>
-      ) : tickets.length === 0 ? (
-        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-          <Ticket size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-          <h3>Bạn chưa đặt vé nào</h3>
-          <button className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={() => navigate('/')}>Tìm chuyến xe ngay</button>
+        <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-muted)' }}>
+          Đang tải danh sách vé...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="glass-card" style={{ padding: '4rem 2rem', textAlign: 'center' }}>
+          <Ticket size={48} style={{ color: 'var(--text-muted)', marginBottom: '1.25rem' }} />
+          <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1e293b' }}>
+            Không tìm thấy vé nào phù hợp
+          </h3>
+          <button 
+            className="btn btn-primary" 
+            style={{ marginTop: '1.5rem', padding: '10px 24px', borderRadius: '8px' }} 
+            onClick={() => navigate('/')}
+          >
+            Tìm chuyến xe ngay
+          </button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {active.length > 0 && (
-            <div style={{ marginBottom: '2.5rem' }}>
-              <h3 style={{ fontWeight: '700', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <CheckCircle2 size={20} style={{ color: '#10b981' }} />Vé đang hoạt động ({active.length})
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>{active.map(renderTicket)}</div>
-            </div>
-          )}
-          {cancelled.length > 0 && (
-            <div>
-              <h3 style={{ fontWeight: '700', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)' }}>
-                <XCircle size={20} style={{ color: '#ef4444' }} />Vé đã hủy ({cancelled.length})
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', opacity: 0.6 }}>{cancelled.map(renderTicket)}</div>
+        <div>
+          {/* Section Count Title */}
+          <h3 style={{ fontWeight: '700', fontSize: '1.05rem', color: '#1e293b', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CheckCircle2 size={18} style={{ color: '#10b981' }} />
+            {tabLabels[activeTab]} ({filtered.length})
+          </h3>
+
+          {/* Ticket items list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            {currentTickets.map(renderTicket)}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '2.5rem' }}>
+              <button
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(prev => prev - 1)}
+                style={{
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '6px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                  color: currentPage === 1 ? '#cbd5e1' : '#334155',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  outline: 'none'
+                }}
+              >
+                &lt;
+              </button>
+              {Array.from({ length: totalPages }).map((_, idx) => {
+                const pageNum = idx + 1;
+                const isCurrent = pageNum === currentPage;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    style={{
+                      border: isCurrent ? '1px solid var(--primary)' : '1px solid #cbd5e1',
+                      backgroundColor: isCurrent ? 'var(--primary)' : '#ffffff',
+                      color: isCurrent ? '#ffffff' : '#334155',
+                      borderRadius: '6px',
+                      width: '32px',
+                      height: '32px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      fontWeight: '600',
+                      outline: 'none'
+                    }}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+              <button
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(prev => prev + 1)}
+                style={{
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '6px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                  color: currentPage === totalPages ? '#cbd5e1' : '#334155',
+                  fontSize: '0.85rem',
+                  fontWeight: '600',
+                  outline: 'none'
+                }}
+              >
+                &gt;
+              </button>
             </div>
           )}
         </div>
