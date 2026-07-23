@@ -160,7 +160,7 @@ const ProfilePage = () => {
   const pointsNeeded = Math.max(nextTierPoints - points, 0);
 
   return (
-    <div className="section-container animate-fade-in" style={{ maxWidth: '1000px', paddingBottom: '5rem' }}>
+    <div className="section-container animate-fade-in" style={{ maxWidth: '1200px', width: '95%', paddingBottom: '5rem' }}>
       
       {/* Title */}
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
@@ -175,9 +175,8 @@ const ProfilePage = () => {
 
       <div className="profile-layout">
         
-        {/* Left Side: Update info & Change password forms */}
+        {/* Left Side: Forms */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          
           {/* Form 1: Account Information */}
           <div className="glass-card" style={{ padding: '2rem' }}>
             <h3 style={{ fontWeight: '800', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -313,9 +312,8 @@ const ProfilePage = () => {
 
         </div>
 
-        {/* Right Side: Membership details card & Perks */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          
+        {/* Right Side: Membership details */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
           {/* Membership Tier Visual Card */}
           <div style={{
             background: getTierColor(user.membershipTier),
