@@ -57,6 +57,34 @@ class PricingService {
     return true;
   }
 
+  calculateRecommendedPrice(distanceStr, busType) {
+    if (!distanceStr) return 150000;
+
+    // Extract numbers, e.g. "310km" -> 310, "172km" -> 172
+    const distanceMatch = distanceStr.replace(/\s+/g, '').match(/\d+/);
+    const distance = distanceMatch ? parseInt(distanceMatch[0], 10) : 200;
+
+    let costPerKm = 1000;
+    const typeLower = (busType || '').toLowerCase();
+    
+    if (typeLower.includes('limousine')) {
+      costPerKm = 1700;
+    } else if (typeLower.includes('giường nằm')) {
+      costPerKm = 1200;
+    } else if (typeLower.includes('45 chỗ')) {
+      costPerKm = 700;
+    } else if (typeLower.includes('29 chỗ')) {
+      costPerKm = 750;
+    } else if (typeLower.includes('16 chỗ') || typeLower.includes('ghế ngồi')) {
+      costPerKm = 800;
+    }
+
+    // Suggested price = distance * costPerKm, round to nearest 5000 VND
+    let recommended = distance * costPerKm;
+    recommended = Math.round(recommended / 5000) * 5000;
+    return recommended;
+  }
+
   async getBasePricesCombinations() {
     const routes = await routeRepository.find({});
     const busTypes = await busRepository.distinct('type');
@@ -70,13 +98,17 @@ class PricingService {
         const existing = basePrices.find(
           bp => bp.routeId.toString() === route._id.toString() && bp.busType === busType
         );
+        const recommendedPrice = this.calculateRecommendedPrice(route.distance, busType);
         combinations.push({
           routeId: route._id,
           routeName: routeName,
           busType: busType,
           price: existing ? existing.price : null,
           isSet: !!existing,
-          basePriceId: existing ? existing._id : null
+          basePriceId: existing ? existing._id : null,
+          distance: route.distance,
+          duration: route.duration,
+          recommendedPrice: recommendedPrice
         });
       }
     }

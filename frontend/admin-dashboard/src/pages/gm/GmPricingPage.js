@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import GmDynamicPricingPage from './GmDynamicPricingPage';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -9,7 +10,7 @@ const GmPricingPage = () => {
   const { token } = useContext(AuthContext);
   
   // Navigation tabs
-  const [activeTab, setActiveTab] = useState('rules'); // 'rules' or 'base-prices'
+  const [activeTab, setActiveTab] = useState('rules'); // 'rules', 'base-prices', or 'dynamic-suggestions'
 
   // Rules states
   const [rules, setRules] = useState([]);
@@ -89,9 +90,17 @@ const GmPricingPage = () => {
 
   useEffect(() => {
     if (token) {
-      fetchRules();
+      if (activeTab === 'base-prices') {
+        fetchBasePrices();
+      } else if (activeTab === 'rules') {
+        fetchRules();
+      }
+    }
+  }, [activeTab, token]);
+
+  useEffect(() => {
+    if (token) {
       fetchRoutes();
-      fetchBasePrices();
     }
   }, [token]);
 
@@ -248,7 +257,7 @@ const GmPricingPage = () => {
   };
 
   return (
-    <section className="panel" style={{ minHeight: '500px' }}>
+    <section className="panel" style={{ minHeight: '500px', flexShrink: 0 }}>
       {/* Toast */}
       {toast && (
         <div style={{
@@ -277,7 +286,7 @@ const GmPricingPage = () => {
       </div>
 
       {/* Navigation Tabs */}
-      <div style={{ display: 'flex', gap: '24px', borderBottom: '2px solid var(--border-color)', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', gap: '24px', borderBottom: '2px solid var(--border-color)', marginBottom: '24px', flexWrap: 'wrap' }}>
         <button 
           onClick={() => setActiveTab('rules')}
           style={{
@@ -311,6 +320,23 @@ const GmPricingPage = () => {
           }}
         >
           Giá vé cơ bản theo Tuyến & Loại xe
+        </button>
+        <button 
+          onClick={() => setActiveTab('dynamic-suggestions')}
+          style={{
+            padding: '12px 4px',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'dynamic-suggestions' ? '3px solid var(--primary)' : '3px solid transparent',
+            color: activeTab === 'dynamic-suggestions' ? 'var(--text-main)' : 'var(--text-muted)',
+            fontWeight: '700',
+            cursor: 'pointer',
+            fontSize: '0.95rem',
+            transition: 'all 0.2s',
+            outline: 'none'
+          }}
+        >
+          Xem gợi ý giá vé (AI Suggestions)
         </button>
       </div>
 
@@ -400,8 +426,7 @@ const GmPricingPage = () => {
             </table>
           </div>
         )
-      ) : (
-        // Base Price View (Tuyến + Loại xe combinations)
+      ) : activeTab === 'base-prices' ? (
         loadingBasePrices ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
             Đang tải danh sách giá vé cơ bản...
@@ -437,7 +462,7 @@ const GmPricingPage = () => {
                         </span>
                       ) : (
                         <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>
-                          ⚠️ Chưa thiết lập giá
+                          Chưa thiết lập giá
                         </span>
                       )}
                     </td>
@@ -456,6 +481,8 @@ const GmPricingPage = () => {
             </table>
           </div>
         )
+      ) : (
+        <GmDynamicPricingPage />
       )}
 
       {/* Rules Modal */}

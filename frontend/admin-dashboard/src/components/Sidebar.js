@@ -40,7 +40,6 @@ const Sidebar = ({ activeTab, onTabChange }) => {
           { key: 'gm-targets', label: 'Hoạch định chỉ tiêu vận hành' },
           { key: 'gm-dashboard', label: 'Xem Dashboard' },
           { key: 'gm-pricing', label: 'Quản lý giá vé' },
-          { key: 'gm-dynamic-pricing', label: 'Xem gợi ý giá vé' },
           { key: 'gm-promotions', label: 'Quản lý khuyến mãi' },
           { key: 'gm-analysis', label: 'Xem phân tích nhu cầu' },
         ];

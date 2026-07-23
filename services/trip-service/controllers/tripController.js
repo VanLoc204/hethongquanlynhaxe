@@ -492,6 +492,34 @@ exports.deleteTrip = async (req, res) => {
     });
   }
 };
+
+// @desc    Auto schedule trips
+// @route   POST /api/v1/trips/ops/trips/auto-schedule
+// @access  Private (Ops Manager)
+exports.autoScheduleTrips = async (req, res) => {
+  try {
+    const { startDate, endDate, configs } = req.body;
+    if (!startDate || !endDate || !configs || !Array.isArray(configs) || configs.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp Ngày bắt đầu, Ngày kết thúc và Danh sách cấu hình xếp lịch.'
+      });
+    }
+
+    const result = await tripService.autoScheduleTrips({ startDate, endDate, configs });
+    res.status(201).json({
+      success: true,
+      message: `Xếp lịch tự động thành công. Đã tạo ${result.createdCount} chuyến xe.`,
+      createdCount: result.createdCount
+    });
+  } catch (error) {
+    console.error('Lỗi xếp lịch tự động:', error);
+    res.status(error.statusCode || 400).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi xếp lịch tự động.'
+    });
+  }
+};
 // @desc    Release booked seats back (called by booking-service on cancellation)
 // @route   PATCH /api/v1/trips/:id/release-seats
 // @access  Internal (no auth required - internal service call)

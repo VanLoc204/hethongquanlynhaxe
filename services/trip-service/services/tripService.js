@@ -600,6 +600,72 @@ class TripService {
   }
 
   // Return raw Trip mongoose document for direct mutation (seat release)
+  async autoScheduleTrips({ startDate, endDate, configs }) {
+    const start = new Date(`${startDate}T00:00:00.000+07:00`);
+    const end = new Date(`${endDate}T23:59:59.999+07:00`);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      throw new Error('Định dạng ngày bắt đầu hoặc ngày kết thúc không hợp lệ.');
+    }
+
+    if (start > end) {
+      throw new Error('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.');
+    }
+
+    let createdCount = 0;
+    const currentDate = new Date(start);
+    
+    while (currentDate <= end) {
+      const year = currentDate.getFullYear();
+      const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(currentDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      for (const config of configs) {
+        const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints } = config;
+
+        const bus = await busRepository.findById(busId);
+        if (!bus) {
+          throw new Error(`Không tìm thấy phương tiện với ID ${busId}.`);
+        }
+
+        const basePriceDoc = await mongoose.connection.db.collection('baseprices').findOne({
+          routeId: new mongoose.Types.ObjectId(routeId),
+          busType: bus.type
+        });
+        if (!basePriceDoc) {
+          throw new Error(`Chưa thiết lập giá vé cho tuyến đường này với loại xe "${bus.type}". Vui lòng thiết lập giá vé trước.`);
+        }
+
+        const depDateTime = new Date(`${dateStr}T${departureTime}:00.000+07:00`);
+        let arrDateTime = new Date(`${dateStr}T${arrivalTime}:00.000+07:00`);
+
+        if (arrDateTime < depDateTime) {
+          arrDateTime.setDate(arrDateTime.getDate() + 1);
+        }
+
+        await tripRepository.create({
+          routeId,
+          busId,
+          departureTime: depDateTime,
+          arrivalTime: arrDateTime,
+          price: basePriceDoc.price,
+          pickupPoints: pickupPoints || [],
+          dropoffPoints: dropoffPoints || [],
+          policy: {
+            cancellation: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.',
+            luggage: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.'
+          }
+        });
+        createdCount++;
+      }
+
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return { createdCount };
+  }
+
   async getTripModel(tripId) {
     return await tripRepository.findById(tripId);
   }
