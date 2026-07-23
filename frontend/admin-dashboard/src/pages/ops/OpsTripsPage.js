@@ -29,6 +29,180 @@ const OpsTripsPage = () => {
     { time: '15:30', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }
   ]);
 
+  // Filters & Views states
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
+  const [filterRoute, setFilterRoute] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+  const [calendarRefDate, setCalendarRefDate] = useState(new Date('2026-07-23'));
+
+  // Auto scheduling modal states
+  const [showAutoModal, setShowAutoModal] = useState(false);
+  const [autoStartDate, setAutoStartDate] = useState('2026-07-24');
+  const [autoEndDate, setAutoEndDate] = useState('2026-07-30');
+  const [autoRouteId, setAutoRouteId] = useState('');
+  const [autoBusId, setAutoBusId] = useState('');
+  const [autoSlots, setAutoSlots] = useState([
+    { departureTime: '08:00', arrivalTime: '15:00' }
+  ]);
+
+  // Sync auto scheduling dropdown default values when routes/buses load
+  useEffect(() => {
+    if (routes.length > 0 && !autoRouteId) setAutoRouteId(routes[0]._id);
+    if (buses.length > 0 && !autoBusId) setAutoBusId(buses[0]._id);
+  }, [routes, buses]);
+
+  // Jump to specific week when filterDate is selected
+  useEffect(() => {
+    if (filterDate) {
+      setCalendarRefDate(new Date(filterDate));
+    }
+  }, [filterDate]);
+
+  const getDefaultPoints = (routeIdVal, depTimeStr, arrTimeStr) => {
+    const selectedRoute = routes.find(r => r._id === routeIdVal);
+    if (!selectedRoute) return { pickup: [], dropoff: [] };
+
+    const start = selectedRoute.startPoint.toLowerCase();
+    const end = selectedRoute.endPoint.toLowerCase();
+
+    let pickup = [];
+    let dropoff = [];
+
+    if (start.includes('hồ chí minh') || start.includes('hcm')) {
+      pickup = [{ time: depTimeStr || '08:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }];
+    } else if (start.includes('đà lạt')) {
+      pickup = [{ time: depTimeStr || '08:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }];
+    } else if (start.includes('cần thơ')) {
+      pickup = [{ time: depTimeStr || '08:00', location: 'Bến xe Cần Thơ', address: 'Bến xe Cần Thơ, TP. Cần Thơ' }];
+    } else {
+      pickup = [{ time: depTimeStr || '08:00', location: `Bến xe ${selectedRoute.startPoint}`, address: `Địa chỉ tại ${selectedRoute.startPoint}` }];
+    }
+
+    if (end.includes('hồ chí minh') || end.includes('hcm')) {
+      dropoff = [{ time: arrTimeStr || '15:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }];
+    } else if (end.includes('đà lạt')) {
+      dropoff = [{ time: arrTimeStr || '15:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }];
+    } else if (end.includes('cần thơ')) {
+      dropoff = [{ time: arrTimeStr || '15:00', location: 'Bến xe Cần Thơ', address: 'Bến xe Cần Thơ, TP. Cần Thơ' }];
+    } else {
+      dropoff = [{ time: arrTimeStr || '15:00', location: `Bến xe ${selectedRoute.endPoint}`, address: `Địa chỉ tại ${selectedRoute.endPoint}` }];
+    }
+
+    return { pickup, dropoff };
+  };
+
+  const handleOpenAutoModal = () => {
+    setAutoStartDate('2026-07-24');
+    setAutoEndDate('2026-07-30');
+    setAutoRouteId(routes[0]?._id || '');
+    setAutoBusId(buses[0]?._id || '');
+    setAutoSlots([{ departureTime: '08:00', arrivalTime: '15:00' }]);
+    setShowAutoModal(true);
+  };
+
+  const handleAddSlot = () => {
+    setAutoSlots([...autoSlots, { departureTime: '08:00', arrivalTime: '15:00' }]);
+  };
+
+  const handleRemoveSlot = (idx) => {
+    setAutoSlots(autoSlots.filter((_, i) => i !== idx));
+  };
+
+  const handleSlotChange = (idx, field, val) => {
+    const updated = [...autoSlots];
+    updated[idx][field] = val;
+    setAutoSlots(updated);
+  };
+
+  const handleAutoScheduleSubmit = async (e) => {
+    e.preventDefault();
+    if (!autoRouteId || !autoBusId || !autoStartDate || !autoEndDate || autoSlots.length === 0) {
+      showToast('Vui lòng cung cấp đầy đủ thông tin để xếp lịch tự động.', 'error');
+      return;
+    }
+
+    // Build configurations with smart station lookup
+    const configs = autoSlots.map(slot => {
+      const { pickup, dropoff } = getDefaultPoints(autoRouteId, slot.departureTime, slot.arrivalTime);
+      return {
+        routeId: autoRouteId,
+        busId: autoBusId,
+        departureTime: slot.departureTime,
+        arrivalTime: slot.arrivalTime,
+        pickupPoints: pickup,
+        dropoffPoints: dropoff
+      };
+    });
+
+    try {
+      const res = await fetch(`${API_BASE}/trips/ops/trips/auto-schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          startDate: autoStartDate,
+          endDate: autoEndDate,
+          configs
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || 'Xếp lịch tự động thành công!');
+        setShowAutoModal(false);
+        fetchTrips();
+      } else {
+        showToast(data.message || 'Lỗi xếp lịch tự động.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ.', 'error');
+    }
+  };
+
+  const getDaysOfWeek = (refDate) => {
+    const date = new Date(refDate);
+    const day = date.getDay(); // 0 = Sunday, 1 = Monday...
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+    const startOfWeek = new Date(date.setDate(diff));
+    
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  };
+
+  const getFilteredTrips = () => {
+    return trips.filter(trip => {
+      // Filter by Route
+      if (filterRoute && (!trip.routeId || trip.routeId._id !== filterRoute)) {
+        return false;
+      }
+      // Filter by Date (only list view is filtered by this input directly)
+      if (viewMode === 'list' && filterDate) {
+        const depDate = new Date(trip.departureTime);
+        const depDateStr = depDate.toLocaleDateString('en-CA');
+        if (depDateStr !== filterDate) {
+          return false;
+        }
+      }
+      return true;
+    });
+  };
+
+  const filteredTrips = getFilteredTrips();
+
+  const getTripsForDay = (dayDate) => {
+    const dayStr = dayDate.toLocaleDateString('en-CA');
+    return filteredTrips.filter(trip => {
+      const depDate = new Date(trip.departureTime);
+      return depDate.toLocaleDateString('en-CA') === dayStr;
+    });
+  };
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
@@ -244,7 +418,7 @@ const OpsTripsPage = () => {
       {toast && (
         <div style={{
           position: 'fixed', top: '80px', right: '20px', zIndex: 9999,
-          background: toast.type === 'error' ? '#ef4444' : '#10b981',
+          background: toast.type === 'error' ? '#ef4444' : toast.type === 'warning' ? '#f59e0b' : '#10b981',
           color: 'white', padding: '12px 20px', borderRadius: '8px',
           fontWeight: '600', boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
         }}>
@@ -253,103 +427,368 @@ const OpsTripsPage = () => {
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h2>Quản lý chuyến xe</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            {trips.length} chuyến xe hoạt động
+            {filteredTrips.length} chuyến xe hiển thị (Tổng số: {trips.length})
           </p>
         </div>
-        <button onClick={handleOpenAdd} className="btn btn-primary">
-          + Tạo chuyến xe mới
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={handleOpenAutoModal} className="btn btn-secondary" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: '600' }}>
+            Xếp lịch tự động
+          </button>
+          <button onClick={handleOpenAdd} className="btn btn-primary">
+            + Tạo chuyến xe mới
+          </button>
+        </div>
       </div>
 
-      {/* List */}
+      {/* Filters & View Switcher */}
+      <div style={{
+        background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px',
+        padding: '16px', display: 'flex', gap: '16px', alignItems: 'center',
+        marginBottom: '24px', flexWrap: 'wrap', justifyContent: 'space-between'
+      }}>
+        {/* Left: filters */}
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tuyến:</span>
+            <select 
+              value={filterRoute} 
+              onChange={(e) => setFilterRoute(e.target.value)}
+              className="form-control"
+              style={{ width: '180px', padding: '6px 12px' }}
+            >
+              <option value="">Tất cả các tuyến</option>
+              {routes.map(r => (
+                <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Thời gian:</span>
+            <input 
+              type="date" 
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="form-control"
+              style={{ width: '160px', padding: '5px 12px' }}
+            />
+          </div>
+          {(filterRoute || filterDate) && (
+            <button 
+              onClick={() => { setFilterRoute(''); setFilterDate(''); }}
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+            >
+              Xóa bộ lọc
+            </button>
+          )}
+        </div>
+
+        {/* Right: View Switcher */}
+        <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+          <button 
+            onClick={() => setViewMode('list')}
+            style={{
+              padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
+              cursor: 'pointer', background: viewMode === 'list' ? 'white' : 'transparent',
+              color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
+              boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+            }}
+          >
+            Danh sách
+          </button>
+          <button 
+            onClick={() => setViewMode('calendar')}
+            style={{
+              padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
+              cursor: 'pointer', background: viewMode === 'calendar' ? 'white' : 'transparent',
+              color: viewMode === 'calendar' ? 'var(--primary)' : 'var(--text-secondary)',
+              boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+            }}
+          >
+            Lịch tuần
+          </button>
+        </div>
+      </div>
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           Đang tải danh sách chuyến xe...
         </div>
-      ) : trips.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Chưa có chuyến xe nào. Nhấn "Tạo chuyến xe mới" để bắt đầu.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {trips.map((trip) => {
-            const departureDate = new Date(trip.departureTime);
-            const arrivalDate = new Date(trip.arrivalTime);
-            const totalSeats = trip.busId?.totalSeats || 0;
-            const bookedSeatsCount = trip.bookedSeats?.length || 0;
-            
-            return (
-              <div 
-                key={trip._id} 
-                className="panel" 
-                style={{ 
-                  display: 'flex', 
-                  flexWrap: 'wrap',
-                  justifyContent: 'space-between', 
-                  alignItems: 'center',
-                  padding: '16px 20px',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '12px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-                }}
-              >
-                {/* Left info: Route & DateTime */}
-                <div style={{ minWidth: '220px' }}>
-                  <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '6px' }}>
-                    {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
-                  </div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)' }}>
-                    Khởi hành: {departureDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    Dự kiến đến: {arrivalDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                  </div>
-                </div>
-
-                {/* Middle info: Bus Details */}
-                <div style={{ minWidth: '180px' }}>
-                  <div style={{ fontSize: '0.95rem', fontWeight: '700' }}>
-                    Xe: {trip.busId?.plateNumber || 'Chưa gán'}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Loại: {trip.busId?.type || 'N/A'}
-                  </div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: '600' }}>
-                    Đã đặt: {bookedSeatsCount}/{totalSeats} ghế (Còn {totalSeats - bookedSeatsCount} trống)
-                  </div>
-                </div>
-
-                {/* Right info: Price & Actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', minWidth: '200px', justifyContent: 'flex-end' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--accent)' }}>
-                      {trip.price?.toLocaleString('vi-VN')} đ
+      ) : viewMode === 'list' ? (
+        /* List View */
+        filteredTrips.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Chưa có chuyến xe nào khớp với điều kiện lọc.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {filteredTrips.map((trip) => {
+              const departureDate = new Date(trip.departureTime);
+              const arrivalDate = new Date(trip.arrivalTime);
+              const totalSeats = trip.busId?.totalSeats || 0;
+              const bookedSeatsCount = trip.bookedSeats?.length || 0;
+              
+              return (
+                <div 
+                  key={trip._id} 
+                  className="panel" 
+                  style={{ 
+                    display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '16px 20px', border: '1px solid var(--border-color)', borderRadius: '12px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                  }}
+                >
+                  {/* Left info: Route & DateTime */}
+                  <div style={{ minWidth: '220px' }}>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '6px' }}>
+                      {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+                    </div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)' }}>
+                      Khởi hành: {departureDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Dự kiến đến: {arrivalDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
-                      onClick={() => handleOpenEdit(trip)} 
-                      className="btn btn-secondary" 
-                      style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-                    >
-                      Sửa
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(trip)} 
-                      className="btn btn-secondary" 
-                      style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '8px 14px', fontSize: '0.85rem' }}
-                    >
-                      Xóa
-                    </button>
+
+                  {/* Middle info: Bus Details */}
+                  <div style={{ minWidth: '180px' }}>
+                    <div style={{ fontSize: '0.95rem', fontWeight: '700' }}>
+                      Xe: {trip.busId?.plateNumber || 'Chưa gán'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Loại: {trip.busId?.type || 'N/A'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: '600' }}>
+                      Đã đặt: {bookedSeatsCount}/{totalSeats} ghế (Còn {totalSeats - bookedSeatsCount} trống)
+                    </div>
+                  </div>
+
+                  {/* Right info: Price & Actions */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', minWidth: '200px', justifyContent: 'flex-end' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--accent)' }}>
+                        {trip.price?.toLocaleString('vi-VN')} đ
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        onClick={() => handleOpenEdit(trip)} 
+                        className="btn btn-secondary" 
+                        style={{ padding: '8px 14px', fontSize: '0.85rem' }}
+                      >
+                        Sửa
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(trip)} 
+                        className="btn btn-secondary" 
+                        style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '8px 14px', fontSize: '0.85rem' }}
+                      >
+                        Xóa
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        )
+      ) : (
+        /* Weekly Calendar View */
+        <div>
+          {/* Week Selector */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '24px', 
+            background: '#ffffff', 
+            padding: '16px 24px', 
+            borderRadius: '12px', 
+            border: '1px solid var(--border-color)', 
+            boxShadow: '0 2px 12px rgba(0,0,0,0.03)',
+            flexWrap: 'wrap', 
+            gap: '12px' 
+          }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={() => {
+                  const prev = new Date(calendarRefDate);
+                  prev.setDate(prev.getDate() - 7);
+                  setCalendarRefDate(prev);
+                }}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+              >
+                ← Tuần trước
+              </button>
+              <button 
+                onClick={() => setCalendarRefDate(new Date('2026-07-23'))}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+              >
+                Hôm nay
+              </button>
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {(() => {
+                const days = getDaysOfWeek(calendarRefDate);
+                return `Tuần: ${days[0].toLocaleDateString('vi-VN')} - ${days[6].toLocaleDateString('vi-VN')}`;
+              })()}
+            </div>
+            <button 
+              onClick={() => {
+                const next = new Date(calendarRefDate);
+                next.setDate(next.getDate() + 7);
+                setCalendarRefDate(next);
+              }}
+              className="btn btn-secondary"
+              style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+            >
+              Tuần sau →
+            </button>
+          </div>
+
+          {/* Grid columns */}
+          <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '16px' }}>
+            {getDaysOfWeek(calendarRefDate).map((dayDate, dayIdx) => {
+              const dayTrips = getTripsForDay(dayDate);
+              const isToday = dayDate.toLocaleDateString('en-CA') === '2026-07-23';
+              const daysOfWeekLabels = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+              
+              return (
+                <div 
+                  key={dayIdx} 
+                  style={{
+                    flex: 1, 
+                    minWidth: '200px', 
+                    background: isToday ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+                    borderRadius: '16px', 
+                    padding: '16px 12px', 
+                    border: isToday ? '2px solid #2563eb' : '1px solid var(--border-color)',
+                    boxShadow: isToday ? '0 8px 24px rgba(37, 99, 235, 0.08)' : '0 4px 12px rgba(0,0,0,0.02)',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '12px'
+                  }}
+                >
+                  {/* Column Header */}
+                  <div style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '4px' }}>
+                    <div style={{ fontWeight: '700', fontSize: '0.9rem', color: isToday ? '#1e40af' : '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {daysOfWeekLabels[dayIdx]}
+                    </div>
+                    <div style={{ 
+                      display: 'inline-block',
+                      marginTop: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      fontSize: '0.85rem', 
+                      backgroundColor: isToday ? '#2563eb' : 'transparent',
+                      color: isToday ? '#ffffff' : '#64748b', 
+                      fontWeight: '700' 
+                    }}>
+                      {dayDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                    </div>
+                  </div>
+
+                  {/* Day trip list */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: '150px' }}>
+                    {dayTrips.length === 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: '120px', color: '#94a3b8' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '600', fontStyle: 'italic' }}>Không có chuyến</span>
+                      </div>
+                    ) : (
+                      dayTrips.map(trip => {
+                        const dep = new Date(trip.departureTime);
+                        const depTime = dep.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        const totalSeats = trip.busId?.totalSeats || 0;
+                        const bookedSeatsCount = trip.bookedSeats?.length || 0;
+
+                        return (
+                          <div 
+                            key={trip._id}
+                            style={{
+                              background: '#ffffff', 
+                              border: '1px solid #e2e8f0', 
+                              borderRadius: '12px',
+                              padding: '12px', 
+                              boxShadow: '0 4px 10px rgba(0,0,0,0.03)',
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '8px',
+                              transition: 'transform 0.2s',
+                            }}
+                          >
+                            <div style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                              {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ backgroundColor: '#f1f5f9', color: '#334155', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600' }}>
+                                Giờ chạy: {depTime}
+                              </span>
+                              <span style={{ backgroundColor: '#fef3c7', color: '#d97706', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600' }}>
+                                Xe: {trip.busId?.plateNumber || 'Chưa gán'}
+                              </span>
+                            </div>
+                            
+                            {/* Occupancy Progress Bar */}
+                            {(() => {
+                              const percentage = totalSeats > 0 ? Math.min(100, Math.round((bookedSeatsCount / totalSeats) * 100)) : 0;
+                              let progressColor = '#10b981'; // Green
+                              if (percentage >= 85) progressColor = '#ef4444'; // Red
+                              else if (percentage >= 50) progressColor = '#f59e0b'; // Amber
+
+                              return (
+                                <div style={{ marginTop: '2px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#64748b', fontWeight: '600', marginBottom: '4px' }}>
+                                    <span>{bookedSeatsCount}/{totalSeats} ghế</span>
+                                    <span>{percentage}%</span>
+                                  </div>
+                                  <div style={{ height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                                    <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: progressColor, borderRadius: '3px' }} />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                              <span style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.9rem' }}>
+                                {trip.price?.toLocaleString('vi-VN')} đ
+                              </span>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button 
+                                  onClick={() => handleOpenEdit(trip)} 
+                                  style={{ 
+                                    padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', 
+                                    backgroundColor: '#ffffff', cursor: 'pointer', color: 'var(--primary)', fontWeight: '600', outline: 'none'
+                                  }}
+                                >
+                                  Sửa
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(trip)} 
+                                  style={{ 
+                                    padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid #fecaca', 
+                                    backgroundColor: '#fff5f5', color: '#ef4444', cursor: 'pointer', fontWeight: '600', outline: 'none'
+                                  }}
+                                >
+                                  Xóa
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -364,13 +803,8 @@ const OpsTripsPage = () => {
           <div 
             className="panel" 
             style={{ 
-              width: '100%', 
-              maxWidth: '650px', 
-              padding: '24px', 
-              margin: '40px auto', 
-              maxHeight: '90vh', 
-              overflowY: 'auto',
-              position: 'relative' 
+              width: '100%', maxWidth: '650px', padding: '24px', margin: '40px auto', 
+              maxHeight: '90vh', overflowY: 'auto', position: 'relative' 
             }}
           >
             <h3 style={{ marginBottom: '20px' }}>
@@ -553,6 +987,134 @@ const OpsTripsPage = () => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   {editingTrip ? 'Lưu thay đổi' : 'Tạo mới'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Auto Scheduling Modal */}
+      {showAutoModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflowY: 'auto'
+        }}>
+          <div 
+            className="panel" 
+            style={{ 
+              width: '100%', maxWidth: '600px', padding: '24px', margin: '40px auto', 
+              maxHeight: '90vh', overflowY: 'auto', position: 'relative' 
+            }}
+          >
+            <h3 style={{ marginBottom: '20px' }}>⚡ Xếp lịch chuyến xe tự động</h3>
+            
+            <form onSubmit={handleAutoScheduleSubmit}>
+              {/* Date range */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div className="form-group">
+                  <label className="form-label">Từ ngày chạy *</label>
+                  <input 
+                    type="date" 
+                    value={autoStartDate}
+                    onChange={(e) => setAutoStartDate(e.target.value)}
+                    className="form-control"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Đến ngày chạy *</label>
+                  <input 
+                    type="date" 
+                    value={autoEndDate}
+                    onChange={(e) => setAutoEndDate(e.target.value)}
+                    className="form-control"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Route & Bus */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                <div className="form-group">
+                  <label className="form-label">Tuyến đường áp dụng *</label>
+                  <select 
+                    value={autoRouteId} 
+                    onChange={(e) => setAutoRouteId(e.target.value)}
+                    className="form-control"
+                    required
+                  >
+                    {routes.map(r => (
+                      <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Phương tiện (Xe) *</label>
+                  <select 
+                    value={autoBusId} 
+                    onChange={(e) => setAutoBusId(e.target.value)}
+                    className="form-control"
+                    required
+                  >
+                    {buses.map(b => (
+                      <option key={b._id} value={b._id}>{b.plateNumber} ({b.type})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Slots builder */}
+              <div style={{ marginBottom: '24px', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h4 style={{ margin: 0 }}>Khung giờ chạy trong ngày</h4>
+                  <button type="button" onClick={handleAddSlot} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+                    + Thêm khung giờ
+                  </button>
+                </div>
+                {autoSlots.map((slot, idx) => (
+                  <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Giờ xuất phát:</span>
+                      <input 
+                        type="time" 
+                        value={slot.departureTime}
+                        onChange={(e) => handleSlotChange(idx, 'departureTime', e.target.value)}
+                        className="form-control"
+                        required
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Giờ đến dự kiến:</span>
+                      <input 
+                        type="time" 
+                        value={slot.arrivalTime}
+                        onChange={(e) => handleSlotChange(idx, 'arrivalTime', e.target.value)}
+                        className="form-control"
+                        required
+                      />
+                    </div>
+                    {autoSlots.length > 1 && (
+                      <button 
+                        type="button" 
+                        onClick={() => handleRemoveSlot(idx)} 
+                        style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.4rem', marginTop: '16px' }}
+                      >
+                        &times;
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="button" onClick={() => setShowAutoModal(false)} className="btn btn-secondary">
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary" style={{ background: 'var(--accent)', borderColor: 'var(--accent)' }}>
+                  ✓ Bắt đầu xếp lịch
                 </button>
               </div>
             </form>

@@ -20,7 +20,8 @@ const {
   updateTrip,
   deleteTrip,
   releaseSeats,
-  getPublicRoutes
+  getPublicRoutes,
+  autoScheduleTrips
 } = require('../controllers/tripController');
 
 // Search Route
@@ -54,6 +55,7 @@ router.delete('/ops/routes/:id', protect, restrictTo('ops_manager', 'admin', 'ge
 // Ops Trip Routes
 router.get('/ops/trips', protect, getTrips);
 router.post('/ops/trips', protect, restrictTo('ops_manager', 'admin', 'general_manager'), createTrip);
+router.post('/ops/trips/auto-schedule', protect, restrictTo('ops_manager', 'admin', 'general_manager'), autoScheduleTrips);
 router.put('/ops/trips/:id', protect, restrictTo('ops_manager', 'admin', 'general_manager'), updateTrip);
 router.delete('/ops/trips/:id', protect, restrictTo('ops_manager', 'admin', 'general_manager'), deleteTrip);
 
