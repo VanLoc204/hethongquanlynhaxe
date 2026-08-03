@@ -4,18 +4,14 @@
   "description": "Smart Bus Management System - Monorepo",
   "private": true,
   "workspaces": [
-    "services/*",
-    "common",
+    "backend",
     "frontend/*"
   ],
   "scripts": {
-    "gateway:dev": "npm run dev --workspace=services/api-gateway",
-    "auth:dev": "npm run dev --workspace=services/auth-service",
+    "backend:dev": "npm run dev --workspace=backend",
     "customer:dev": "npm start --workspace=frontend/customer-app",
-    "user:dev": "npm run dev --workspace=services/user-service",
-    "trip:dev": "npm run dev --workspace=services/trip-service",
-    "trip:seed": "npm run seed --workspace=services/trip-service",
-    "booking:dev": "npm run dev --workspace=services/booking-service",
+    "admin:dev": "npm start --workspace=frontend/admin-dashboard",
+    "seed": "npm run seed --workspace=backend",
     "docker:db:up": "docker-compose up -d mysql mongodb redis rabbitmq",
     "docker:db:down": "docker-compose down",
     "docker:up": "docker-compose up -d --build",
