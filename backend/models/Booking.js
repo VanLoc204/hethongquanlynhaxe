@@ -60,6 +60,13 @@ const bookingSchema = new mongoose.Schema(
     orderCode: {
       type: Number,
       unique: true
+    },
+    boarded: {
+      type: Boolean,
+      default: false
+    },
+    boardedAt: {
+      type: Date
     }
   },
   {

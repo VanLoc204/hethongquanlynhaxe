@@ -40,16 +40,55 @@ const SearchBox = ({
     fetchLocations();
   }, []);
 
-  // Filter locations based on user input
-  const filteredFromLocations = fromLocations.filter(loc =>
-    loc.name.toLowerCase().includes(from.toLowerCase()) ||
-    (loc.parent && loc.parent.toLowerCase().includes(from.toLowerCase()))
-  );
+  const resolveAbbr = (text) => {
+    if (!text) return '';
+    const clean = text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/[\.,]/g, '')
+      .toLowerCase()
+      .trim();
 
-  const filteredToLocations = toLocations.filter(loc =>
-    loc.name.toLowerCase().includes(to.toLowerCase()) ||
-    (loc.parent && loc.parent.toLowerCase().includes(to.toLowerCase()))
-  );
+
+    const map = {
+      'sg': 'ho chi minh',
+      'hcm': 'ho chi minh',
+      'tphcm': 'ho chi minh',
+      'tp hcm': 'ho chi minh',
+      'hn': 'ha noi',
+      'nt': 'nha trang',
+      'dl': 'da lat',
+      'dn': 'da nang',
+      'vt': 'vung tau',
+      'ct': 'can tho',
+      'hp': 'hai phong'
+    };
+    return map[clean] || clean;
+  };
+
+  // Filter locations based on user input
+  const filteredFromLocations = fromLocations.filter(loc => {
+    const canonicalInput = resolveAbbr(from);
+    if (!canonicalInput) return true;
+    
+    const canonicalName = resolveAbbr(loc.name);
+    const canonicalParent = loc.parent ? resolveAbbr(loc.parent) : '';
+    
+    return canonicalName.includes(canonicalInput) || canonicalParent.includes(canonicalInput);
+  });
+
+  const filteredToLocations = toLocations.filter(loc => {
+    const canonicalInput = resolveAbbr(to);
+    if (!canonicalInput) return true;
+    
+    const canonicalName = resolveAbbr(loc.name);
+    const canonicalParent = loc.parent ? resolveAbbr(loc.parent) : '';
+    
+    return canonicalName.includes(canonicalInput) || canonicalParent.includes(canonicalInput);
+  });
+
 
   // Click outside to close suggestion dropdowns
   useEffect(() => {

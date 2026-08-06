@@ -22,6 +22,25 @@ import OpsTrackingPage from './pages/ops/OpsTrackingPage';
 import GmStaffPage from './pages/gm/GmStaffPage';
 import GmPricingPage from './pages/gm/GmPricingPage';
 
+// Shared Employee Pages
+import StaffSchedulePage from './pages/common/StaffSchedulePage';
+import StaffLeavePage from './pages/common/StaffLeavePage';
+import StaffSalaryPage from './pages/common/StaffSalaryPage';
+import StaffNotificationsPage from './pages/common/StaffNotificationsPage';
+
+// Ticket Agent Pages
+import AgentAttendancePage from './pages/agent/AgentAttendancePage';
+import AgentBookingPage from './pages/agent/AgentBookingPage';
+import AgentTicketsPage from './pages/agent/AgentTicketsPage';
+import AgentShiftSummaryPage from './pages/agent/AgentShiftSummaryPage';
+import AgentTripsPage from './pages/agent/AgentTripsPage';
+import AgentAIPage from './pages/agent/AgentAIPage';
+
+// Attendant Pages
+import AttendantAttendancePage from './pages/attendant/AttendantAttendancePage';
+import AttendantCheckinPage from './pages/attendant/AttendantCheckinPage';
+import AttendantLuggagePage from './pages/attendant/AttendantLuggagePage';
+
 function DashboardLayout() {
   const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -58,6 +77,39 @@ function DashboardLayout() {
         return <GmStaffPage />;
       case 'gm-pricing':
         return <GmPricingPage />;
+
+      // Shared Employee views
+      case 'staff-schedule':
+        return <StaffSchedulePage />;
+      case 'staff-leave':
+        return <StaffLeavePage />;
+      case 'staff-salary':
+        return <StaffSalaryPage />;
+      case 'staff-notifications':
+        return <StaffNotificationsPage />;
+
+      // Ticket Agent views
+      case 'agent-attendance':
+        return <AgentAttendancePage />;
+      case 'agent-booking':
+        return <AgentBookingPage />;
+      case 'agent-tickets':
+        return <AgentTicketsPage />;
+      case 'agent-shift':
+        return <AgentShiftSummaryPage />;
+      case 'agent-trips':
+        return <AgentTripsPage />;
+      case 'agent-ai':
+        return <AgentAIPage />;
+
+      // Attendant views
+      case 'attendant-attendance':
+        return <AttendantAttendancePage />;
+      case 'attendant-checkin':
+        return <AttendantCheckinPage />;
+      case 'attendant-luggage':
+        return <AttendantLuggagePage />;
+
 
       default:
         // Generic fallback placeholder for other role views under development
@@ -105,6 +157,38 @@ function DashboardLayout() {
       case 'gm-pricing':
         return 'Quản lý giá vé';
 
+      // Shared Employee views
+      case 'staff-schedule':
+        return 'Lịch làm việc phân công';
+      case 'staff-leave':
+        return 'Đơn xin nghỉ phép';
+      case 'staff-salary':
+        return 'Xem bảng lương chi tiết';
+      case 'staff-notifications':
+        return 'Thông báo nội bộ';
+
+      // Ticket Agent views
+      case 'agent-attendance':
+        return 'Chấm công ca trực quầy';
+      case 'agent-booking':
+        return 'Đặt vé xe tại quầy';
+      case 'agent-tickets':
+        return 'Tra cứu & Quản lý vé';
+      case 'agent-shift':
+        return 'Tổng kết ca làm việc';
+      case 'agent-trips':
+        return 'Tra cứu bảng giờ xe chạy';
+      case 'agent-ai':
+        return 'Trợ lý tư vấn dịch vụ AI';
+
+      // Attendant views
+      case 'attendant-attendance':
+        return 'Chấm công số (Phụ xe)';
+      case 'attendant-checkin':
+        return 'Soát vé & Check-in hành khách';
+      case 'attendant-luggage':
+        return 'Ghi nhận thẻ hành lý ký gửi';
+
       default:
         return 'Chức năng đang phát triển';
     }
@@ -116,6 +200,8 @@ function DashboardLayout() {
     general_manager: 'Ban Giám đốc',
     admin: 'Quản trị viên',
     ticket_agent: 'Nhân viên bán vé',
+    driver: 'Nhân viên Tài xế',
+    attendant: 'Nhân viên Phụ xe',
   };
 
   return (
