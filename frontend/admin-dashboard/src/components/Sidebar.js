@@ -7,6 +7,8 @@ const ROLE_LABEL = {
   general_manager: 'Giám đốc',
   admin: 'Quản trị viên',
   ticket_agent: 'Nhân viên bán vé',
+  driver: 'Nhân viên Tài xế',
+  attendant: 'Nhân viên Phụ xe',
 };
 
 const Sidebar = ({ activeTab, onTabChange }) => {
@@ -46,12 +48,38 @@ const Sidebar = ({ activeTab, onTabChange }) => {
       case 'ticket_agent':
         return [
           { key: 'dashboard', label: 'Tổng quan' },
-          { key: 'agent-attendance', label: 'Chấm công' },
-          { key: 'agent-booking', label: 'Đặt vé' },
+          { key: 'agent-attendance', label: 'Chấm công ca' },
+          { key: 'agent-booking', label: 'Đặt vé tại quầy' },
           { key: 'agent-tickets', label: 'Quản lý vé' },
           { key: 'agent-shift', label: 'Tổng kết ca làm việc' },
+          { key: 'staff-schedule', label: 'Lịch làm việc' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ phép' },
+          { key: 'staff-salary', label: 'Xem lương' },
+          { key: 'staff-notifications', label: 'Xem thông báo' },
           { key: 'agent-trips', label: 'Tra cứu chuyến xe' },
-          { key: 'agent-ai', label: 'Tra hỏi tư vấn AI' },
+          { key: 'agent-ai', label: 'Trợ lý tư vấn AI' },
+        ];
+      case 'driver':
+        return [
+          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'driver-attendance', label: 'Chấm công số' },
+          { key: 'staff-schedule', label: 'Lịch chạy xe' },
+          { key: 'driver-status', label: 'Cập nhật hành trình' },
+          { key: 'driver-map', label: 'Bản đồ di chuyển' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ phép' },
+          { key: 'staff-salary', label: 'Xem bảng lương' },
+          { key: 'staff-notifications', label: 'Thông báo điều động' },
+        ];
+      case 'attendant':
+        return [
+          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'attendant-attendance', label: 'Chấm công số' },
+          { key: 'staff-schedule', label: 'Lịch chạy xe' },
+          { key: 'attendant-checkin', label: 'Soát vé & Check-in' },
+          { key: 'attendant-luggage', label: 'Thẻ hành lý ký gửi' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ phép' },
+          { key: 'staff-salary', label: 'Xem bảng lương' },
+          { key: 'staff-notifications', label: 'Thông báo điều động' },
         ];
       case 'admin':
         return [

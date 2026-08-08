@@ -69,15 +69,46 @@ class TripService {
       throw new Error('Định dạng ngày không hợp lệ. Vui lòng sử dụng định dạng YYYY-MM-DD.');
     }
 
+    const resolveAbbr = (text) => {
+      if (!text) return '';
+      const clean = text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .replace(/[\.,]/g, '')
+        .toLowerCase()
+        .trim();
+
+
+      const map = {
+        'sg': 'Hồ Chí Minh',
+        'hcm': 'Hồ Chí Minh',
+        'tphcm': 'Hồ Chí Minh',
+        'tp hcm': 'Hồ Chí Minh',
+        'hn': 'Hà Nội',
+        'nt': 'Nha Trang',
+        'dl': 'Đà Lạt',
+        'dn': 'Đà Nẵng',
+        'vt': 'Vũng Tàu',
+        'ct': 'Cần Thơ',
+        'hp': 'Hải Phòng'
+      };
+      return map[clean] || text;
+    };
+
+    const searchFrom = resolveAbbr(from);
+    const searchTo = resolveAbbr(to);
+
     // Find all route IDs matching the "from" startPoint
     const routesFrom = await routeRepository.find({
-      startPoint: { $regex: new RegExp(from.trim(), 'i') }
+      startPoint: { $regex: new RegExp(searchFrom.trim(), 'i') }
     });
     const routeIdsFrom = routesFrom.map(r => r._id);
 
     // Find all route IDs matching the "to" endPoint
     const routesTo = await routeRepository.find({
-      endPoint: { $regex: new RegExp(to.trim(), 'i') }
+      endPoint: { $regex: new RegExp(searchTo.trim(), 'i') }
     });
     const routeIdsTo = routesTo.map(r => r._id);
 
@@ -92,8 +123,8 @@ class TripService {
       }
     };
 
-    const fromRegex = new RegExp(from.trim(), 'i');
-    const toRegex = new RegExp(to.trim(), 'i');
+    const fromRegex = new RegExp(searchFrom.trim(), 'i');
+    const toRegex = new RegExp(searchTo.trim(), 'i');
 
     const fromConditions = [];
     if (routeIdsFrom.length > 0) {
@@ -111,6 +142,7 @@ class TripService {
       { $or: fromConditions },
       { $or: toConditions }
     ];
+
 
     const trips = await tripRepository.findWithPopulate(query, { departureTime: 1 });
 

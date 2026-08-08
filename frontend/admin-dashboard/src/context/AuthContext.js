@@ -20,7 +20,7 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        const allowedRoles = ['fleet_manager', 'ops_manager', 'general_manager', 'admin', 'ticket_agent'];
+        const allowedRoles = ['fleet_manager', 'ops_manager', 'general_manager', 'admin', 'ticket_agent', 'driver', 'attendant'];
         if (!allowedRoles.includes(data.user.role)) {
           return { success: false, message: 'Tài khoản không có quyền truy cập hệ thống quản lý.' };
         }
