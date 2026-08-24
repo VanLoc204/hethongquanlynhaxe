@@ -11,7 +11,7 @@ const ROLE_LABEL = {
   attendant: 'Nhân viên Phụ xe',
 };
 
-const Sidebar = ({ activeTab, onTabChange }) => {
+const Sidebar = ({ activeTab, onTabChange, isOpen }) => {
   const { user, logout } = useContext(AuthContext);
 
   const getNavItems = () => {
@@ -98,7 +98,7 @@ const Sidebar = ({ activeTab, onTabChange }) => {
   const navItems = getNavItems();
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
 
       <nav className="nav-menu">
         {navItems.map(item => (

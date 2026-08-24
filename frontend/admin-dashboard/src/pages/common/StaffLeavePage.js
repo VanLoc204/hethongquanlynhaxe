@@ -95,7 +95,7 @@ const StaffLeavePage = () => {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '1.5rem', animation: 'fadeIn 0.4s ease' }}>
+    <div className="responsive-grid-layout" style={{ animation: 'fadeIn 0.4s ease' }}>
       
       {/* Form nộp đơn xin nghỉ */}
       <section className="panel" style={{ height: 'fit-content' }}>

@@ -35,19 +35,37 @@ import AgentTicketsPage from './pages/agent/AgentTicketsPage';
 import AgentShiftSummaryPage from './pages/agent/AgentShiftSummaryPage';
 import AgentTripsPage from './pages/agent/AgentTripsPage';
 import AgentAIPage from './pages/agent/AgentAIPage';
+import AgentDashboardPage from './pages/agent/AgentDashboardPage';
 
 // Attendant Pages
 import AttendantAttendancePage from './pages/attendant/AttendantAttendancePage';
 import AttendantCheckinPage from './pages/attendant/AttendantCheckinPage';
 import AttendantLuggagePage from './pages/attendant/AttendantLuggagePage';
+import AttendantDashboardPage from './pages/attendant/AttendantDashboardPage';
+
+// Driver Pages
+import DriverDashboardPage from './pages/driver/DriverDashboardPage';
+import DriverAttendancePage from './pages/driver/DriverAttendancePage';
+import DriverStatusPage from './pages/driver/DriverStatusPage';
+import DriverMapPage from './pages/driver/DriverMapPage';
 
 function DashboardLayout() {
   const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
+        if (user?.role === 'ticket_agent') {
+          return <AgentDashboardPage setActiveTab={setActiveTab} />;
+        }
+        if (user?.role === 'driver') {
+          return <DriverDashboardPage setActiveTab={setActiveTab} />;
+        }
+        if (user?.role === 'attendant') {
+          return <AttendantDashboardPage setActiveTab={setActiveTab} />;
+        }
         return <DashboardOverviewPage />;
       case 'fleet-buses':
         return <FleetBusesPage />;
@@ -109,6 +127,14 @@ function DashboardLayout() {
         return <AttendantCheckinPage />;
       case 'attendant-luggage':
         return <AttendantLuggagePage />;
+
+      // Driver views
+      case 'driver-attendance':
+        return <DriverAttendancePage />;
+      case 'driver-status':
+        return <DriverStatusPage />;
+      case 'driver-map':
+        return <DriverMapPage />;
 
 
       default:
@@ -189,6 +215,14 @@ function DashboardLayout() {
       case 'attendant-luggage':
         return 'Ghi nhận thẻ hành lý ký gửi';
 
+      // Driver views
+      case 'driver-attendance':
+        return 'Chấm công số (Tài xế)';
+      case 'driver-status':
+        return 'Cập nhật lộ trình xe chạy';
+      case 'driver-map':
+        return 'Bản đồ di chuyển GPS';
+
       default:
         return 'Chức năng đang phát triển';
     }
@@ -209,6 +243,21 @@ function DashboardLayout() {
       {/* Top Header */}
       <header className="top-header">
         <div className="logo-block">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="sidebar-toggle-btn"
+            style={{
+              display: 'none',
+              background: 'none',
+              border: 'none',
+              fontSize: '1.5rem',
+              cursor: 'pointer',
+              color: 'var(--text-main)',
+              marginRight: '0.75rem'
+            }}
+          >
+            ☰
+          </button>
           <span className="logo-concept">Á ĐÔNG TRAVEL</span>
         </div>
         <div className="header-right">
@@ -223,7 +272,14 @@ function DashboardLayout() {
 
       <div className="dashboard-container">
         {/* Sidebar */}
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        <Sidebar
+          activeTab={activeTab}
+          onTabChange={(tab) => {
+            setActiveTab(tab);
+            setSidebarOpen(false);
+          }}
+          isOpen={sidebarOpen}
+        />
 
         {/* Main Content */}
         <main className="main-content">

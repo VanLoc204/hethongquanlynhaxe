@@ -11,6 +11,13 @@ const StaffSchedulePage = () => {
   // Custom states for Kanban layout
   const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'table'
   const [weekOffset, setWeekOffset] = useState(0);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const fetchSchedule = async () => {
@@ -239,134 +246,239 @@ const StaffSchedulePage = () => {
 
       {/* RENDER KANBAN VIEW */}
       {viewMode === 'kanban' && (
-        <div className="kanban-grid-wrapper" style={{ overflowX: 'auto', marginBottom: '1rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(180px, 1fr))', columnGap: '0.75rem', rowGap: '0', minWidth: '1200px' }}>
-            {/* Row 1: Headers */}
+        isMobile ? (
+          /* Mobile view: Stacked vertical list of days */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1rem' }}>
             {weekDates.map((date, idx) => {
               const activeDay = isToday(date);
-              const borderColor = activeDay ? '#8b5cf6' : '#cbd5e1';
-              const borderWidth = activeDay ? '2px' : '1px';
-              return (
-                <div 
-                  key={`header-${idx}`} 
-                  style={{ 
-                    textAlign: 'center', 
-                    background: activeDay ? '#8b5cf6' : '#64748b',
-                    color: 'white',
-                    borderRadius: '8px 8px 0 0',
-                    padding: '0.5rem 0',
-                    border: `${borderWidth} solid ${borderColor}`,
-                    borderBottom: 'none',
-                    boxShadow: activeDay ? '0 -2px 6px rgba(139, 92, 246, 0.15)' : 'none'
-                  }}
-                >
-                  <strong style={{ display: 'block', fontSize: '0.85rem' }}>{VIETNAMESE_DAYS[idx]}</strong>
-                  <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
-                    {date.getDate()}/{date.getMonth() + 1}
-                  </span>
-                </div>
-              );
-            })}
-
-            {/* Row 2: AM Blocks */}
-            {weekDates.map((date, idx) => {
               const dayTrips = getTripsForDay(date);
               const amTrips = dayTrips.filter(trip => new Date(trip.departureTime).getHours() < 12);
-              const activeDay = isToday(date);
-              const borderColor = activeDay ? '#8b5cf6' : '#cbd5e1';
-              const borderWidth = activeDay ? '2px' : '1px';
-              return (
-                <div 
-                  key={`am-${idx}`} 
-                  style={{
-                    background: activeDay ? '#f5f3ff' : '#f8fafc',
-                    borderLeft: `${borderWidth} solid ${borderColor}`,
-                    borderRight: `${borderWidth} solid ${borderColor}`,
-                    borderBottom: `1px dashed ${activeDay ? '#d8b4fe' : '#cbd5e1'}`,
-                    padding: '0.6rem 0.5rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.4rem'
-                  }}
-                >
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    fontSize: '0.65rem', 
-                    fontWeight: '700', 
-                    color: '#0369a1',
-                    background: '#e0f2fe',
-                    padding: '1px 5px',
-                    borderRadius: '3px',
-                    width: 'fit-content',
-                    marginBottom: '0.2rem'
-                  }}>
-                    Sáng (AM)
-                  </div>
-                  {amTrips.length === 0 ? (
-                    <div style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '0.7rem', minHeight: '60px' }}>
-                      Trống lịch
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      {amTrips.map(trip => renderTripCard(trip))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Row 3: PM Blocks */}
-            {weekDates.map((date, idx) => {
-              const dayTrips = getTripsForDay(date);
               const pmTrips = dayTrips.filter(trip => new Date(trip.departureTime).getHours() >= 12);
-              const activeDay = isToday(date);
-              const borderColor = activeDay ? '#8b5cf6' : '#cbd5e1';
-              const borderWidth = activeDay ? '2px' : '1px';
+              const borderColor = activeDay ? 'var(--primary)' : '#e2e8f0';
+              
               return (
                 <div 
-                  key={`pm-${idx}`} 
+                  key={idx} 
                   style={{
-                    background: activeDay ? '#f5f3ff' : '#f8fafc',
-                    borderLeft: `${borderWidth} solid ${borderColor}`,
-                    borderRight: `${borderWidth} solid ${borderColor}`,
-                    borderBottom: `${borderWidth} solid ${borderColor}`,
-                    borderRadius: '0 0 8px 8px',
-                    padding: '0.6rem 0.5rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.4rem',
-                    boxShadow: activeDay ? '0 4px 6px rgba(139, 92, 246, 0.15)' : 'none'
+                    border: `1px solid ${borderColor}`,
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    background: '#ffffff',
+                    boxShadow: activeDay ? '0 4px 12px rgba(99, 102, 241, 0.08)' : '0 2px 4px rgba(0,0,0,0.02)',
+                    borderWidth: activeDay ? '2px' : '1px'
                   }}
                 >
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    fontSize: '0.65rem', 
-                    fontWeight: '700', 
-                    color: '#b45309',
-                    background: '#fef3c7',
-                    padding: '1px 5px',
-                    borderRadius: '3px',
-                    width: 'fit-content',
-                    marginBottom: '0.2rem'
+                  {/* Day Header */}
+                  <div style={{
+                    background: activeDay ? 'var(--primary)' : '#64748b',
+                    color: '#ffffff',
+                    padding: '0.65rem 1rem',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
                   }}>
-                    Chiều/Tối (PM)
+                    <strong style={{ fontSize: '0.9rem' }}>{VIETNAMESE_DAYS[idx]}</strong>
+                    <span style={{ fontSize: '0.8rem', opacity: 0.95 }}>
+                      {date.getDate()}/{date.getMonth() + 1}/{date.getFullYear()}
+                    </span>
                   </div>
-                  {pmTrips.length === 0 ? (
-                    <div style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '0.7rem', minHeight: '60px' }}>
-                      Trống lịch
+
+                  {/* Day Content */}
+                  <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    
+                    {/* AM section */}
+                    <div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.7rem',
+                        fontWeight: '700',
+                        color: '#0369a1',
+                        background: '#e0f2fe',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        width: 'fit-content',
+                        marginBottom: '0.5rem'
+                      }}>
+                        Sáng (AM)
+                      </div>
+                      {amTrips.length === 0 ? (
+                        <div style={{ color: '#cbd5e1', fontSize: '0.75rem', paddingLeft: '0.25rem', fontStyle: 'italic', paddingBottom: '0.25rem' }}>
+                          Trống lịch
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {amTrips.map(trip => renderTripCard(trip))}
+                        </div>
+                      )}
                     </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                      {pmTrips.map(trip => renderTripCard(trip))}
+
+                    {/* Divider line */}
+                    <hr style={{ border: 'none', borderBottom: '1px dashed #e2e8f0', margin: '4px 0' }} />
+
+                    {/* PM section */}
+                    <div>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        fontSize: '0.7rem',
+                        fontWeight: '700',
+                        color: '#b45309',
+                        background: '#fef3c7',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        width: 'fit-content',
+                        marginBottom: '0.5rem'
+                      }}>
+                        Chiều/Tối (PM)
+                      </div>
+                      {pmTrips.length === 0 ? (
+                        <div style={{ color: '#cbd5e1', fontSize: '0.75rem', paddingLeft: '0.25rem', fontStyle: 'italic', paddingBottom: '0.25rem' }}>
+                          Trống lịch
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {pmTrips.map(trip => renderTripCard(trip))}
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                  </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        ) : (
+          /* Desktop view: 7 column grid */
+          <div className="kanban-grid-wrapper" style={{ overflowX: 'auto', marginBottom: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(180px, 1fr))', columnGap: '0.75rem', rowGap: '0', minWidth: '1200px' }}>
+              {/* Row 1: Headers */}
+              {weekDates.map((date, idx) => {
+                const activeDay = isToday(date);
+                const borderColor = activeDay ? '#8b5cf6' : '#cbd5e1';
+                const borderWidth = activeDay ? '2px' : '1px';
+                return (
+                  <div 
+                    key={`header-${idx}`} 
+                    style={{ 
+                      textAlign: 'center', 
+                      background: activeDay ? '#8b5cf6' : '#64748b',
+                      color: 'white',
+                      borderRadius: '8px 8px 0 0',
+                      padding: '0.5rem 0',
+                      border: `${borderWidth} solid ${borderColor}`,
+                      borderBottom: 'none',
+                      boxShadow: activeDay ? '0 -2px 6px rgba(139, 92, 246, 0.15)' : 'none'
+                    }}
+                  >
+                    <strong style={{ display: 'block', fontSize: '0.85rem' }}>{VIETNAMESE_DAYS[idx]}</strong>
+                    <span style={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                      {date.getDate()}/{date.getMonth() + 1}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Row 2: AM Blocks */}
+              {weekDates.map((date, idx) => {
+                const dayTrips = getTripsForDay(date);
+                const amTrips = dayTrips.filter(trip => new Date(trip.departureTime).getHours() < 12);
+                const activeDay = isToday(date);
+                const borderColor = activeDay ? '#8b5cf6' : '#cbd5e1';
+                const borderWidth = activeDay ? '2px' : '1px';
+                return (
+                  <div 
+                    key={`am-${idx}`} 
+                    style={{
+                      background: activeDay ? '#f5f3ff' : '#f8fafc',
+                      borderLeft: `${borderWidth} solid ${borderColor}`,
+                      borderRight: `${borderWidth} solid ${borderColor}`,
+                      borderBottom: `1px dashed ${activeDay ? '#d8b4fe' : '#cbd5e1'}`,
+                      padding: '0.6rem 0.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.4rem'
+                    }}
+                  >
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      fontSize: '0.65rem', 
+                      fontWeight: '700', 
+                      color: '#0369a1',
+                      background: '#e0f2fe',
+                      padding: '1px 5px',
+                      borderRadius: '3px',
+                      width: 'fit-content',
+                      marginBottom: '0.2rem'
+                    }}>
+                      Sáng (AM)
+                    </div>
+                    {amTrips.length === 0 ? (
+                      <div style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '0.7rem', minHeight: '60px' }}>
+                        Trống lịch
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {amTrips.map(trip => renderTripCard(trip))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Row 3: PM Blocks */}
+              {weekDates.map((date, idx) => {
+                const dayTrips = getTripsForDay(date);
+                const pmTrips = dayTrips.filter(trip => new Date(trip.departureTime).getHours() >= 12);
+                const activeDay = isToday(date);
+                const borderColor = activeDay ? '#8b5cf6' : '#cbd5e1';
+                const borderWidth = activeDay ? '2px' : '1px';
+                return (
+                  <div 
+                    key={`pm-${idx}`} 
+                    style={{
+                      background: activeDay ? '#f5f3ff' : '#f8fafc',
+                      borderLeft: `${borderWidth} solid ${borderColor}`,
+                      borderRight: `${borderWidth} solid ${borderColor}`,
+                      borderBottom: `${borderWidth} solid ${borderColor}`,
+                      borderRadius: '0 0 8px 8px',
+                      padding: '0.6rem 0.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.4rem',
+                      boxShadow: activeDay ? '0 4px 6px rgba(139, 92, 246, 0.15)' : 'none'
+                    }}
+                  >
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      fontSize: '0.65rem', 
+                      fontWeight: '700', 
+                      color: '#b45309',
+                      background: '#fef3c7',
+                      padding: '1px 5px',
+                      borderRadius: '3px',
+                      width: 'fit-content',
+                      marginBottom: '0.2rem'
+                    }}>
+                      Chiều/Tối (PM)
+                    </div>
+                    {pmTrips.length === 0 ? (
+                      <div style={{ flexGrow: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: '0.7rem', minHeight: '60px' }}>
+                        Trống lịch
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {pmTrips.map(trip => renderTripCard(trip))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
       )}
 
       {/* RENDER TABLE VIEW (FALLBACK/TOGGLED) */}

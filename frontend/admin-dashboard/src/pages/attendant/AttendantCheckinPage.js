@@ -314,6 +314,36 @@ const AttendantCheckinPage = () => {
     return new Date(dateStr).toLocaleDateString('vi-VN');
   };
 
+  // Group trips by date string
+  const groupTripsByDate = (tripsList) => {
+    const groups = {};
+    tripsList.forEach(trip => {
+      const dateKey = new Date(trip.departureTime).toDateString();
+      if (!groups[dateKey]) {
+        groups[dateKey] = [];
+      }
+      groups[dateKey].push(trip);
+    });
+    return groups;
+  };
+
+  const getHeaderDateLabel = (dateStr) => {
+    const tripDate = new Date(dateStr);
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+
+    const isToday = tripDate.toDateString() === today.toDateString();
+    const isTomorrow = tripDate.toDateString() === tomorrow.toDateString();
+
+    const options = { weekday: 'long', day: '2-digit', month: '2-digit' };
+    const formatted = tripDate.toLocaleDateString('vi-VN', options);
+
+    if (isToday) return `Hôm nay (${formatted})`;
+    if (isTomorrow) return `Ngày mai (${formatted})`;
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+  };
+
   return (
     <section className="panel" style={{ animation: 'fadeIn 0.3s ease' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--card-border)', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
@@ -337,49 +367,73 @@ const AttendantCheckinPage = () => {
       {error && <div className="error-message" style={{ marginBottom: '1rem' }}>{error}</div>}
       {success && <div className="success-message" style={{ marginBottom: '1rem' }}>{success}</div>}
 
-      <div style={{ display: 'flex', gap: '1.5rem', flexDirection: 'row', alignItems: 'stretch' }}>
+      <div className="split-layout-responsive">
         {/* Left Side: Schedule selection */}
-        <div style={{ width: '320px', borderRight: '1px solid var(--card-border)', paddingRight: '1.5rem' }}>
-          <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Chuyến đi của bạn hôm nay</h3>
+        <div style={{ width: '340px', borderRight: '1px solid var(--card-border)', paddingRight: '1.5rem', maxHeight: '600px', overflowY: 'auto' }}>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text)' }}>Lịch trình nhận phân công</h3>
           {loadingSchedule ? (
             <div style={{ textAlign: 'center', padding: '2rem 0' }}>Đang tải lịch chạy...</div>
           ) : trips.length === 0 ? (
             <div style={{ padding: '1.5rem', background: '#f8fafc', color: 'var(--text-muted)', borderRadius: '6px', textAlign: 'center' }}>
-              Không có chuyến đi nào được phân công cho bạn hôm nay.
+              Không có chuyến đi nào được phân công.
             </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {trips.map(trip => {
-                const isActive = selectedTrip?._id === trip._id;
-                return (
-                  <div
-                    key={trip._id}
-                    onClick={() => handleSelectTrip(trip)}
-                    style={{
-                      padding: '0.85rem',
-                      borderRadius: '6px',
-                      border: isActive ? '2px solid var(--primary)' : '1px solid var(--card-border)',
-                      background: isActive ? '#f0f7ff' : '#white',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                      <span style={{ fontWeight: 'bold', color: isActive ? 'var(--primary)' : 'inherit' }}>
-                        {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
-                      </span>
+          ) : (() => {
+            const grouped = groupTripsByDate(trips);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                {Object.keys(grouped).map(dateKey => (
+                  <div key={dateKey}>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      textTransform: 'uppercase',
+                      color: 'var(--primary)',
+                      marginBottom: '0.5rem',
+                      letterSpacing: '0.5px',
+                      backgroundColor: '#f1f5f9',
+                      padding: '4px 8px',
+                      borderRadius: '4px'
+                    }}>
+                      {getHeaderDateLabel(dateKey)}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Giờ khởi hành: {formatTime(trip.departureTime)} ({formatDate(trip.departureTime)})
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Biển số: {trip.busId?.plateNumber} | {trip.busId?.type}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      {grouped[dateKey].map(trip => {
+                        const isActive = selectedTrip?._id === trip._id;
+                        return (
+                          <div
+                            key={trip._id}
+                            onClick={() => handleSelectTrip(trip)}
+                            style={{
+                              padding: '0.85rem',
+                              borderRadius: '8px',
+                              border: isActive ? '2px solid var(--primary)' : '1px solid var(--card-border)',
+                              background: isActive ? '#f0f7ff' : '#ffffff',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              boxShadow: isActive ? '0 4px 6px -1px rgba(63, 106, 216, 0.1)' : 'none'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                              <span style={{ fontWeight: '700', fontSize: '0.9rem', color: isActive ? 'var(--primary)' : 'var(--text)' }}>
+                                {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', marginTop: '0.2rem' }}>
+                              <span>Giờ đi: <strong>{formatTime(trip.departureTime)}</strong></span>
+                              <span>Biển số: {trip.busId?.plateNumber}</span>
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                              Dòng xe: {trip.busId?.type}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Right Side: Onboard Booking manifested passengers */}
