@@ -254,12 +254,20 @@ exports.endShift = async (req, res) => {
   }
 };
 
-// @desc    Get current active shift session
-// @route   GET /api/v1/users/shift/current
-// @access  Private (Ticket Agent)
 exports.getCurrentShift = async (req, res) => {
   try {
-    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' }).lean();
+    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' })
+      .populate({
+        path: 'ticketsSold',
+        populate: {
+          path: 'tripId',
+          populate: [
+            { path: 'routeId', select: 'startPoint endPoint' },
+            { path: 'busId', select: 'plateNumber type price' }
+          ]
+        }
+      })
+      .lean();
     res.status(200).json({
       success: true,
       session
