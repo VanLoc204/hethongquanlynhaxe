@@ -3,6 +3,7 @@ const { getStaff, createStaff, updateStaff, deleteStaff, updateUserPoints, getUs
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
 const { 
   getMySchedule, 
+  getWorkSchedules,
   submitLeave, 
   getMyLeaves, 
   getNotifications, 
@@ -16,13 +17,16 @@ const {
   cancelTicketAtCounter,
   verifyTicketQR,
   getTripBookings,
-  checkInPassenger
+  checkInPassenger,
+  getAllLeaves,
+  updateLeaveStatus
 } = require('../controllers/employeeController');
 
 const router = express.Router();
 
 // 1. Employee features mapping (Must be registered BEFORE /:id)
 router.get('/my-schedule', protect, getMySchedule);
+router.get('/work-schedules', protect, getWorkSchedules);
 router.post('/leave', protect, submitLeave);
 router.get('/leave', protect, getMyLeaves);
 router.get('/notifications', protect, getNotifications);
@@ -44,10 +48,6 @@ router.post('/attendant/check-in/:bookingId', protect, checkInPassenger);
 router.post('/attendant/verify-ticket-qr', protect, verifyTicketQR);
 
 
-// 2. Dynamic ID routes
-router.patch('/:id/points', updateUserPoints);
-router.get('/:id', getUserById);
-
 // 3. Apply protect to all staff admin routes
 router.use(protect);
 
@@ -58,5 +58,12 @@ router.route('/staff')
 router.route('/staff/:id')
   .put(restrictTo('general_manager', 'admin'), updateStaff)
   .delete(restrictTo('general_manager', 'admin'), deleteStaff);
+
+router.get('/admin/leaves', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getAllLeaves);
+router.patch('/admin/leaves/:id', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), updateLeaveStatus);
+
+// 2. Dynamic ID routes (placed at the end to prevent route hijacking)
+router.patch('/:id/points', updateUserPoints);
+router.get('/:id', getUserById);
 
 module.exports = router;

@@ -33,7 +33,14 @@ const OpsTripsPage = () => {
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
   const [filterRoute, setFilterRoute] = useState('');
   const [filterDate, setFilterDate] = useState('');
-  const [calendarRefDate, setCalendarRefDate] = useState(new Date('2026-07-23'));
+  const [calendarRefDate, setCalendarRefDate] = useState(new Date());
+  
+  // Advanced filters states
+  const [filterBusType, setFilterBusType] = useState('all');
+  const [filterTimeOfDay, setFilterTimeOfDay] = useState('all');
+  const [filterSeats, setFilterSeats] = useState('all');
+  const [filterMaxPrice, setFilterMaxPrice] = useState('');
+  const [filterAmenity, setFilterAmenity] = useState('all');
 
   // Auto scheduling modal states
   const [showAutoModal, setShowAutoModal] = useState(false);
@@ -189,6 +196,53 @@ const OpsTripsPage = () => {
           return false;
         }
       }
+
+      // Filter by Bus Type
+      if (filterBusType !== 'all') {
+        const typeStr = (trip.busId?.type || '').toLowerCase();
+        if (!typeStr.includes(filterBusType.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Filter by Seats
+      if (filterSeats !== 'all') {
+        const seatsVal = Number(filterSeats);
+        if (trip.busId?.totalSeats !== seatsVal) {
+          return false;
+        }
+      }
+
+      // Filter by Max Price
+      if (filterMaxPrice) {
+        const maxPriceVal = Number(filterMaxPrice);
+        if (trip.price > maxPriceVal) {
+          return false;
+        }
+      }
+
+      // Filter by Time of Day
+      if (filterTimeOfDay !== 'all') {
+        const depDate = new Date(trip.departureTime);
+        const hours = depDate.getHours();
+        if (filterTimeOfDay === 'morning') { // 06:00 - 12:00
+          if (hours < 6 || hours >= 12) return false;
+        } else if (filterTimeOfDay === 'afternoon') { // 12:00 - 18:00
+          if (hours < 12 || hours >= 18) return false;
+        } else if (filterTimeOfDay === 'evening') { // 18:00 - 06:00
+          if (hours >= 6 && hours < 18) return false;
+        }
+      }
+
+      // Filter by Accompanying Services (Amenity)
+      if (filterAmenity !== 'all') {
+        const busAmenities = trip.busId?.amenities || [];
+        const hasAmenity = busAmenities.some(a => a.toLowerCase().includes(filterAmenity.toLowerCase()));
+        if (!hasAmenity) {
+          return false;
+        }
+      }
+
       return true;
     });
   };
@@ -231,7 +285,11 @@ const OpsTripsPage = () => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) setRoutes(data.routes);
+      if (data.success) {
+        // Only allow approved routes for scheduling trips
+        const approved = (data.routes || []).filter(r => r.status === 'approved' || !r.status);
+        setRoutes(approved);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -447,71 +505,179 @@ const OpsTripsPage = () => {
       {/* Filters & View Switcher */}
       <div style={{
         background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px',
-        padding: '16px', display: 'flex', gap: '16px', alignItems: 'center',
-        marginBottom: '24px', flexWrap: 'wrap', justifyContent: 'space-between'
+        padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px',
+        marginBottom: '24px'
       }}>
-        {/* Left: filters */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tuyến:</span>
-            <select 
-              value={filterRoute} 
-              onChange={(e) => setFilterRoute(e.target.value)}
-              className="form-control"
-              style={{ width: '180px', padding: '6px 12px' }}
-            >
-              <option value="">Tất cả các tuyến</option>
-              {routes.map(r => (
-                <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
-              ))}
-            </select>
+        {/* Row 1: Route, Date, View mode */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tuyến:</span>
+              <select 
+                value={filterRoute} 
+                onChange={(e) => setFilterRoute(e.target.value)}
+                className="form-control"
+                style={{ width: '180px', padding: '6px 12px' }}
+              >
+                <option value="">Tất cả các tuyến</option>
+                {routes.map(r => (
+                  <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Thời gian:</span>
+              <input 
+                type="date" 
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="form-control"
+                style={{ width: '160px', padding: '5px 12px' }}
+              />
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Thời gian:</span>
-            <input 
-              type="date" 
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="form-control"
-              style={{ width: '160px', padding: '5px 12px' }}
-            />
-          </div>
-          {(filterRoute || filterDate) && (
+
+          {/* Right: View Switcher */}
+          <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
             <button 
-              onClick={() => { setFilterRoute(''); setFilterDate(''); }}
-              className="btn btn-secondary"
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              onClick={() => setViewMode('list')}
+              style={{
+                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
+                cursor: 'pointer', background: viewMode === 'list' ? 'white' : 'transparent',
+                color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
+                boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+              }}
             >
-              Xóa bộ lọc
+              Danh sách
             </button>
-          )}
+            <button 
+              onClick={() => setViewMode('calendar')}
+              style={{
+                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
+                cursor: 'pointer', background: viewMode === 'calendar' ? 'white' : 'transparent',
+                color: viewMode === 'calendar' ? 'var(--primary)' : 'var(--text-secondary)',
+                boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+              }}
+            >
+              Lịch tuần
+            </button>
+          </div>
         </div>
 
-        {/* Right: View Switcher */}
-        <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
-          <button 
-            onClick={() => setViewMode('list')}
-            style={{
-              padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-              cursor: 'pointer', background: viewMode === 'list' ? 'white' : 'transparent',
-              color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
-              boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-            }}
-          >
-            Danh sách
-          </button>
-          <button 
-            onClick={() => setViewMode('calendar')}
-            style={{
-              padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-              cursor: 'pointer', background: viewMode === 'calendar' ? 'white' : 'transparent',
-              color: viewMode === 'calendar' ? 'var(--primary)' : 'var(--text-secondary)',
-              boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-            }}
-          >
-            Lịch tuần
-          </button>
+        {/* Row 2: Advanced filters */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+          gap: '12px', 
+          paddingTop: '12px', 
+          borderTop: '1px solid #e2e8f0' 
+        }}>
+          {/* 1. Loại xe */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Loại xe:</label>
+            <select
+              value={filterBusType}
+              onChange={(e) => setFilterBusType(e.target.value)}
+              className="form-control"
+              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+            >
+              <option value="all">Tất cả loại xe</option>
+              <option value="giường nằm">Giường nằm</option>
+              <option value="ghế ngồi">Ghế ngồi</option>
+              <option value="limousine">Limousine / Phòng nằm</option>
+            </select>
+          </div>
+
+          {/* 2. Khung giờ chạy */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Khung giờ chạy:</label>
+            <select
+              value={filterTimeOfDay}
+              onChange={(e) => setFilterTimeOfDay(e.target.value)}
+              className="form-control"
+              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+            >
+              <option value="all">Tất cả khung giờ</option>
+              <option value="morning">Buổi sáng (06:00 - 12:00)</option>
+              <option value="afternoon">Buổi chiều (12:00 - 18:00)</option>
+              <option value="evening">Buổi tối &amp; đêm (18:00 - 06:00)</option>
+            </select>
+          </div>
+
+          {/* 3. Số chỗ ngồi */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Số chỗ:</label>
+            <select
+              value={filterSeats}
+              onChange={(e) => setFilterSeats(e.target.value)}
+              className="form-control"
+              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+            >
+              <option value="all">Tất cả số chỗ</option>
+              <option value="16">16 chỗ</option>
+              <option value="20">20 chỗ</option>
+              <option value="22">22 chỗ</option>
+              <option value="29">29 chỗ</option>
+              <option value="32">32 chỗ</option>
+              <option value="34">34 chỗ</option>
+              <option value="44">44 chỗ</option>
+              <option value="45">45 chỗ</option>
+            </select>
+          </div>
+
+          {/* 4. Giá vé tối đa */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Giá vé tối đa (VND):</label>
+            <input
+              type="number"
+              value={filterMaxPrice}
+              onChange={(e) => setFilterMaxPrice(e.target.value)}
+              placeholder="Ví dụ: 300000"
+              className="form-control"
+              style={{ padding: '5px 10px', fontSize: '0.8rem' }}
+            />
+          </div>
+
+          {/* 5. Dịch vụ đi kèm */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Dịch vụ đi kèm:</label>
+            <select
+              value={filterAmenity}
+              onChange={(e) => setFilterAmenity(e.target.value)}
+              className="form-control"
+              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+            >
+              <option value="all">Tất cả dịch vụ</option>
+              <option value="wifi">Wifi miễn phí</option>
+              <option value="điều hòa">Điều hòa</option>
+              <option value="nước">Nước uống / Khăn lạnh</option>
+              <option value="tivi">Màn hình Tivi</option>
+              <option value="cổng sạc">Cổng sạc USB</option>
+            </select>
+          </div>
         </div>
+
+        {/* Row 3: Action Buttons */}
+        {(filterRoute || filterDate || filterBusType !== 'all' || filterTimeOfDay !== 'all' || filterSeats !== 'all' || filterMaxPrice || filterAmenity !== 'all') && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
+            <button 
+              onClick={() => {
+                setFilterRoute('');
+                setFilterDate('');
+                setFilterBusType('all');
+                setFilterTimeOfDay('all');
+                setFilterSeats('all');
+                setFilterMaxPrice('');
+                setFilterAmenity('all');
+              }}
+              className="btn btn-secondary"
+              style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '700', color: '#ef4444', borderColor: '#fca5a5' }}
+            >
+              Đặt lại tất cả bộ lọc
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -627,7 +793,7 @@ const OpsTripsPage = () => {
                 ← Tuần trước
               </button>
               <button 
-                onClick={() => setCalendarRefDate(new Date('2026-07-23'))}
+                onClick={() => setCalendarRefDate(new Date())}
                 className="btn btn-secondary"
                 style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
               >
@@ -657,7 +823,7 @@ const OpsTripsPage = () => {
           <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '16px' }}>
             {getDaysOfWeek(calendarRefDate).map((dayDate, dayIdx) => {
               const dayTrips = getTripsForDay(dayDate);
-              const isToday = dayDate.toLocaleDateString('en-CA') === '2026-07-23';
+              const isToday = dayDate.toLocaleDateString('en-CA') === new Date().toLocaleDateString('en-CA');
               const daysOfWeekLabels = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
               
               return (
@@ -756,7 +922,7 @@ const OpsTripsPage = () => {
                             })()}
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
-                              <span style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.9rem' }}>
+                              <span style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                                 {trip.price?.toLocaleString('vi-VN')} đ
                               </span>
                               <div style={{ display: 'flex', gap: '4px' }}>

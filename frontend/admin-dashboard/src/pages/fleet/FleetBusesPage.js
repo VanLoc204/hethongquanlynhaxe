@@ -114,9 +114,25 @@ const FleetBusesPage = () => {
               />
               <div className="bus-row-content">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flexGrow: 1 }}>
-                  <div className="bus-card-title" style={{ justifyContent: 'flex-start', gap: '0.75rem', alignItems: 'center' }}>
+                  <div className="bus-card-title" style={{ justifyContent: 'flex-start', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0 }}>{bus.plateNumber}</h3>
                     <span className="bus-type-badge">{bus.type}</span>
+                    {bus.status && (
+                      <span style={{
+                        fontSize: '0.7rem',
+                        fontWeight: '700',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        textTransform: 'uppercase',
+                        backgroundColor: bus.status === 'approved' ? '#ecfdf5' : bus.status === 'rejected' ? '#fee2e2' : '#fff7ed',
+                        color: bus.status === 'approved' ? '#047857' : bus.status === 'rejected' ? '#b91c1c' : '#c2410c',
+                        border: bus.status === 'approved' ? '1px solid #a7f3d0' : bus.status === 'rejected' ? '1px solid #fca5a5' : '1px solid #fed7aa'
+                      }}>
+                        {bus.status === 'approved' && 'Đã duyệt'}
+                        {bus.status === 'rejected' && 'Từ chối'}
+                        {bus.status === 'pending' && 'Chờ duyệt'}
+                      </span>
+                    )}
                   </div>
 
                   <div className="bus-stats-row">

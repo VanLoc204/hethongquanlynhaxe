@@ -201,7 +201,14 @@ const DriverDashboardPage = ({ setActiveTab }) => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: '0.75rem', 
+                    flexShrink: 0,
+                    borderLeft: '1px solid var(--card-border)',
+                    paddingLeft: '1.5rem',
+                    marginLeft: '1.5rem'
+                  }}>
                     <button
                       className="btn"
                       onClick={() => setActiveTab('driver-status')}
@@ -213,7 +220,8 @@ const DriverDashboardPage = ({ setActiveTab }) => {
                         padding: '8px 16px',
                         border: 'none',
                         borderRadius: '6px',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       Cập Nhật Hành Trình
@@ -226,7 +234,8 @@ const DriverDashboardPage = ({ setActiveTab }) => {
                         fontSize: '0.85rem',
                         padding: '8px 16px',
                         borderRadius: '6px',
-                        cursor: 'pointer'
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       Bản Đồ Lộ Trình

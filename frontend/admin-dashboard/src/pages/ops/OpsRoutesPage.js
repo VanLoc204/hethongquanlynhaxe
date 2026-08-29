@@ -18,6 +18,17 @@ const OpsRoutesPage = () => {
   const [distance, setDistance] = useState('');
   const [duration, setDuration] = useState('');
 
+  const getStatusBadge = (status) => {
+    switch (status || 'approved') {
+      case 'approved':
+        return <span style={{ background: '#ecfdf5', color: '#047857', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700' }}>Đã duyệt</span>;
+      case 'rejected':
+        return <span style={{ background: '#fef2f2', color: '#991b1b', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700' }}>Từ chối</span>;
+      default:
+        return <span style={{ background: '#fff7ed', color: '#c2410c', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '700' }}>Chờ duyệt</span>;
+    }
+  };
+
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
@@ -170,44 +181,46 @@ const OpsRoutesPage = () => {
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                <th style={{ padding: '12px' }}>Điểm đi</th>
-                <th style={{ padding: '12px' }}>Điểm đến</th>
-                <th style={{ padding: '12px' }}>Khoảng cách</th>
-                <th style={{ padding: '12px' }}>Thời gian đi</th>
-                <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {routes.map((route) => (
-                <tr key={route._id} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
-                  <td style={{ padding: '14px 12px', fontWeight: '600' }}>{route.startPoint}</td>
-                  <td style={{ padding: '14px 12px', fontWeight: '600' }}>{route.endPoint}</td>
-                  <td style={{ padding: '14px 12px' }}>{route.distance}</td>
-                  <td style={{ padding: '14px 12px' }}>{route.duration}</td>
-                  <td style={{ padding: '14px 12px', textAlign: 'right' }}>
-                    <button 
-                      onClick={() => handleOpenEdit(route)} 
-                      className="btn btn-secondary" 
-                      style={{ marginRight: '8px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    >
-                      Sửa
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(route)} 
-                      className="btn btn-secondary" 
-                      style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '6px 12px', fontSize: '0.85rem' }}
-                    >
-                      Xóa
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            <th style={{ padding: '12px' }}>Điểm đi</th>
+            <th style={{ padding: '12px' }}>Điểm đến</th>
+            <th style={{ padding: '12px' }}>Khoảng cách</th>
+            <th style={{ padding: '12px' }}>Thời gian đi</th>
+            <th style={{ padding: '12px' }}>Trạng thái</th>
+            <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
+          </tr>
+        </thead>
+        <tbody>
+          {routes.map((route) => (
+            <tr key={route._id} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
+              <td style={{ padding: '14px 12px', fontWeight: '600' }}>{route.startPoint}</td>
+              <td style={{ padding: '14px 12px', fontWeight: '600' }}>{route.endPoint}</td>
+              <td style={{ padding: '14px 12px' }}>{route.distance}</td>
+              <td style={{ padding: '14px 12px' }}>{route.duration}</td>
+              <td style={{ padding: '14px 12px' }}>{getStatusBadge(route.status)}</td>
+              <td style={{ padding: '14px 12px', textAlign: 'right' }}>
+                <button 
+                  onClick={() => handleOpenEdit(route)} 
+                  className="btn btn-secondary" 
+                  style={{ marginRight: '8px', padding: '6px 12px', fontSize: '0.85rem' }}
+                >
+                  Sửa
+                </button>
+                <button 
+                  onClick={() => handleDelete(route)} 
+                  className="btn btn-secondary" 
+                  style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '6px 12px', fontSize: '0.85rem' }}
+                >
+                  Xóa
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
       )}
 
       {/* Add/Edit Modal */}

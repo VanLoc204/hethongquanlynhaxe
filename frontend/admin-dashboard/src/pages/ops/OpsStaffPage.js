@@ -6,11 +6,23 @@ const API_BASE = 'http://localhost:8000/api/v1';
 const OpsStaffPage = () => {
   const { token } = useContext(AuthContext);
   const [trips, setTrips] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [buses, setBuses] = useState([]);
   const [availableDrivers, setAvailableDrivers] = useState([]);
   const [availableAssistants, setAvailableAssistants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   
+  // View & Filter states
+  const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
+  const [calendarRefDate, setCalendarRefDate] = useState(new Date());
+  
+  const [filterRoute, setFilterRoute] = useState('');
+  const [filterDriver, setFilterDriver] = useState('');
+  const [filterBus, setFilterBus] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'assigned', 'missing'
+  const [filterDate, setFilterDate] = useState('');
+
   // Modal state
   const [editingTrip, setEditingTrip] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState('');
@@ -39,6 +51,30 @@ const OpsStaffPage = () => {
     }
   };
 
+  const fetchRoutes = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/trips/ops/routes`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setRoutes(data.routes || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchBuses = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/trips/fleet/buses`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) setBuses(data.buses || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchStaff = async () => {
     try {
       const res = await fetch(`${API_BASE}/users/staff`, {
@@ -46,9 +82,7 @@ const OpsStaffPage = () => {
       });
       const data = await res.json();
       if (data.success) {
-        // Filter drivers: role === 'driver' and status === 'active'
         const drivers = data.staff.filter(s => s.role === 'driver' && s.status === 'active');
-        // Filter assistants: role === 'attendant' or 'assistant'
         const assistants = data.staff.filter(s => 
           (s.role === 'attendant' || s.role === 'assistant') && 
           s.status === 'active'
@@ -65,13 +99,72 @@ const OpsStaffPage = () => {
   useEffect(() => {
     if (token) {
       fetchTrips();
+      fetchRoutes();
+      fetchBuses();
       fetchStaff();
     }
   }, [token]);
 
+  // Filtering Logic
+  const getFilteredTrips = () => {
+    return trips.filter(trip => {
+      // Filter by Route
+      if (filterRoute && (!trip.routeId || trip.routeId._id !== filterRoute)) {
+        return false;
+      }
+      // Filter by Driver
+      if (filterDriver && (!trip.driver || trip.driver.name !== filterDriver)) {
+        return false;
+      }
+      // Filter by Bus
+      if (filterBus && (!trip.busId || trip.busId._id !== filterBus)) {
+        return false;
+      }
+      // Filter by Status
+      const hasStaff = trip.driver?.name && trip.assistant?.name;
+      if (filterStatus === 'assigned' && !hasStaff) return false;
+      if (filterStatus === 'missing' && hasStaff) return false;
+
+      // Filter by Date (in list view)
+      if (viewMode === 'list' && filterDate) {
+        const depDate = new Date(trip.departureTime);
+        const depDateStr = depDate.toLocaleDateString('en-CA');
+        if (depDateStr !== filterDate) return false;
+      }
+
+      return true;
+    });
+  };
+
+  const filteredTrips = getFilteredTrips();
+
+  const getDaysOfWeek = (refDate) => {
+    const date = new Date(refDate);
+    const day = date.getDay(); // 0 = Sunday, 1 = Monday...
+    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(date.setDate(diff));
+    
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(startOfWeek);
+      d.setDate(startOfWeek.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  };
+
+  const getTripsForDay = (dayDate) => {
+    const dayStr = dayDate.toLocaleDateString('en-CA');
+    return filteredTrips
+      .filter(trip => {
+        const depDate = new Date(trip.departureTime);
+        return depDate.toLocaleDateString('en-CA') === dayStr;
+      })
+      .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+  };
+
   const handleOpenEdit = (trip) => {
     setEditingTrip(trip);
-    // Find driver matching current trip
     const driverMatch = availableDrivers.find(d => d.name === trip.driver?.name) || '';
     const assistantMatch = availableAssistants.find(a => a.name === trip.assistant?.name) || '';
     setSelectedDriver(driverMatch ? JSON.stringify(driverMatch) : '');
@@ -110,8 +203,6 @@ const OpsStaffPage = () => {
     }
   };
 
-  // Greedy scheduling algorithm:
-  // Dynamically assigns driver & assistant to trips, ensuring no driver is assigned to overlapping times.
   const runGreedyAlgorithm = async () => {
     if (availableDrivers.length === 0) {
       showToast('Không có tài xế nào khả dụng trong hệ thống để phân công.', 'error');
@@ -119,59 +210,43 @@ const OpsStaffPage = () => {
     }
 
     setAlgoRunning(true);
-    showToast('Bắt đầu tính toán phân công bằng thuật toán Greedy...', 'info');
+    showToast('Bắt đầu tính toán phân công tự động...', 'info');
 
-    // Simulate scheduling delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Sort trips chronologically to apply Greedy scheduling
     const sortedTrips = [...trips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
-    
-    // Track busy times for drivers and assistants: { [personPhone]: [ {start, end} ] }
     const busyDrivers = {};
     const busyAssistants = {};
-
     const updatedAssignments = [];
 
     for (const trip of sortedTrips) {
       const tripStart = new Date(trip.departureTime);
       const tripEnd = new Date(trip.arrivalTime);
 
-      // Find first available driver
       let chosenDriver = null;
       for (const driver of availableDrivers) {
         const intervals = busyDrivers[driver.phone] || [];
-        // Check overlap
-        const isOverlap = intervals.some(interval => {
-          return (tripStart < interval.end && tripEnd > interval.start);
-        });
+        const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
         if (!isOverlap) {
           chosenDriver = driver;
-          // Book interval
           if (!busyDrivers[driver.phone]) busyDrivers[driver.phone] = [];
           busyDrivers[driver.phone].push({ start: tripStart, end: tripEnd });
           break;
         }
       }
 
-      // Find first available assistant
       let chosenAssistant = null;
       for (const assistant of availableAssistants) {
         const intervals = busyAssistants[assistant.phone] || [];
-        // Check overlap
-        const isOverlap = intervals.some(interval => {
-          return (tripStart < interval.end && tripEnd > interval.start);
-        });
+        const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
         if (!isOverlap) {
           chosenAssistant = assistant;
-          // Book interval
           if (!busyAssistants[assistant.phone]) busyAssistants[assistant.phone] = [];
           busyAssistants[assistant.phone].push({ start: tripStart, end: tripEnd });
           break;
         }
       }
 
-      // If we found both, queue the update
       if (chosenDriver || chosenAssistant) {
         updatedAssignments.push({
           tripId: trip._id,
@@ -181,7 +256,6 @@ const OpsStaffPage = () => {
       }
     }
 
-    // Save assignments to MongoDB
     try {
       let successCount = 0;
       for (const update of updatedAssignments) {
@@ -200,7 +274,7 @@ const OpsStaffPage = () => {
         if (data.success) successCount++;
       }
 
-      showToast(`Đã tự động phân công thành công ${successCount}/${sortedTrips.length} chuyến xe bằng thuật toán Greedy!`);
+      showToast(`Đã tự động phân công thành công ${successCount}/${sortedTrips.length} chuyến xe!`);
       fetchTrips();
     } catch {
       showToast('Lỗi lưu kết quả phân công vào cơ sở dữ liệu.', 'error');
@@ -209,8 +283,18 @@ const OpsStaffPage = () => {
     }
   };
 
+  const resetFilters = () => {
+    setFilterRoute('');
+    setFilterDriver('');
+    setFilterBus('');
+    setFilterStatus('all');
+    setFilterDate('');
+  };
+
+  const isFiltered = filterRoute || filterDriver || filterBus || filterStatus !== 'all' || filterDate;
+
   return (
-    <section className="panel" style={{ minHeight: '400px' }}>
+    <section className="panel" style={{ minHeight: '500px' }}>
       {/* Toast */}
       {toast && (
         <div style={{
@@ -223,14 +307,14 @@ const OpsStaffPage = () => {
         </div>
       )}
 
-      {/* Top Banner / Actions */}
+      {/* Header & Actions */}
       <div 
         style={{ 
           display: 'flex', 
           flexWrap: 'wrap', 
           justifyContent: 'space-between', 
           alignItems: 'center', 
-          marginBottom: '24px',
+          marginBottom: '20px',
           padding: '16px',
           background: 'rgba(255,255,255,0.02)',
           borderRadius: '12px',
@@ -240,10 +324,10 @@ const OpsStaffPage = () => {
         <div>
           <h2 style={{ margin: 0 }}>Quản lý nhân sự chuyến</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>
-            Điều động, phân công Tài xế và Phụ xe cho các chuyến xe đang hoạt động.
+            Điều động, phân công Tài xế và Phụ xe theo dõi theo dạng Danh sách hoặc Lịch tuần.
           </p>
         </div>
-        <div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <button 
             onClick={runGreedyAlgorithm} 
             disabled={algoRunning || trips.length === 0}
@@ -256,101 +340,415 @@ const OpsStaffPage = () => {
               boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)' 
             }}
           >
-            {algoRunning ? 'Đang chạy thuật toán...' : '⚡ Phân công tự động (Greedy)'}
+            {algoRunning ? 'Đang phân công...' : '⚡ Phân công tự động (Greedy)'}
           </button>
         </div>
       </div>
 
-      {/* Trips list with Staff Info */}
+      {/* Filter Toolbar & View Switcher */}
+      <div style={{
+        background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px',
+        padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px',
+        marginBottom: '24px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          {/* Main Selectors */}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Route */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tuyến:</span>
+              <select 
+                value={filterRoute} 
+                onChange={(e) => setFilterRoute(e.target.value)}
+                className="form-control"
+                style={{ width: '170px', padding: '6px 10px', fontSize: '0.85rem' }}
+              >
+                <option value="">Tất cả các tuyến</option>
+                {routes.map(r => (
+                  <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Driver */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tài xế:</span>
+              <select 
+                value={filterDriver} 
+                onChange={(e) => setFilterDriver(e.target.value)}
+                className="form-control"
+                style={{ width: '160px', padding: '6px 10px', fontSize: '0.85rem' }}
+              >
+                <option value="">Tất cả tài xế</option>
+                {availableDrivers.map((d, i) => (
+                  <option key={i} value={d.name}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Bus */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Xe khách:</span>
+              <select 
+                value={filterBus} 
+                onChange={(e) => setFilterBus(e.target.value)}
+                className="form-control"
+                style={{ width: '150px', padding: '6px 10px', fontSize: '0.85rem' }}
+              >
+                <option value="">Tất cả xe</option>
+                {buses.map(b => (
+                  <option key={b._id} value={b._id}>{b.plateNumber}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Trạng thái:</span>
+              <select 
+                value={filterStatus} 
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="form-control"
+                style={{ width: '140px', padding: '6px 10px', fontSize: '0.85rem' }}
+              >
+                <option value="all">Tất cả</option>
+                <option value="assigned">Đã bố trí</option>
+                <option value="missing">Thiếu nhân sự</option>
+              </select>
+            </div>
+
+            {/* Date */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Thời gian:</span>
+              <input 
+                type="date" 
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="form-control"
+                style={{ width: '145px', padding: '5px 10px', fontSize: '0.85rem' }}
+              />
+            </div>
+          </div>
+
+          {/* View Switcher */}
+          <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+            <button 
+              onClick={() => setViewMode('list')}
+              style={{
+                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
+                cursor: 'pointer', background: viewMode === 'list' ? 'white' : 'transparent',
+                color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
+                boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+              }}
+            >
+              Danh sách
+            </button>
+            <button 
+              onClick={() => setViewMode('calendar')}
+              style={{
+                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
+                cursor: 'pointer', background: viewMode === 'calendar' ? 'white' : 'transparent',
+                color: viewMode === 'calendar' ? 'var(--primary)' : 'var(--text-secondary)',
+                boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+              }}
+            >
+              Lịch tuần
+            </button>
+          </div>
+        </div>
+
+        {/* Reset Action */}
+        {isFiltered && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
+            <button 
+              onClick={resetFilters}
+              className="btn btn-secondary"
+              style={{ padding: '4px 10px', fontSize: '0.8rem', fontWeight: '700', color: '#ef4444', borderColor: '#fca5a5' }}
+            >
+              Đặt lại bộ lọc
+            </button>
+          </div>
+        )}
+      </div>
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           Đang tải thông tin chuyến xe...
         </div>
-      ) : trips.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Chưa có chuyến xe nào để phân công. Vui lòng tạo chuyến xe trước.
-        </div>
+      ) : viewMode === 'list' ? (
+        /* TABLE LIST VIEW */
+        filteredTrips.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+            Chưa có chuyến xe nào khớp với điều kiện lọc.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  <th style={{ padding: '12px' }}>Chuyến xe</th>
+                  <th style={{ padding: '12px' }}>Giờ xuất phát</th>
+                  <th style={{ padding: '12px' }}>Xe khách</th>
+                  <th style={{ padding: '12px' }}>Tài xế chính</th>
+                  <th style={{ padding: '12px' }}>Phụ xe</th>
+                  <th style={{ padding: '12px', textAlign: 'center' }}>Trạng thái</th>
+                  <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTrips.map((trip) => {
+                  const depDate = new Date(trip.departureTime);
+                  const hasStaff = trip.driver?.name && trip.assistant?.name;
+                  
+                  return (
+                    <tr key={trip._id} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
+                      <td style={{ padding: '16px 12px' }}>
+                        <div style={{ fontWeight: '700', color: 'var(--primary)' }}>
+                          {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px 12px', fontSize: '0.9rem' }}>
+                        {depDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                      </td>
+                      <td style={{ padding: '16px 12px', fontSize: '0.9rem', fontWeight: '600' }}>
+                        {trip.busId?.plateNumber || 'N/A'}
+                      </td>
+                      <td style={{ padding: '16px 12px' }}>
+                        {trip.driver?.name ? (
+                          <div>
+                            <div style={{ fontWeight: '600' }}>{trip.driver.name}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{trip.driver.phone}</div>
+                          </div>
+                        ) : (
+                          <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>Chưa có tài xế</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '16px 12px' }}>
+                        {trip.assistant?.name ? (
+                          <div>
+                            <div style={{ fontWeight: '600' }}>{trip.assistant.name}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{trip.assistant.phone}</div>
+                          </div>
+                        ) : (
+                          <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>Chưa có phụ xe</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '16px 12px', textAlign: 'center' }}>
+                        <span 
+                          style={{ 
+                            padding: '4px 10px', 
+                            borderRadius: '12px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: '700',
+                            backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            color: hasStaff ? '#10b981' : '#ef4444',
+                            border: hasStaff ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
+                          }}
+                        >
+                          {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '16px 12px', textAlign: 'right' }}>
+                        <button 
+                          onClick={() => handleOpenEdit(trip)} 
+                          className="btn btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                        >
+                          Điều động
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                <th style={{ padding: '12px' }}>Chuyến xe</th>
-                <th style={{ padding: '12px' }}>Giờ xuất phát</th>
-                <th style={{ padding: '12px' }}>Xe khách</th>
-                <th style={{ padding: '12px' }}>Tài xế chính</th>
-                <th style={{ padding: '12px' }}>Phụ xe</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Trạng thái</th>
-                <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trips.map((trip) => {
-                const depDate = new Date(trip.departureTime);
-                const hasStaff = trip.driver?.name && trip.assistant?.name;
-                
-                return (
-                  <tr key={trip._id} style={{ borderBottom: '1px solid var(--border-color)', verticalAlign: 'middle' }}>
-                    <td style={{ padding: '16px 12px' }}>
-                      <div style={{ fontWeight: '700', color: 'var(--primary)' }}>
-                        {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+        /* WEEKLY CALENDAR VIEW */
+        <div>
+          {/* Week Selector */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            marginBottom: '24px', 
+            background: '#ffffff', 
+            padding: '16px 24px', 
+            borderRadius: '12px', 
+            border: '1px solid var(--border-color)', 
+            boxShadow: '0 2px 12px rgba(0,0,0,0.03)',
+            flexWrap: 'wrap', 
+            gap: '12px' 
+          }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={() => {
+                  const prev = new Date(calendarRefDate);
+                  prev.setDate(prev.getDate() - 7);
+                  setCalendarRefDate(prev);
+                }}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+              >
+                ← Tuần trước
+              </button>
+              <button 
+                onClick={() => setCalendarRefDate(new Date())}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+              >
+                Hôm nay
+              </button>
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {(() => {
+                const days = getDaysOfWeek(calendarRefDate);
+                return `Tuần: ${days[0].toLocaleDateString('vi-VN')} - ${days[6].toLocaleDateString('vi-VN')}`;
+              })()}
+            </div>
+            <button 
+              onClick={() => {
+                const next = new Date(calendarRefDate);
+                next.setDate(next.getDate() + 7);
+                setCalendarRefDate(next);
+              }}
+              className="btn btn-secondary"
+              style={{ padding: '8px 16px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+            >
+              Tuần sau →
+            </button>
+          </div>
+
+          {/* Grid columns */}
+          <div style={{ display: 'flex', gap: '14px', overflowX: 'auto', paddingBottom: '16px' }}>
+            {getDaysOfWeek(calendarRefDate).map((dayDate, dayIdx) => {
+              const dayTrips = getTripsForDay(dayDate);
+              const isToday = dayDate.toLocaleDateString('en-CA') === new Date().toLocaleDateString('en-CA');
+              const daysOfWeekLabels = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+              
+              return (
+                <div 
+                  key={dayIdx} 
+                  style={{
+                    flex: 1, 
+                    minWidth: '220px', 
+                    background: isToday ? 'linear-gradient(180deg, #eff6ff 0%, #ffffff 100%)' : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+                    borderRadius: '16px', 
+                    padding: '16px 12px', 
+                    border: isToday ? '2px solid #2563eb' : '1px solid var(--border-color)',
+                    boxShadow: isToday ? '0 8px 24px rgba(37, 99, 235, 0.08)' : '0 4px 12px rgba(0,0,0,0.02)',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '12px'
+                  }}
+                >
+                  {/* Column Header */}
+                  <div style={{ textAlign: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '4px' }}>
+                    <div style={{ fontWeight: '700', fontSize: '0.9rem', color: isToday ? '#1e40af' : '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {daysOfWeekLabels[dayIdx]}
+                    </div>
+                    <div style={{ 
+                      display: 'inline-block',
+                      marginTop: '6px',
+                      padding: '4px 12px',
+                      borderRadius: '20px',
+                      fontSize: '0.85rem', 
+                      backgroundColor: isToday ? '#2563eb' : 'transparent',
+                      color: isToday ? '#ffffff' : '#64748b', 
+                      fontWeight: '700' 
+                    }}>
+                      {dayDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                    </div>
+                  </div>
+
+                  {/* Day trip staff list */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minHeight: '150px' }}>
+                    {dayTrips.length === 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, minHeight: '120px', color: '#94a3b8' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '600', fontStyle: 'italic' }}>Không có chuyến</span>
                       </div>
-                    </td>
-                    <td style={{ padding: '16px 12px', fontSize: '0.9rem' }}>
-                      {depDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                    </td>
-                    <td style={{ padding: '16px 12px', fontSize: '0.9rem', fontWeight: '600' }}>
-                      {trip.busId?.plateNumber || 'N/A'}
-                    </td>
-                    <td style={{ padding: '16px 12px' }}>
-                      {trip.driver?.name ? (
-                        <div>
-                          <div style={{ fontWeight: '600' }}>{trip.driver.name}</div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{trip.driver.phone}</div>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>Chưa có tài xế</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 12px' }}>
-                      {trip.assistant?.name ? (
-                        <div>
-                          <div style={{ fontWeight: '600' }}>{trip.assistant.name}</div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{trip.assistant.phone}</div>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#ef4444', fontStyle: 'italic', fontSize: '0.85rem' }}>Chưa có phụ xe</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                      <span 
-                        style={{ 
-                          padding: '4px 10px', 
-                          borderRadius: '12px', 
-                          fontSize: '0.75rem', 
-                          fontWeight: '700',
-                          backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                          color: hasStaff ? '#10b981' : '#ef4444',
-                          border: hasStaff ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
-                        }}
-                      >
-                        {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 12px', textAlign: 'right' }}>
-                      <button 
-                        onClick={() => handleOpenEdit(trip)} 
-                        className="btn btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: '0.85rem' }}
-                      >
-                        Điều động
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    ) : (
+                      dayTrips.map(trip => {
+                        const dep = new Date(trip.departureTime);
+                        const depTime = dep.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        const hasStaff = trip.driver?.name && trip.assistant?.name;
+
+                        return (
+                          <div 
+                            key={trip._id}
+                            style={{
+                              background: '#ffffff', 
+                              border: '1px solid #e2e8f0', 
+                              borderRadius: '12px',
+                              padding: '12px', 
+                              boxShadow: '0 4px 10px rgba(0,0,0,0.03)',
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: '8px'
+                            }}
+                          >
+                            <div style={{ fontWeight: '700', color: 'var(--primary)', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                              {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ backgroundColor: '#f1f5f9', color: '#334155', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600' }}>
+                                Giờ: {depTime}
+                              </span>
+                              <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '3px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600' }}>
+                                Xe: {trip.busId?.plateNumber || 'Chưa gán'}
+                              </span>
+                            </div>
+
+                            <div style={{ fontSize: '0.8rem', borderTop: '1px dashed #e2e8f0', paddingTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div>
+                                <span style={{ color: '#64748b', fontWeight: '600' }}>Tài xế: </span>
+                                <strong style={{ color: trip.driver?.name ? '#1e293b' : '#ef4444' }}>
+                                  {trip.driver?.name || 'Chưa có'}
+                                </strong>
+                              </div>
+                              <div>
+                                <span style={{ color: '#64748b', fontWeight: '600' }}>Phụ xe: </span>
+                                <strong style={{ color: trip.assistant?.name ? '#1e293b' : '#ef4444' }}>
+                                  {trip.assistant?.name || 'Chưa có'}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                              <span 
+                                style={{ 
+                                  padding: '2px 8px', 
+                                  borderRadius: '10px', 
+                                  fontSize: '0.7rem', 
+                                  fontWeight: '700',
+                                  backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                  color: hasStaff ? '#10b981' : '#ef4444'
+                                }}
+                              >
+                                {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
+                              </span>
+
+                              <button 
+                                onClick={() => handleOpenEdit(trip)} 
+                                style={{ 
+                                  padding: '4px 10px', fontSize: '0.75rem', borderRadius: '6px', border: '1px solid var(--primary)', 
+                                  backgroundColor: '#ffffff', cursor: 'pointer', color: 'var(--primary)', fontWeight: '600', outline: 'none'
+                                }}
+                              >
+                                Điều động
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -367,6 +765,8 @@ const OpsStaffPage = () => {
               Chuyến: <strong style={{ color: 'var(--primary)' }}>{editingTrip.routeId ? `${editingTrip.routeId.startPoint} → ${editingTrip.routeId.endPoint}` : 'N/A'}</strong>
               <br />
               Khởi hành: {new Date(editingTrip.departureTime).toLocaleString('vi-VN')}
+              <br />
+              Xe khách: <strong>{editingTrip.busId?.plateNumber || 'N/A'}</strong>
             </p>
 
             <form onSubmit={handleSaveAssignment}>

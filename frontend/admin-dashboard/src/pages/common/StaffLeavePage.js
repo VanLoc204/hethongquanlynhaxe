@@ -86,11 +86,11 @@ const StaffLeavePage = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'approved':
-        return <span style={{ background: 'rgba(46, 207, 128, 0.1)', color: 'var(--success)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Đã phê duyệt</span>;
+        return <span style={{ background: 'rgba(46, 207, 128, 0.1)', color: 'var(--success)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Đã phê duyệt</span>;
       case 'rejected':
-        return <span style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Từ chối</span>;
+        return <span style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Từ chối</span>;
       default:
-        return <span style={{ background: 'rgba(241, 180, 76, 0.1)', color: 'var(--warning)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}>Chờ duyệt</span>;
+        return <span style={{ background: 'rgba(241, 180, 76, 0.1)', color: 'var(--warning)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600', whiteSpace: 'nowrap' }}>Chờ duyệt</span>;
     }
   };
 
@@ -168,25 +168,36 @@ const StaffLeavePage = () => {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--card-border)' }}>
-                  <th style={{ padding: '0.8rem' }}>Thời gian nghỉ</th>
-                  <th style={{ padding: '0.8rem' }}>Lý do</th>
-                  <th style={{ padding: '0.8rem' }}>Trạng thái</th>
-                  <th style={{ padding: '0.8rem' }}>Ngày gửi</th>
+                  <th style={{ padding: '0.8rem', whiteSpace: 'nowrap' }}>Thời gian nghỉ</th>
+                  <th style={{ padding: '0.8rem', whiteSpace: 'nowrap' }}>Lý do</th>
+                  <th style={{ padding: '0.8rem', whiteSpace: 'nowrap' }}>Trạng thái</th>
+                  <th style={{ padding: '0.8rem', whiteSpace: 'nowrap' }}>Ngày gửi</th>
                 </tr>
               </thead>
               <tbody>
                 {leaves.map((item) => (
                   <tr key={item._id} style={{ borderBottom: '1px solid var(--card-border)' }}>
-                    <td style={{ padding: '0.8rem', fontSize: '0.85rem', fontWeight: '500' }}>
+                    <td style={{ padding: '0.8rem', fontSize: '0.85rem', fontWeight: '500', whiteSpace: 'nowrap' }}>
                       {formatDate(item.startDate)} ➔ {formatDate(item.endDate)}
                     </td>
-                    <td style={{ padding: '0.8rem', fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                    <td 
+                      style={{ 
+                        padding: '0.8rem', 
+                        fontSize: '0.85rem', 
+                        color: 'var(--text-main)',
+                        maxWidth: '220px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }} 
+                      title={item.reason}
+                    >
                       {item.reason}
                     </td>
-                    <td style={{ padding: '0.8rem' }}>
+                    <td style={{ padding: '0.8rem', whiteSpace: 'nowrap' }}>
                       {getStatusBadge(item.status)}
                     </td>
-                    <td style={{ padding: '0.8rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    <td style={{ padding: '0.8rem', fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                       {formatDate(item.createdAt)}
                     </td>
                   </tr>

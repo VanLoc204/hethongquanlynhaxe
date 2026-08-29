@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import axios from 'axios';
 import { Map, Navigation, Compass, Truck, Phone, Star, ShieldAlert, Award, Clock, ArrowRight } from 'lucide-react';
@@ -7,7 +7,7 @@ const TrackJourneyPage = () => {
   const { user, isAuthenticated } = useContext(AuthContext);
   const [activeTrips, setActiveTrips] = useState([]);
   const [selectedTrip, setSelectedTrip] = useState(null);
-  const [mockProgress, setMockProgress] = useState(35); // percentage progress of the bus
+  const [mockProgress, setMockProgress] = useState(0); // actual progress of the bus
   const [loading, setLoading] = useState(true);
 
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -16,71 +16,85 @@ const TrackJourneyPage = () => {
   const markerRef = useRef(null);
   const polylineRef = useRef(null);
 
-  useEffect(() => {
-    const fetchTripsAndBookings = async () => {
-      if (!isAuthenticated || !user) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      try {
-        const userId = user.id || user._id;
-        const res = await axios.get(`http://localhost:8000/api/v1/trips/my-bookings/${userId}`);
-        if (res.data.success) {
-          const bookings = res.data.bookings || [];
-          
-          // Keep only non-cancelled bookings
-          const activeBookings = bookings.filter(b => b.status !== 'cancelled');
+  const fetchTripsAndBookings = useCallback(async (showLoading = true) => {
+    if (!isAuthenticated || !user) {
+      setLoading(false);
+      return;
+    }
+    if (showLoading) setLoading(true);
+    try {
+      const userId = user.id || user._id;
+      const res = await axios.get(`http://localhost:8000/api/v1/trips/my-bookings/${userId}`);
+      if (res.data.success) {
+        const bookings = res.data.bookings || [];
+        
+        // Keep only non-cancelled bookings
+        const activeBookings = bookings.filter(b => b.status !== 'cancelled');
 
-          const fetchedTrips = [];
-          for (const booking of activeBookings) {
-            try {
-              const tripRes = await axios.get(`http://localhost:8000/api/v1/trips/${booking.tripId}`);
-              if (tripRes.data.success && tripRes.data.trip) {
-                const tripData = tripRes.data.trip;
+        const fetchedTrips = [];
+        for (const booking of activeBookings) {
+          try {
+            const tripRes = await axios.get(`http://localhost:8000/api/v1/trips/${booking.tripId}`);
+            if (tripRes.data.success && tripRes.data.trip) {
+              const tripData = tripRes.data.trip;
 
-                const fromLoc = tripData.routeId?.startPoint || 'Hồ Chí Minh';
-                const toLoc = tripData.routeId?.endPoint || 'Đà Lạt';
-                const departureDate = new Date(tripData.departureTime);
-                const arrivalDate = new Date(tripData.arrivalTime);
+              const fromLoc = tripData.routeId?.startPoint || 'Hồ Chí Minh';
+              const toLoc = tripData.routeId?.endPoint || 'Đà Lạt';
+              const departureDate = new Date(tripData.departureTime);
+              const arrivalDate = new Date(tripData.arrivalTime);
 
-                // Format times and dates
-                const timePart = departureDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-                const datePart = departureDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                const depTimeStr = `${timePart} - ${datePart}`;
-                const arrTimeStr = arrivalDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              // Format times and dates
+              const timePart = departureDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              const datePart = departureDate.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              const depTimeStr = `${timePart} - ${datePart}`;
+              const arrTimeStr = arrivalDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
-                // Construct stops list
-                const stops = [];
-                if (tripData.pickupPoints && tripData.pickupPoints.length > 0) {
-                  tripData.pickupPoints.forEach((p, idx) => {
-                    stops.push({
-                      name: `${p.location} (${p.address})`,
-                      time: p.time,
-                      completed: idx === 0
-                    });
+              // Construct stops list
+              const stops = [];
+              if (tripData.pickupPoints && tripData.pickupPoints.length > 0) {
+                tripData.pickupPoints.forEach((p) => {
+                  stops.push({
+                    name: `${p.location} (${p.address})`,
+                    time: p.time,
+                    completed: false,
+                    current: false
                   });
-                } else {
-                  stops.push({ name: `Văn phòng ${fromLoc}`, time: timePart, completed: true });
-                }
+                });
+              } else {
+                stops.push({ name: `Văn phòng ${fromLoc}`, time: timePart, completed: false, current: false });
+              }
 
-                if (tripData.dropoffPoints && tripData.dropoffPoints.length > 0) {
-                  tripData.dropoffPoints.forEach((d, idx) => {
-                    stops.push({
-                      name: `${d.location} (${d.address})`,
-                      time: d.time,
-                      completed: false
-                    });
+              if (tripData.dropoffPoints && tripData.dropoffPoints.length > 0) {
+                tripData.dropoffPoints.forEach((d) => {
+                  stops.push({
+                    name: `${d.location} (${d.address})`,
+                    time: d.time,
+                    completed: false,
+                    current: false
                   });
-                } else {
-                  stops.push({ name: `Bến xe ${toLoc}`, time: arrTimeStr, completed: false });
-                }
+                });
+              } else {
+                stops.push({ name: `Bến xe ${toLoc}`, time: arrTimeStr, completed: false, current: false });
+              }
 
+              const dbStatus = tripData.journeyStatus || 'scheduled';
+              const dbStopIndex = typeof tripData.currentStopIndex === 'number' ? tripData.currentStopIndex : -1;
+
+              let status = 'Scheduled';
+              let speed = '0 km/h';
+              let progressPercent = 0;
+              
+              if (dbStatus === 'in_transit') {
+                status = 'In Transit';
+                speed = '60 km/h';
+                progressPercent = dbStopIndex >= 0 ? Math.max(5, Math.min(100, Math.floor((dbStopIndex / (stops.length - 1)) * 100))) : 0;
+              } else if (dbStatus === 'completed') {
+                status = 'Completed';
+                speed = '0 km/h';
+                progressPercent = 100;
+              } else {
+                // Fallback simulation if journey has not started yet but current time is within trip duration
                 const now = new Date();
-                let status = 'Scheduled';
-                let speed = '0 km/h';
-                let progressPercent = 0;
-                
                 if (now >= departureDate && now <= arrivalDate) {
                   status = 'In Transit';
                   speed = '60 km/h';
@@ -92,67 +106,91 @@ const TrackJourneyPage = () => {
                   speed = '0 km/h';
                   progressPercent = 100;
                 }
+              }
 
-                let currentStopSet = false;
-                stops.forEach((stop, idx) => {
+              stops.forEach((stop, idx) => {
+                if (dbStatus === 'completed') {
+                  stop.completed = true;
+                } else if (dbStatus === 'in_transit') {
+                  if (idx <= dbStopIndex) {
+                    stop.completed = true;
+                  }
+                  if (idx === dbStopIndex) {
+                    stop.current = true;
+                  }
+                } else {
+                  // Fallback stops matching
                   if (status === 'Completed') {
                     stop.completed = true;
                   } else if (status === 'In Transit') {
                     const stopProgressThreshold = (idx / (stops.length - 1)) * 100;
                     if (progressPercent >= stopProgressThreshold) {
                       stop.completed = true;
-                    } else if (!currentStopSet) {
-                      stop.current = true;
-                      currentStopSet = true;
                     }
                   }
-                });
+                }
+              });
 
-                fetchedTrips.push({
-                  id: booking._id,
-                  from: fromLoc,
-                  to: toLoc,
-                  busPlate: tripData.busId?.plateNumber || 'Đang cập nhật',
-                  driverName: tripData.driver?.name || 'Tài xế SmartBus',
-                  driverPhone: tripData.driver?.phone || '1900.6067',
-                  departureTime: depTimeStr,
-                  arrivalTime: arrTimeStr,
-                  speed: speed,
-                  status: status,
-                  progressPercent: progressPercent,
-                  stops: stops
-                });
-              }
-            } catch (err) {
-              console.error(`Failed to fetch trip details for ${booking.tripId}:`, err);
+              fetchedTrips.push({
+                id: booking._id,
+                tripId: tripData._id,
+                from: fromLoc,
+                to: toLoc,
+                busPlate: tripData.busId?.plateNumber || 'Đang cập nhật',
+                driverName: tripData.driver?.name || 'Tài xế SmartBus',
+                driverPhone: tripData.driver?.phone || '1900.6067',
+                departureTime: depTimeStr,
+                arrivalTime: arrTimeStr,
+                speed: speed,
+                status: status,
+                progressPercent: progressPercent,
+                stops: stops
+              });
             }
-          }
-          setActiveTrips(fetchedTrips);
-          if (fetchedTrips.length > 0) {
-            setSelectedTrip(fetchedTrips[0]);
-            setMockProgress(fetchedTrips[0].progressPercent);
+          } catch (err) {
+            console.error(`Failed to fetch trip details for ${booking.tripId}:`, err);
           }
         }
-      } catch (err) {
-        console.error('Lỗi khi lấy dữ liệu hành trình:', err);
-      } finally {
-        setLoading(false);
+        setActiveTrips(fetchedTrips);
+        
+        // Update selectedTrip if already loaded
+        if (fetchedTrips.length > 0) {
+          setSelectedTrip(prev => {
+            if (!prev) return fetchedTrips[0];
+            const updated = fetchedTrips.find(t => t.id === prev.id);
+            return updated || fetchedTrips[0];
+          });
+        }
       }
-    };
-
-    fetchTripsAndBookings();
+    } catch (err) {
+      console.error('Lỗi khi lấy dữ liệu hành trình:', err);
+    } finally {
+      if (showLoading) setLoading(false);
+    }
   }, [isAuthenticated, user]);
 
-  // Simulate progress update
   useEffect(() => {
-    if (selectedTrip && selectedTrip.status === 'In Transit') {
-      const interval = setInterval(() => {
-        setMockProgress(prev => {
-          if (prev >= 100) return 0;
-          return prev + 1;
-        });
-      }, 5000);
-      return () => clearInterval(interval);
+    fetchTripsAndBookings(true);
+  }, [fetchTripsAndBookings]);
+
+  // Set up polling for active trips in transit every 10 seconds
+  useEffect(() => {
+    if (!isAuthenticated || activeTrips.length === 0) return;
+
+    const hasInTransit = activeTrips.some(t => t.status === 'In Transit');
+    if (!hasInTransit) return;
+
+    const interval = setInterval(() => {
+      fetchTripsAndBookings(false); // poll silently without loading spinner
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, activeTrips, fetchTripsAndBookings]);
+
+  // Sync mockProgress with selected trip actual progress percent
+  useEffect(() => {
+    if (selectedTrip) {
+      setMockProgress(selectedTrip.progressPercent);
     }
   }, [selectedTrip]);
 

@@ -1,4 +1,5 @@
 const tripService = require('../services/tripService');
+const Trip = require('../models/Trip');
 
 // @desc    Search trips by origin, destination and date
 // @route   GET /api/v1/trips/search
@@ -234,7 +235,7 @@ exports.getBuses = async (req, res) => {
 // @access  Private (Fleet Manager)
 exports.createBus = async (req, res) => {
   try {
-    const { plateNumber, type, totalSeats, amenities, images } = req.body;
+    const { plateNumber, type, totalSeats, amenities, images, seatLayout } = req.body;
 
     if (!plateNumber || !type || !totalSeats) {
       return res.status(400).json({
@@ -243,7 +244,7 @@ exports.createBus = async (req, res) => {
       });
     }
 
-    const bus = await tripService.createBus({ plateNumber, type, totalSeats, amenities, images });
+    const bus = await tripService.createBus({ plateNumber, type, totalSeats, amenities, images, seatLayout });
 
     res.status(201).json({
       success: true,
@@ -265,9 +266,9 @@ exports.createBus = async (req, res) => {
 exports.updateBus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { plateNumber, type, totalSeats, amenities, images } = req.body;
+    const { plateNumber, type, totalSeats, amenities, images, status, seatLayout, activeStatus, maintenanceInfo } = req.body;
 
-    const bus = await tripService.updateBus(id, { plateNumber, type, totalSeats, amenities, images });
+    const bus = await tripService.updateBus(id, { plateNumber, type, totalSeats, amenities, images, status, seatLayout, activeStatus, maintenanceInfo });
 
     res.status(200).json({
       success: true,
@@ -337,11 +338,14 @@ exports.createRoute = async (req, res) => {
       });
     }
 
-    const route = await tripService.createRoute({ startPoint, endPoint, distance, duration });
+    const status = req.user.role === 'ops_manager' ? 'pending' : 'approved';
+    const route = await tripService.createRoute({ startPoint, endPoint, distance, duration, status });
 
     res.status(201).json({
       success: true,
-      message: 'Tạo tuyến đường thành công.',
+      message: status === 'pending' 
+        ? 'Tạo tuyến đường thành công, vui lòng chờ Quản lý nhà xe duyệt.'
+        : 'Tạo tuyến đường thành công.',
       route
     });
   } catch (error) {
@@ -359,13 +363,15 @@ exports.createRoute = async (req, res) => {
 exports.updateRoute = async (req, res) => {
   try {
     const { id } = req.params;
-    const { startPoint, endPoint, distance, duration } = req.body;
+    const { startPoint, endPoint, distance, duration, status } = req.body;
 
-    const route = await tripService.updateRoute(id, { startPoint, endPoint, distance, duration });
+    const route = await tripService.updateRoute(id, { startPoint, endPoint, distance, duration, status });
 
     res.status(200).json({
       success: true,
-      message: 'Cập nhật tuyến đường thành công.',
+      message: status
+        ? `Đã cập nhật trạng thái phê duyệt tuyến đường thành: ${status}`
+        : 'Cập nhật tuyến đường thành công.',
       route
     });
   } catch (error) {
@@ -456,6 +462,21 @@ exports.updateTrip = async (req, res) => {
     const { id } = req.params;
     const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant } = req.body;
 
+    if (driver && driver.phone) {
+      const otherTrip = await Trip.findOne({
+        _id: { $ne: id },
+        'driver.phone': driver.phone,
+        busId: { $ne: busId }
+      }).populate('busId');
+      
+      if (otherTrip) {
+        return res.status(400).json({
+          success: false,
+          message: `Tài xế ${driver.name || 'này'} đã được phân công lái xe khác (${otherTrip.busId?.plateNumber || 'biển số khác'}). Một tài xế chỉ được chạy một chiếc xe duy nhất.`
+        });
+      }
+    }
+
     const trip = await tripService.updateTrip(id, { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant });
 
     res.status(200).json({
@@ -543,3 +564,169 @@ exports.releaseSeats = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// @desc    Update trip journey status (driver portal)
+// @route   PATCH /api/v1/trips/:id/update-journey
+// @access  Private (Driver)
+exports.updateJourneyStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { action } = req.body; // 'start', 'update', 'complete'
+
+    const trip = await tripService.getTripModel(id);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy chuyến xe.'
+      });
+    }
+
+    // Combine pickup and dropoff points in order
+    const stops = [];
+    if (trip.pickupPoints && trip.pickupPoints.length > 0) {
+      trip.pickupPoints.forEach(p => stops.push({ ...p.toObject(), type: 'pickup' }));
+    }
+    if (trip.dropoffPoints && trip.dropoffPoints.length > 0) {
+      trip.dropoffPoints.forEach(d => stops.push({ ...d.toObject(), type: 'dropoff' }));
+    }
+
+    if (stops.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chuyến xe này không có điểm dừng nào được định nghĩa.'
+      });
+    }
+
+    const now = new Date();
+
+    if (action === 'start') {
+      const startTimeLimit = new Date(trip.departureTime.getTime() - 5 * 60 * 1000);
+      if (now < startTimeLimit) {
+        const diffMs = startTimeLimit - now;
+        const diffMins = Math.ceil(diffMs / (60 * 1000));
+        return res.status(400).json({
+          success: false,
+          message: `Chuyến xe chưa đến giờ khởi hành. Bạn chỉ được phép bắt đầu hành trình trước giờ xuất phát tối đa 5 phút (vui lòng chờ thêm ${diffMins} phút).`
+        });
+      }
+
+      trip.journeyStatus = 'in_transit';
+      trip.currentStopIndex = 0;
+      trip.journeyLogs = [{
+        time: now,
+        location: stops[0].location,
+        address: stops[0].address,
+        desc: `Xe xuất phát từ ${stops[0].location}.`
+      }];
+    } else if (action === 'update') {
+      if (trip.currentStopIndex < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Chuyến xe chưa bắt đầu khởi hành.'
+        });
+      }
+      const nextIndex = trip.currentStopIndex + 1;
+      if (nextIndex >= stops.length - 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Đây là điểm cuối, vui lòng chọn kết thúc hành trình.'
+        });
+      }
+      trip.currentStopIndex = nextIndex;
+      trip.journeyLogs.push({
+        time: now,
+        location: stops[nextIndex].location,
+        address: stops[nextIndex].address,
+        desc: `Xe đã đến ${stops[nextIndex].location}.`
+      });
+    } else if (action === 'complete') {
+      trip.journeyStatus = 'completed';
+      trip.currentStopIndex = stops.length - 1;
+      trip.journeyLogs.push({
+        time: now,
+        location: stops[stops.length - 1].location,
+        address: stops[stops.length - 1].address,
+        desc: `Xe đã đến bến đích an toàn tại ${stops[stops.length - 1].location}.`
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'Hành động không hợp lệ. Hỗ trợ: start, update, complete'
+      });
+    }
+
+    await trip.save();
+    await trip.populate('routeId');
+    await trip.populate('busId');
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật hành trình thành công.',
+      trip
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật hành trình:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi cập nhật hành trình.'
+    });
+  }
+};
+
+// @desc    Get all maintenance records
+// @route   GET /api/v1/trips/fleet/maintenance-records
+// @access  Private (Fleet Manager)
+exports.getMaintenanceRecords = async (req, res) => {
+  try {
+    const records = await tripService.getMaintenanceRecords();
+    res.status(200).json({
+      success: true,
+      records
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách lịch sử bảo trì:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi lấy danh sách lịch sử bảo trì.'
+    });
+  }
+};
+
+// @desc    Create a completed maintenance record
+// @route   POST /api/v1/trips/fleet/maintenance-records
+// @access  Private (Fleet Manager)
+exports.createMaintenanceRecord = async (req, res) => {
+  try {
+    const { busId, plateNumber, type, description, garage, cost, startDate, endDate } = req.body;
+    if (!busId || !plateNumber || !description || !garage || cost === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp đầy đủ thông tin bảo trì.'
+      });
+    }
+
+    const record = await tripService.createMaintenanceRecord({
+      busId,
+      plateNumber,
+      type,
+      description,
+      garage,
+      cost,
+      startDate,
+      endDate
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Hoàn tất bảo trì phương tiện thành công.',
+      record
+    });
+  } catch (error) {
+    console.error('Lỗi lưu lịch sử bảo trì:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi lưu lịch sử bảo trì.'
+    });
+  }
+};
+

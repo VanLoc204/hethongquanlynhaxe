@@ -8,17 +8,26 @@ const leaveRequestSchema = new mongoose.Schema(
       required: true,
       index: true
     },
+    type: {
+      type: String,
+      enum: ['leave', 'maintenance', 'incident'],
+      default: 'leave'
+    },
+    typeName: {
+      type: String,
+      default: 'Đơn xin nghỉ phép'
+    },
+    details: {
+      type: String
+    },
     startDate: {
-      type: Date,
-      required: [true, 'Ngày bắt đầu nghỉ là bắt buộc.']
+      type: Date
     },
     endDate: {
-      type: Date,
-      required: [true, 'Ngày kết thúc nghỉ là bắt buộc.']
+      type: Date
     },
     reason: {
-      type: String,
-      required: [true, 'Lý do nghỉ là bắt buộc.']
+      type: String
     },
     status: {
       type: String,
