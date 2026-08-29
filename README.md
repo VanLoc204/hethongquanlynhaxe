@@ -1,429 +1,191 @@
 # Hệ Thống Quản Lý Nhà Xe Á Đông Travel (Á Đông Travel Management System)
 
-Dự án phát triển hệ thống quản lý nhà xe Á Đông Travel theo mô hình **MERN Microservices**, sẵn sàng triển khai bằng Docker/Kubernetes và tích hợp Trí tuệ nhân tạo (Gemini API), các thuật toán điều phối thông minh.
+Dự án phát triển hệ thống quản lý nhà xe Á Đông Travel theo mô hình **MERN Microservices / Modular Architecture**, sẵn sàng triển khai bằng **Docker / Docker Compose** và tích hợp **Trí tuệ nhân tạo (Gemini API)**, cùng các thuật toán điều phối vận tải thông minh.
 
 ---
 
 ## 1. Kiến Trúc Hệ Thống (Architecture Overview)
 
 ### A. Client Layer (ReactJS)
-- **Customer App**: Ứng dụng đặt vé, tra cứu tư vấn AI, theo dõi GPS thời gian thực cho Khách hàng.
-- **Admin Dashboard**: Dashboard dành cho Quản lý nhà xe, Quản lý vận tải, Quản lý phương tiện và Nhân viên bán vé/Tài xế.
+* **Customer App (Port 3000)**: Ứng dụng dành cho hành khách đặt vé trực tuyến, tra cứu tư vấn AI tự động qua Gemini API, theo dõi lộ trình xe thời gian thực (GPS Real-time) trên bản đồ Google Maps và quản lý tích điểm thành viên.
+* **Admin Dashboard (Port 3001)**: Giao diện điều hành đa vai trò dành cho Ban Giám đốc (`general_manager`), Quản lý Vận tải (`ops_manager`), Quản lý Xe (`fleet_manager`), Nhân viên Bán vé quầy (`ticket_agent`), Tài xế (`driver`), và Phụ xe (`attendant`).
 
-### B. Gateway Layer
-- **API Gateway (Node.js/Express)**: Định tuyến yêu cầu, quản lý CORS, xác thực Token JWT tập trung.
+### B. Backend Services Layer (Node.js / Express - Port 8000)
+Hệ thống backend được mô đun hóa chuẩn mực xử lý các mảng nghiệp vụ:
+* **Auth & User Service**: Xác thực JWT token, phân quyền RBAC (Role-Based Access Control) cho 7 nhóm người dùng, quản lý hồ sơ nhân sự, bảng lương (`Payroll`) và lịch làm việc 8h/ngày (`WorkSchedule`).
+* **Trip & Fleet Service**: Quản lý tuyến đường (hỗ trợ quy trình phê duyệt tuyến `pending` ➔ `approved`), phương tiện (`Bus`), bảo trì (`MaintenanceRecord`), chuyến xe (`Trip`) và tích hợp **Thuật toán Greedy** phân công tài xế tự động.
+* **Booking & Ticket Service**: Xử lý giữ chỗ trực tuyến, soát vé QR code (Check-in), ký gửi hàng hóa (`Shipment`), và ca làm việc quầy vé (`ShiftSession`).
+* **Pricing & Revenue Service**: Quản lý biểu giá vé sàn (`BasePrice`) theo từng Tuyến đường & Loại xe, tính giá vé động.
+* **Review & AI Service**: Tích hợp **Gemini API** để tự động phân tích cảm xúc phản hồi hành khách (Sentiment Analysis) và Chatbot AI tư vấn lộ trình 24/7.
 
-### C. Services Layer (Microservices)
-Hệ thống được chia nhỏ thành các dịch vụ độc lập giao tiếp qua HTTP REST API (đồng bộ) và RabbitMQ (bất đồng bộ):
-- **Auth & User Service**: Quản lý định danh và thông tin người dùng (Khách, nhân viên, quản lý).
-- **Trip & Fleet Service**: Quản lý tuyến đường, chuyến xe, phương tiện + **Thuật toán Greedy** xếp lịch tài xế.
-- **Booking & Ticket Service**: Quản lý vé, giữ chỗ và soát vé (check-in).
-- **Pricing Service**: Quản lý giá động (**Dynamic Pricing**).
-- **Payment Service**: Tích hợp các cổng thanh toán trực tuyến (PayOS, Momo, v.v.).
-- **Tracking Service**: WebSocket Server xử lý luồng tọa độ GPS từ tài xế và thời gian đến dự kiến (ETA) gọi từ Google Maps API.
-- **Notification Service**: Lắng nghe sự kiện gửi email/SMS thông báo (Lịch đặt vé, OTP).
-- **Review & AI Service**: Tích hợp **Gemini API** để phân tích cảm xúc phản hồi khách hàng và hỗ trợ tìm vé qua NLP.
-
-### D. Data Layer & Message Broker
-- **Databases**: Sử dụng MongoDB làm cơ sở dữ liệu chính cho toàn bộ các dịch vụ (bao gồm thông tin tài khoản, chuyến xe, vé đặt, log hành trình, và lịch sử chatbot).
-- **Caching**: Redis dùng để lưu trữ session, cache thông tin định vị GPS tạm thời của xe.
-- **Message Broker**: RabbitMQ điều phối các sự kiện bất đồng bộ giữa các service (ví dụ: `TicketBooked` -> gửi mail thông báo).
+### C. Data Layer & Infrastructure
+* **MongoDB (Port 27018)**: Cơ sở dữ liệu NoSQL chính lưu trữ toàn bộ tập dữ liệu (Users, Routes, Buses, Trips, Bookings, Shipments, WorkSchedules, Payrolls, MaintenanceRecords, Reviews).
+* **Redis (Port 6379)**: Caching bộ nhớ đệm session và tọa độ GPS thời gian thực.
+* **RabbitMQ (Port 5672 / Management: 15672)**: Message broker điều phối sự kiện bất đồng bộ.
+* **MySQL (Port 3306)**: Cấu hình sẵn sàng cho tích hợp dữ liệu quan hệ tài chính kế toán.
 
 ---
 
-## 1.5. Thông Tin Đăng Nhập Thử Nghiệm (Test Accounts)
+## 2. Thông Tin Đăng Nhập Thử Nghiệm (Test Accounts)
 
-Tất cả tài khoản dưới đây đều sử dụng mật khẩu mặc định là: **`123456`**
+Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`123456`**
 
-### A. Tài Khoản Quản Lý & Bán Vé (Admin & Staff)
-| Chức vụ (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email |
+### A. Nhóm Quản Lý & Điều Hành (Management & Admin)
+| Vai trò (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email | Chức năng chính |
+| :--- | :--- | :--- | :--- | :--- |
+| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@adongtravel.vn` | Quản lý toàn bộ tài khoản, phân quyền hệ thống |
+| **Giám Đốc** (`general_manager`) | Giám Đốc Á Đông | **`0966555666`** | `director@adongtravel.vn` | Duyệt tuyến mới, duyệt đơn nghỉ phép, xem Bảng lương (`Payroll`), Báo cáo doanh thu |
+| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải Á Đông | **`0977777777`** | `ops@adongtravel.vn` | Quản lý Tuyến/Chuyến/Nhân sự chuyến, Lịch tuần Kanban, chạy thuật toán Greedy |
+| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe Á Đông | **`0988888888`** | `fleet@adongtravel.vn` | Quản lý phương tiện xe khách, lập hồ sơ bảo trì & sửa chữa định kỳ |
+| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@adongtravel.vn` | Bán vé tại quầy, quản lý ca quầy (`ShiftSession`), soát vé QR, in vé giấy |
+
+### B. Đội Ngũ Tài Xế & Phụ Xe Chuyên Trách (1 Xe ⇄ 1 Tổ Lái Đi/Về)
+| Vai trò | Họ tên | Số Điện Thoại | Phân công Xe khách cố định |
 | :--- | :--- | :--- | :--- |
-| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@adongtravel.vn` |
-| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe Á Đông | **`0988888888`** | `fleet@adongtravel.vn` |
-| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải Á Đông | **`0977777777`** | `ops@adongtravel.vn` |
-| **Giám Đốc** (`general_manager`) | Giám Đốc Á Đông | **`0966555666`** | `director@adongtravel.vn` |
-| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@adongtravel.vn` |
-
-### B. Đội Ngũ Tài Xế & Phụ Xe (Drivers & Attendants)
-| Vai trò | Họ tên | Số Điện Thoại (Username) | Email |
-| :--- | :--- | :--- | :--- |
-| **Tài xế** | Tài xế Á Đông | **`0933333333`** | `driver1@adongtravel.vn` |
-| **Tài xế** | Trần Minh Tâm | **`0987654321`** | `driver2@adongtravel.vn` |
-| **Tài xế** | Nguyễn Văn Hùng | **`0912345678`** | `driver3@adongtravel.vn` |
-| **Tài xế** | Lê Hoàng Nam | **`0909090909`** | `driver4@adongtravel.vn` |
-| **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | `attendant1@adongtravel.vn` |
-| **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | `attendant2@adongtravel.vn` |
-| **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | `attendant3@adongtravel.vn` |
-| **Phụ xe** | Nguyễn Tiến Dũng | **`0977889900`** | `attendant4@adongtravel.vn` |
-
-### C. Khách Hàng Thử Nghiệm (Customers)
-| Họ tên | Số Điện Thoại (Username) | Email | Điểm tích lũy / Hạng |
-| :--- | :--- | :--- | :--- |
-| Nguyễn Văn Khách | **`0901234567`** | `khach1@gmail.com` | 150 điểm / Bronze |
-| Trần Thị Khách | **`0902345678`** | `khach2@gmail.com` | 450 điểm / Silver |
+| **Tài xế chính** | Nguyễn Văn An | **`0912999999`** | Xe `51B-044.44` (Giường nằm 44 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Phụ xe** | Bùi Hữu Nghĩa | **`0967890123`** | Xe `51B-044.44` (Giường nằm 44 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Tài xế chính** | Trần Minh Tâm | **`0987654321`** | Xe `51B-029.29` (Ghế ngồi 29 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | Xe `51B-029.29` (Ghế ngồi 29 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Tài xế chính** | Tài xế Á Đông | **`0933333333`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
+| **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
+| **Tài xế chính** | Nguyễn Văn Hùng | **`0912345678`** | Xe `51B-045.45` (Ghế ngồi 45 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | Xe `51B-045.45` (Ghế ngồi 45 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Tài xế chính** | Lê Hoàng Nam | **`0909090909`** | Xe `51B-009.09` (Limousine 9 chỗ - Tuyến HCM ⇄ Đà Lạt) |
+| **Phụ xe** | Nguyễn Tiến Dũng | **`0977889900`** | Xe `51B-009.09` (Limousine 9 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 
 ---
 
-## 2. Phân Chia Chức Năng Theo Actor và Service (Actor & Service Mapping)
+## 3. Phân Chia Chức Năng Chi Tiết Theo Actor (Actor Feature Matrix)
 
-Dưới đây là bảng phân chia chi tiết các chức năng (Use Cases) thu thập từ sơ đồ nghiệp vụ hệ thống, ánh xạ tới **Actor** (Người dùng) tương ứng và **Microservice** chịu trách nhiệm xử lý logic:
+### A. Nhóm Khách Hàng (Customer App)
 
-### A. Nhóm Khách Hàng (Customers)
-
-#### 1. Khách Vãng Lai (Guest Customer)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Tìm kiếm chuyến xe** | Tra cứu các chuyến xe theo điểm đi, điểm đến, ngày đi | `trip-service` |
-| **Xem thông tin chuyến xe** | Chi tiết về giờ khởi hành, giá vé cơ bản, loại xe, sơ đồ ghế trống | `trip-service` & `booking-service` |
-| **Đăng ký** | Đăng ký tài khoản thành viên mới | `auth-service` & `user-service` |
+#### 1. Khách Vãng Lai (Guest User)
+* **Tìm kiếm chuyến xe**: Tìm chuyến xe theo Điểm đi, Điểm đến, Ngày đi.
+* **Xem sơ đồ ghế & giá vé**: Xem chi tiết vị trí ghế trống, giá vé cơ bản, các tiện ích đi kèm xe.
+* **Đăng ký thành viên**: Khởi tạo tài khoản thành viên mới để nhận tích điểm.
+* **Tra hỏi AI Gemini**: Trò chuyện với Chatbot AI để tư vấn lộ trình, dự báo thời tiết, tư vấn điểm đón.
 
 #### 2. Khách Thành Viên (Registered Customer)
-*(Kế thừa toàn bộ quyền của Khách Vãng Lai và bổ sung các chức năng sau khi Đăng nhập)*
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Xác thực tài khoản thành viên để truy cập hệ thống | `auth-service` |
-| **Đặt vé trực tuyến** | Chọn ghế, nhập thông tin liên lạc và tạo yêu cầu đặt vé | `booking-service` |
-| **Thanh toán** | Thanh toán vé qua các cổng thanh toán trực tuyến | `payment-service` |
-| **Quản lý tài khoản người dùng**| Cập nhật thông tin cá nhân, đổi mật khẩu, lịch sử di chuyển | `user-service` |
-| **Tra hỏi tư vấn AI** | Trò chuyện với trợ lý AI tư vấn lộ trình, thời tiết, giá vé | `review-service` (Gemini API) |
-| **Theo dõi hành trình xe** | Xem vị trí thời gian thực của xe đang di chuyển trên bản đồ | `tracking-service` (Socket.io) |
-| **Gửi hàng** | Đăng ký gửi hàng ký gửi theo chuyến xe | `booking-service` |
-| **Xem thông báo hệ thống** | Nhận thông tin thông báo từ nhà xe (lịch trình thay đổi, khuyến mãi) | `notification-service` |
-| **Quản lý vé** | Xem danh sách vé đã đặt, thực hiện đổi/hủy vé theo quy định | `booking-service` |
-| **Đánh giá dịch vụ** | Viết đánh giá sau chuyến đi (AI phân tích chất lượng phản hồi) | `review-service` (Gemini API) |
+* **Đăng nhập / Đăng xuất**: Xác thực tài khoản cá nhân an toàn bằng JWT.
+* **Đặt vé & Thanh toán trực tuyến**: Chọn ghế, thanh toán qua cổng trực tuyến VietQR / PayOS hoặc tùy chọn thanh toán sau.
+* **Theo dõi hành trình xe (GPS Real-time)**: Xem bản đồ trực tuyến vị trí thực tế của xe đang chạy và thời gian dự kiến đến trạm (ETA).
+* **Quản lý Vé & Mã QR**: Xem danh sách vé đã đặt, lưu mã QR vé xe điện tử để soát vé khi lên xe.
+* **Ký gửi hàng hóa**: Đăng ký gửi bưu gửi theo xe, tra cứu hành trình vận đơn (`Shipment`).
+* **Tích điểm & Hạng thành viên**: Tích lũy điểm thưởng qua mỗi chuyến đi để nâng hạng (Bronze, Silver, Gold).
+* **Đánh giá chuyến đi**: Gửi đánh giá sao & nhận xét sau chuyến đi (Tích hợp AI phân tích phản hồi).
 
 ---
 
-### B. Nhóm Nhân Viên Vận Hành (Operations Staff)
+### B. Nhóm Quản Lý Vận Tải & Điều Hành (Ops & Fleet Managers)
 
-#### 1. Nhân Viên Bán Vé (Ticket Agent)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản nhân viên | `auth-service` |
-| **Chấm công** | Ghi nhận thời gian bắt đầu và kết thúc ca làm việc | `user-service` |
-| **Đặt vé** | Thực hiện đặt vé trực tiếp tại quầy cho hành khách | `booking-service` |
-| **Quản lý vé** | Tra cứu thông tin vé, in vé giấy, đổi/trả vé trực tiếp | `booking-service` |
-| **Tổng kết ca làm việc** | Báo cáo số lượng vé bán ra, tổng doanh thu tiền mặt thu được | `user-service` & `booking-service` |
-| **Tra cứu chuyến xe** | Tra cứu nhanh chuyến đi còn chỗ để tư vấn cho khách tại quầy | `trip-service` |
-| **Tra hỏi tư vấn AI** | Hỏi đáp nhanh các quy định, chính sách, lộ trình xe qua AI | `review-service` (Gemini API) |
+#### 1. Quản Lý Vận Tải (`ops_manager`)
+* **Quản lý Tuyến đường (`Routes`)**: Tạo tuyến đường mới (gửi yêu cầu `pending` để Giám đốc duyệt mới được kích hoạt).
+* **Quản lý Chuyến xe (`Trips`)**: Khởi tạo lịch chạy chuyến, cấu hình danh sách điểm đón/trả, công cụ xếp lịch tự động.
+* **Bộ lọc Chuyến xe Đa tiêu chí**: Lọc tìm chuyến theo Loại xe, Khung giờ xuất phát (Sáng/Chiều/Tối), Số lượng ghế, Mức giá, Dịch vụ đi kèm.
+* **Điều động & Phân công Nhân sự Chuyến (`OpsStaffPage`)**:
+  * Đảm bảo quy tắc nghiệp vụ: **1 Xe ⇄ 1 Tổ lái (1 Tài xế, 1 Phụ xe) ⇄ Phụ trách cả Lượt đi & Lượt về**.
+  * Chạy **Thuật toán Greedy** tự động phân công nhân sự không bị trùng ca hay trùng xe.
+  * **Giao diện Lịch tuần Kanban**: Theo dõi 7 ngày trong tuần, lọc chi tiết theo Tài xế, Biển số xe, Trạng thái phân công.
+* **Quản lý Lịch làm việc cá nhân**: Xem ca cố định 8 tiếng/ngày lưu trong cơ sở dữ liệu (`WorkSchedule`).
 
-#### 2. Tài Xế (Driver)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản tài xế | `auth-service` |
-| **Chấm công** | Điểm danh trước khi nhận xe và ca chạy | `user-service` |
-| **Xem lịch làm việc** | Xem danh sách các chuyến xe được phân công chạy | `user-service` |
-| **Cập nhật trạng thái chuyến đi**| Cập nhật trạng thái chuyến (Chờ chạy, Đang chạy, Đã hoàn thành) | `trip-service` |
-| **Xem trợ giúp hành trình** | Xem bản đồ dẫn đường, cảnh báo kẹt xe, lộ trình tối ưu | `tracking-service` (Google Maps API) |
+#### 2. Quản Lý Xe & Phương Tiện (`fleet_manager`)
+* **Quản lý Phương tiện (`Buses`)**: Khởi tạo và cập nhật hồ sơ xe (Biển số, số chỗ ngồi, loại xe, tiện ích, ảnh xe).
+* **Quản lý Bảo trì & Sửa chữa (`MaintenanceRecord`)**: Lập lịch bảo trì định kỳ, lưu chi phí bảo dưỡng, cập nhật tình trạng xe (Hoạt động / Bảo trì / Sự cố).
+* **Báo cáo Phương tiện**: Xem tổng quan tình trạng đội xe và chỉ số sẵn sàng vận tải.
 
-#### 3. Phụ Xe (Bus Attendant)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản phụ xe | `auth-service` |
-| **Chấm công** | Điểm danh bắt đầu/kết thúc ca làm việc theo xe | `user-service` |
-| **Xem lịch làm việc** | Tra cứu lịch trình chuyến đi được phân công phục vụ | `user-service` |
-| **Xem danh sách hành khách** | Xem danh sách chi tiết các hành khách đã đặt vé trên chuyến xe | `booking-service` |
-| **Soát vé / Check-in khách** | Quét mã QR/kiểm tra vé của khách trước khi lên xe | `booking-service` |
-| **Ghi nhận hành lý ký gửi** | Ghi nhận và đối chiếu hành lý ký gửi của khách khi lên/xuống xe | `booking-service` |
+#### 3. Nhân Viên Bán Vé Quầy (`ticket_agent`)
+* **Quản lý Ca bán vé quầy (`ShiftSession`)**: Mở ca, kiểm tra tiền quỹ ban đầu, chốt ca tổng kết doanh thu tiền mặt & chuyển khoản.
+* **Đặt vé & In vé tại quầy**: Đặt vé trực tiếp cho khách mua tại quầy, xuất vé giấy.
+* **Soát vé & Hủy vé**: Tra cứu vé nhanh, soát vé cho khách hoặc thực hiện đổi/hủy vé theo quy định.
+* **Lịch làm việc cá nhân**: Xem ca làm việc hành chính 8h/ngày (`WorkSchedule`).
+
+#### 4. Đội Ngũ Tài Xế & Phụ Xe (`driver` & `attendant`)
+* **Xem Chuyến xe phân công**: Xem danh sách các chuyến xe mình phụ trách cố định theo đầu xe.
+* **Soát vé QR Code (Phụ xe)**: Quét mã QR vé điện tử của khách hàng trước khi lên xe để check-in.
+* **Cập nhật trạng thái chuyến**: Chuyển trạng thái chuyến đi (Đang chạy ➔ Đã hoàn thành).
+* **Nộp Đơn xin nghỉ phép (`LeaveRequest`)**: Tạo đơn xin nghỉ gửi Giám đốc phê duyệt.
+* **Lịch làm việc cá nhân**: Xem lịch phân công cá nhân được bảo mật tuyệt đối.
 
 ---
 
-### C. Nhóm Quản Lý Vận Tải & Thiết Bị (Fleet & Logistics Managers)
+### C. Nhóm Ban Giám Đốc & Admin (Executive & Admin)
 
-#### 1. Quản Lý Xe (Fleet Manager)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản quản lý xe | `auth-service` |
-| **Quản lý phương tiện** | Cập nhật hồ sơ xe, loại xe (giường nằm, ghế ngồi, limousine) | `trip-service` (Fleet) |
-| **Quản lý bảo trì** | Lập kế hoạch bảo trì, đăng kiểm định kỳ cho từng phương tiện | `trip-service` (Fleet) |
-| **Cập nhật tình trạng xe** | Đánh dấu trạng thái xe (Đang hoạt động, Đang sửa chữa, Sự cố) | `trip-service` (Fleet) |
-| **Quản lý kho và phụ tùng** | Theo dõi vật tư, linh kiện phụ tùng trong kho của nhà xe | `trip-service` (Fleet) |
-| **Xem dự báo bảo trì** | Hệ thống dự đoán hỏng hóc thiết bị, cảnh báo thời hạn bảo trì | `review-service` / `trip-service` (AI Forecast) |
+#### 1. Giám Đốc / Quản Lý Nhà Xe (`general_manager`)
+* **Phê duyệt Quy trình (Approvals)**:
+  * **Phê duyệt Tuyến đường mới**: Duyệt các tuyến đường do Quản lý Vận tải đề xuất.
+  * **Phê duyệt Đơn xin nghỉ phép**: Duyệt đơn xin nghỉ phép của tài xế, phụ xe, nhân viên.
+* **Quản lý Bảng lương Nhân viên (`Payroll`)**:
+  * Truy vấn bảng lương cố định hàng tháng của đội ngũ nhân sự.
+  * Hỗ trợ cấu hình khấu trừ lương khi vi phạm nghỉ sai quy định hoặc đi làm trễ.
+* **Quản lý Bảng giá vé sàn (`BasePrice`)**: Cấu hình giá sàn theo từng cặp Tuyến đường và Loại xe.
+* **Dashboard & Báo cáo Doanh thu**: Xem tổng quan doanh thu vé, doanh số gửi hàng, tần suất lấp đầy chỗ ngồi.
 
-#### 2. Quản Lý Vận Tải (Operations Manager)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản quản lý vận tải | `auth-service` |
-| **Quản lý tuyến đường** | Tạo mới, sửa đổi lộ trình, các trạm dừng, khoảng cách giữa các trạm | `trip-service` |
-| **Quản lý chuyến xe** | Khởi tạo chuyến đi cụ thể (gán tuyến đường, giờ xuất phát, giá sàn) | `trip-service` |
-| **Phân công lịch làm việc** | Phân công tài xế, phụ xe cho các chuyến bằng **thuật toán Greedy** | `trip-service` |
-| **Quản lý nhân sự chuyến** | Quản lý, điều động phân công bổ sung nhân sự cho các chuyến xe | `trip-service` / `user-service` |
-| **Xem báo cáo** | Báo cáo chi tiết về số lượng chuyến xe, hiệu suất vận hành tuyến | `trip-service` |
-| **Định vị giám sát lộ trình** | Giám sát vị trí thời gian thực toàn bộ đoàn xe trên bản đồ số | `tracking-service` (WebSockets) |
+#### 2. Quản Trị Viên Hệ Thống (`admin`)
+* **Quản lý Tài khoản (`User`)**: Tạo tài khoản nhân viên mới, khóa / mở khóa tài khoản, phân quyền vai trò.
+* **Giám sát Nhật ký**: Theo dõi các thông số vận hành và nhật ký hoạt động hệ thống.
 
 ---
 
-### D. Nhóm Quản Trị Cao Cấp (Administrators & Directors)
+## 4. Cơ Sở Dữ Liệu & Các Collections chính (MongoDB Collections)
 
-#### 1. Quản Lý Nhà Xe (General Manager / CEO)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản Ban giám đốc | `auth-service` |
-| **Xem báo cáo** | Báo cáo doanh thu bán vé, doanh số gửi hàng tổng quan | `booking-service` & `payment-service` |
-| **Quản lý nhân viên** | Quản lý thông tin hồ sơ nhân viên toàn bộ các bộ phận | `user-service` |
-| **Hoạch định chỉ tiêu vận hành** | Thiết lập các định mức chỉ tiêu chi phí, hiệu năng vận tải | `trip-service` / `user-service` |
-| **Xem Dashboard** | Giao diện trực quan hóa các chỉ số tài chính, biểu đồ tăng trưởng | API Gateway (Frontend) |
-| **Quản lý giá** | Cấu hình, phê duyệt biểu giá vé gốc và cơ chế tăng giảm giá | `pricing-service` |
-| **Xem gợi ý giá vé** | Nhận gợi ý điều chỉnh giá vé giờ cao điểm/lễ tết (**Dynamic Pricing**) | `pricing-service` |
-| **Quản lý khuyến mãi** | Thiết lập các chương trình ưu đãi, mã giảm giá, tri ân khách hàng | `pricing-service` / `booking-service` |
-| **Xem phân tích nhu cầu** | Đọc báo cáo tổng hợp hành vi đặt vé và ý kiến đánh giá | `review-service` (AI Sentiment Analysis) |
+Hệ thống sử dụng MongoDB làm cơ sở dữ liệu chính. Dưới đây là cấu trúc các Collections cốt lõi:
 
-#### 2. Quản Trị Viên (System Administrator)
-| Chức năng (Use Case) | Mô tả nghiệp vụ | Microservice phụ trách |
-| :--- | :--- | :--- |
-| **Đăng nhập / Đăng xuất** | Đăng nhập tài khoản Admin hệ thống | `auth-service` |
-| **Quản lý tài khoản người dùng** | Quản lý toàn bộ tài khoản trong hệ thống, cấu hình phân quyền | `user-service` / `auth-service` |
-| **Giám sát nhật ký (logs)** | Theo dõi nhật ký hoạt động hệ thống (System Logs, Audit Logs) | API Gateway / Logger Agent |
-| **Giám sát lỗi hệ thống** | Phát hiện các lỗi kết nối, quá tải hệ thống, lỗi microservice | API Gateway / Prometheus / Grafana |
+### A. Lịch Làm Việc Nhân Viên (`workschedules`) [NEW]
+Lưu trữ lịch làm việc 8h/ngày của nhân viên hỗ trợ truy vấn:
+* `userId` (ObjectId, Ref: User): Tài khoản nhân viên.
+* `userName` (String): Họ tên nhân viên.
+* `userRole` (String): Vai trò nghiệp vụ.
+* `date` (Date): Ngày làm việc.
+* `startTime` / `endTime` (String): `08:00` - `17:00` (Sáng 08:00-12:00, Chiều 13:00-17:00).
+* `workHours` (Number): 8 tiếng.
+* `salaryType` (String): `Lương cố định tháng`.
+* `status` (String): `present` (Đã làm việc), `late` (Đi trễ), `leave` (Nghỉ phép), `absent` (Vắng mặt).
 
----
+### B. Bảng Lương Nhân Viên (`payrolls`) [NEW]
+Lưu trữ hồ sơ bảng lương nhân viên chi tiết:
+* `userId` (ObjectId, Ref: User): Nhân viên nhận lương.
+* `month` / `year` (Number): Kỳ lương Tháng / Năm.
+* `baseSalary` (Number): Lương cơ bản cố định tháng.
+* `allowance` (Number): Phụ cấp công tác / ăn uống.
+* `deductions` (Number): Khoản khấu trừ do đi trễ, nghỉ trái quy định.
+* `netSalary` (Number): Thực nhận (`baseSalary + allowance - deductions`).
+* `status` (String): `pending` (Chờ duyệt), `approved` (Đã duyệt), `paid` (Đã chi trả).
 
-## 3. Cấu Trúc Thư Mục Dự Án (Project Folder Structure)
+### C. Hồ Sơ Bảo Trì Xe (`maintenancerecords`) [NEW]
+Theo dõi chi tiết lịch sử bảo dưỡng phương tiện:
+* `busId` (ObjectId, Ref: Bus): Xe khách bảo trì.
+* `serviceType` (String): Loại bảo trì (Thay dầu, Thay lốp, Đăng kiểm, Sửa chữa lớn).
+* `cost` (Number): Chi phí thực hiện.
+* `performedAt` (Date): Ngày thực hiện bảo trì.
+* `notes` (String): Ghi chú của Quản lý xe.
 
-```text
-he-thong-quan-ly-nha-xe/
-├── README.md                  # Tài liệu kế hoạch và kiến trúc dự án
-├── docker-compose.yml         # Khởi chạy các cơ sở dữ liệu & Message Broker ở localhost
-├── docker-compose.apps.yml    # Khởi chạy toàn bộ các dịch vụ Node.js/ReactJS bằng Docker
-├── .gitignore
-├── package.json               # Cấu hình npm workspaces quản lý toàn bộ monorepo
-├── services/                  # Danh sách các microservices (Node.js/Express)
-│   ├── api-gateway/           # Điểm đón request, JWT validation, định tuyến
-│   ├── auth-service/          # Đăng nhập, đăng ký, cấp token
-│   ├── user-service/          # Quản lý thông tin Khách, Tài xế, Nhân viên, lịch làm việc
-│   ├── trip-service/          # Quản lý Tuyến, Chuyến, Xe + Thuật toán Greedy xếp lịch tài xế
-│   ├── booking-service/       # Đặt vé, giữ chỗ, kiểm soát vé
-│   ├── pricing-service/       # Thuật toán Dynamic Pricing (Giá vé động)
-│   ├── payment-service/       # Tích hợp cổng thanh toán (PayOS, ZaloPay)
-│   ├── tracking-service/      # Real-time WebSocket (Socket.io) nhận tọa độ GPS & tính ETA
-│   ├── notification-service/  # Gửi Email/SMS (nhận event từ RabbitMQ)
-│   └── review-service/        # Quản lý đánh giá + Gemini phân tích cảm xúc phản hồi
-├── common/                    # Thư viện dùng chung (định nghĩa Event, Middleware lỗi, v.v.)
-├── frontend/                  # Các ứng dụng ReactJS
-│   ├── admin-dashboard/       # Dashboard quản lý, tài xế, điều vận
-│   └── customer-app/          # Web/App đặt vé & theo dõi xe cho khách
-└── infrastructure/            # Cấu hình cơ sở dữ liệu, file setup ban đầu cho RabbitMQ, DB
-```
+### D. Tuyến Đường (`routes`) & Xe Khách (`buses`)
+* `routes`: `startPoint`, `endPoint`, `distance`, `duration`, `status` (`pending` / `approved`).
+* `buses`: `plateNumber`, `type`, `totalSeats`, `amenities`, `images`, `status` (`active` / `maintenance`).
+
+### E. Chuyến Xe (`trips`) & Đặt Vé (`bookings`)
+* `trips`: `routeId`, `busId`, `departureTime`, `arrivalTime`, `price`, `driver` ({name, phone}), `assistant` ({name, phone}), `pickupPoints`, `dropoffPoints`, `bookedSeats`.
+* `bookings`: `tripId`, `userId`, `seats`, `pickup`, `dropoff`, `customerName`, `customerPhone`, `status` (`pending` / `paid` / `cancelled`), `orderCode`.
 
 ---
 
-## 4. Kế Hoạch Triển Khai Chi Tiết (Milestones)
+## 5. Hướng Dẫn Khởi Chạy Dự Án Bằng Docker
 
-- [ ] **Phase 1: Setup Workspace & DBs**
-  - Khởi tạo thư mục dự án theo cấu trúc Monorepo (npm Workspaces).
-  - Cấu hình file `docker-compose.yml` để chạy MongoDB, Redis, RabbitMQ cục bộ.
-- [ ] **Phase 2: Auth Service, User Service & API Gateway**
-  - Xây dựng cơ chế đăng ký, đăng nhập và phân quyền.
-  - Cấu hình Gateway chuyển tiếp request và kiểm tra quyền truy cập.
-- [ ] **Phase 3: Core Operations (Trip & Booking)**
-  - Quản lý xe, tài xế, tuyến đường, chuyến xe.
-  - Logic đặt vé, thanh toán trực tuyến.
-- [ ] **Phase 4: Tích hợp thuật toán thông minh (AI & Rule-based)**
-  - Thuật toán Greedy phân công tài xế trong Trip Service.
-  - Thuật toán Dynamic Pricing trong Pricing Service.
-  - Tích hợp Gemini API (Function Calling tìm chuyến, NLP phân tích review).
-- [ ] **Phase 5: Real-time & Tracking**
-  - Kết nối Socket.io giữa Tài xế -> Tracking Service -> Khách hàng.
-- [ ] **Phase 6: Frontend Development**
-  - Phát triển giao diện Dashboard Admin và Client App đặt vé.
-- [ ] **Phase 7: Dockerize & Test**
-  - Viết `Dockerfile` cho từng Service và React App.
-  - Kiểm thử hiệu năng và liên kết dịch vụ.
+Dự án được đóng gói Docker giúp việc khởi chạy trên máy cục bộ cực kỳ đơn giản.
 
----
-
-## 5. Cơ Sở Dữ Liệu & Các Bảng (Database Schemas & Models)
-
-Hệ thống sử dụng MongoDB làm cơ sở dữ liệu chính. Dưới đây là cấu trúc các bảng (Collections) chính đang hoạt động trong `trip-service`:
-
-### A. Tuyến Đường (`routes`)
-Quản lý hành trình di chuyển cố định của nhà xe.
-- `startPoint` (String, Required): Điểm xuất phát (VD: Hồ Chí Minh).
-- `endPoint` (String, Required): Điểm đến (VD: Đà Lạt).
-- `distance` (String, Required): Khoảng cách (VD: 310km).
-- `duration` (String, Required): Thời gian chạy trung bình (VD: 7 giờ 50 phút).
-
-### B. Xe Khách (`buses`)
-Thông tin chi tiết về từng phương tiện vận chuyển.
-- `plateNumber` (String, Unique, Required): Biển kiểm soát xe (VD: 49B-022.22).
-- `type` (String, Required): Loại xe (Limousine 22 Phòng, Limousine 34 Giường...).
-- `totalSeats` (Number, Required): Tổng số ghế ngồi/giường nằm.
-- `amenities` (Array of Strings): Tiện ích đi kèm (Wifi, cổng sạc, Toilet, chăn đắp...).
-- `images` (Array of Strings): Liên kết ảnh thực tế của phương tiện.
-
-### C. Chuyến Xe (`trips`)
-Một chuyến chạy cụ thể được cấu hình thời gian và giá bán.
-- `routeId` (ObjectId, Ref: Route): Liên kết đến Tuyến đường.
-- `busId` (ObjectId, Ref: Bus): Liên kết đến Xe khách.
-- `departureTime` (Date, Required): Thời điểm xe chạy.
-- `arrivalTime` (Date, Required): Thời điểm xe dự kiến đến trạm cuối.
-- `price` (Number, Required): Giá vé sàn của chuyến đi.
-- `pickupPoints` (Array of Objects): Các điểm đón dọc đường cùng khung giờ đón dự kiến.
-- `dropoffPoints` (Array of Objects): Các điểm trả dọc đường cùng khung giờ trả dự kiến.
-- `bookedSeats` (Array of Strings): Danh sách mã ghế đã được đặt.
-- `ratings` (Object): Đánh giá trung bình và số lượng đánh giá của chuyến xe.
-- `policy` (Object): Chính sách hủy vé và chính sách hành lý.
-
-### D. Đặt Vé Xe (`bookings`)
-Quản lý yêu cầu giữ chỗ, thanh toán vé xe của hành khách.
-- `tripId` (ObjectId, Ref: Trip, Required): Liên kết đến Chuyến xe đã đặt.
-- `userId` (String, Required): ID người đặt vé (nếu là khách vãng lai sẽ là `user_guest`).
-- `seats` (Array of Strings, Required): Danh sách các ghế ngồi được chọn (VD: `["A1", "A2"]`).
-- `pickup` (String, Required): Điểm đón khách lựa chọn.
-- `dropoff` (String, Required): Điểm trả khách lựa chọn.
-- `customerName` (String, Required): Họ tên hành khách.
-- `customerPhone` (String, Required): Số điện thoại hành khách.
-- `customerBirthYear` (Number, Required): Năm sinh hành khách.
-- `customerCCCD` (String, Required): Số căn cước công dân.
-- `customerEmail` (String, Optional): Email nhận hóa đơn và mã QR vé xe.
-- `status` (String): Trạng thái vé (`pending` - Chờ thanh toán, `paid` - Đã thanh toán, `cancelled` - Đã hủy vé).
-- `paymentType` (String): Hình thức thanh toán (`immediate` - Chuyển khoản VietQR, `later` - Thanh toán sau trong 5 ngày).
-- `orderCode` (Number, Unique): Mã số giao dịch thanh toán gửi qua PayOS.
-
-### E. Ký Gửi Hàng Hóa (`shipments`)
-Quản lý thông tin gửi nhận và thanh toán cước phí hàng bưu gửi.
-- `shipmentId` (String, Unique): Mã vận đơn tra cứu bưu gửi (VD: `SHIP-123456`).
-- `senderName` (String, Required): Họ tên người gửi hàng.
-- `senderPhone` (String, Required): Số điện thoại người gửi.
-- `senderEmail` (String, Optional): Email người gửi để nhận hóa đơn vận đơn.
-- `receiverName` (String, Required): Họ tên người nhận hàng.
-- `receiverPhone` (String, Required): Số điện thoại người nhận.
-- `fromCity` (String, Required): Thành phố gửi bưu bưu gửi.
-- `toCity` (String, Required): Thành phố nhận bưu gửi.
-- `weight` (Number, Required): Khối lượng bưu gửi (kg).
-- `content` (String): Mô tả chi tiết hàng hóa ký gửi.
-- `fee` (Number, Required): Tổng cước phí vận chuyển.
-- `status` (String): Trạng thái vận tải (`Collected` - Đã thu gom, `In Transit` - Đang vận chuyển, `Arrived` - Đã tới trạm đích, `Delivered` - Đã giao thành công).
-- `paymentStatus` (String): Trạng thái cước phí (`pending` - Chưa thanh toán, `paid` - Đã thanh toán).
-- `paymentType` (String): Phương thức thanh toán (`immediate` - Quét mã VietQR tại quầy/online, `later` - Thanh toán khi nhận hàng).
-- `history` (Array of Objects): Nhật ký hành trình vận chuyển hàng hóa, ghi nhận chi tiết thời gian và địa điểm thực tế của bưu gửi.
-- `orderCode` (Number, Unique): Mã giao dịch thanh toán qua PayOS của bưu gửi.
-
----
-
-## 6. Hướng Dẫn Cài Đặt Và Chạy Dự Án (Installation & Setup Guide)
-
-Dự án này sử dụng mô hình Monorepo (npm Workspaces) để quản lý cả Frontend và các Backend Microservices. Một số file cấu hình và thư mục thư viện (`node_modules`, các file `.env` chứa thông tin nhạy cảm) đã bị ẩn (bỏ qua) khi đẩy lên GitHub để bảo mật và tối ưu dung lượng.
-
-Dưới đây là hướng dẫn chi tiết các bước thiết lập cho người mới tải dự án về để có thể chạy được trên máy cá nhân:
-
-### Bước 1: Tải mã nguồn về máy
-Mở terminal hoặc command prompt và clone dự án từ GitHub:
+### Bước 1: Khởi động Containers
+Mở Terminal tại thư mục gốc của dự án và chạy:
 ```bash
-git clone <URL_REPOSITORY_CỦA_BẠN>
-cd HeThongQuanLyNhaXe
+docker-compose up -d --build
 ```
 
-### Bước 2: Cài đặt các thư viện (node_modules)
-Vì dự án cấu hình Monorepo (npm Workspaces) nên bạn **chỉ cần chạy một lệnh duy nhất tại thư mục gốc** để tự động cài đặt toàn bộ package cho cả thư mục gốc, các services và frontend:
+### Bước 2: Nạp dữ liệu mẫu ban đầu (Data Seeding)
+Chạy lệnh seed dữ liệu mẫu chứa đầy đủ Chuyến xe, Tài xế, Bảng lương, và Lịch làm việc vào MongoDB:
 ```bash
-npm install
+docker-compose exec -T backend npm run seed
 ```
 
-### Bước 3: Cấu hình các file môi trường (.env) bị ẩn
-Bạn cần tạo các file `.env` tại các thư mục tương ứng bên dưới để cấu hình ứng dụng hoạt động (các file này đã bị bỏ qua bởi `.gitignore` để tránh rò rỉ thông tin cấu hình nhạy cảm). 
-
-Chúng tôi đã cung cấp sẵn các file mẫu `.env.example` tại các thư mục đó. Bạn chỉ cần sao chép chúng thành file `.env` rồi cập nhật giá trị nếu cần.
-
-**Lệnh copy nhanh trên Terminal tại thư mục gốc:**
-*   **Windows (PowerShell):**
-    ```powershell
-    copy services/api-gateway/.env.example services/api-gateway/.env
-    copy services/auth-service/.env.example services/auth-service/.env
-    copy services/trip-service/.env.example services/trip-service/.env
-    copy services/booking-service/.env.example services/booking-service/.env
-    ```
-*   **Linux / macOS:**
-    ```bash
-    cp services/api-gateway/.env.example services/api-gateway/.env
-    cp services/auth-service/.env.example services/auth-service/.env
-    cp services/trip-service/.env.example services/trip-service/.env
-    cp services/booking-service/.env.example services/booking-service/.env
-    ```
-
-**Các thông số cấu hình mẫu mặc định bên trong:**
-
-#### 1. API Gateway (`services/api-gateway/.env`)
-```env
-PORT=8000
-AUTH_SERVICE_URL=http://localhost:8001
-USER_SERVICE_URL=http://localhost:8002
-TRIP_SERVICE_URL=http://localhost:8003
-BOOKING_SERVICE_URL=http://localhost:8004
-PRICING_SERVICE_URL=http://localhost:8005
-PAYMENT_SERVICE_URL=http://localhost:8006
-TRACKING_SERVICE_URL=http://localhost:8007
-NOTIFICATION_SERVICE_URL=http://localhost:8008
-REVIEW_SERVICE_URL=http://localhost:8009
-```
-
-#### 2. Auth Service (`services/auth-service/.env`)
-```env
-PORT=8001
-MONGO_URI=mongodb://127.0.0.1:27018/bus_management
-JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
-JWT_EXPIRES_IN=7d
-```
-
-#### 3. Trip & Fleet Service (`services/trip-service/.env`)
-```env
-PORT=8003
-MONGO_URI=mongodb://127.0.0.1:27018/bus_management
-BREVO_API_KEY=xkeysib-your_brevo_api_key_here
-JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
-```
-
-#### 4. Booking & Ticket Service (`services/booking-service/.env`)
-```env
-PORT=8004
-MONGO_URI=mongodb://127.0.0.1:27018/bus_management
-BREVO_API_KEY=xkeysib-your_brevo_api_key_here
-JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
-```
-
-*(Lưu ý: Các biến MONGO_URI trên đang kết nối với cổng Docker MongoDB chạy cục bộ `27018`. Bạn có thể thay đổi tùy theo môi trường database thực tế).*
-
-### Bước 4: Khởi chạy các cơ sở dữ liệu và hạ tầng (Docker)
-Dự án sử dụng Docker để chạy các cơ sở dữ liệu (MongoDB, Redis, RabbitMQ,...). Hãy chắc chắn rằng Docker Desktop đã được mở trên máy của bạn, sau đó chạy lệnh tại thư mục gốc:
-```bash
-npm run docker:db:up
-```
-*(Lệnh này tương đương với `docker-compose up -d mysql mongodb redis rabbitmq`)*
-
-### Bước 5: Chạy các dịch vụ (Backend & Frontend)
-
-#### Cách 1: Khởi chạy thủ công từng service (Dùng cho Development)
-Bạn có thể mở các tab Terminal riêng biệt tại thư mục gốc để khởi động các thành phần chính bằng npm workspaces:
-
-*   **Chạy API Gateway:** `npm run gateway:dev`
-*   **Chạy Auth Service:** `npm run auth:dev`
-*   **Chạy User Service:** `npm run user:dev`
-*   **Chạy Trip Service:** `npm run trip:dev`
-*   **Chạy Booking Service:** `npm run booking:dev`
-*   **Chạy Frontend Customer App:** `npm run customer:dev`
-
-*(Tương tự cho các service khác như pricing, tracking, notification, review, ... nếu cần thiết).*
-
-#### Cách 2: Chạy toàn bộ bằng Docker Compose (Khuyên dùng khi triển khai)
-Nếu muốn khởi chạy nhanh toàn bộ ứng dụng (gồm cả các container node app và frontend):
-```bash
-npm run docker:up
-```
-Để tắt toàn bộ hệ thống container:
-```bash
-npm run docker:down
-```
-
-### Bước 6: Biên dịch ứng dụng Frontend (Build for Production)
-Nếu bạn cần sinh thư mục `build/` (đã bị ẩn bởi `.gitignore`) của ứng dụng Frontend để deploy lên môi trường chạy thực tế:
-
-*   **Chạy build từ thư mục gốc:**
-    ```bash
-    npm run build --workspace=frontend/customer-app
-    ```
-*   **Hoặc di chuyển trực tiếp vào thư mục frontend rồi build:**
-    ```bash
-    cd frontend/customer-app
-    npm run build
-    ```
-Sau khi chạy xong, thư mục nén tối ưu `build/` sẽ xuất hiện tại `frontend/customer-app/build/`.
+### Bước 3: Truy cập Giao diện Ứng dụng
+* **Ứng dụng Khách Hàng (Customer App)**: [http://localhost:3000](http://localhost:3000)
+* **Trang Quản Lý & Điều Hành (Admin Dashboard)**: [http://localhost:3001](http://localhost:3001)
+* **Backend API Gateway**: [http://localhost:8000/api/v1](http://localhost:8000/api/v1)
