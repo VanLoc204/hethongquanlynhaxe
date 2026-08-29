@@ -4,6 +4,8 @@ const LeaveRequest = require('../models/LeaveRequest');
 const Notification = require('../models/Notification');
 const ShiftSession = require('../models/ShiftSession');
 const Booking = require('../models/Booking');
+const Payroll = require('../models/Payroll');
+const WorkSchedule = require('../models/WorkSchedule');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
@@ -12,14 +14,54 @@ const generateTicketSignature = (bookingId) => {
   return crypto.createHmac('sha256', secret).update(bookingId.toString()).digest('hex').substring(0, 16);
 };
 
-// @desc    Get work schedule (assigned trips)
+// @desc    Get all staff work schedules (queryable DB)
+// @route   GET /api/v1/users/work-schedules
+// @access  Private (Ops Manager, Admin, General Manager, Staff)
+exports.getWorkSchedules = async (req, res) => {
+  try {
+    const { userId, role, status } = req.query;
+    let query = {};
+    if (userId) query.userId = userId;
+    if (role) query.userRole = role;
+    if (status) query.status = status;
+
+    const schedules = await WorkSchedule.find(query)
+      .populate('userId', 'name email phone role')
+      .sort({ date: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: schedules.length,
+      schedules
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách lịch làm việc:', error);
+    res.status(500).json({ success: false, message: 'Lỗi lấy danh sách lịch làm việc.' });
+  }
+};
+
+// @desc    Get work schedule (assigned trips or fixed office shifts)
 // @route   GET /api/v1/users/my-schedule
-// @access  Private (Driver / Attendant / Ticket Agent)
+// @access  Private (Driver / Attendant / Ticket Agent / Ops)
 exports.getMySchedule = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('phone role').lean();
+    const user = await User.findById(req.user.id).select('phone role name').lean();
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin nhân viên.' });
+      return res.status(200).json({ success: true, fixedSchedule: true, trips: [], schedules: [] });
+    }
+
+    // Drivers and Attendants have flexible trip schedules; other roles work fixed office hours
+    const isFixedSchedule = user.role !== 'driver' && user.role !== 'attendant';
+
+    if (isFixedSchedule) {
+      const schedules = await WorkSchedule.find({ userId: req.user.id }).sort({ date: 1 }).lean();
+      return res.status(200).json({
+        success: true,
+        fixedSchedule: true,
+        trips: [],
+        schedules
+      });
     }
 
     let query = {};
@@ -27,14 +69,8 @@ exports.getMySchedule = async (req, res) => {
       query = { 'driver.phone': user.phone };
     } else if (user.role === 'attendant') {
       query = { 'assistant.phone': user.phone };
-    } else if (user.role === 'ticket_agent') {
-      // Ticket agents operate at the station; return all trips for route lookup
-      query = {};
-    } else {
-      return res.status(403).json({ success: false, message: 'Vai trò này không hỗ trợ xem lịch trình cá nhân.' });
     }
 
-    // Populate route and bus details, using lean() for zero Mongoose overhead
     const trips = await Trip.find(query)
       .populate('routeId', 'startPoint endPoint distance duration')
       .populate('busId', 'plateNumber type totalSeats')
@@ -43,6 +79,7 @@ exports.getMySchedule = async (req, res) => {
 
     res.status(200).json({
       success: true,
+      fixedSchedule: false,
       count: trips.length,
       trips
     });
@@ -66,8 +103,15 @@ exports.submitLeave = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Ngày bắt đầu nghỉ phải trước ngày kết thúc.' });
     }
 
+    const startStr = new Date(startDate).toLocaleDateString('vi-VN');
+    const endStr = new Date(endDate).toLocaleDateString('vi-VN');
+    const details = `Nghỉ từ ${startStr} đến ${endStr}. Lý do: ${reason}`;
+
     const leave = await LeaveRequest.create({
       userId: req.user.id,
+      type: 'leave',
+      typeName: 'Đơn xin nghỉ phép',
+      details,
       startDate,
       endDate,
       reason
@@ -131,30 +175,60 @@ exports.getNotifications = async (req, res) => {
 // @access  Private (All Staff)
 exports.getMySalary = async (req, res) => {
   try {
-    const roleSalary = {
-      driver: { base: 12000000, allowance: 1000000, insurance: 500000 },
-      attendant: { base: 8000000, allowance: 800000, insurance: 400000 },
-      ticket_agent: { base: 7500000, allowance: 500000, insurance: 375000 }
-    };
+    const qMonth = req.query.month ? Number(req.query.month) : new Date().getMonth() + 1;
+    const qYear = req.query.year ? Number(req.query.year) : new Date().getFullYear();
 
-    const details = roleSalary[req.user.role];
-    if (!details) {
-      return res.status(403).json({ success: false, message: 'Vai trò này không nằm trong danh sách hưởng lương cố định nhân viên.' });
+    if (isNaN(qMonth) || qMonth < 1 || qMonth > 12 || isNaN(qYear)) {
+      return res.status(400).json({ success: false, message: 'Tháng hoặc năm không hợp lệ.' });
     }
 
-    const netSalary = details.base + details.allowance - details.insurance;
+    // Query MongoDB for the payroll record
+    let payroll = await Payroll.findOne({
+      employeeId: req.user.id,
+      month: qMonth,
+      year: qYear
+    }).lean();
 
-    res.status(200).json({
-      success: true,
-      payroll: {
+    // If not found, compute it and save it to MongoDB as a permanent record
+    if (!payroll) {
+      const roleSalary = {
+        driver: { base: 12000000, allowance: 1000000, insurance: 500000 },
+        attendant: { base: 8000000, allowance: 800000, insurance: 400000 },
+        ticket_agent: { base: 7500000, allowance: 500000, insurance: 375000 },
+        fleet_manager: { base: 15000000, allowance: 1500000, insurance: 750000 },
+        ops_manager: { base: 16000000, allowance: 1500000, insurance: 800000 }
+      };
+
+      const details = roleSalary[req.user.role];
+      if (!details) {
+        return res.status(403).json({ success: false, message: 'Vai trò này không nằm trong danh sách hưởng lương cố định nhân viên.' });
+      }
+
+      const netSalary = details.base + details.allowance - details.insurance;
+
+      const fullUser = await User.findById(req.user.id).select('name phone').lean();
+
+      const newPayroll = await Payroll.create({
+        employeeId: req.user.id,
+        phone: fullUser?.phone || 'N/A',
+        name: fullUser?.name || 'N/A',
         role: req.user.role,
-        month: new Date().getMonth() + 1,
-        year: new Date().getFullYear(),
+        month: qMonth,
+        year: qYear,
         baseSalary: details.base,
         allowance: details.allowance,
         insuranceDeduction: details.insurance,
-        netSalary
-      }
+        netSalary,
+        status: 'paid',
+        paymentDate: new Date(qYear, qMonth - 1, 5)
+      });
+      
+      payroll = newPayroll.toObject();
+    }
+
+    res.status(200).json({
+      success: true,
+      payroll
     });
   } catch (error) {
     console.error('Lỗi tải thông tin lương:', error);
@@ -717,6 +791,70 @@ exports.checkInPassenger = async (req, res) => {
   } catch (error) {
     console.error('Lỗi check-in hành khách:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi check-in hành khách.' });
+  }
+};
+
+// @desc    Get all leave requests (for managers)
+// @route   GET /api/v1/users/admin/leaves
+// @access  Private (Managers / Admin)
+exports.getAllLeaves = async (req, res) => {
+  try {
+    const leaves = await LeaveRequest.find()
+      .populate('userId', 'name role email phone')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: leaves.length,
+      leaves
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách đơn nghỉ:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi lấy danh sách đơn nghỉ.' });
+  }
+};
+
+// @desc    Update a leave request status (approve/reject)
+// @route   PATCH /api/v1/users/admin/leaves/:id
+// @access  Private (Managers / Admin)
+exports.updateLeaveStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'approved' or 'rejected'
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trạng thái phê duyệt không hợp lệ. Phải là approved hoặc rejected.'
+      });
+    }
+
+    const leave = await LeaveRequest.findById(id);
+    if (!leave) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn xin nghỉ phép.'
+      });
+    }
+
+    if (leave.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn xin nghỉ phép này đã được xử lý từ trước.'
+      });
+    }
+
+    leave.status = status;
+    await leave.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Đã ${status === 'approved' ? 'phê duyệt' : 'từ chối'} đơn xin nghỉ phép thành công.`,
+      leave
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật đơn nghỉ:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật trạng thái đơn nghỉ.' });
   }
 };
 

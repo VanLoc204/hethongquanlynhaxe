@@ -21,7 +21,10 @@ const {
   deleteTrip,
   releaseSeats,
   getPublicRoutes,
-  autoScheduleTrips
+  autoScheduleTrips,
+  updateJourneyStatus,
+  getMaintenanceRecords,
+  createMaintenanceRecord
 } = require('../controllers/tripController');
 const { createBooking, updateBookingPayment, cancelExpiredBooking, getMyBookings } = require('../controllers/bookingController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
@@ -60,6 +63,10 @@ router.post('/fleet/buses', protect, restrictTo('fleet_manager', 'admin', 'gener
 router.put('/fleet/buses/:id', protect, restrictTo('fleet_manager', 'admin', 'general_manager'), updateBus);
 router.delete('/fleet/buses/:id', protect, restrictTo('fleet_manager', 'admin', 'general_manager'), deleteBus);
 
+// Fleet Maintenance Routes
+router.get('/fleet/maintenance-records', protect, getMaintenanceRecords);
+router.post('/fleet/maintenance-records', protect, restrictTo('fleet_manager', 'admin', 'general_manager'), createMaintenanceRecord);
+
 // Ops Route Routes
 router.get('/ops/routes', protect, getRoutes);
 router.post('/ops/routes', protect, restrictTo('ops_manager', 'admin', 'general_manager'), createRoute);
@@ -75,6 +82,9 @@ router.delete('/ops/trips/:id', protect, restrictTo('ops_manager', 'admin', 'gen
 
 // Internal: Release seats on booking cancellation
 router.patch('/:id/release-seats', releaseSeats);
+
+// Driver Journey Updates
+router.patch('/:id/update-journey', protect, updateJourneyStatus);
 
 // Get Trip details Route (placed last due to dynamic parameter path)
 router.get('/:id', getTripById);

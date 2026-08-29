@@ -5,6 +5,7 @@ const busRepository = require('../repositories/busRepository');
 const bookingRepository = require('../repositories/bookingRepository');
 const shipmentRepository = require('../repositories/shipmentRepository');
 const reviewRepository = require('../repositories/reviewRepository');
+const maintenanceRepository = require('../repositories/maintenanceRepository');
 const { sendShipmentInvoiceEmail } = require('./emailService');
 
 class TripService {
@@ -344,7 +345,7 @@ class TripService {
   }
 
   async createBus(busData) {
-    const { plateNumber, type, totalSeats, amenities, images } = busData;
+    const { plateNumber, type, totalSeats, amenities, images, seatLayout } = busData;
 
     const busExists = await busRepository.findOne({ plateNumber: plateNumber.trim() });
     if (busExists) {
@@ -356,14 +357,16 @@ class TripService {
       type,
       totalSeats: Number(totalSeats),
       amenities: amenities || [],
-      images: images || []
+      images: images || [],
+      status: 'pending',
+      seatLayout: seatLayout || {}
     });
 
     return bus;
   }
 
   async updateBus(id, busData) {
-    const { plateNumber, type, totalSeats, amenities, images } = busData;
+    const { plateNumber, type, totalSeats, amenities, images, status, seatLayout, activeStatus, maintenanceInfo } = busData;
 
     let bus = await busRepository.findById(id);
     if (!bus) {
@@ -384,6 +387,16 @@ class TripService {
     if (totalSeats !== undefined) bus.totalSeats = Number(totalSeats);
     if (amenities) bus.amenities = amenities;
     if (images) bus.images = images;
+    if (status) bus.status = status;
+    if (seatLayout) {
+      bus.seatLayout = seatLayout;
+      bus.markModified('seatLayout');
+    }
+    if (activeStatus) bus.activeStatus = activeStatus;
+    if (maintenanceInfo) {
+      bus.maintenanceInfo = maintenanceInfo;
+      bus.markModified('maintenanceInfo');
+    }
 
     await busRepository.save(bus);
     return bus;
@@ -406,20 +419,21 @@ class TripService {
   }
 
   async createRoute(routeData) {
-    const { startPoint, endPoint, distance, duration } = routeData;
+    const { startPoint, endPoint, distance, duration, status } = routeData;
 
     const route = await routeRepository.create({
       startPoint,
       endPoint,
       distance,
-      duration
+      duration,
+      status: status || 'pending'
     });
 
     return route;
   }
 
   async updateRoute(id, routeData) {
-    const { startPoint, endPoint, distance, duration } = routeData;
+    const { startPoint, endPoint, distance, duration, status } = routeData;
 
     let route = await routeRepository.findById(id);
     if (!route) {
@@ -432,6 +446,7 @@ class TripService {
     if (endPoint) route.endPoint = endPoint;
     if (distance) route.distance = distance;
     if (duration) route.duration = duration;
+    if (status) route.status = status;
 
     await routeRepository.save(route);
     return route;
@@ -571,7 +586,7 @@ class TripService {
   }
 
   async getSearchLocations() {
-    const routes = await routeRepository.find({});
+    const routes = await routeRepository.find({ status: { $nin: ['pending', 'rejected'] } });
     const trips = await tripRepository.findWithPopulate({});
 
     const originsMap = new Map();
@@ -692,6 +707,34 @@ class TripService {
 
   async getTripModel(tripId) {
     return await tripRepository.findById(tripId);
+  }
+
+  async getMaintenanceRecords() {
+    return await maintenanceRepository.find({});
+  }
+
+  async createMaintenanceRecord(recordData) {
+    const { busId, plateNumber, type, description, garage, cost, startDate, endDate } = recordData;
+
+    const record = await maintenanceRepository.create({
+      busId,
+      plateNumber,
+      type,
+      description,
+      garage,
+      cost: Number(cost),
+      startDate: startDate || new Date(),
+      endDate: endDate || new Date()
+    });
+
+    const bus = await busRepository.findById(busId);
+    if (bus) {
+      bus.activeStatus = 'ready';
+      bus.maintenanceInfo = null;
+      await busRepository.save(bus);
+    }
+
+    return record;
   }
 }
 

@@ -7,16 +7,23 @@ const StaffSalaryPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Dropdown states for historical queries
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [year, setYear] = useState(new Date().getFullYear());
+
   useEffect(() => {
     const fetchSalary = async () => {
+      setLoading(true);
+      setError('');
       try {
-        const res = await fetch('http://localhost:8000/api/v1/users/salary', {
+        const res = await fetch(`http://localhost:8000/api/v1/users/salary?month=${month}&year=${year}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         if (res.ok && data.success) {
           setPayroll(data.payroll);
         } else {
+          setPayroll(null);
           setError(data.message || 'Không thể tải bảng lương.');
         }
       } catch (err) {
@@ -26,8 +33,10 @@ const StaffSalaryPage = () => {
       }
     };
 
-    fetchSalary();
-  }, [token]);
+    if (token) {
+      fetchSalary();
+    }
+  }, [token, month, year]);
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
@@ -37,31 +46,59 @@ const StaffSalaryPage = () => {
     const roles = {
       driver: 'Tài xế lái xe',
       attendant: 'Phụ xe điều hành',
-      ticket_agent: 'Nhân viên bán vé'
+      ticket_agent: 'Nhân viên bán vé',
+      fleet_manager: 'Quản lý Đội xe',
+      ops_manager: 'Quản lý Vận tải',
+      general_manager: 'Giám đốc nhà xe'
     };
     return roles[role] || role;
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-        <div style={{ color: 'var(--primary)', fontWeight: '600' }}>Đang tải bảng kê lương...</div>
-      </div>
-    );
-  }
-
   return (
     <section className="panel" style={{ maxWidth: '700px', margin: '0 auto', animation: 'fadeIn 0.4s ease' }}>
       <div style={{ textAlign: 'center', borderBottom: '2px dashed var(--card-border)', paddingBottom: '1.5rem', marginBottom: '1.5rem' }}>
-        <h1 style={{ fontSize: '1.5rem', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase' }}>Phiếu Thanh Toán Lương Cố Định</h1>
+        <h1 style={{ fontSize: '1.5rem', color: 'var(--primary)', fontWeight: '800', textTransform: 'uppercase' }}>Phiếu Thanh Toán Lương</h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-          Tháng {payroll?.month} / Năm {payroll?.year}
+          Xem lịch sử chi trả lương nhân viên
         </p>
       </div>
 
-      {error && <div className="error-message" style={{ marginBottom: '1.5rem', textAlign: 'center' }}>{error}</div>}
+      {/* Date selector controls */}
+      <div style={{ 
+        display: 'flex', justifyContent: 'center', gap: '15px', alignItems: 'center',
+        background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', 
+        border: '1px solid var(--card-border)', marginBottom: '1.5rem'
+      }}>
+        <label style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-main)' }}>Chọn kỳ nhận lương:</label>
+        
+        <select 
+          value={month} 
+          onChange={(e) => setMonth(Number(e.target.value))}
+          style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+        >
+          {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+            <option key={m} value={m}>Tháng {m}</option>
+          ))}
+        </select>
 
-      {payroll ? (
+        <select 
+          value={year} 
+          onChange={(e) => setYear(Number(e.target.value))}
+          style={{ padding: '5px 10px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.85rem', background: '#fff' }}
+        >
+          {[2025, 2026, 2027].map(y => (
+            <option key={y} value={y}>Năm {y}</option>
+          ))}
+        </select>
+      </div>
+
+      {error && <div className="error-message" style={{ marginBottom: '1.5rem', textAlign: 'center', color: '#dc2626' }}>{error}</div>}
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+          <div style={{ color: 'var(--primary)', fontWeight: '600' }}>Đang tải bảng kê lương...</div>
+        </div>
+      ) : payroll ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: '#f8fafc', padding: '1rem', borderRadius: '8px' }}>
@@ -113,7 +150,7 @@ const StaffSalaryPage = () => {
 
         </div>
       ) : (
-        <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Không có thông tin lương tháng này.</div>
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Không có thông tin lương của kỳ đã chọn.</div>
       )}
     </section>
   );

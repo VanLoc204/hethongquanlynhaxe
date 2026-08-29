@@ -17,6 +17,11 @@ const routeSchema = new mongoose.Schema(
     duration: {
       type: String,
       required: true
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved'
     }
   },
   {

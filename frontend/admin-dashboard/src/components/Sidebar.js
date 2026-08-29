@@ -18,79 +18,90 @@ const Sidebar = ({ activeTab, onTabChange, isOpen }) => {
     switch (user?.role) {
       case 'fleet_manager':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'fleet-buses', label: 'Quản lý phương tiện' },
-          { key: 'fleet-maintenance', label: 'Quản lý bảo trì' },
           { key: 'fleet-status', label: 'Cập nhật tình trạng xe' },
-          { key: 'fleet-inventory', label: 'Quản lý kho và phụ tùng' },
+          { key: 'fleet-maintenance', label: 'Quản lý bảo trì' },
           { key: 'fleet-forecast', label: 'Xem dự báo bảo trì' },
+          { key: 'manager-approvals', label: 'Xem danh sách chờ duyệt' },
+          { key: 'fleet-reports', label: 'Tạo báo cáo' },
+          { key: 'staff-schedule', label: 'Lịch làm việc' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ' },
+          { key: 'staff-salary', label: 'Xem bảng lương' },
+          { key: 'staff-notifications', label: 'Thông báo & Tin tức' },
         ];
       case 'ops_manager':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'ops-routes', label: 'Quản lý tuyến đường' },
           { key: 'ops-trips', label: 'Quản lý chuyến xe' },
           { key: 'ops-staff', label: 'Quản lý nhân sự chuyến' },
           { key: 'ops-reports', label: 'Xem báo cáo' },
           { key: 'ops-tracking', label: 'Định vị giám sát lộ trình' },
+          { key: 'staff-schedule', label: 'Lịch làm việc' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ' },
+          { key: 'staff-salary', label: 'Xem bảng lương' },
+          { key: 'staff-notifications', label: 'Thông báo & Tin tức' },
         ];
       case 'general_manager':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'gm-reports', label: 'Xem báo cáo' },
           { key: 'gm-staff', label: 'Quản lý nhân viên' },
+          { key: 'fleet-buses', label: 'Xem thông tin xe' },
+          { key: 'manager-approvals', label: 'Phê duyệt' },
+          { key: 'manager-attendance', label: 'Quản lý chấm công' },
           { key: 'gm-targets', label: 'Hoạch định chỉ tiêu vận hành' },
-          { key: 'gm-dashboard', label: 'Xem Dashboard' },
           { key: 'gm-pricing', label: 'Quản lý giá vé' },
           { key: 'gm-promotions', label: 'Quản lý khuyến mãi' },
           { key: 'gm-analysis', label: 'Xem phân tích nhu cầu' },
         ];
       case 'ticket_agent':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'agent-attendance', label: 'Chấm công ca' },
           { key: 'agent-booking', label: 'Đặt vé tại quầy' },
           { key: 'agent-tickets', label: 'Quản lý vé' },
           { key: 'agent-shift', label: 'Tổng kết ca làm việc' },
           { key: 'staff-schedule', label: 'Lịch làm việc' },
-          { key: 'staff-leave', label: 'Đơn xin nghỉ phép' },
-          { key: 'staff-salary', label: 'Xem lương' },
-          { key: 'staff-notifications', label: 'Xem thông báo' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ' },
+          { key: 'staff-salary', label: 'Xem bảng lương' },
+          { key: 'staff-notifications', label: 'Thông báo & Tin tức' },
           { key: 'agent-trips', label: 'Tra cứu chuyến xe' },
           { key: 'agent-ai', label: 'Trợ lý tư vấn AI' },
         ];
       case 'driver':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'driver-attendance', label: 'Chấm công số' },
           { key: 'staff-schedule', label: 'Lịch chạy xe' },
           { key: 'driver-status', label: 'Cập nhật hành trình' },
           { key: 'driver-map', label: 'Bản đồ di chuyển' },
-          { key: 'staff-leave', label: 'Đơn xin nghỉ phép' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ' },
           { key: 'staff-salary', label: 'Xem bảng lương' },
-          { key: 'staff-notifications', label: 'Thông báo điều động' },
+          { key: 'staff-notifications', label: 'Thông báo & Tin tức' },
         ];
       case 'attendant':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'attendant-attendance', label: 'Chấm công số' },
           { key: 'staff-schedule', label: 'Lịch chạy xe' },
           { key: 'attendant-checkin', label: 'Soát vé & Check-in' },
           { key: 'attendant-luggage', label: 'Thẻ hành lý ký gửi' },
-          { key: 'staff-leave', label: 'Đơn xin nghỉ phép' },
+          { key: 'staff-leave', label: 'Đơn xin nghỉ' },
           { key: 'staff-salary', label: 'Xem bảng lương' },
-          { key: 'staff-notifications', label: 'Thông báo điều động' },
+          { key: 'staff-notifications', label: 'Thông báo & Tin tức' },
         ];
       case 'admin':
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
           { key: 'admin-users', label: 'Quản lý tài khoản người dùng' },
           { key: 'admin-logs', label: 'Giám sát nhật ký (logs)' },
           { key: 'admin-errors', label: 'Giám sát lỗi hệ thống' },
         ];
       default:
         return [
-          { key: 'dashboard', label: 'Tổng quan' },
+          { key: 'dashboard', label: 'Dashboard' },
         ];
     }
   };

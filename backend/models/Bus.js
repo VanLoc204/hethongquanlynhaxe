@@ -15,6 +15,11 @@ const busSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Số lượng ghế là bắt buộc.']
     },
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved'
+    },
     amenities: [
       {
         type: String
@@ -29,6 +34,17 @@ const busSchema = new mongoose.Schema(
       columns: { type: Number },
       lowerFloor: { type: mongoose.Schema.Types.Mixed },
       upperFloor: { type: mongoose.Schema.Types.Mixed }
+    },
+    activeStatus: {
+      type: String,
+      enum: ['ready', 'maintenance', 'repairing', 'inactive'],
+      default: 'ready'
+    },
+    maintenanceInfo: {
+      description: { type: String },
+      garage: { type: String },
+      estimatedCompletion: { type: Date },
+      estimatedCost: { type: Number }
     }
   },
   {

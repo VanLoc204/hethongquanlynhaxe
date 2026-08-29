@@ -8,7 +8,7 @@ import DashboardOverviewPage from './pages/fleet/DashboardOverviewPage';
 import FleetBusesPage from './pages/fleet/FleetBusesPage';
 import FleetMaintenancePage from './pages/fleet/FleetMaintenancePage';
 import FleetStatusPage from './pages/fleet/FleetStatusPage';
-import FleetInventoryPage from './pages/fleet/FleetInventoryPage';
+import FleetReportsPage from './pages/fleet/FleetReportsPage';
 import FleetForecastPage from './pages/fleet/FleetForecastPage';
 
 // Ops Pages
@@ -21,10 +21,13 @@ import OpsTrackingPage from './pages/ops/OpsTrackingPage';
 // GM Pages
 import GmStaffPage from './pages/gm/GmStaffPage';
 import GmPricingPage from './pages/gm/GmPricingPage';
+import GmReportsPage from './pages/gm/GmReportsPage';
 
 // Shared Employee Pages
 import StaffSchedulePage from './pages/common/StaffSchedulePage';
 import StaffLeavePage from './pages/common/StaffLeavePage';
+import ManagerApprovalsPage from './pages/common/ManagerApprovalsPage';
+import ManagerAttendancePage from './pages/common/ManagerAttendancePage';
 import StaffSalaryPage from './pages/common/StaffSalaryPage';
 import StaffNotificationsPage from './pages/common/StaffNotificationsPage';
 
@@ -73,8 +76,8 @@ function DashboardLayout() {
         return <FleetMaintenancePage />;
       case 'fleet-status':
         return <FleetStatusPage />;
-      case 'fleet-inventory':
-        return <FleetInventoryPage />;
+      case 'fleet-reports':
+        return <FleetReportsPage />;
       case 'fleet-forecast':
         return <FleetForecastPage />;
       
@@ -86,11 +89,17 @@ function DashboardLayout() {
       case 'ops-staff':
         return <OpsStaffPage />;
       case 'ops-reports':
-        return <OpsReportsPage />;
+        return <GmReportsPage />;
       case 'ops-tracking':
         return <OpsTrackingPage />;
+      case 'manager-approvals':
+        return <ManagerApprovalsPage />;
+      case 'manager-attendance':
+        return <ManagerAttendancePage />;
       
       // GM views
+      case 'gm-reports':
+        return <GmReportsPage />;
       case 'gm-staff':
         return <GmStaffPage />;
       case 'gm-pricing':
@@ -153,15 +162,15 @@ function DashboardLayout() {
   const getHeaderTitle = () => {
     switch (activeTab) {
       case 'dashboard':
-        return 'Dashboard Tổng quan';
+        return 'Dashboard';
       case 'fleet-buses':
         return 'Quản lý phương tiện';
       case 'fleet-maintenance':
         return 'Quản lý bảo trì';
       case 'fleet-status':
         return 'Cập nhật tình trạng xe';
-      case 'fleet-inventory':
-        return 'Quản lý kho và phụ tùng';
+      case 'fleet-reports':
+        return 'Tạo báo cáo đội xe';
       case 'fleet-forecast':
         return 'Xem dự báo bảo trì';
       
@@ -176,8 +185,14 @@ function DashboardLayout() {
         return 'Xem báo cáo';
       case 'ops-tracking':
         return 'Định vị giám sát lộ trình';
+      case 'manager-approvals':
+        return 'Xem danh sách chờ duyệt';
+      case 'manager-attendance':
+        return 'Quản lý chấm công nhân sự';
 
       // GM views
+      case 'gm-reports':
+        return 'Báo cáo doanh thu & vận hành';
       case 'gm-staff':
         return 'Quản lý nhân viên';
       case 'gm-pricing':

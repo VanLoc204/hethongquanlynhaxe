@@ -58,7 +58,24 @@ const tripSchema = new mongoose.Schema(
     assistant: {
       name: { type: String, default: '' },
       phone: { type: String, default: '' }
-    }
+    },
+    journeyStatus: {
+      type: String,
+      enum: ['scheduled', 'in_transit', 'completed', 'cancelled'],
+      default: 'scheduled'
+    },
+    currentStopIndex: {
+      type: Number,
+      default: -1
+    },
+    journeyLogs: [
+      {
+        time: { type: Date, default: Date.now },
+        location: { type: String },
+        address: { type: String },
+        desc: { type: String }
+      }
+    ]
   },
   {
     timestamps: true
