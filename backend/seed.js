@@ -20,7 +20,7 @@ const mockReviewsList = [
   { userName: "Trần Thị Lan", rating: 5, comment: "Nhà xe phục vụ tận tình, có nước uống và khăn lạnh đầy đủ. Wifi căng đét." },
   { userName: "Lê Minh Tuấn", rating: 4, comment: "Xe chất lượng cao, giường nằm thoải mái rộng rãi. Tuy nhiên xe xuất phát hơi trễ 5 phút." },
   { userName: "Phạm Thanh Thảo", rating: 5, comment: "Dịch vụ tuyệt vời. Khoang phòng limousine riêng tư, tivi xem phim rất thích." },
-  { userName: "Hoàng Đức Anh", rating: 4, comment: "Giá cả hợp lý so với chất lượng phục vụ. Lần sau sẽ tiếp tục ủng hộ Á Đông." }
+  { userName: "Hoàng Đức Anh", rating: 4, comment: "Giá cả hợp lý so với chất lượng phục vụ. Lần sau sẽ tiếp tục ủng hộ An Bình." }
 ];
 
 async function seedReviewsForTrip(tripId) {
@@ -87,142 +87,142 @@ async function seedDB() {
     const systemUsers = [
       // Managers & Admin
       {
-        name: 'Quản Lý Xe Á Đông',
-        email: 'fleet@adongtravel.vn',
+        name: 'Quản Lý Xe An Bình',
+        email: 'fleet@anbinhlines.vn',
         phone: '0988888888',
         role: 'fleet_manager',
       },
       {
-        name: 'Quản Lý Vận Tải Á Đông',
-        email: 'ops@adongtravel.vn',
+        name: 'Quản Lý Vận Tải An Bình',
+        email: 'ops@anbinhlines.vn',
         phone: '0977777777',
         role: 'ops_manager',
       },
       {
-        name: 'Giám Đốc Á Đông',
-        email: 'director@adongtravel.vn',
+        name: 'Giám Đốc An Bình',
+        email: 'director@anbinhlines.vn',
         phone: '0966555666', // Unique phone for GM
         role: 'general_manager',
       },
       {
         name: 'Quản Trị Viên Hệ Thống',
-        email: 'admin@adongtravel.vn',
+        email: 'admin@anbinhlines.vn',
         phone: '0955555666', // Unique phone for Admin
         role: 'admin',
       },
       {
         name: 'Nhân Viên Bán Vé',
-        email: 'ticket@adongtravel.vn',
+        email: 'ticket@anbinhlines.vn',
         phone: '0944555666', // Unique phone for Ticket Agent
         role: 'ticket_agent',
       },
       // Drivers (Tài xế)
       {
-        name: 'Tài xế Á Đông',
-        email: 'driver1@adongtravel.vn',
+        name: 'Tài xế An Bình',
+        email: 'driver1@anbinhlines.vn',
         phone: '0933333333',
         role: 'driver',
       },
       {
         name: 'Trần Minh Tâm',
-        email: 'driver2@adongtravel.vn',
+        email: 'driver2@anbinhlines.vn',
         phone: '0987654321',
         role: 'driver',
       },
       {
         name: 'Nguyễn Văn Hùng',
-        email: 'driver3@adongtravel.vn',
+        email: 'driver3@anbinhlines.vn',
         phone: '0912345678',
         role: 'driver',
       },
       {
         name: 'Lê Hoàng Nam',
-        email: 'driver4@adongtravel.vn',
+        email: 'driver4@anbinhlines.vn',
         phone: '0909090909',
         role: 'driver',
       },
       {
         name: 'Nguyễn Văn An',
-        email: 'driver5@adongtravel.vn',
+        email: 'driver5@anbinhlines.vn',
         phone: '0912999999',
         role: 'driver',
       },
       {
         name: 'Trần Văn Bình',
-        email: 'driver6@adongtravel.vn',
+        email: 'driver6@anbinhlines.vn',
         phone: '0988999999',
         role: 'driver',
       },
       {
         name: 'Phạm Minh Hải',
-        email: 'driver7@adongtravel.vn',
+        email: 'driver7@anbinhlines.vn',
         phone: '0934567890',
         role: 'driver',
       },
       {
         name: 'Vũ Hoàng Long',
-        email: 'driver8@adongtravel.vn',
+        email: 'driver8@anbinhlines.vn',
         phone: '0945678901',
         role: 'driver',
       },
       {
         name: 'Đỗ Tiến Đạt',
-        email: 'driver9@adongtravel.vn',
+        email: 'driver9@anbinhlines.vn',
         phone: '0956789012',
         role: 'driver',
       },
       // Attendants (Phụ xe)
       {
         name: 'Phạm Quốc Bảo',
-        email: 'attendant1@adongtravel.vn',
+        email: 'attendant1@anbinhlines.vn',
         phone: '0944444444',
         role: 'attendant',
       },
       {
         name: 'Hoàng Văn Tuấn',
-        email: 'attendant2@adongtravel.vn',
+        email: 'attendant2@anbinhlines.vn',
         phone: '0966666666',
         role: 'attendant',
       },
       {
         name: 'Đỗ Đức Mạnh',
-        email: 'attendant3@adongtravel.vn',
+        email: 'attendant3@anbinhlines.vn',
         phone: '0955555555',
         role: 'attendant',
       },
       {
         name: 'Nguyễn Tiến Dũng',
-        email: 'attendant4@adongtravel.vn',
+        email: 'attendant4@anbinhlines.vn',
         phone: '0977889900',
         role: 'attendant',
       },
       {
         name: 'Bùi Hữu Nghĩa',
-        email: 'attendant5@adongtravel.vn',
+        email: 'attendant5@anbinhlines.vn',
         phone: '0967890123',
         role: 'attendant',
       },
       {
         name: 'Nguyễn Hải Đăng',
-        email: 'attendant6@adongtravel.vn',
+        email: 'attendant6@anbinhlines.vn',
         phone: '0978901234',
         role: 'attendant',
       },
       {
         name: 'Phan Văn Trị',
-        email: 'attendant7@adongtravel.vn',
+        email: 'attendant7@anbinhlines.vn',
         phone: '0989012345',
         role: 'attendant',
       },
       {
         name: 'Lê Hồng Phong',
-        email: 'attendant8@adongtravel.vn',
+        email: 'attendant8@anbinhlines.vn',
         phone: '0990123456',
         role: 'attendant',
       },
       {
         name: 'Nguyễn Huỳnh Đức',
-        email: 'attendant9@adongtravel.vn',
+        email: 'attendant9@anbinhlines.vn',
         phone: '0901238888',
         role: 'attendant',
       }
@@ -382,7 +382,7 @@ async function seedDB() {
     };
 
     // Dedicated 1-Bus 1-Team Staff Assignment Pairs:
-    const teamB1 = { driver: { name: 'Tài xế Á Đông', phone: '0933333333' }, assistant: { name: 'Phạm Quốc Bảo', phone: '0944444444' } }; // Bus 51B-016.16 (Cần Thơ)
+    const teamB1 = { driver: { name: 'Tài xế An Bình', phone: '0933333333' }, assistant: { name: 'Phạm Quốc Bảo', phone: '0944444444' } }; // Bus 51B-016.16 (Cần Thơ)
     const teamB2 = { driver: { name: 'Trần Minh Tâm', phone: '0987654321' }, assistant: { name: 'Hoàng Văn Tuấn', phone: '0966666666' } }; // Bus 51B-029.29 (Đà Lạt)
     const teamB3 = { driver: { name: 'Nguyễn Văn Hùng', phone: '0912345678' }, assistant: { name: 'Đỗ Đức Mạnh', phone: '0955555555' } }; // Bus 51B-045.45 (Đà Lạt)
     const teamB4 = { driver: { name: 'Lê Hoàng Nam', phone: '0909090909' }, assistant: { name: 'Nguyễn Tiến Dũng', phone: '0977889900' } }; // Bus 51B-009.09 (Đà Lạt Limo)
@@ -598,7 +598,7 @@ async function seedDB() {
     // Seed generic approval requests (LeaveRequest model)
     const mockLeaves = [
       {
-        userId: staffIds['driver1@adongtravel.vn'],
+        userId: staffIds['driver1@anbinhlines.vn'],
         type: 'leave',
         typeName: 'Đơn xin nghỉ phép',
         details: 'Nghỉ từ 29/08/2026 đến 30/08/2026. Lý do: Giải quyết việc gia đình ở quê.',
@@ -608,7 +608,7 @@ async function seedDB() {
         status: 'pending'
       },
       {
-        userId: staffIds['driver2@adongtravel.vn'],
+        userId: staffIds['driver2@anbinhlines.vn'],
         type: 'leave',
         typeName: 'Đơn xin nghỉ phép',
         details: 'Nghỉ từ 10/08/2026 đến 12/08/2026. Lý do: Bận việc cá nhân.',
@@ -618,7 +618,7 @@ async function seedDB() {
         status: 'approved'
       },
       {
-        userId: staffIds['ticket@adongtravel.vn'],
+        userId: staffIds['ticket@anbinhlines.vn'],
         type: 'leave',
         typeName: 'Đơn xin nghỉ phép',
         details: 'Nghỉ từ 25/08/2026 đến 26/08/2026. Lý do: Nghỉ khám bệnh định kỳ.',
@@ -628,14 +628,14 @@ async function seedDB() {
         status: 'pending'
       },
       {
-        userId: staffIds['driver1@adongtravel.vn'],
+        userId: staffIds['driver1@anbinhlines.vn'],
         type: 'maintenance',
         typeName: 'Đề xuất bảo trì xe',
         details: 'Yêu cầu thay dầu nhớt định kỳ & má phanh trước cho xe giường nằm 51B-044.44.',
         status: 'pending'
       },
       {
-        userId: staffIds['attendant1@adongtravel.vn'],
+        userId: staffIds['attendant1@anbinhlines.vn'],
         type: 'incident',
         typeName: 'Báo cáo sự cố lộ trình',
         details: 'Hỏng lốp xe giữa chặng tại Madagui, đề xuất chi phí vá vỏ xe 200,000đ.',

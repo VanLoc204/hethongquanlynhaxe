@@ -463,7 +463,7 @@ const MyTicketsPage = () => {
               ) : (
                 <>
                   <div style={{ padding: '8px', backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: 'var(--card-shadow)', opacity: isPendingLater ? 0.5 : 1, filter: isPendingLater ? 'grayscale(60%)' : 'none' }}>
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`ADongTravel-${t.orderCode || id}`)}`} alt="QR Code" style={{ display: 'block', width: '130px', height: '130px' }} />
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`AnBinhLines-${t.orderCode || id}`)}`} alt="QR Code" style={{ display: 'block', width: '130px', height: '130px' }} />
                   </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700', marginTop: '10px', textAlign: 'center' }}>
                     {isPendingLater ? 'QR KHẢ DỤNG SAU THANH TOÁN' : 'MÃ BẢN VÉ (QR)'}

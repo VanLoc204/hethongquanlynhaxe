@@ -9,7 +9,7 @@ const ManagerAttendancePage = () => {
   const attendanceLogs = [
     {
       id: 'att_1',
-      name: 'Tài xế Á Đông',
+      name: 'Tài xế An Bình',
       role: 'driver',
       roleName: 'Tài xế',
       status: 'active', // active, closed, absent

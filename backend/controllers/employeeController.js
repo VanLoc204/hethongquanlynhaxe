@@ -10,7 +10,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 const generateTicketSignature = (bookingId) => {
-  const secret = process.env.JWT_SECRET || 'adongtravel_secret';
+  const secret = process.env.JWT_SECRET || 'anbinhlines_secret';
   return crypto.createHmac('sha256', secret).update(bookingId.toString()).digest('hex').substring(0, 16);
 };
 

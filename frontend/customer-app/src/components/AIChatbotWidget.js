@@ -18,7 +18,7 @@ const AIChatbotWidget = () => {
     'Giá vé đi Đà Lạt từ HCM?',
     'Quy định hành lý dưới gầm xe?',
     'Chính sách hoàn hủy vé thế nào?',
-    'Tổng đài nhà xe Á Đông?'
+    'Tổng đài nhà xe An Bình?'
   ];
 
   // Initialize chatbot session and history
@@ -38,7 +38,7 @@ const AIChatbotWidget = () => {
       const welcomeMsg = {
         id: 'welcome',
         sender: 'bot',
-        text: `Chào ${user ? user.name : 'quý khách'}! Tôi là Trợ lý ảo Á Đông AI. Tôi có thể giúp gì cho hành trình của bạn ngày hôm nay? (Ví dụ: giá vé xe đi Đà Lạt, chính sách trả vé, gửi hàng...)`,
+        text: `Chào ${user ? user.name : 'quý khách'}! Tôi là Trợ lý ảo An Bình AI. Tôi có thể giúp gì cho hành trình của bạn ngày hôm nay? (Ví dụ: giá vé xe đi Đà Lạt, chính sách trả vé, gửi hàng...)`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
       };
       setMessages([welcomeMsg]);
@@ -140,7 +140,7 @@ const AIChatbotWidget = () => {
       return 'Vé tuyến TP.HCM đi Đà Lạt: Xe giường nằm 400.000đ/vé; Xe Limousine 9 chỗ 350.000đ/vé. Quý khách vui lòng liên hệ tổng đài 1900 6067 để đặt trực tiếp.';
     }
     if (text.includes('hành lý') || text.includes('20kg')) {
-      return 'Mỗi quý khách hàng được mang miễn phí hành lý tối đa 20kg ký gửi gầm xe khách Á Đông Travel.';
+      return 'Mỗi quý khách hàng được mang miễn phí hành lý tối đa 20kg ký gửi gầm xe khách An Bình Lines.';
     }
     if (text.includes('hoàn') || text.includes('hủy') || text.includes('trả')) {
       return 'Quý khách được hoàn tiền vé 100% nếu thực hiện hủy vé tối thiểu 24 tiếng trước giờ chạy tại mục Quản lý vé.';
@@ -152,7 +152,7 @@ const AIChatbotWidget = () => {
     const welcomeMsg = {
       id: 'welcome',
       sender: 'bot',
-      text: `Xin chào trở lại! Tôi là Trợ lý ảo Á Đông AI. Tôi có thể hỗ trợ thông tin gì cho chuyến đi của bạn?`,
+      text: `Xin chào trở lại! Tôi là Trợ lý ảo An Bình AI. Tôi có thể hỗ trợ thông tin gì cho chuyến đi của bạn?`,
       time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
     };
     setMessages([welcomeMsg]);
@@ -186,7 +186,7 @@ const AIChatbotWidget = () => {
                 <Bot size={18} />
               </div>
               <div>
-                <h4>Á Đông Travel AI</h4>
+                <h4>An Bình Lines AI</h4>
                 <p className="status-online">
                   <span className="dot-online"></span>
                   Hỗ trợ trực tuyến 24/7

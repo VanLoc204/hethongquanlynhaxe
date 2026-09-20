@@ -59,7 +59,7 @@ const FleetStatusPage = () => {
             fromStatus: 'ready',
             toStatus: 'maintenance',
             time: new Date(Date.now() - 3600000 * 24).toISOString(),
-            details: 'Thay nhớt định kỳ tại Garage Auto Á Đông. Chi phí: 650.000đ'
+            details: 'Thay nhớt định kỳ tại Garage Auto An Bình. Chi phí: 650.000đ'
           },
           {
             id: 'log-2',
@@ -342,7 +342,7 @@ const FleetStatusPage = () => {
                         className="form-control" 
                         value={garage}
                         onChange={(e) => setGarage(e.target.value)}
-                        placeholder="Ví dụ: Garage Auto Á Đông, Hyundai Service..."
+                        placeholder="Ví dụ: Garage Auto An Bình, Hyundai Service..."
                         style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }}
                         required
                       />

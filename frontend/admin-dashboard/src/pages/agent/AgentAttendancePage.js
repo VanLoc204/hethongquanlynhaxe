@@ -89,7 +89,7 @@ const AgentAttendancePage = () => {
     <section className="panel" style={{ animation: 'fadeIn 0.4s ease', maxWidth: '800px', margin: '0 auto' }}>
       <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
         <h2>Chấm Công Ca Bán Vé</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Bắt đầu ca trực tại quầy vé bến xe Á Đông Travel để kích hoạt các chức năng đặt vé tại quầy.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Bắt đầu ca trực tại quầy vé bến xe An Bình Lines để kích hoạt các chức năng đặt vé tại quầy.</p>
       </div>
 
       {error && <div className="error-message" style={{ marginBottom: '1.25rem' }}>{error}</div>}

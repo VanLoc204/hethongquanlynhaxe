@@ -74,7 +74,7 @@ const HomePage = () => {
       
       {/* 1. Hero Banner */}
       <div className="hero-section-futa">
-        <h1>Á ĐÔNG TRAVEL - CHẤT LƯỢNG LÀ DANH DỰ</h1>
+        <h1>AN BÌNH LINES - CHẤT LƯỢNG LÀ DANH DỰ</h1>
         <p>Hệ thống đặt vé xe khách trực tuyến thông minh, an toàn, nhanh chóng hàng đầu Việt Nam</p>
       </div>
 

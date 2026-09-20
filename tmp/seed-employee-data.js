@@ -48,7 +48,7 @@ async function seed() {
     ]);
     console.log('Notifications seeded successfully!');
 
-    // 3. Seed leave requests for test Driver user (Tài xế Á Đông / SĐT: 0933333333)
+    // 3. Seed leave requests for test Driver user (Tài xế An Bình / SĐT: 0933333333)
     const testDriver = await User.findOne({ phone: '0933333333' });
     if (testDriver) {
       console.log('Seeding leave requests for driver 0933333333...');

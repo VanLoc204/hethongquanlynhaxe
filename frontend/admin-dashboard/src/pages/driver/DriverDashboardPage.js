@@ -82,7 +82,7 @@ const DriverDashboardPage = ({ setActiveTab }) => {
       <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
         <h2>Dashboard Tài Xế & Vận Hành</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-          Chào mừng trở lại, Tài xế {user?.name || 'Á Đông'}. Dưới đây là thông số vận hành và các chuyến đi của bạn hôm nay.
+          Chào mừng trở lại, Tài xế {user?.name || 'An Bình'}. Dưới đây là thông số vận hành và các chuyến đi của bạn hôm nay.
         </p>
       </div>
 

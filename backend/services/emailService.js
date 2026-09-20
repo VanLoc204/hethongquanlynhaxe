@@ -26,7 +26,7 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
       },
       body: JSON.stringify({
         sender: {
-          name: 'Á Đông Travel',
+          name: 'An Bình Lines',
           email: 'hovanloc.lv@gmail.com'
         },
         to: [
@@ -62,16 +62,16 @@ const formatVND = (amount) => {
 exports.sendBookingInvoiceEmail = async (booking, trip) => {
   if (!booking.customerEmail) return;
 
-  const subject = `[Á Đông Travel] Hóa đơn điện tử đặt vé xe thành công - Mã số #${booking.orderCode}`;
+  const subject = `[An Bình Lines] Hóa đơn điện tử đặt vé xe thành công - Mã số #${booking.orderCode}`;
   
   // Create a QR server image containing the booking code to show in the email
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=ADongTravel-Booking-${booking._id}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=AnBinhLines-Booking-${booking._id}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
       <div style="background-color: #ef4444; color: white; padding: 24px; text-align: center;">
         <h2 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 1px;">XÁC NHẬN ĐẶT VÉ THÀNH CÔNG</h2>
-        <p style="margin: 8px 0 0 0; opacity: 0.9;">Cảm ơn quý khách đã tin tưởng dịch vụ Á Đông Travel</p>
+        <p style="margin: 8px 0 0 0; opacity: 0.9;">Cảm ơn quý khách đã tin tưởng dịch vụ An Bình Lines</p>
       </div>
       
       <div style="padding: 24px; color: #334155; line-height: 1.6;">
@@ -142,7 +142,7 @@ exports.sendBookingInvoiceEmail = async (booking, trip) => {
 
       <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
         Email này được gửi tự động. Vui lòng không trả lời email này.<br>
-        Á Đông Travel - Tổng đài CSKH: 1900 6067
+        An Bình Lines - Tổng đài CSKH: 1900 6067
       </div>
     </div>
   `;
@@ -156,7 +156,7 @@ exports.sendBookingInvoiceEmail = async (booking, trip) => {
 exports.sendShipmentInvoiceEmail = async (shipment) => {
   if (!shipment.senderEmail) return;
 
-  const subject = `[Á Đông Express] Hóa đơn ký gửi hàng hóa thành công - Mã vận đơn ${shipment.shipmentId}`;
+  const subject = `[An Bình Express] Hóa đơn ký gửi hàng hóa thành công - Mã vận đơn ${shipment.shipmentId}`;
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
@@ -214,7 +214,7 @@ exports.sendShipmentInvoiceEmail = async (shipment) => {
 
         <div style="background-color: #eff6ff; border: 1px dashed #bfdbfe; border-radius: 8px; padding: 14px; text-align: center;">
           <p style="font-size: 14px; color: #1e40af; margin: 0;">
-            Quý khách có thể truy cập website Á Đông Express và nhập mã vận đơn <strong>${shipment.shipmentId}</strong> để tra cứu hành trình vận đơn trực tuyến.
+            Quý khách có thể truy cập website An Bình Express và nhập mã vận đơn <strong>${shipment.shipmentId}</strong> để tra cứu hành trình vận đơn trực tuyến.
           </p>
         </div>
 
@@ -222,7 +222,7 @@ exports.sendShipmentInvoiceEmail = async (shipment) => {
 
       <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
         Email này được gửi tự động. Vui lòng không trả lời email này.<br>
-        Á Đông Express - Hotline vận tải hàng hóa: 1900 6068
+        An Bình Express - Hotline vận tải hàng hóa: 1900 6068
       </div>
     </div>
   `;

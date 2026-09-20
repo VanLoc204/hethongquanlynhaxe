@@ -194,7 +194,7 @@ const ShipmentPage = () => {
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
         <h2 style={{ fontSize: '2.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
           <Package size={32} style={{ color: 'var(--primary)' }} />
-          Dịch Vụ Gửi Nhận Hàng Hóa Á Đông Express
+          Dịch Vụ Gửi Nhận Hàng Hóa An Bình Express
         </h2>
         <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
           Tạo yêu cầu gửi hàng nhanh theo tuyến xe khách, tra cứu hành trình vận chuyển hàng hóa thời gian thực.
@@ -427,7 +427,7 @@ const ShipmentPage = () => {
                   <div className="glass-card" style={{ padding: '1.25rem', border: '1px solid #fed7aa', backgroundColor: '#fff7ed', borderRadius: '8px', marginBottom: '1.5rem' }}>
                     <h5 style={{ fontWeight: '700', color: '#c2410c', fontSize: '0.95rem', marginBottom: '6px' }}>Thanh toán sau tại quầy gửi hàng</h5>
                     <p style={{ fontSize: '0.85rem', color: '#9a3412', margin: 0 }}>
-                      Bạn có thể chọn thanh toán bằng tiền mặt hoặc thẻ trực tiếp khi mang hàng hóa đến văn phòng ký gửi của Á Đông Express.
+                      Bạn có thể chọn thanh toán bằng tiền mặt hoặc thẻ trực tiếp khi mang hàng hóa đến văn phòng ký gửi của An Bình Express.
                     </p>
                     <button 
                       className="btn btn-secondary" 
@@ -469,7 +469,7 @@ const ShipmentPage = () => {
                 <CheckCircle2 size={64} style={{ color: '#10b981', marginBottom: '1rem' }} />
                 <h3 style={{ color: '#10b981', fontWeight: '800', margin: 0 }}>TẠO ĐƠN GỬI HÀNG THÀNH CÔNG</h3>
                 <p style={{ color: 'var(--text-secondary)', margin: '5px 0 0 0', fontWeight: '500' }}>
-                  Hóa Đơn Ký Gửi Á Đông Express #{createdShipment.shipmentId}
+                  Hóa Đơn Ký Gửi An Bình Express #{createdShipment.shipmentId}
                 </p>
               </div>
 
