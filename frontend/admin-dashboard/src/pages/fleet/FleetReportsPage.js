@@ -457,7 +457,7 @@ const FleetReportsPage = () => {
                   <tbody>
                     {buses.map((bus, idx) => {
                       const details = idx % 4 === 0 
-                        ? { desc: 'Thay bộ lốp Michelin mới, căn chỉnh thước lái thước thợ', location: 'Garage Á Đông Dịch Vụ', cost: 14500000 }
+                        ? { desc: 'Thay bộ lốp Michelin mới, căn chỉnh thước lái thước thợ', location: 'Garage An Bình Dịch Vụ', cost: 14500000 }
                         : { desc: 'Thay dầu máy Castrol, cốc lọc dầu định kỳ', location: 'Trung tâm Đăng kiểm & Dịch vụ 3S', cost: 2500000 };
                       return (
                         <tr key={bus._id || idx} style={{ borderBottom: '1px solid var(--card-border)', fontSize: '0.85rem' }}>

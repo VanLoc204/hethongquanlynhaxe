@@ -289,7 +289,7 @@ const AgentTicketsPage = () => {
         <div className="modal-backdrop" onClick={() => setPrintTarget(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px', fontFamily: 'Courier New, monospace', color: '#000000', backgroundColor: '#ffffff', border: '2px solid #000000', padding: '1.5rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: '0 0 0.25rem 0', fontWeight: 'bold' }}>NHÀ XE Á ĐÔNG TRAVEL</h3>
+              <h3 style={{ margin: '0 0 0.25rem 0', fontWeight: 'bold' }}>NHÀ XE AN BÌNH LINES</h3>
               <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>MANG NIỀM TIN TRÊN MỌI NẺO ĐƯỜNG</p>
               <p style={{ margin: '0', fontSize: '0.75rem' }}>Hotline: 1900 8888</p>
               <div style={{ margin: '0.5rem 0', borderTop: '1px dashed #000000' }}></div>
@@ -337,7 +337,7 @@ const AgentTicketsPage = () => {
             )}
 
             <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.75rem' }}>
-              <p style={{ margin: '0 0 0.25rem 0' }}>Cảm ơn quý khách đã tin tưởng Á Đông Travel!</p>
+              <p style={{ margin: '0 0 0.25rem 0' }}>Cảm ơn quý khách đã tin tưởng An Bình Lines!</p>
               <p style={{ margin: '0' }}>Chúc quý khách thượng lộ bình an!</p>
             </div>
 

@@ -32,7 +32,7 @@ const AIAssistantPage = () => {
       const welcomeMsg = {
         id: 'welcome',
         sender: 'bot',
-        text: `Xin chào ${user ? user.name : 'quý khách'}! Tôi là Trợ lý ảo Á Đông AI. Tôi có thể hỗ trợ gì cho hành trình của bạn ngày hôm nay? Bạn có thể hỏi tôi về lịch trình xe, chính sách hành lý, cách đặt vé hoặc hủy vé.`,
+        text: `Xin chào ${user ? user.name : 'quý khách'}! Tôi là Trợ lý ảo An Bình AI. Tôi có thể hỗ trợ gì cho hành trình của bạn ngày hôm nay? Bạn có thể hỏi tôi về lịch trình xe, chính sách hành lý, cách đặt vé hoặc hủy vé.`,
         time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
       };
       setMessages([welcomeMsg]);
@@ -48,11 +48,11 @@ const AIAssistantPage = () => {
     const text = userText.toLowerCase();
     
     if (text.includes('đà lạt') || text.includes('lịch trình') || text.includes('chuyến đi')) {
-      return 'Á Đông Travel hiện khai thác tuyến TP. Hồ Chí Minh ↔ Đà Lạt liên tục mỗi 1 tiếng từ 05:00 sáng đến 23:30 đêm. Quý khách có thể lựa chọn dòng xe Limousine 22 Phòng VIP (giá 400.000đ) hoặc Limousine 34 Giường nằm (giá 290.000đ). Thời gian di chuyển trung bình khoảng 6.5 - 7 tiếng.';
+      return 'An Bình Lines hiện khai thác tuyến TP. Hồ Chí Minh ↔ Đà Lạt liên tục mỗi 1 tiếng từ 05:00 sáng đến 23:30 đêm. Quý khách có thể lựa chọn dòng xe Limousine 22 Phòng VIP (giá 400.000đ) hoặc Limousine 34 Giường nằm (giá 290.000đ). Thời gian di chuyển trung bình khoảng 6.5 - 7 tiếng.';
     }
     
     if (text.includes('hành lý') || text.includes('đồ đạc') || text.includes('mang theo')) {
-      return 'Theo quy định của Á Đông Travel, mỗi hành khách được miễn phí tối đa 20kg hành lý ký gửi. Hành lý xách tay gọn nhẹ không cản trở lối đi. Quý khách vui lòng không mang theo các chất dễ cháy nổ, chất cấm hoặc động vật nuôi lên khoang hành khách.';
+      return 'Theo quy định của An Bình Lines, mỗi hành khách được miễn phí tối đa 20kg hành lý ký gửi. Hành lý xách tay gọn nhẹ không cản trở lối đi. Quý khách vui lòng không mang theo các chất dễ cháy nổ, chất cấm hoặc động vật nuôi lên khoang hành khách.';
     }
     
     if (text.includes('hủy vé') || text.includes('hoàn vé') || text.includes('trả vé')) {
@@ -60,7 +60,7 @@ const AIAssistantPage = () => {
     }
 
     if (text.includes('điểm') || text.includes('thành viên') || text.includes('tích lũy')) {
-      return 'Khi đăng ký tài khoản thành viên Á Đông và đặt vé online, quý khách sẽ được tích lũy 1% giá trị mỗi vé thành điểm thưởng (1 điểm = 1.000đ). Điểm tích lũy này có thể dùng để khấu trừ trực tiếp khi đặt các vé xe tiếp theo hoặc đổi các phần quà giá trị.';
+      return 'Khi đăng ký tài khoản thành viên An Bình Lines và đặt vé online, quý khách sẽ được tích lũy 1% giá trị mỗi vé thành điểm thưởng (1 điểm = 1.000đ). Điểm tích lũy này có thể dùng để khấu trừ trực tiếp khi đặt các vé xe tiếp theo hoặc đổi các phần quà giá trị.';
     }
 
     return 'Cảm ơn quý khách đã gửi câu hỏi. Mọi thắc mắc cụ thể hoặc cần hỗ trợ gấp về vé xe, quý khách có thể liên hệ trực tiếp Tổng đài CSKH 1900 6067 để gặp nhân viên hỗ trợ trực tiếp 24/7.';
@@ -177,7 +177,7 @@ const AIAssistantPage = () => {
           }}>
             <Bot size={24} style={{ color: 'var(--primary)' }} />
             <div>
-              <h4 style={{ fontWeight: '800', margin: '0' }}>Trợ lý ảo Á Đông AI</h4>
+              <h4 style={{ fontWeight: '800', margin: '0' }}>Trợ lý ảo An Bình AI</h4>
               <span style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
                 <span style={{ width: '6px', height: '6px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
                 Hoạt động trực tuyến

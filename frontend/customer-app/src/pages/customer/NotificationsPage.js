@@ -12,7 +12,7 @@ const NotificationsPage = () => {
         id: 1,
         type: 'promotion',
         title: 'Khuyến mãi hè cực khủng: Giảm giá 15% tất cả các tuyến Đà Lạt!',
-        content: 'Chào hè rực rỡ, Á Đông Express giảm ngay 15% giá vé cho khách hàng thân thiết đặt vé tuyến đi/về Đà Lạt từ 10/07 đến 20/07. Nhập mã ADONGHE15 khi thanh toán.',
+        content: 'Chào hè rực rỡ, An Bình Express giảm ngay 15% giá vé cho khách hàng thân thiết đặt vé tuyến đi/về Đà Lạt từ 10/07 đến 20/07. Nhập mã ANBINH15 khi thanh toán.',
         time: '1 giờ trước',
         read: false
       },
@@ -28,7 +28,7 @@ const NotificationsPage = () => {
         id: 3,
         type: 'system',
         title: 'Cập nhật tính năng: Theo dõi hành trình xe thời gian thực',
-        content: 'Á Đông Travel vừa cập nhật tính năng định vị xe trực tuyến. Giờ đây bạn có thể theo dõi chính xác vị trí chiếc xe mình đi ngay trên giao diện Web!',
+        content: 'An Bình Lines vừa cập nhật tính năng định vị xe trực tuyến. Giờ đây bạn có thể theo dõi chính xác vị trí chiếc xe mình đi ngay trên giao diện Web!',
         time: '1 ngày trước',
         read: true
       },
@@ -36,7 +36,7 @@ const NotificationsPage = () => {
         id: 4,
         type: 'promotion',
         title: 'Tặng 50 điểm thưởng chào mừng thành viên mới!',
-        content: 'Cảm ơn bạn đã đăng ký tài khoản thành viên Á Đông. Hệ thống đã cộng 50 điểm thưởng (tương đương 50.000đ) vào tài khoản của bạn để đặt vé xe.',
+        content: 'Cảm ơn bạn đã đăng ký tài khoản thành viên An Bình Lines. Hệ thống đã cộng 50 điểm thưởng (tương đương 50.000đ) vào tài khoản của bạn để đặt vé xe.',
         time: '3 ngày trước',
         read: true
       }

@@ -273,14 +273,14 @@ function DashboardLayout() {
           >
             ☰
           </button>
-          <span className="logo-concept">Á ĐÔNG TRAVEL</span>
+          <span className="logo-concept">AN BÌNH LINES</span>
         </div>
         <div className="header-right">
           <div className="role-indicator-header" style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>
             {ROLE_LABEL[user?.role] || user?.role}
           </div>
           <div className="user-profile">
-            <span className="avatar">AD</span>
+            <span className="avatar">AB</span>
           </div>
         </div>
       </header>
@@ -301,7 +301,7 @@ function DashboardLayout() {
           <div className="content-header">
             <h1>{getHeaderTitle()}</h1>
             <p className="subtitle">
-              Chào mừng trở lại, {user?.name}! Hệ thống vận hành Á Đông Travel
+              Chào mừng trở lại, {user?.name}! Hệ thống vận hành An Bình Lines
             </p>
           </div>
           {renderContent()}

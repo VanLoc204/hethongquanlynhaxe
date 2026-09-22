@@ -344,7 +344,7 @@ const TrackJourneyPage = () => {
     // Set popup content
     markerRef.current.bindPopup(`
       <div style="font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.4; padding: 4px; min-width: 150px;">
-        <strong style="color: #2563eb; font-size: 13px;">Xe Á Đông Travel</strong><br/>
+        <strong style="color: #2563eb; font-size: 13px;">Xe An Bình Lines</strong><br/>
         Biển số: <strong>${selectedTrip.busPlate}</strong><br/>
         Tốc độ: <strong>${selectedTrip.speed}</strong><br/>
         Đã đi được: <strong>${mockProgress}%</strong>

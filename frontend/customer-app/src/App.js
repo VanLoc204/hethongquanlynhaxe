@@ -60,7 +60,7 @@ const Navigation = () => {
     <header className="navbar glass-card">
       <Link to="/" className="nav-logo" onClick={handleLinkClick}>
         <Compass className="logo-icon" />
-        <span>Á Đông Travel</span>
+        <span>An Bình Lines</span>
       </Link>
 
       <button 
@@ -169,14 +169,14 @@ function App() {
                 <p style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--primary)', marginBottom: '10px' }}>
                   1900 6067
                 </p>
-                <p><strong>CÔNG TY CỔ PHẦN XE KHÁCH Á ĐÔNG</strong></p>
+                <p><strong>CÔNG TY CỔ PHẦN XE KHÁCH AN BÌNH</strong></p>
                 <p>Địa chỉ: 486-486A Lê Văn Lương, Phường Tân Hưng, Quận 7, TP. Hồ Chí Minh.</p>
-                <p>Email: hotro@adongbus.vn</p>
+                <p>Email: hotro@anbinhlines.vn</p>
                 <p>Điện thoại: 02838386852</p>
               </div>
 
               <div className="footer-col">
-                <h4>Á ĐÔNG TRAVEL</h4>
+                <h4>AN BÌNH LINES</h4>
                 <ul>
                   <li><a href="#about">Về chúng tôi</a></li>
                   <li><a href="#schedule">Lịch trình chuyến</a></li>
@@ -199,7 +199,7 @@ function App() {
             </div>
             
             <div className="footer-bottom">
-              <p>© 2026 Bản quyền thuộc về Công ty Cổ phần Xe khách Á Đông - Á Đông Travel. Đăng ký kinh doanh số 0302741234.</p>
+              <p>© 2026 Bản quyền thuộc về Công ty Cổ phần Xe khách An Bình - An Bình Lines. Đăng ký kinh doanh số 0302741234.</p>
             </div>
           </footer>
         </div>

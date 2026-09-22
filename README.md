@@ -1,6 +1,6 @@
-# Hệ Thống Quản Lý Nhà Xe Á Đông Travel (Á Đông Travel Management System)
+# Hệ Thống Quản Lý Nhà Xe An Bình Lines (An Bình Lines Management System)
 
-Dự án phát triển hệ thống quản lý nhà xe Á Đông Travel theo mô hình **MERN Microservices / Modular Architecture**, sẵn sàng triển khai bằng **Docker / Docker Compose** và tích hợp **Trí tuệ nhân tạo (Gemini API)**, cùng các thuật toán điều phối vận tải thông minh.
+Dự án phát triển hệ thống quản lý nhà xe An Bình Lines theo mô hình **MERN Microservices / Modular Architecture**, sẵn sàng triển khai bằng **Docker / Docker Compose** và tích hợp **Trí tuệ nhân tạo (Gemini API)**, cùng các thuật toán điều phối vận tải thông minh.
 
 ---
 
@@ -33,11 +33,11 @@ Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`
 ### A. Nhóm Quản Lý & Điều Hành (Management & Admin)
 | Vai trò (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email | Chức năng chính |
 | :--- | :--- | :--- | :--- | :--- |
-| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@adongtravel.vn` | Quản lý toàn bộ tài khoản, phân quyền hệ thống |
-| **Giám Đốc** (`general_manager`) | Giám Đốc Á Đông | **`0966555666`** | `director@adongtravel.vn` | Duyệt tuyến mới, duyệt đơn nghỉ phép, xem Bảng lương (`Payroll`), Báo cáo doanh thu |
-| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải Á Đông | **`0977777777`** | `ops@adongtravel.vn` | Quản lý Tuyến/Chuyến/Nhân sự chuyến, Lịch tuần Kanban, chạy thuật toán Greedy |
-| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe Á Đông | **`0988888888`** | `fleet@adongtravel.vn` | Quản lý phương tiện xe khách, lập hồ sơ bảo trì & sửa chữa định kỳ |
-| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@adongtravel.vn` | Bán vé tại quầy, quản lý ca quầy (`ShiftSession`), soát vé QR, in vé giấy |
+| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@anbinhlines.vn` | Quản lý toàn bộ tài khoản, phân quyền hệ thống |
+| **Giám Đốc** (`general_manager`) | Giám Đốc An Bình | **`0966555666`** | `director@anbinhlines.vn` | Duyệt tuyến mới, duyệt đơn nghỉ phép, xem Bảng lương (`Payroll`), Báo cáo doanh thu |
+| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải An Bình | **`0977777777`** | `ops@anbinhlines.vn` | Quản lý Tuyến/Chuyến/Nhân sự chuyến, Lịch tuần Kanban, chạy thuật toán Greedy |
+| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe An Bình | **`0988888888`** | `fleet@anbinhlines.vn` | Quản lý phương tiện xe khách, lập hồ sơ bảo trì & sửa chữa định kỳ |
+| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@anbinhlines.vn` | Bán vé tại quầy, quản lý ca quầy (`ShiftSession`), soát vé QR, in vé giấy |
 
 ### B. Đội Ngũ Tài Xế & Phụ Xe Chuyên Trách (1 Xe ⇄ 1 Tổ Lái Đi/Về)
 | Vai trò | Họ tên | Số Điện Thoại | Phân công Xe khách cố định |
@@ -46,7 +46,7 @@ Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`
 | **Phụ xe** | Bùi Hữu Nghĩa | **`0967890123`** | Xe `51B-044.44` (Giường nằm 44 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Tài xế chính** | Trần Minh Tâm | **`0987654321`** | Xe `51B-029.29` (Ghế ngồi 29 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | Xe `51B-029.29` (Ghế ngồi 29 chỗ - Tuyến HCM ⇄ Đà Lạt) |
-| **Tài xế chính** | Tài xế Á Đông | **`0933333333`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
+| **Tài xế chính** | Tài xế An Bình | **`0933333333`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
 | **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
 | **Tài xế chính** | Nguyễn Văn Hùng | **`0912345678`** | Xe `51B-045.45` (Ghế ngồi 45 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | Xe `51B-045.45` (Ghế ngồi 45 chỗ - Tuyến HCM ⇄ Đà Lạt) |

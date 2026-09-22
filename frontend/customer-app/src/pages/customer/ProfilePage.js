@@ -337,7 +337,7 @@ const ProfilePage = () => {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <span style={{ fontSize: '0.8rem', opacity: '0.8', fontWeight: '600', letterSpacing: '0.5px' }}>THÀNH VIÊN Á ĐÔNG</span>
+                <span style={{ fontSize: '0.8rem', opacity: '0.8', fontWeight: '600', letterSpacing: '0.5px' }}>THÀNH VIÊN AN BÌNH</span>
                 <h3 style={{ fontSize: '1.75rem', fontWeight: '800', marginTop: '4px', textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
                   Hạng {badgeInfo.text}
                 </h3>

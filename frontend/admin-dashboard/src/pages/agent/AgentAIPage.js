@@ -6,7 +6,7 @@ const AgentAIPage = () => {
   const [messages, setMessages] = useState([
     {
       sender: 'assistant',
-      text: 'Xin chào anh/chị. Tôi là Trợ Lý Số Á Đông AI hỗ trợ thông tin bán vé quầy. Anh/chị cần tra cứu giá vé, tuyến chạy, thủ tục đổi trả vé, hành lý theo quy định nhà xe hay giải đáp gì không ạ?',
+      text: 'Xin chào anh/chị. Tôi là Trợ Lý Số An Bình AI hỗ trợ thông tin bán vé quầy. Anh/chị cần tra cứu giá vé, tuyến chạy, thủ tục đổi trả vé, hành lý theo quy định nhà xe hay giải đáp gì không ạ?',
       timestamp: new Date()
     }
   ]);
