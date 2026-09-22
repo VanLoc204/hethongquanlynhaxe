@@ -22,7 +22,14 @@ const routeSchema = new mongoose.Schema(
       type: String,
       enum: ['pending', 'approved', 'rejected'],
       default: 'approved'
-    }
+    },
+    stops: [
+      {
+        name: { type: String, required: true },
+        address: { type: String, default: '' },
+        type: { type: String, enum: ['start', 'waypoint', 'end'], default: 'waypoint' }
+      }
+    ]
   },
   {
     timestamps: true

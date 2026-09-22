@@ -280,28 +280,56 @@ async function seedDB() {
       startPoint: 'Hồ Chí Minh',
       endPoint: 'Đà Lạt',
       distance: '310km',
-      duration: '7 giờ 50 phút'
+      duration: '7 giờ 50 phút',
+      stops: [
+        { name: 'VP Tân Bình', address: '266 Đồng Đen, P.10, Tân Bình, TP.HCM', type: 'start' },
+        { name: 'Bến Xe Miền Đông', address: '292 Đinh Bộ Lĩnh, Bình Thạnh, TP.HCM', type: 'waypoint' },
+        { name: 'Trạm dừng chân Lê Hoàng (Đồng Nai)', address: 'QL20, Thống Nhất, Đồng Nai', type: 'waypoint' },
+        { name: 'Bảo Lộc', address: 'Trạm dừng Chân Tâm Châu, Bảo Lộc, Lâm Đồng', type: 'waypoint' },
+        { name: 'Đức Trọng', address: 'QL20, Thị trấn Liên Nghĩa, Đức Trọng', type: 'waypoint' },
+        { name: 'VP Đà Lạt (Đích)', address: '01 Tô Hiến Thành, Phường 3, Đà Lạt', type: 'end' }
+      ]
     });
 
     const r2 = await Route.create({
       startPoint: 'Hồ Chí Minh',
       endPoint: 'Cần Thơ',
       distance: '172km',
-      duration: '3 giờ'
+      duration: '3 giờ',
+      stops: [
+        { name: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, An Lạc, Bình Tân, TP.HCM', type: 'start' },
+        { name: 'Trạm dừng chân Minh Phát (Tỉnh Long An)', address: 'Cao tốc TP.HCM - Trung Lương', type: 'waypoint' },
+        { name: 'Trạm dừng chân Cai Lậy (Tiền Giang)', address: 'QL1A, Cai Lậy, Tiền Giang', type: 'waypoint' },
+        { name: 'Cầu Mỹ Thuận (Vĩnh Long)', address: 'Thành phố Vĩnh Long', type: 'waypoint' },
+        { name: 'Bến Xe Trung Tâm Cần Thơ (Đích)', address: 'Đường dẫn cầu Cần Thơ, Hưng Thạnh, Cái Răng, Cần Thơ', type: 'end' }
+      ]
     });
 
     const r3 = await Route.create({
       startPoint: 'Đà Lạt',
       endPoint: 'Hồ Chí Minh',
       distance: '305km',
-      duration: '7 giờ'
+      duration: '7 giờ',
+      stops: [
+        { name: 'VP Đà Lạt', address: '01 Tô Hiến Thành, Phường 3, Đà Lạt', type: 'start' },
+        { name: 'Đức Trọng', address: 'QL20, Thị trấn Liên Nghĩa, Đức Trọng', type: 'waypoint' },
+        { name: 'Bảo Lộc', address: 'Trạm dừng Chân Tâm Châu, Bảo Lộc', type: 'waypoint' },
+        { name: 'Nút giao Dầu Giây', address: 'Cao tốc Dầu Giây - TP.HCM', type: 'waypoint' },
+        { name: 'VP Tân Bình (Đích)', address: '266 Đồng Đen, P.10, Tân Bình, TP.HCM', type: 'end' }
+      ]
     });
 
     const r4 = await Route.create({
       startPoint: 'Cần Thơ',
       endPoint: 'Hồ Chí Minh',
       distance: '172km',
-      duration: '3 giờ'
+      duration: '3 giờ',
+      stops: [
+        { name: 'Bến Xe Trung Tâm Cần Thơ', address: 'Đường dẫn cầu Cần Thơ, Cái Răng, Cần Thơ', type: 'start' },
+        { name: 'Cầu Mỹ Thuận', address: 'Vĩnh Long', type: 'waypoint' },
+        { name: 'Trạm dừng chân Minh Phát', address: 'Tiền Giang', type: 'waypoint' },
+        { name: 'Bến Xe Miền Tây (Đích)', address: '395 Kinh Dương Vương, Bình Tân, TP.HCM', type: 'end' }
+      ]
     });
 
     console.log('Created Routes.');
@@ -388,12 +416,29 @@ async function seedDB() {
     const teamB4 = { driver: { name: 'Lê Hoàng Nam', phone: '0909090909' }, assistant: { name: 'Nguyễn Tiến Dũng', phone: '0977889900' } }; // Bus 51B-009.09 (Đà Lạt Limo)
     const teamB5 = { driver: { name: 'Nguyễn Văn An', phone: '0912999999' }, assistant: { name: 'Bùi Hữu Nghĩa', phone: '0967890123' } }; // Bus 51B-044.44 (Đà Lạt Giường Nằm)
 
-    // Seed trips for 7 days starting from today
-    for (let i = 0; i < 7; i++) {
-      const isEvenDay = i % 2 === 0;
+    // Seed trips for -30 days to +90 days (3-4 full months of identical weekly schedules with clean Outbound -> Return pairings)
+    const customerList = [
+      { name: 'Nguyễn Văn Khách', email: 'khach1@gmail.com', phone: '0901234567', id: customer1Id },
+      { name: 'Trần Thị Khách', email: 'khach2@gmail.com', phone: '0902345678', id: customer2Id },
+      { name: 'Phạm Văn Minh', email: 'minh.pham@gmail.com', phone: '0918112233', id: customer1Id },
+      { name: 'Lê Thi Hoài', email: 'hoai.le@gmail.com', phone: '0937445566', id: customer2Id },
+      { name: 'Hoàng Anh Tuấn', email: 'tuan.hoang@gmail.com', phone: '0982778899', id: customer1Id }
+    ];
 
-      // --- BUS 1: 51B-016.16 (Tuyến ngắn HCM ⇄ Cần Thơ, đi 3 tiếng, chạy cả Đi & Về trong ngày) ---
-      // Lượt đi: HCM -> Cần Thơ (09:30 -> 12:30)
+    let globalOrderCode = 100001;
+
+    for (let i = -30; i <= 90; i++) {
+      const targetDate = getDateAt(i, 0, 0);
+      const dayOfWeek = targetDate.getDay(); // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
+      
+      // FIXED WEEKLY SCHEDULE MATRIX:
+      // Group A (Bus 2 & Bus 4): Mon (1), Wed (3), Fri (5), Sun (0) -> Outbound (HCM -> Đà Lạt); Tue, Thu, Sat -> Return (Đà Lạt -> HCM)
+      // Group B (Bus 3 & Bus 5): Mon (1), Wed (3), Fri (5), Sun (0) -> Return (Đà Lạt -> HCM); Tue, Thu, Sat -> Outbound (HCM -> Đà Lạt)
+      // This ensures EVERY DAY has BOTH Outbound and Return trips, and EVERY driver/attendant team has a clean Outbound -> Return shift pairing!
+      const isGroupAOutbound = dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 5 || dayOfWeek === 0;
+      const shouldSeedReviews = Math.abs(i) <= 3;
+
+      // --- BUS 1: 51B-016.16 (Tuyến HCM ⇄ Cần Thơ, chạy cả Lượt đi 09:30 & Lượt về 14:30 HÀNG NGÀY) ---
       const t_b1_out = await Trip.create({
         routeId: r2._id,
         busId: b1._id,
@@ -406,9 +451,8 @@ async function seedDB() {
         ratings: { average: 4.6, count: 16 },
         ...teamB1
       });
-      await seedReviewsForTrip(t_b1_out._id);
+      if (shouldSeedReviews) await seedReviewsForTrip(t_b1_out._id);
 
-      // Lượt về: Cần Thơ -> HCM (14:30 -> 17:30)
       const t_b1_ret = await Trip.create({
         routeId: r4._id,
         busId: b1._id,
@@ -421,12 +465,13 @@ async function seedDB() {
         ratings: { average: 4.7, count: 18 },
         ...teamB1
       });
-      await seedReviewsForTrip(t_b1_ret._id);
+      if (shouldSeedReviews) await seedReviewsForTrip(t_b1_ret._id);
 
-      // --- BUS 2: 51B-029.29 (Tuyến HCM ⇄ Đà Lạt, Ngày chẵn Lượt Đi, Ngày lẻ Lượt Về) ---
-      if (isEvenDay) {
+      // --- BUS 2: 51B-029.29 (Tuyến HCM ⇄ Đà Lạt, 29 chỗ) [Team B2] ---
+      let t_b2;
+      if (isGroupAOutbound) {
         // Lượt đi: HCM -> Đà Lạt (06:30 -> 14:00)
-        const t_b2 = await Trip.create({
+        t_b2 = await Trip.create({
           routeId: r1._id,
           busId: b2._id,
           departureTime: getDateAt(i, 6, 30),
@@ -438,10 +483,9 @@ async function seedDB() {
           ratings: { average: 4.5, count: 20 },
           ...teamB2
         });
-        await seedReviewsForTrip(t_b2._id);
       } else {
         // Lượt về: Đà Lạt -> HCM (16:00 -> 23:00)
-        const t_b2 = await Trip.create({
+        t_b2 = await Trip.create({
           routeId: r3._id,
           busId: b2._id,
           departureTime: getDateAt(i, 16, 0),
@@ -453,46 +497,14 @@ async function seedDB() {
           ratings: { average: 4.6, count: 25 },
           ...teamB2
         });
-        await seedReviewsForTrip(t_b2._id);
       }
+      if (shouldSeedReviews) await seedReviewsForTrip(t_b2._id);
 
-      // --- BUS 3: 51B-045.45 (Tuyến HCM ⇄ Đà Lạt, Ngày chẵn Lượt Đi, Ngày lẻ Lượt Về) ---
-      if (isEvenDay) {
-        // Lượt đi: HCM -> Đà Lạt (12:00 -> 19:00)
-        const t_b3 = await Trip.create({
-          routeId: r1._id,
-          busId: b3._id,
-          departureTime: getDateAt(i, 12, 0),
-          arrivalTime: getDateAt(i, 19, 0),
-          price: 200000,
-          pickupPoints: [{ time: '12:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Hồ Chí Minh' }],
-          dropoffPoints: [{ time: '19:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
-          bookedSeats: [],
-          ratings: { average: 4.4, count: 30 },
-          ...teamB3
-        });
-        await seedReviewsForTrip(t_b3._id);
-      } else {
-        // Lượt về: Đà Lạt -> HCM (12:00 -> 19:00)
-        const t_b3 = await Trip.create({
-          routeId: r3._id,
-          busId: b3._id,
-          departureTime: getDateAt(i, 12, 0),
-          arrivalTime: getDateAt(i, 19, 0),
-          price: 200000,
-          pickupPoints: [{ time: '12:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
-          dropoffPoints: [{ time: '19:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Hồ Chí Minh' }],
-          bookedSeats: [],
-          ratings: { average: 4.5, count: 32 },
-          ...teamB3
-        });
-        await seedReviewsForTrip(t_b3._id);
-      }
-
-      // --- BUS 4: 51B-009.09 (Limousine HCM ⇄ Đà Lạt, Ngày chẵn Lượt Đi, Ngày lẻ Lượt Về) ---
-      if (isEvenDay) {
+      // --- BUS 4: 51B-009.09 (Limousine HCM ⇄ Đà Lạt, 9 chỗ) [Team B4] ---
+      let t_b4;
+      if (isGroupAOutbound) {
         // Lượt đi: HCM -> Đà Lạt (08:00 -> 15:00)
-        const t_b4 = await Trip.create({
+        t_b4 = await Trip.create({
           routeId: r1._id,
           busId: b4._id,
           departureTime: getDateAt(i, 8, 0),
@@ -504,10 +516,9 @@ async function seedDB() {
           ratings: { average: 4.9, count: 9 },
           ...teamB4
         });
-        await seedReviewsForTrip(t_b4._id);
       } else {
         // Lượt về: Đà Lạt -> HCM (13:00 -> 20:00)
-        const t_b4 = await Trip.create({
+        t_b4 = await Trip.create({
           routeId: r3._id,
           busId: b4._id,
           departureTime: getDateAt(i, 13, 0),
@@ -519,12 +530,45 @@ async function seedDB() {
           ratings: { average: 4.8, count: 9 },
           ...teamB4
         });
-        await seedReviewsForTrip(t_b4._id);
       }
+      if (shouldSeedReviews) await seedReviewsForTrip(t_b4._id);
 
-      // --- BUS 5: 51B-044.44 (Giường Nằm Đêm HCM ⇄ Đà Lạt, Ngày chẵn Lượt Đi, Ngày lẻ Lượt Về) ---
+      // --- BUS 3: 51B-045.45 (Tuyến HCM ⇄ Đà Lạt, 45 chỗ) [Team B3] ---
+      let t_b3;
+      if (!isGroupAOutbound) {
+        // Lượt đi: HCM -> Đà Lạt (12:00 -> 19:00)
+        t_b3 = await Trip.create({
+          routeId: r1._id,
+          busId: b3._id,
+          departureTime: getDateAt(i, 12, 0),
+          arrivalTime: getDateAt(i, 19, 0),
+          price: 200000,
+          pickupPoints: [{ time: '12:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Hồ Chí Minh' }],
+          dropoffPoints: [{ time: '19:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
+          bookedSeats: [],
+          ratings: { average: 4.4, count: 30 },
+          ...teamB3
+        });
+      } else {
+        // Lượt về: Đà Lạt -> HCM (12:00 -> 19:00)
+        t_b3 = await Trip.create({
+          routeId: r3._id,
+          busId: b3._id,
+          departureTime: getDateAt(i, 12, 0),
+          arrivalTime: getDateAt(i, 19, 0),
+          price: 200000,
+          pickupPoints: [{ time: '12:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }],
+          dropoffPoints: [{ time: '19:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Hồ Chí Minh' }],
+          bookedSeats: [],
+          ratings: { average: 4.5, count: 32 },
+          ...teamB3
+        });
+      }
+      if (shouldSeedReviews) await seedReviewsForTrip(t_b3._id);
+
+      // --- BUS 5: 51B-044.44 (Giường Nằm Đêm HCM ⇄ Đà Lạt, 44 chỗ) [Team B5] ---
       let t_b5;
-      if (isEvenDay) {
+      if (!isGroupAOutbound) {
         // Lượt đi: HCM -> Đà Lạt (23:00 -> 06:00 hôm sau)
         t_b5 = await Trip.create({
           routeId: r1._id,
@@ -538,7 +582,6 @@ async function seedDB() {
           ratings: { average: 4.8, count: 44 },
           ...teamB5
         });
-        await seedReviewsForTrip(t_b5._id);
       } else {
         // Lượt về: Đà Lạt -> HCM (22:30 -> 05:30 hôm sau)
         t_b5 = await Trip.create({
@@ -553,45 +596,35 @@ async function seedDB() {
           ratings: { average: 4.9, count: 40 },
           ...teamB5
         });
-        await seedReviewsForTrip(t_b5._id);
       }
-      // Seed sample bookings for today (i === 0)
-      if (i === 0) {
-        await Booking.create({
-          tripId: t_b5._id,
-          userId: customer1Id,
-          seats: ['A01', 'A02'],
-          pickup: 'Văn Phòng Tân Bình',
-          dropoff: 'Văn Phòng Đà Lạt',
-          status: 'paid',
-          customerName: 'Nguyễn Văn Khách',
-          customerPhone: '0901234567',
-          customerBirthYear: 1990,
-          customerCCCD: '123456789012',
-          customerEmail: 'khach1@gmail.com',
-          paymentType: 'immediate',
-          orderCode: 100001
-        });
-        t_b5.bookedSeats.push('A01', 'A02');
-        await t_b5.save();
+      if (shouldSeedReviews) await seedReviewsForTrip(t_b5._id);
 
-        await Booking.create({
-          tripId: t_b1_out._id,
-          userId: customer2Id,
-          seats: ['01', '02'],
-          pickup: 'Bến Xe Miền Tây',
-          dropoff: 'Bến Xe Trung Tâm Cần Thơ',
-          status: 'paid',
-          customerName: 'Trần Thị Khách',
-          customerPhone: '0902345678',
-          customerBirthYear: 1995,
-          customerCCCD: '987654321098',
-          customerEmail: 'khach2@gmail.com',
-          paymentType: 'immediate',
-          orderCode: 100002
-        });
-        t_b1_out.bookedSeats.push('01', '02');
-        await t_b1_out.save();
+      // Seed Sales Bookings for past days (i <= 0) to provide realistic 3-month sales/revenue data
+      if (i <= 0) {
+        const sampleTrips = [t_b1_out, t_b1_ret, t_b2, t_b3, t_b4, t_b5];
+        for (const tripObj of sampleTrips) {
+          const bookedCount = Math.floor(Math.random() * 5) + 2; // 2 to 6 booked seats per trip
+          const seatNumbers = Array.from({ length: bookedCount }, (_, idx) => `A0${idx + 1}`);
+          tripObj.bookedSeats = seatNumbers;
+          await tripObj.save();
+
+          const cust = customerList[Math.abs(i) % customerList.length];
+          await Booking.create({
+            tripId: tripObj._id,
+            userId: cust.id,
+            seats: seatNumbers,
+            pickup: tripObj.pickupPoints[0]?.location || 'Bến xe',
+            dropoff: tripObj.dropoffPoints[0]?.location || 'Bến xe',
+            status: 'paid',
+            customerName: cust.name,
+            customerPhone: cust.phone,
+            customerBirthYear: 1992,
+            customerCCCD: '123456789012',
+            customerEmail: cust.email,
+            paymentType: 'immediate',
+            orderCode: globalOrderCode++
+          });
+        }
       }
     }
 
@@ -653,7 +686,7 @@ async function seedDB() {
     const allUsers = await mongoose.connection.collection('users').find({}).toArray();
     const opsStaff = allUsers.filter(u => u.role !== 'customer');
 
-    for (let day = 0; day < 7; day++) {
+    for (let day = -30; day <= 60; day++) {
       const scheduleDate = getDateAt(day, 0, 0);
       for (const staffUser of opsStaff) {
         await WorkSchedule.create({
