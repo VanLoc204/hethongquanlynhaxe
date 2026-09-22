@@ -419,21 +419,22 @@ class TripService {
   }
 
   async createRoute(routeData) {
-    const { startPoint, endPoint, distance, duration, status } = routeData;
+    const { startPoint, endPoint, distance, duration, status, stops } = routeData;
 
     const route = await routeRepository.create({
       startPoint,
       endPoint,
       distance,
       duration,
-      status: status || 'pending'
+      status: status || 'pending',
+      stops: stops || []
     });
 
     return route;
   }
 
   async updateRoute(id, routeData) {
-    const { startPoint, endPoint, distance, duration, status } = routeData;
+    const { startPoint, endPoint, distance, duration, status, stops } = routeData;
 
     let route = await routeRepository.findById(id);
     if (!route) {
@@ -447,6 +448,7 @@ class TripService {
     if (distance) route.distance = distance;
     if (duration) route.duration = duration;
     if (status) route.status = status;
+    if (stops !== undefined) route.stops = stops;
 
     await routeRepository.save(route);
     return route;

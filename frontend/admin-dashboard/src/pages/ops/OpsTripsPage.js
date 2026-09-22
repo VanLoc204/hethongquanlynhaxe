@@ -42,6 +42,10 @@ const OpsTripsPage = () => {
   const [filterMaxPrice, setFilterMaxPrice] = useState('');
   const [filterAmenity, setFilterAmenity] = useState('all');
 
+  // Hover Tooltip State for Pickup/Dropoff Stops Preview
+  const [hoveredTrip, setHoveredTrip] = useState(null);
+  const [tripTooltipPos, setTripTooltipPos] = useState({ x: 0, y: 0 });
+
   // Auto scheduling modal states
   const [showAutoModal, setShowAutoModal] = useState(false);
   const [autoStartDate, setAutoStartDate] = useState('2026-07-24');
@@ -244,17 +248,19 @@ const OpsTripsPage = () => {
       }
 
       return true;
-    });
+    }).sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
   };
 
   const filteredTrips = getFilteredTrips();
 
   const getTripsForDay = (dayDate) => {
     const dayStr = dayDate.toLocaleDateString('en-CA');
-    return filteredTrips.filter(trip => {
-      const depDate = new Date(trip.departureTime);
-      return depDate.toLocaleDateString('en-CA') === dayStr;
-    });
+    return filteredTrips
+      .filter(trip => {
+        const depDate = new Date(trip.departureTime);
+        return depDate.toLocaleDateString('en-CA') === dayStr;
+      })
+      .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
   };
 
   const showToast = (msg, type = 'success') => {
@@ -680,6 +686,96 @@ const OpsTripsPage = () => {
         )}
       </div>
 
+      {/* Hover Itinerary Tooltip for Trips */}
+      {hoveredTrip && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: `${tripTooltipPos.y - 120}px`,
+            left: `${tripTooltipPos.x}px`,
+            zIndex: 9999,
+            width: '380px',
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(37, 99, 235, 0.08)',
+            border: '1px solid #cbd5e1',
+            padding: '16px 20px',
+            pointerEvents: 'none',
+            animation: 'fadeIn 0.2s ease-in-out'
+          }}
+        >
+          {/* Header Tooltip */}
+          <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', marginBottom: '12px' }}>
+            <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.95rem' }}>
+              Danh sách trạm đón/trả chuyến: <span style={{ color: '#2563eb' }}>{hoveredTrip.routeId ? `${hoveredTrip.routeId.startPoint} → ${hoveredTrip.routeId.endPoint}` : ''}</span>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+              Xe: <strong>{hoveredTrip.busId?.plateNumber || 'Chưa gán'}</strong> ({hoveredTrip.busId?.type || 'N/A'})
+            </div>
+          </div>
+
+          {/* Timeline of Pickup & Dropoff Stops */}
+          <div style={{ position: 'relative', paddingLeft: '20px' }}>
+            {/* Timeline Line */}
+            <div style={{
+              position: 'absolute',
+              top: '8px',
+              bottom: '8px',
+              left: '6px',
+              width: '2px',
+              backgroundColor: '#cbd5e1',
+              borderRadius: '1px'
+            }} />
+
+            {/* Pickup Points */}
+            {(hoveredTrip.pickupPoints || []).map((p, idx) => (
+              <div key={`p-${idx}`} style={{ position: 'relative', marginBottom: '10px' }}>
+                <div style={{
+                  position: 'absolute',
+                  left: '-18px',
+                  top: '4px',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  backgroundColor: '#10b981',
+                  border: '2px solid #ffffff',
+                  boxShadow: '0 0 0 2px rgba(16,185,129,0.2)'
+                }} />
+                <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.83rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: '#059669', fontWeight: '700' }}>[{p.time || 'Đón'}]</span>
+                  <span>{p.location}</span>
+                  <span style={{ fontSize: '0.7rem', backgroundColor: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: '4px' }}>Điểm đón</span>
+                </div>
+                {p.address && <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{p.address}</div>}
+              </div>
+            ))}
+
+            {/* Dropoff Points */}
+            {(hoveredTrip.dropoffPoints || []).map((d, idx) => (
+              <div key={`d-${idx}`} style={{ position: 'relative', marginBottom: idx === hoveredTrip.dropoffPoints.length - 1 ? 0 : '10px' }}>
+                <div style={{
+                  position: 'absolute',
+                  left: '-18px',
+                  top: '4px',
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  border: '2px solid #ffffff',
+                  boxShadow: '0 0 0 2px rgba(239,68,68,0.2)'
+                }} />
+                <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.83rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: '#dc2626', fontWeight: '700' }}>[{d.time || 'Trả'}]</span>
+                  <span>{d.location}</span>
+                  <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: '4px' }}>Điểm trả</span>
+                </div>
+                {d.address && <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{d.address}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
           Đang tải danh sách chuyến xe...
@@ -702,10 +798,21 @@ const OpsTripsPage = () => {
                 <div 
                   key={trip._id} 
                   className="panel" 
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setTripTooltipPos({
+                      x: rect.left + window.scrollX + 280,
+                      y: rect.top + window.scrollY
+                    });
+                    setHoveredTrip(trip);
+                  }}
+                  onMouseLeave={() => setHoveredTrip(null)}
                   style={{ 
                     display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
                     padding: '16px 20px', border: '1px solid var(--border-color)', borderRadius: '12px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
                   }}
                 >
                   {/* Left info: Route & DateTime */}
@@ -718,6 +825,20 @@ const OpsTripsPage = () => {
                     </div>
                     <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                       Dự kiến đến: {arrivalDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                    </div>
+                    {/* Badge Trạm Đón/Trả */}
+                    <div style={{ marginTop: '6px' }}>
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        backgroundColor: '#eff6ff', 
+                        color: '#2563eb', 
+                        padding: '2px 8px', 
+                        borderRadius: '12px',
+                        border: '1px solid #bfdbfe',
+                        fontWeight: '600' 
+                      }}>
+                        {(trip.pickupPoints?.length || 0) + (trip.dropoffPoints?.length || 0)} Trạm đón/trả (Rê chuột)
+                      </span>
                     </div>
                   </div>
 
@@ -743,14 +864,14 @@ const OpsTripsPage = () => {
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button 
-                        onClick={() => handleOpenEdit(trip)} 
+                        onClick={(e) => { e.stopPropagation(); handleOpenEdit(trip); }} 
                         className="btn btn-secondary" 
                         style={{ padding: '8px 14px', fontSize: '0.85rem' }}
                       >
                         Sửa
                       </button>
                       <button 
-                        onClick={() => handleDelete(trip)} 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(trip); }} 
                         className="btn btn-secondary" 
                         style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '8px 14px', fontSize: '0.85rem' }}
                       >

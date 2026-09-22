@@ -330,7 +330,7 @@ exports.getRoutes = async (req, res) => {
 // @access  Private (Ops Manager)
 exports.createRoute = async (req, res) => {
   try {
-    const { startPoint, endPoint, distance, duration } = req.body;
+    const { startPoint, endPoint, distance, duration, stops } = req.body;
     if (!startPoint || !endPoint || !distance || !duration) {
       return res.status(400).json({
         success: false,
@@ -339,7 +339,7 @@ exports.createRoute = async (req, res) => {
     }
 
     const status = req.user.role === 'ops_manager' ? 'pending' : 'approved';
-    const route = await tripService.createRoute({ startPoint, endPoint, distance, duration, status });
+    const route = await tripService.createRoute({ startPoint, endPoint, distance, duration, status, stops });
 
     res.status(201).json({
       success: true,
@@ -363,9 +363,9 @@ exports.createRoute = async (req, res) => {
 exports.updateRoute = async (req, res) => {
   try {
     const { id } = req.params;
-    const { startPoint, endPoint, distance, duration, status } = req.body;
+    const { startPoint, endPoint, distance, duration, status, stops } = req.body;
 
-    const route = await tripService.updateRoute(id, { startPoint, endPoint, distance, duration, status });
+    const route = await tripService.updateRoute(id, { startPoint, endPoint, distance, duration, status, stops });
 
     res.status(200).json({
       success: true,

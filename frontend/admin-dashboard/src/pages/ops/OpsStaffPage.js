@@ -311,134 +311,199 @@ const OpsStaffPage = () => {
       <div 
         style={{ 
           display: 'flex', 
-          flexWrap: 'wrap', 
           justifyContent: 'space-between', 
           alignItems: 'center', 
           marginBottom: '20px',
-          padding: '16px',
-          background: 'rgba(255,255,255,0.02)',
-          borderRadius: '12px',
-          border: '1px solid var(--border-color)'
+          padding: '20px 24px',
+          background: '#ffffff',
+          borderRadius: '16px',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)',
+          border: '1px solid #e2e8f0'
         }}
       >
         <div>
-          <h2 style={{ margin: 0 }}>Quản lý nhân sự chuyến</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>
+          <h2 style={{ margin: 0, color: '#0f172a', fontWeight: '700', fontSize: '1.5rem', tracking: '-0.02em' }}>Quản lý nhân sự chuyến</h2>
+          <p style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '6px', marginBottom: 0 }}>
             Điều động, phân công Tài xế và Phụ xe theo dõi theo dạng Danh sách hoặc Lịch tuần.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button 
-            onClick={runGreedyAlgorithm} 
-            disabled={algoRunning || trips.length === 0}
-            className="btn btn-primary"
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px', 
-              fontWeight: '600', 
-              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)' 
-            }}
-          >
-            {algoRunning ? 'Đang phân công...' : '⚡ Phân công tự động (Greedy)'}
-          </button>
-        </div>
       </div>
 
-      {/* Filter Toolbar & View Switcher */}
+      {/* Filter Toolbar & View Switcher - 2 Clean Modern Rows */}
       <div style={{
-        background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px',
-        padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px',
-        marginBottom: '24px'
+        background: '#ffffff', 
+        border: '1px solid #e2e8f0', 
+        borderRadius: '16px',
+        padding: '20px 24px', 
+        display: 'flex', 
+        flexDirection: 'column',
+        gap: '16px',
+        marginBottom: '24px',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.02)'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          {/* Main Selectors */}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Route */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tuyến:</span>
-              <select 
-                value={filterRoute} 
-                onChange={(e) => setFilterRoute(e.target.value)}
-                className="form-control"
-                style={{ width: '170px', padding: '6px 10px', fontSize: '0.85rem' }}
-              >
-                <option value="">Tất cả các tuyến</option>
-                {routes.map(r => (
-                  <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Driver */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tài xế:</span>
-              <select 
-                value={filterDriver} 
-                onChange={(e) => setFilterDriver(e.target.value)}
-                className="form-control"
-                style={{ width: '160px', padding: '6px 10px', fontSize: '0.85rem' }}
-              >
-                <option value="">Tất cả tài xế</option>
-                {availableDrivers.map((d, i) => (
-                  <option key={i} value={d.name}>{d.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bus */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Xe khách:</span>
-              <select 
-                value={filterBus} 
-                onChange={(e) => setFilterBus(e.target.value)}
-                className="form-control"
-                style={{ width: '150px', padding: '6px 10px', fontSize: '0.85rem' }}
-              >
-                <option value="">Tất cả xe</option>
-                {buses.map(b => (
-                  <option key={b._id} value={b._id}>{b.plateNumber}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Status */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Trạng thái:</span>
-              <select 
-                value={filterStatus} 
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="form-control"
-                style={{ width: '140px', padding: '6px 10px', fontSize: '0.85rem' }}
-              >
-                <option value="all">Tất cả</option>
-                <option value="assigned">Đã bố trí</option>
-                <option value="missing">Thiếu nhân sự</option>
-              </select>
-            </div>
-
-            {/* Date */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Thời gian:</span>
-              <input 
-                type="date" 
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="form-control"
-                style={{ width: '145px', padding: '5px 10px', fontSize: '0.85rem' }}
-              />
-            </div>
+        {/* Row 1: Main 5 Filters (Compact Single-Row Flex) */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'nowrap', overflowX: 'auto' }}>
+          {/* Route */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', whiteSpace: 'nowrap' }}>Tuyến:</span>
+            <select 
+              value={filterRoute} 
+              onChange={(e) => setFilterRoute(e.target.value)}
+              className="form-control"
+              style={{ 
+                width: '100%',
+                minWidth: '110px', 
+                padding: '6px 8px', 
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                color: '#1e293b',
+                fontWeight: '500',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Tất cả tuyến</option>
+              {routes.map(r => (
+                <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
+              ))}
+            </select>
           </div>
 
+          {/* Driver */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', whiteSpace: 'nowrap' }}>Tài xế:</span>
+            <select 
+              value={filterDriver} 
+              onChange={(e) => setFilterDriver(e.target.value)}
+              className="form-control"
+              style={{ 
+                width: '100%',
+                minWidth: '100px', 
+                padding: '6px 8px', 
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                color: '#1e293b',
+                fontWeight: '500',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Tất cả tài xế</option>
+              {availableDrivers.map((d, i) => (
+                <option key={i} value={d.name}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Bus */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', whiteSpace: 'nowrap' }}>Xe:</span>
+            <select 
+              value={filterBus} 
+              onChange={(e) => setFilterBus(e.target.value)}
+              className="form-control"
+              style={{ 
+                width: '100%',
+                minWidth: '95px', 
+                padding: '6px 8px', 
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                color: '#1e293b',
+                fontWeight: '500',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">Tất cả xe</option>
+              {buses.map(b => (
+                <option key={b._id} value={b._id}>{b.plateNumber}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', whiteSpace: 'nowrap' }}>Trạng thái:</span>
+            <select 
+              value={filterStatus} 
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="form-control"
+              style={{ 
+                width: '100%',
+                minWidth: '95px', 
+                padding: '6px 8px', 
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                color: '#1e293b',
+                fontWeight: '500',
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">Tất cả</option>
+              <option value="assigned">Đã bố trí</option>
+              <option value="missing">Thiếu nhân sự</option>
+            </select>
+          </div>
+
+          {/* Date */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', whiteSpace: 'nowrap' }}>Thời gian:</span>
+            <input 
+              type="date" 
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="form-control"
+              style={{ 
+                width: '100%',
+                minWidth: '115px', 
+                padding: '5px 8px', 
+                fontSize: '0.8rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#f8fafc',
+                color: '#1e293b',
+                fontWeight: '500',
+                outline: 'none'
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Row 2: View Switcher & Reset Filter Button */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          borderTop: '1px solid #f1f5f9', 
+          paddingTop: '14px' 
+        }}>
           {/* View Switcher */}
-          <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+          <div style={{ 
+            display: 'flex', 
+            background: '#f1f5f9', 
+            padding: '4px', 
+            borderRadius: '12px', 
+            gap: '4px',
+            border: '1px solid #e2e8f0',
+            whiteSpace: 'nowrap'
+          }}>
             <button 
               onClick={() => setViewMode('list')}
               style={{
-                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-                cursor: 'pointer', background: viewMode === 'list' ? 'white' : 'transparent',
-                color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
-                boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                padding: '8px 18px', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                cursor: 'pointer', background: viewMode === 'list' ? '#ffffff' : 'transparent',
+                color: viewMode === 'list' ? '#2563eb' : '#64748b',
+                boxShadow: viewMode === 'list' ? '0 2px 6px rgba(37, 99, 235, 0.12)' : 'none',
+                transition: 'all 0.2s ease'
               }}
             >
               Danh sách
@@ -446,29 +511,37 @@ const OpsStaffPage = () => {
             <button 
               onClick={() => setViewMode('calendar')}
               style={{
-                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-                cursor: 'pointer', background: viewMode === 'calendar' ? 'white' : 'transparent',
-                color: viewMode === 'calendar' ? 'var(--primary)' : 'var(--text-secondary)',
-                boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                padding: '8px 18px', border: 'none', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600',
+                cursor: 'pointer', background: viewMode === 'calendar' ? '#ffffff' : 'transparent',
+                color: viewMode === 'calendar' ? '#2563eb' : '#64748b',
+                boxShadow: viewMode === 'calendar' ? '0 2px 6px rgba(37, 99, 235, 0.12)' : 'none',
+                transition: 'all 0.2s ease'
               }}
             >
               Lịch tuần
             </button>
           </div>
-        </div>
 
-        {/* Reset Action */}
-        {isFiltered && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0', paddingTop: '8px' }}>
+          {/* Reset Action if filtered */}
+          {isFiltered && (
             <button 
               onClick={resetFilters}
-              className="btn btn-secondary"
-              style={{ padding: '4px 10px', fontSize: '0.8rem', fontWeight: '700', color: '#ef4444', borderColor: '#fca5a5' }}
+              style={{ 
+                padding: '6px 14px', 
+                fontSize: '0.85rem', 
+                fontWeight: '600', 
+                color: '#ef4444', 
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fca5a5',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
             >
               Đặt lại bộ lọc
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {loading ? (
