@@ -117,28 +117,28 @@ const Sidebar = ({ activeTab, onTabChange, isOpen }) => {
   return (
     <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
       {/* Sidebar Header Branding */}
-      <div style={{ padding: '1.25rem 1.5rem', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ padding: '0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         <div style={{
-          width: '38px', height: '38px', borderRadius: '8px', backgroundColor: '#2563eb',
-          color: '#ffffff', fontWeight: '900', fontSize: '1.1rem', display: 'flex',
-          alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)'
+          width: '32px', height: '32px', borderRadius: '6px', backgroundColor: '#2563eb',
+          color: '#ffffff', fontWeight: '900', fontSize: '0.95rem', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 6px rgba(37, 99, 235, 0.4)'
         }}>
           AB
         </div>
         <div>
-          <div style={{ color: '#ffffff', fontWeight: '800', fontSize: '1rem', letterSpacing: '0.5px' }}>AN BÌNH LINES</div>
-          <div style={{ color: '#94a3b8', fontSize: '0.7rem', fontWeight: '500' }}>Hệ Thống Quản Trị Vận Tải</div>
+          <div style={{ color: '#ffffff', fontWeight: '800', fontSize: '0.9rem', letterSpacing: '0.5px' }}>AN BÌNH LINES</div>
+          <div style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: '500' }}>Hệ Thống Quản Trị Vận Tải</div>
         </div>
       </div>
 
-      <nav className="nav-menu" style={{ paddingTop: '1rem' }}>
+      <nav className="nav-menu" style={{ paddingTop: '0.5rem' }}>
         {navItems.map(item => (
           <a
             key={item.key}
             href={`#${item.key}`}
             className={`nav-item ${activeTab === item.key ? 'active' : ''}`}
             onClick={(e) => { e.preventDefault(); onTabChange(item.key); }}
-            style={{ display: 'flex', alignItems: 'center', gap: '10px' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
           >
             {item.icon && <span>{item.icon}</span>}
             <span>{item.label}</span>
@@ -148,9 +148,9 @@ const Sidebar = ({ activeTab, onTabChange, isOpen }) => {
         <button
           onClick={logout}
           className="btn nav-logout-btn nav-item"
-          style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}
+          style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', marginTop: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span>Đăng xuất</span>
         </button>
       </nav>

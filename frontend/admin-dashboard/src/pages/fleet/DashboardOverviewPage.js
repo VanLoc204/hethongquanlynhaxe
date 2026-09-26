@@ -55,7 +55,7 @@ const AdminOverview = ({ staffList = [], busCount = 0, routeCount = 0, tripCount
   const managementCount = roleCounts.general_manager + roleCounts.ops_manager + roleCounts.fleet_manager;
   const opsStaffCount = roleCounts.ticket_agent + roleCounts.driver + roleCounts.attendant;
 
-  const displayLogs = liveAuditLogs.slice(0, 10);
+  const displayLogs = liveAuditLogs.slice(0, 5);
 
   const getRoleLabel = (role) => {
     switch (role) {
@@ -72,318 +72,326 @@ const AdminOverview = ({ staffList = [], busCount = 0, routeCount = 0, tripCount
 
   return (
     <>
-      {/* Top Action Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: '800', color: '#1e293b', marginBottom: '4px' }}>Dashboard</h1>
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>
-            Chào mừng trở lại, <strong style={{ color: '#2563eb' }}>Quản Trị Viên Hệ Thống!</strong> Bảng điều khiển giám sát thời gian thực
-          </p>
+      {/* Main Top White Card Container wrapping Header & 4 Stat Cards */}
+      <div style={{
+        background: '#ffffff',
+        borderRadius: '16px',
+        border: '1px solid #e2e8f0',
+        padding: '1.25rem 1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem',
+        marginBottom: '0.85rem'
+      }}>
+        {/* Top Action Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>Dashboard</h1>
+              <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '2px 8px', borderRadius: '12px', fontSize: '0.65rem', fontWeight: '700' }}>
+                System Live Overview
+              </span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '2px', margin: 0 }}>
+              Chào mừng trở lại, <strong style={{ color: '#2563eb' }}>Quản Trị Viên Hệ Thống!</strong> Bảng điều khiển giám sát thời gian thực An Bình Lines
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={onRefresh}
+              className="btn"
+              style={{
+                backgroundColor: '#ffffff', border: '1px solid #e2e8f0', color: '#334155',
+                fontWeight: '600', padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg>
+              Đồng bộ tức thời
+            </button>
+            <button
+              onClick={() => exportAuditLogsToExcel(liveAuditLogs, healthData)}
+              className="btn"
+              style={{
+                backgroundColor: '#2563eb', border: 'none', color: '#ffffff',
+                fontWeight: '700', padding: '0.45rem 0.95rem', borderRadius: '8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>
+              Xuất báo cáo Excel
+            </button>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={onRefresh}
-            className="btn"
-            style={{
-              backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#334155',
-              fontWeight: '600', padding: '0.6rem 1.1rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg>
-            Đồng bộ tức thời
-          </button>
-          <button
-            onClick={() => exportAuditLogsToExcel(liveAuditLogs, healthData)}
-            className="btn"
-            style={{
-              backgroundColor: '#2563eb', border: 'none', color: '#ffffff',
-              fontWeight: '600', padding: '0.6rem 1.2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer'
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>
-            Xuất báo cáo Excel
-          </button>
+
+        {/* 4 Stat Cards Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.85rem' }}>
+          {/* Card 1 */}
+          <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TỔNG TÀI KHOẢN HỆ THỐNG</span>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
+              {totalUsers} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>tài khoản</span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <span>✓</span> {activeUsers} tài khoản đang hoạt động ({totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 100}%)
+            </div>
+          </div>
+
+          {/* Card 2 */}
+          <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>BAN QUẢN LÝ &amp; ĐIỀU HÀNH</span>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#faf5ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
+              {managementCount} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>nhân sự</span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+              Giám đốc, QL Vận tải, QL Đội xe
+            </div>
+          </div>
+
+          {/* Card 3 */}
+          <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>ĐỘI NGŨ VẬN HÀNH</span>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
+              {opsStaffCount} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>nhân sự</span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+              Tài xế, Phụ xe, Bán vé quầy
+            </div>
+          </div>
+
+          {/* Card 4 */}
+          <div style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TRẠNG THÁI AN NINH RBAC</span>
+              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
+              An toàn 100%
+            </div>
+            <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '600' }}>
+              0 vi phạm chính sách bảo mật
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* 4 Stat Cards Grid */}
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '1.75rem' }}>
-        {/* Card 1 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>Tổng Tài Khoản Hệ Thống</span>
-            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d', fontWeight: '600' }}>
-              ▲ {activeUsers} đang hoạt động
-            </span>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: '800', color: '#0f172a', marginBottom: '12px' }}>
-            {totalUsers} tài khoản
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
-              {totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 100}% tỷ lệ kích hoạt
-            </span>
-            <span style={{ color: '#3b82f6', fontWeight: '600' }}>MongoDB Real Data</span>
-          </div>
-        </div>
-
-        {/* Card 2 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>Ban Quản Lý &amp; Điều Hành</span>
-            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: '#dbeafe', color: '#1d4ed8', fontWeight: '600' }}>
-              ▲ Giám đốc, Vận tải, Đội xe
-            </span>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: '800', color: '#0f172a', marginBottom: '12px' }}>
-            {managementCount} nhân sự
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#3b82f6' }}></span>
-              Quyền điều phối cấp cao
-            </span>
-            <span>Level 1-2</span>
-          </div>
-        </div>
-
-        {/* Card 3 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>Đội Ngũ Vận Hành &amp; Phục Vụ</span>
-            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d', fontWeight: '600' }}>
-              ▲ Tài xế, Phụ xe, Bán vé
-            </span>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: '800', color: '#0f172a', marginBottom: '12px' }}>
-            {opsStaffCount} nhân sự
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
-              Phân ca trực 3 miền
-            </span>
-            <span>{totalUsers > 0 ? ((opsStaffCount / totalUsers) * 100).toFixed(1) : 0}% tổng nhân sự</span>
-          </div>
-        </div>
-
-        {/* Card 4 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>Trạng Thái An Ninh RBAC</span>
-            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d', fontWeight: '600' }}>
-              ▲ Phân quyền 7 nhóm vai trò
-            </span>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: '800', color: '#0f172a', marginBottom: '12px' }}>
-            An toàn 100%
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#64748b', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
-              0 vi phạm chính sách
-            </span>
-            <span style={{ color: '#16a34a', fontWeight: '700' }}>SECURE</span>
-          </div>
-        </div>
-      </section>
-
       {/* Middle Panels: RBAC & Infrastructure */}
-      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.75rem' }}>
+      <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem', marginBottom: '0.85rem' }}>
         {/* Panel Left: Phân bổ Vai trò Người dùng (RBAC) */}
-        <div className="panel" style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Phân bổ Vai trò Người dùng (RBAC)</h2>
+        <div className="panel" style={{ background: '#ffffff', padding: '1.1rem 1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>
+                <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>Phân bổ Vai trò Người dùng (RBAC)</h2>
+              </div>
+              <span style={{ fontSize: '0.68rem', background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>
+                7 Nhóm Phân quyền
+              </span>
             </div>
-            <span style={{ fontSize: '0.75rem', background: '#eff6ff', color: '#2563eb', padding: '4px 10px', borderRadius: '12px', fontWeight: '600' }}>
-              7 Nhóm Phân quyền
-            </span>
-          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-            {[
-              { label: 'Ban Giám đốc', count: roleCounts.general_manager, roleKey: 'general_manager', color: '#8b5cf6', badge: null },
-              { label: 'Quản lý Vận tải', count: roleCounts.ops_manager, roleKey: 'ops_manager', color: '#3b82f6', badge: null },
-              { label: 'Quản lý Đội xe', count: roleCounts.fleet_manager, roleKey: 'fleet_manager', color: '#3b82f6', badge: null },
-              { label: 'Nhân viên Bán vé quầy', count: roleCounts.ticket_agent, roleKey: 'ticket_agent', color: '#3b82f6', badge: null },
-              { label: 'Tài xế chuyên trách', count: roleCounts.driver, roleKey: 'driver', color: '#f59e0b', badge: 'Chủ lực' },
-              { label: 'Phụ xe theo xe', count: roleCounts.attendant, roleKey: 'attendant', color: '#ec4899', badge: 'Hiện trường' },
-              { label: 'Quản trị viên hệ thống', count: roleCounts.admin, roleKey: 'admin', color: '#312e81', badge: null },
-            ].map(r => {
-              const pct = totalUsers ? Math.round((r.count / totalUsers) * 100) : 0;
-              return (
-                <div key={r.roleKey} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontWeight: '600', color: '#334155' }}>{r.label}</span>
-                      {r.badge && (
-                        <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: r.badge === 'Chủ lực' ? '#fef3c7' : '#fce7f3', color: r.badge === 'Chủ lực' ? '#b45309' : '#be185d', fontWeight: '600' }}>
-                          {r.badge}
-                        </span>
-                      )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              {[
+                { label: 'Ban Giám đốc', count: roleCounts.general_manager, roleKey: 'general_manager', color: '#8b5cf6', badge: null },
+                { label: 'Quản lý Vận tải', count: roleCounts.ops_manager, roleKey: 'ops_manager', color: '#3b82f6', badge: null },
+                { label: 'Quản lý Đội xe', count: roleCounts.fleet_manager, roleKey: 'fleet_manager', color: '#3b82f6', badge: null },
+                { label: 'Nhân viên Bán vé quầy', count: roleCounts.ticket_agent, roleKey: 'ticket_agent', color: '#3b82f6', badge: null },
+                { label: 'Tài xế chuyên trách', count: roleCounts.driver, roleKey: 'driver', color: '#f59e0b', badge: 'Chủ lực' },
+                { label: 'Phụ xe theo xe', count: roleCounts.attendant, roleKey: 'attendant', color: '#ec4899', badge: 'Hiện trường' },
+                { label: 'Quản trị viên hệ thống', count: roleCounts.admin, roleKey: 'admin', color: '#312e81', badge: null },
+              ].map(r => {
+                const pct = totalUsers ? Math.round((r.count / totalUsers) * 100) : 0;
+                return (
+                  <div key={r.roleKey} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: '700', color: '#334155' }}>{r.label}</span>
+                        {r.badge && (
+                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: r.badge === 'Chủ lực' ? '#fef3c7' : '#fce7f3', color: r.badge === 'Chủ lực' ? '#b45309' : '#be185d', fontWeight: '700' }}>
+                            {r.badge}
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ color: r.count > 1 ? '#be123c' : '#64748b', fontWeight: r.count > 1 ? '700' : '600' }}>
+                        {r.count} người ({pct}%)
+                      </span>
                     </div>
-                    <span style={{ color: r.count > 1 ? '#be123c' : '#64748b', fontWeight: r.count > 1 ? '700' : '500' }}>
-                      {r.count} người ({pct}%)
-                    </span>
+                    <div style={{ height: '5px', width: '100%', backgroundColor: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, backgroundColor: r.color, borderRadius: '3px' }}></div>
+                    </div>
                   </div>
-                  <div style={{ height: '6px', width: '100%', backgroundColor: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, backgroundColor: r.color, borderRadius: '3px' }}></div>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
-          <div style={{ marginTop: '1.25rem', paddingTop: '10px', borderTop: '1px solid #f1f5f9', fontSize: '0.8rem', color: '#64748b' }}>
-            <span>Tỷ lệ bao phủ vai trò: 100%</span>
+          <div style={{ marginTop: '0.85rem', paddingTop: '8px', borderTop: '1px solid #f1f5f9', fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>
+            <span>Tỷ lệ bao phủ vai trò: <strong style={{ color: '#16a34a' }}>100% Khớp Ma trận RBAC</strong></span>
           </div>
         </div>
 
         {/* Panel Right: Hạ tầng Máy chủ & Cơ sở dữ liệu */}
-        <div className="panel" style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: '700', color: '#1e293b' }}>Hạ tầng Máy chủ &amp; Cơ sở dữ liệu</h2>
+        <div className="panel" style={{ background: '#ffffff', padding: '1.1rem 1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" /></svg>
+                <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>Hạ tầng Máy chủ &amp; Cơ sở dữ liệu</h2>
+              </div>
+              <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '10px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#16a34a' }}></span>
+                Tất cả dịch vụ Online
+              </span>
             </div>
-            <span style={{ fontSize: '0.75rem', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
-              Tất cả dịch vụ Online
-            </span>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+              {/* Server 1 */}
+              <div style={{ padding: '8px 12px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: '700', color: '#065f46', fontSize: '0.78rem' }}>Backend REST API Server (Node.js / Express)</div>
+                  <div style={{ fontSize: '0.68rem', color: '#047857', marginTop: '1px' }}>Cổng API Port 8000 — JWT Auth, Route &amp; Trip Services</div>
+                </div>
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: '0.65rem', background: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 8000</span>
+                    <span style={{ fontSize: '0.68rem', color: '#047857', fontWeight: '700', marginTop: '2px' }}>{healthData?.mongoLatencyMs || 5}ms • 99.98%</span>
+                  </div>
+                  <span className="status-dot green" style={{ width: '7px', height: '7px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                </div>
+              </div>
+
+              {/* Server 2 */}
+              <div style={{ padding: '8px 12px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: '700', color: '#1e40af', fontSize: '0.78rem' }}>Database chính (MongoDB - Port 27018)</div>
+                  <div style={{ fontSize: '0.68rem', color: '#1d4ed8', marginTop: '1px' }}>10 Collections: Users, Routes, Buses, Trips, Bookings...</div>
+                </div>
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: '0.65rem', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 27018</span>
+                    <span style={{ fontSize: '0.68rem', color: '#1d4ed8', fontWeight: '700', marginTop: '2px' }}>{healthData?.memoryUsageMb || '28.4'} MB RAM • Active</span>
+                  </div>
+                  <span className="status-dot green" style={{ width: '7px', height: '7px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                </div>
+              </div>
+
+              {/* Server 3 */}
+              <div style={{ padding: '8px 12px', background: '#faf5ff', borderRadius: '8px', border: '1px solid #e9d5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: '700', color: '#6b21a8', fontSize: '0.78rem' }}>Memory Cache &amp; Sessions (Redis - Port 6379)</div>
+                  <div style={{ fontSize: '0.68rem', color: '#7e22ce', marginTop: '1px' }}>Lưu Session token, GPS tracking cache &amp; Rate limiting</div>
+                </div>
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: '0.65rem', background: '#f3e8ff', color: '#6b21a8', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 6379</span>
+                    <span style={{ fontSize: '0.68rem', color: '#7e22ce', fontWeight: '700', marginTop: '2px' }}>1.2 MB / 8 GB</span>
+                  </div>
+                  <span className="status-dot green" style={{ width: '7px', height: '7px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                </div>
+              </div>
+
+              {/* Server 4 */}
+              <div style={{ padding: '8px 12px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: '700', color: '#92400e', fontSize: '0.78rem' }}>Message Broker (RabbitMQ - Port 5672)</div>
+                  <div style={{ fontSize: '0.68rem', color: '#b45309', marginTop: '1px' }}>Điều phối tin nhắn bất đồng bộ &amp; Thông báo AI</div>
+                </div>
+                <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: '0.65rem', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 5672</span>
+                    <span style={{ fontSize: '0.68rem', color: '#b45309', fontWeight: '700', marginTop: '2px' }}>Queue: 0 backlog</span>
+                  </div>
+                  <span className="status-dot green" style={{ width: '7px', height: '7px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-            {/* Server 1 */}
-            <div style={{ padding: '12px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: '700', color: '#065f46', fontSize: '0.85rem' }}>Backend REST API Server (Node.js / Express)</div>
-                <div style={{ fontSize: '0.75rem', color: '#047857', marginTop: '2px' }}>Cổng API Port 8000 — JWT Auth, Route &amp; Trip Services</div>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '0.7rem', background: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 8000</span>
-                  <span style={{ fontSize: '0.75rem', color: '#047857', fontWeight: '600', marginTop: '2px' }}>{healthData?.mongoLatencyMs || 5}ms • 99.98%</span>
-                </div>
-                <span className="status-dot green" style={{ width: '10px', height: '10px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
-              </div>
-            </div>
-
-            {/* Server 2 */}
-            <div style={{ padding: '12px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: '700', color: '#1e40af', fontSize: '0.85rem' }}>Database chính (MongoDB - Port 27018)</div>
-                <div style={{ fontSize: '0.75rem', color: '#1d4ed8', marginTop: '2px' }}>10 Collections: Users, Routes, Buses, Trips, Bookings...</div>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '0.7rem', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 27018</span>
-                  <span style={{ fontSize: '0.75rem', color: '#1d4ed8', fontWeight: '600', marginTop: '2px' }}>{healthData?.memoryUsageMb || '28.4'} MB RAM • Active</span>
-                </div>
-                <span className="status-dot green" style={{ width: '10px', height: '10px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
-              </div>
-            </div>
-
-            {/* Server 3 */}
-            <div style={{ padding: '12px', background: '#faf5ff', borderRadius: '8px', border: '1px solid #e9d5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: '700', color: '#6b21a8', fontSize: '0.85rem' }}>Memory Cache &amp; Sessions (Redis - Port 6379)</div>
-                <div style={{ fontSize: '0.75rem', color: '#7e22ce', marginTop: '2px' }}>Lưu Session token, GPS tracking cache &amp; Rate limiting</div>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '0.7rem', background: '#f3e8ff', color: '#6b21a8', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 6379</span>
-                  <span style={{ fontSize: '0.75rem', color: '#7e22ce', fontWeight: '600', marginTop: '2px' }}>1.2 MB / 8 GB</span>
-                </div>
-                <span className="status-dot green" style={{ width: '10px', height: '10px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
-              </div>
-            </div>
-
-            {/* Server 4 */}
-            <div style={{ padding: '12px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: '700', color: '#92400e', fontSize: '0.85rem' }}>Message Broker (RabbitMQ - Port 5672)</div>
-                <div style={{ fontSize: '0.75rem', color: '#b45309', marginTop: '2px' }}>Điều phối tin nhắn bất đồng bộ &amp; Thông báo AI</div>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                  <span style={{ fontSize: '0.7rem', background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>Port 5672</span>
-                  <span style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: '600', marginTop: '2px' }}>Queue: 0 backlog</span>
-                </div>
-                <span className="status-dot green" style={{ width: '10px', height: '10px', backgroundColor: '#10b981', borderRadius: '50%' }}></span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', paddingTop: '10px', borderTop: '1px solid #f1f5f9', fontSize: '0.8rem', color: '#64748b' }}>
-            <span>Uptime Node.js API: <strong>{healthData?.uptimeStr || '0h 15m'}</strong></span>
-            <span style={{ color: '#2563eb', fontWeight: '600', fontFamily: 'monospace' }}>Mongo State: {healthData?.mongoStatus || 'Stable'}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.85rem', paddingTop: '8px', borderTop: '1px solid #f1f5f9', fontSize: '0.72rem', color: '#64748b' }}>
+            <span>Uptime Node.js API: <strong style={{ color: '#0f172a' }}>{healthData?.uptimeStr || '0h 15m'}</strong></span>
+            <span style={{ color: '#2563eb', fontWeight: '700', fontFamily: 'monospace' }}>Mongo State: {healthData?.mongoStatus || 'Stable'}</span>
           </div>
         </div>
       </section>
 
       {/* Bottom Panel: Nhật ký Hoạt động An ninh & Giám sát Hệ thống (Full 100% Width) */}
-      <section style={{ width: '100%', marginBottom: '1.75rem' }}>
-        <div className="panel" style={{ background: '#ffffff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '1rem' }}>
+      <section style={{ width: '100%', marginBottom: '0.4rem' }}>
+        <div className="panel" style={{ background: '#ffffff', padding: '0.65rem 0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.02)', width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem', flexWrap: 'wrap', gap: '0.5rem' }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" style={{ display: 'block', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" style={{ display: 'block', flexShrink: 0 }}>
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: '700', color: '#1e293b', margin: 0, lineHeight: '1.2' }}>
+                <h2 style={{ fontSize: '0.9rem', fontWeight: '700', color: '#1e293b', margin: 0, lineHeight: '1.2' }}>
                   Nhật ký Hoạt động An ninh &amp; Giám sát Hệ thống
                 </h2>
               </div>
-              <p style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>
+              <p style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '1px' }}>
                 Bản ghi vết kiểm toán thời gian thực theo tiêu chuẩn an toàn vận tải (Dữ liệu Live từ Backend Express Middleware)
               </p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <span style={{ fontSize: '0.75rem', background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: '12px', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '8px', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
                 Cập nhật tự động thời gian thực
               </span>
             </div>
           </div>
 
           <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.85rem' }}>
-                  <th style={{ padding: '12px 10px', verticalAlign: 'middle' }}>Hành động / Sự kiện</th>
-                  <th style={{ padding: '12px 10px', verticalAlign: 'middle' }}>Người thực hiện</th>
-                  <th style={{ padding: '12px 10px', verticalAlign: 'middle' }}>Vai trò</th>
-                  <th style={{ padding: '12px 10px', verticalAlign: 'middle' }}>Địa chỉ IP</th>
-                  <th style={{ padding: '12px 10px', verticalAlign: 'middle' }}>Thời gian</th>
-                  <th style={{ padding: '12px 10px', verticalAlign: 'middle', textAlign: 'center' }}>Trạng thái</th>
+                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <th style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle' }}>HÀNH ĐỘNG / SỰ KIỆN</th>
+                  <th style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle' }}>NGƯỜI THỰC HIỆN</th>
+                  <th style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle' }}>VAI TRÒ</th>
+                  <th style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle' }}>ĐỊA CHỈ IP</th>
+                  <th style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle' }}>THỜI GIAN</th>
+                  <th style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle', textAlign: 'center' }}>TRẠNG THÁI</th>
                 </tr>
               </thead>
               <tbody>
                 {displayLogs.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontSize: '0.78rem' }}>
                       Chưa ghi nhận nhật ký hệ thống nào. Vui lòng thực hiện thao tác trên hệ thống để ghi nhận log thời gian thực.
                     </td>
                   </tr>
                 ) : (
                   displayLogs.map((log) => (
-                    <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9', fontSize: '0.85rem' }}>
-                      <td style={{ padding: '12px 10px', verticalAlign: 'middle', fontWeight: '600', color: '#1e293b' }}>{log.action}</td>
-                      <td style={{ padding: '12px 10px', verticalAlign: 'middle', color: '#475569' }}>{log.user}</td>
-                      <td style={{ padding: '12px 10px', verticalAlign: 'middle' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '3px 10px', borderRadius: '4px', fontSize: '0.75rem', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: '600' }}>
+                    <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9', fontSize: '0.78rem', verticalAlign: 'middle' }}>
+                      <td style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle', fontWeight: '600', color: '#1e293b' }}>{log.action}</td>
+                      <td style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle', color: '#475569' }}>{log.user}</td>
+                      <td style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', backgroundColor: '#eff6ff', color: '#2563eb', fontWeight: '700' }}>
                           {getRoleLabel(log.role)}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 10px', verticalAlign: 'middle', color: '#64748b', fontFamily: 'monospace' }}>{log.ip}</td>
-                      <td style={{ padding: '12px 10px', verticalAlign: 'middle', color: '#64748b' }}>{log.timestamp}</td>
-                      <td style={{ padding: '12px 10px', verticalAlign: 'middle', textAlign: 'center' }}>
+                      <td style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle', color: '#64748b', fontFamily: 'monospace', fontSize: '0.72rem' }}>{log.ip}</td>
+                      <td style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle', color: '#64748b', fontSize: '0.72rem' }}>{log.timestamp}</td>
+                      <td style={{ padding: '0.65rem 0.85rem', verticalAlign: 'middle', textAlign: 'center' }}>
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                          padding: '4px 12px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '700',
+                          padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '700',
                           backgroundColor: log.level === 'SUCCESS' ? '#dcfce7' : log.level === 'WARNING' ? '#fef3c7' : '#fee2e2',
                           color: log.level === 'SUCCESS' ? '#15803d' : log.level === 'WARNING' ? '#b45309' : '#b91c1c'
                         }}>
