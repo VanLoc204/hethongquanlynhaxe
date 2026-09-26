@@ -11,6 +11,9 @@ const chatRoutes = require('./routes/chatRoutes');
 const systemRoutes = require('./routes/systemRoutes');
 const { systemLogger } = require('./middlewares/systemLogger');
 
+const targetRoutes = require('./routes/targetRoutes');
+const promotionRoutes = require('./routes/promotionRoutes');
+
 const app = express();
 
 // Global Middlewares
@@ -28,6 +31,8 @@ app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/pricing', pricingRoutes);
 app.use('/api/v1/reviews', chatRoutes);
 app.use('/api/v1/system', systemRoutes);
+app.use('/api/v1/targets', targetRoutes);
+app.use('/api/v1/promotions', promotionRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

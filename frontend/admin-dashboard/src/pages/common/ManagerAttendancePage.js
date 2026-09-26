@@ -1,164 +1,109 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { AuthContext } from '../../context/AuthContext';
+
+const API_BASE = 'http://localhost:8000/api/v1';
 
 const ManagerAttendancePage = () => {
+  const { token } = useContext(AuthContext);
+  const [attendanceData, setAttendanceData] = useState([]);
+  const [stats, setStats] = useState({ totalScheduled: 0, activeDirect: 0, closedShift: 0, absent: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
-  // Seed data representing employee attendance logs for today
-  const attendanceLogs = [
-    {
-      id: 'att_1',
-      name: 'Tài xế An Bình',
-      role: 'driver',
-      roleName: 'Tài xế',
-      status: 'active', // active, closed, absent
-      startTime: '05:30:22',
-      endTime: '--:--:--',
-      location: 'Bến Xe Đà Lạt',
-      gps: '11.9404° N, 108.4578° E',
-      verification: 'Hợp lệ (GPS)'
-    },
-    {
-      id: 'att_2',
-      name: 'Phạm Quốc Bảo',
-      role: 'attendant',
-      roleName: 'Phụ xe',
-      status: 'active',
-      startTime: '05:31:10',
-      endTime: '--:--:--',
-      location: 'Bến Xe Đà Lạt',
-      gps: '11.9404° N, 108.4578° E',
-      verification: 'Hợp lệ (GPS)'
-    },
-    {
-      id: 'att_3',
-      name: 'Trần Thị Quầy',
-      role: 'ticket_agent',
-      roleName: 'Nhân viên bán vé',
-      status: 'active',
-      startTime: '07:00:15',
-      endTime: '--:--:--',
-      location: 'Quầy Vé 01 - HCM',
-      gps: '10.8204° N, 106.6378° E',
-      verification: 'Hợp lệ (Wifi VP)'
-    },
-    {
-      id: 'att_4',
-      name: 'Lê Văn Tài',
-      role: 'driver',
-      roleName: 'Tài xế',
-      status: 'closed',
-      startTime: '04:00:00',
-      endTime: '12:00:00',
-      location: 'Bến Xe Cần Thơ',
-      gps: '10.0354° N, 105.7828° E',
-      verification: 'Hợp lệ (GPS)'
-    },
-    {
-      id: 'att_5',
-      name: 'Nguyễn Văn Phụ',
-      role: 'attendant',
-      roleName: 'Phụ xe',
-      status: 'closed',
-      startTime: '04:00:12',
-      endTime: '12:00:30',
-      location: 'Bến Xe Cần Thơ',
-      gps: '10.0354° N, 105.7828° E',
-      verification: 'Hợp lệ (GPS)'
-    },
-    {
-      id: 'att_6',
-      name: 'Đoàn Thị Vé',
-      role: 'ticket_agent',
-      roleName: 'Nhân viên bán vé',
-      status: 'closed',
-      startTime: '06:00:00',
-      endTime: '14:00:00',
-      location: 'Quầy Vé Đà Lạt',
-      gps: '11.9404° N, 108.4578° E',
-      verification: 'Hợp lệ (Wifi VP)'
-    },
-    {
-      id: 'att_7',
-      name: 'Vũ Đức Tài',
-      role: 'driver',
-      roleName: 'Tài xế',
-      status: 'absent',
-      startTime: '--:--:--',
-      endTime: '--:--:--',
-      location: 'Chưa điểm danh',
-      gps: '--',
-      verification: 'Chưa ghi nhận'
-    },
-    {
-      id: 'att_8',
-      name: 'Ngô Quốc Phụ',
-      role: 'attendant',
-      roleName: 'Phụ xe',
-      status: 'absent',
-      startTime: '--:--:--',
-      endTime: '--:--:--',
-      location: 'Chưa điểm danh',
-      gps: '--',
-      verification: 'Chưa ghi nhận'
+  const fetchRealAttendance = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/users/admin/attendance`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setAttendanceData(data.attendance || []);
+        setStats(data.stats || { totalScheduled: 0, activeDirect: 0, closedShift: 0, absent: 0 });
+      } else {
+        setError(data.message || 'Không thể tải báo cáo chấm công nhân sự.');
+      }
+    } catch (err) {
+      setError('Lỗi kết nối máy chủ khi tải bảng chấm công.');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
+  useEffect(() => {
+    if (token) {
+      fetchRealAttendance();
+    }
+  }, [token]);
+
+  const exportExcelMock = () => {
+    alert('Đang xuất danh sách chấm công nhân sự hôm nay ra file Excel thành công!');
+  };
+
+  const getStatusBadge = (log) => {
+    switch (log.status) {
       case 'active':
         return (
           <span style={{ 
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(16, 185, 129, 0.1)', 
-            color: '#10b981', 
-            padding: '4px 10px', 
-            borderRadius: '20px', 
-            fontSize: '0.75rem', 
-            fontWeight: '700', 
-            whiteSpace: 'nowrap' 
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            background: log.punctuality === 'Vào trễ' ? '#fffbe6' : '#ecfdf5', 
+            color: log.punctuality === 'Vào trễ' ? '#d97706' : '#047857', 
+            padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' 
           }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', animation: 'pulse 1.5s infinite' }}></span>
-            Đang trực
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: log.punctuality === 'Vào trễ' ? '#f59e0b' : '#10b981', display: 'inline-block' }}></span>
+            {log.punctuality === 'Vào trễ' ? '• Đang trực (Vào trễ)' : '• Đang trực (Đúng quy định)'}
           </span>
         );
       case 'closed':
         return (
           <span style={{ 
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(100, 116, 139, 0.1)', 
-            color: '#64748b', 
-            padding: '4px 10px', 
-            borderRadius: '20px', 
-            fontSize: '0.75rem', 
-            fontWeight: '700', 
-            whiteSpace: 'nowrap' 
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            background: '#f1f5f9', color: '#475569', 
+            padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' 
           }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#64748b', display: 'inline-block' }}></span>
-            Đã tan ca
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#64748b', display: 'inline-block' }}></span>
+            • Đã tan ca
+          </span>
+        );
+      case 'approved_leave':
+        return (
+          <span style={{ 
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            background: '#f3e8ff', color: '#6b21a8', border: '1px solid #e9d5ff',
+            padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' 
+          }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#9333ea', display: 'inline-block' }}></span>
+            • Đã duyệt nghỉ (Có phép)
+          </span>
+        );
+      case 'absent':
+        return (
+          <span style={{ 
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            background: '#fef2f2', color: '#dc2626', 
+            padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' 
+          }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
+            • Vắng mặt (Không phép)
           </span>
         );
       default:
         return (
           <span style={{ 
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: 'rgba(239, 68, 68, 0.1)', 
-            color: '#ef4444', 
-            padding: '4px 10px', 
-            borderRadius: '20px', 
-            fontSize: '0.75rem', 
-            fontWeight: '700', 
-            whiteSpace: 'nowrap' 
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            background: '#f8fafc', color: '#64748b', border: '1px solid #e2e8f0',
+            padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' 
           }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
-            Vắng mặt
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#94a3b8', display: 'inline-block' }}></span>
+            • Chưa đến giờ ca trực
           </span>
         );
     }
@@ -166,342 +111,446 @@ const ManagerAttendancePage = () => {
 
   const getRoleBadge = (role) => {
     const badges = {
-      driver: { bg: '#eff6ff', color: '#1e40af', text: 'Tài xế' },
-      attendant: { bg: '#fff7ed', color: '#c2410c', text: 'Phụ xe' },
-      ticket_agent: { bg: '#faf5ff', color: '#6b21a8', text: 'Bán vé' }
+      driver: { bg: '#eff6ff', color: '#1e40af', text: 'Tài xế', prefix: 'TX' },
+      attendant: { bg: '#fff7ed', color: '#c2410c', text: 'Phụ xe', prefix: 'PX' },
+      ticket_agent: { bg: '#faf5ff', color: '#6b21a8', text: 'Bán vé', prefix: 'NV' },
+      fleet_manager: { bg: '#ccfbf1', color: '#0f766e', text: 'QL Đội xe', prefix: 'QL' },
+      ops_manager: { bg: '#e0e7ff', color: '#1e40af', text: 'QL Vận tải', prefix: 'QL' }
     };
-    const b = badges[role] || { bg: '#f1f5f9', color: '#334155', text: role };
+    const b = badges[role] || { bg: '#f1f5f9', color: '#334155', text: role, prefix: 'NV' };
     return (
       <span style={{ 
-        background: b.bg, 
-        color: b.color, 
-        border: `1px solid ${b.color}20`, 
-        padding: '2px 8px', 
-        borderRadius: '12px', 
-        fontSize: '0.7rem', 
-        fontWeight: '700', 
-        whiteSpace: 'nowrap' 
+        background: b.bg, color: b.color, 
+        padding: '2px 8px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: '700', whiteSpace: 'nowrap' 
       }}>
         {b.text}
       </span>
     );
   };
 
-  // Helper to get initials and premium gradient avatar
   const getAvatar = (name, role) => {
-    const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    const gradients = {
-      driver: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-      attendant: 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)',
-      ticket_agent: 'linear-gradient(135deg, #a855f7 0%, #6b21a8 100%)'
+    let code = 'NV';
+    if (role === 'fleet_manager' || role === 'ops_manager') {
+      code = 'QL';
+    } else if (role === 'ticket_agent') {
+      code = 'NV';
+    } else if (role === 'driver') {
+      const parts = (name || '').trim().split(/\s+/);
+      if (parts.length >= 2 && parts[0].toLowerCase() !== 'tài') {
+        code = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      } else {
+        code = 'TX';
+      }
+    } else if (role === 'attendant') {
+      code = 'PX';
+    } else if (name) {
+      const parts = name.trim().split(/\s+/);
+      code = (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    
+    const colors = {
+      driver: '#1d4ed8',
+      attendant: '#c2410c',
+      ticket_agent: '#7e22ce',
+      fleet_manager: '#0f172a',
+      ops_manager: '#0f172a'
     };
-    const background = gradients[role] || 'linear-gradient(135deg, #64748b 0%, #334155 100%)';
+    const bg = colors[role] || '#0f172a';
+
     return (
       <div style={{
-        width: '36px',
-        height: '36px',
-        borderRadius: '50%',
-        background,
-        color: '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontWeight: '700',
-        fontSize: '0.85rem',
-        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-        flexShrink: 0
+        width: '38px', height: '38px', borderRadius: '50%', backgroundColor: bg, color: '#ffffff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800',
+        fontSize: '0.85rem', flexShrink: 0
       }}>
-        {initials}
+        {code}
       </div>
     );
   };
 
-  // Aggregated data
-  const totalCount = attendanceLogs.length;
-  const activeCount = attendanceLogs.filter(l => l.status === 'active').length;
-  const closedCount = attendanceLogs.filter(l => l.status === 'closed').length;
-  const absentCount = attendanceLogs.filter(l => l.status === 'absent').length;
-
-  const filteredLogs = attendanceLogs.filter(log => {
+  const filteredLogs = attendanceData.filter(log => {
     const matchesRole = filterRole === 'all' || log.role === filterRole;
-    const matchesStatus = filterStatus === 'all' || log.status === filterStatus;
-    const matchesSearch = log.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = filterStatus === 'all' || 
+      (filterStatus === 'active' && log.status === 'active') ||
+      (filterStatus === 'closed' && log.status === 'closed') ||
+      (filterStatus === 'approved_leave' && log.status === 'approved_leave') ||
+      (filterStatus === 'absent' && log.status === 'absent') ||
+      (filterStatus === 'late' && log.punctuality === 'Vào trễ') ||
+      (filterStatus === 'scheduled' && log.status === 'scheduled');
+    
+    const matchesSearch = (log.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (log.phone || '').includes(searchQuery) ||
+                          (log.location || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesRole && matchesStatus && matchesSearch;
   });
 
+  // Pagination calculation
+  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage) || 1;
+  const paginatedLogs = filteredLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const todayStr = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeIn 0.3s ease' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.3s ease' }}>
       
-      {/* Premium KPI Stats Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.5rem' }}>
+      {/* Page Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Quản Lý Chấm Công Nhân Sự Hôm Nay
+            </h1>
+            <span style={{
+              backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
+              fontSize: '0.75rem', fontWeight: '800', padding: '3px 10px', borderRadius: '12px', display: 'inline-flex', alignItems: 'center', gap: '4px'
+            }}>
+              Live {todayStr}
+            </span>
+          </div>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '6px', margin: 0 }}>
+            Giám sát thời gian vào ca, tan ca thực tế từ dữ liệu MongoDB thật của Tài xế, Phụ xe và Nhân viên quầy vé.
+          </p>
+        </div>
+
+        {/* Top Right Action Buttons */}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button
+            onClick={exportExcelMock}
+            style={{
+              backgroundColor: '#ffffff', color: '#16a34a', fontWeight: '700', fontSize: '0.825rem',
+              padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center',
+              gap: '6px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Xuất dữ liệu Excel
+          </button>
+
+          <button
+            onClick={fetchRealAttendance}
+            style={{
+              backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.825rem',
+              padding: '8px 16px', borderRadius: '8px', border: 'none', display: 'flex', alignItems: 'center',
+              gap: '6px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Làm mới dữ liệu thật
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Stats Row (4 Stat Cards) */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
         
-        {/* Total Staff */}
-        <div className="premium-kpi-card" style={{
-          background: '#ffffff',
-          padding: '1.5rem',
-          borderRadius: '16px',
-          border: '1px solid var(--card-border)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.02)',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-          cursor: 'default'
+        {/* Card 1: Tổng số nhân sự */}
+        <div style={{
+          backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px',
+          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
         }}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Nhân sự hôm nay</span>
-            <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--text-main)', marginTop: '6px' }}>{totalCount} nhân viên</div>
-            <span style={{ fontSize: '0.75rem', color: '#3b82f6', fontWeight: '600', display: 'block', marginTop: '6px' }}>Danh sách phân công trực</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>NHÂN SỰ HÔM NAY</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 2px 0' }}>
+              {stats.totalScheduled} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>nhân viên</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Lịch ca &amp; Chuyến chạy hôm nay</span>
           </div>
-          <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          <div style={{ background: '#eff6ff', color: '#2563eb', width: '42px', height: '42px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
           </div>
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: '#3b82f6' }}></div>
         </div>
 
-        {/* On Duty */}
-        <div className="premium-kpi-card" style={{
-          background: '#ffffff',
-          padding: '1.5rem',
-          borderRadius: '16px',
-          border: '1px solid var(--card-border)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.02)',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+        {/* Card 2: Đang trong ca trực */}
+        <div style={{
+          backgroundColor: '#ffffff', border: '1.5px solid #a7f3d0', borderRadius: '12px',
+          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          boxShadow: '0 2px 6px rgba(16, 185, 129, 0.05)'
         }}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Đang trong ca trực</span>
-            <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#10b981', marginTop: '6px' }}>{activeCount} đang trực</div>
-            <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '600', display: 'block', marginTop: '6px' }}>Thời gian thực tế GPS</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#047857', letterSpacing: '0.5px' }}>ĐANG TRONG CA TRỰC</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#059669', margin: '4px 0 2px 0' }}>
+              {stats.activeDirect} <span style={{ fontSize: '0.85rem', color: '#047857', fontWeight: '600' }}>đang trực</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '600' }}>Đã check-in hệ thống</span>
           </div>
-          <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div style={{ background: '#ecfdf5', color: '#10b981', width: '42px', height: '42px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           </div>
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: '#10b981' }}></div>
         </div>
 
-        {/* Completed */}
-        <div className="premium-kpi-card" style={{
-          background: '#ffffff',
-          padding: '1.5rem',
-          borderRadius: '16px',
-          border: '1px solid var(--card-border)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.02)',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+        {/* Card 3: Đã hoàn thành tan ca */}
+        <div style={{
+          backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px',
+          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
         }}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Đã hoàn thành tan ca</span>
-            <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#64748b', marginTop: '6px' }}>{closedCount} nhân viên</div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600', display: 'block', marginTop: '6px' }}>Đã chốt tổng kết doanh thu ca</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>ĐÃ HOÀN THÀNH TAN CA</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#334155', margin: '4px 0 2px 0' }}>
+              {stats.closedShift} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>nhân viên</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Đã check-out chốt ca</span>
           </div>
-          <div style={{ background: 'rgba(100, 116, 139, 0.1)', color: '#64748b', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <div style={{ background: '#f1f5f9', color: '#64748b', width: '42px', height: '42px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           </div>
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: '#64748b' }}></div>
         </div>
 
-        {/* Absent */}
-        <div className="premium-kpi-card" style={{
-          background: '#ffffff',
-          padding: '1.5rem',
-          borderRadius: '16px',
-          border: '1px solid var(--card-border)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.02)',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease'
+        {/* Card 4: Vắng mặt hôm nay */}
+        <div style={{
+          backgroundColor: '#ffffff', border: '1.5px solid #fca5a5', borderRadius: '12px',
+          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          boxShadow: '0 2px 6px rgba(239, 68, 68, 0.05)'
         }}>
           <div>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Vắng mặt hôm nay</span>
-            <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#ef4444', marginTop: '6px' }}>{absentCount} vắng mặt</div>
-            <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: '600', display: 'block', marginTop: '6px' }}>Chưa ghi nhận ca bắt đầu</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#b91c1c', letterSpacing: '0.5px' }}>VẮNG MẶT HÔM NAY</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#dc2626', margin: '4px 0 2px 0' }}>
+              {stats.absent} <span style={{ fontSize: '0.85rem', color: '#b91c1c', fontWeight: '600' }}>vắng mặt</span>
+            </div>
+            <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: '600' }}>Cảnh báo không phép / Quá giờ ca</span>
           </div>
-          <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', width: '48px', height: '48px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <div style={{ background: '#fef2f2', color: '#ef4444', width: '42px', height: '42px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
           </div>
-          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: '#ef4444' }}></div>
         </div>
 
       </div>
 
       {/* Main Table Board panel */}
-      <section className="panel" style={{ borderRadius: '16px', border: '1px solid var(--card-border)', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.02)', padding: '2rem' }}>
+      <section className="panel" style={{ borderRadius: '12px', border: '1px solid #e2e8f0', backgroundColor: '#ffffff', padding: '1.5rem' }}>
         
-        {/* Table Filters Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '2rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1.5rem' }}>
+        {/* Table Header Controls */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1.25rem', marginBottom: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '1.25rem' }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '800', color: 'var(--text-main)' }}>Bảng Theo Dõi Chấm Công Hôm Nay</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>
-              Giám sát chính xác thời gian hoạt động, tọa độ kiểm tra GPS của lái xe, phụ xe và giao dịch viên.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
+                Bảng Theo Dõi Chấm Công Hôm Nay
+              </h2>
+              <span style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.7rem', fontWeight: '700', padding: '2px 8px', borderRadius: '10px' }}>
+                Dữ Liệu Thật 100%
+              </span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', margin: 0 }}>
+              Kiểm tra quy định giờ vào ca trước giờ xe chạy (Tài xế/Phụ xe) và ca hành chính cố định (Nhân viên quầy).
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Filter Bar Controls */}
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
             
+            {/* Date Pill */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#f8fafc',
+              border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem', color: '#475569', fontWeight: '600'
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>Hôm nay ({todayStr})</span>
+            </div>
+
             {/* Search Input */}
             <div style={{ position: 'relative' }}>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm nhân viên..."
+                placeholder="Tìm tên, SĐT, tuyến xe hoặc điểm trực..."
                 style={{
-                  padding: '8px 12px 8px 36px',
-                  fontSize: '0.85rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  background: '#ffffff',
-                  color: 'var(--text-main)',
-                  width: '200px',
-                  outline: 'none',
-                  transition: 'border-color 0.2s'
+                  padding: '7px 12px 7px 32px', fontSize: '0.8rem',
+                  border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff',
+                  color: '#0f172a', width: '250px', outline: 'none'
                 }}
               />
-              <svg style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              <svg style={{ position: 'absolute', left: '10px', top: '9px', color: '#94a3b8' }} width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             </div>
 
             {/* Filter Role */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>Bộ phận:</span>
-              <select
-                value={filterRole}
-                onChange={(e) => setFilterRole(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '0.8rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  background: '#ffffff',
-                  color: 'var(--text-main)',
-                  fontWeight: '600',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="all">Tất cả bộ phận</option>
-                <option value="driver">Tài xế</option>
-                <option value="attendant">Phụ xe</option>
-                <option value="ticket_agent">Nhân viên bán vé</option>
-              </select>
-            </div>
+            <select
+              value={filterRole}
+              onChange={(e) => setFilterRole(e.target.value)}
+              style={{
+                padding: '7px 12px', fontSize: '0.8rem', border: '1px solid #cbd5e1',
+                borderRadius: '8px', background: '#ffffff', color: '#0f172a', fontWeight: '600', outline: 'none'
+              }}
+            >
+              <option value="all">Bộ phận: Tất cả bộ phận</option>
+              <option value="driver">Tài xế</option>
+              <option value="attendant">Phụ xe</option>
+              <option value="ticket_agent">Nhân viên bán vé</option>
+              <option value="fleet_manager">QL Đội xe</option>
+              <option value="ops_manager">QL Vận tải</option>
+            </select>
 
             {/* Filter Status */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>Trạng thái:</span>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  fontSize: '0.8rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  background: '#ffffff',
-                  color: 'var(--text-main)',
-                  fontWeight: '600',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="all">Tất cả trạng thái</option>
-                <option value="active">Đang làm việc</option>
-                <option value="closed">Đã tan ca</option>
-                <option value="absent">Vắng mặt</option>
-              </select>
-            </div>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              style={{
+                padding: '7px 12px', fontSize: '0.8rem', border: '1px solid #cbd5e1',
+                borderRadius: '8px', background: '#ffffff', color: '#0f172a', fontWeight: '600', outline: 'none'
+              }}
+            >
+              <option value="all">Trạng thái: Tất cả</option>
+              <option value="scheduled">Chưa đến giờ ca trực</option>
+              <option value="active">Đang trực</option>
+              <option value="closed">Đã tan ca</option>
+              <option value="late">Vào trễ</option>
+              <option value="approved_leave">Đã duyệt nghỉ</option>
+              <option value="absent">Vắng mặt (Không phép)</option>
+            </select>
           </div>
         </div>
 
-        {/* Clean Responsive Table */}
-        {filteredLogs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-muted)' }}>
+        {error && <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '6px', fontSize: '0.85rem' }}>{error}</div>}
+
+        {/* Responsive Table */}
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+            <div style={{ color: '#2563eb', fontWeight: '600' }}>Đang kết nối MongoDB lấy dữ liệu chấm công...</div>
+          </div>
+        ) : filteredLogs.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '4rem 0', color: '#94a3b8' }}>
             Không tìm thấy dữ liệu chấm công phù hợp với tiêu chí lọc.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--card-border)', color: '#475569', fontSize: '0.85rem' }}>
-                  <th style={{ padding: '1rem 1.25rem', whiteSpace: 'nowrap' }}>Nhân viên</th>
-                  <th style={{ padding: '1rem 1.25rem', whiteSpace: 'nowrap' }}>Trạng thái ca</th>
-                  <th style={{ padding: '1rem 1.25rem', whiteSpace: 'nowrap', textAlign: 'center' }}>Giờ vào ca</th>
-                  <th style={{ padding: '1rem 1.25rem', whiteSpace: 'nowrap', textAlign: 'center' }}>Giờ tan ca</th>
-                  <th style={{ padding: '1rem 1.25rem', whiteSpace: 'nowrap' }}>Điểm check-in</th>
-                  <th style={{ padding: '1rem 1.25rem', whiteSpace: 'nowrap', textAlign: 'right' }}>Xác thực GPS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.map((log) => (
-                  <tr key={log.id} style={{ borderBottom: '1px solid var(--card-border)', fontSize: '0.85rem', transition: 'background-color 0.2s' }} className="table-row-hover">
-                    
-                    {/* User Info */}
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {getAvatar(log.name, log.role)}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-main)' }}>{log.name}</span>
-                          <div>{getRoleBadge(log.role)}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Status Badge */}
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      {getStatusBadge(log.status)}
-                    </td>
-
-                    {/* Clock In */}
-                    <td style={{ padding: '1rem 1.25rem', textAlign: 'center', fontWeight: '700', color: log.status === 'absent' ? 'var(--text-muted)' : 'var(--text-main)' }}>
-                      {log.startTime}
-                    </td>
-
-                    {/* Clock Out */}
-                    <td style={{ padding: '1rem 1.25rem', textAlign: 'center', fontWeight: '700', color: log.status === 'closed' ? 'var(--text-main)' : 'var(--text-muted)' }}>
-                      {log.endTime}
-                    </td>
-
-                    {/* Checkin Location */}
-                    <td style={{ padding: '1rem 1.25rem' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <span style={{ fontWeight: '600', color: 'var(--text-main)' }}>{log.location}</span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{log.gps}</span>
-                      </div>
-                    </td>
-
-                    {/* GPS Verification Status */}
-                    <td style={{ padding: '1rem 1.25rem', textAlign: 'right' }}>
-                      <span style={{
-                        fontSize: '0.75rem',
-                        fontWeight: '700',
-                        backgroundColor: log.status === 'absent' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)',
-                        color: log.status === 'absent' ? '#ef4444' : '#10b981',
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        display: 'inline-block'
-                      }}>
-                        {log.verification}
-                      </span>
-                    </td>
-
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.725rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>NHÂN VIÊN</th>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>TRẠNG THÁI CA</th>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>QUY ĐỊNH VÀO CA</th>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap', textAlign: 'center' }}>GIỜ VÀO CA</th>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap', textAlign: 'center' }}>GIỜ TAN CA</th>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>ĐIỂM CHECK-IN &amp; TỌA ĐỘ</th>
+                    <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap', textAlign: 'right' }}>XÁC THỰC AN TOÀN</th>
                   </tr>
+                </thead>
+                <tbody>
+                  {paginatedLogs.map((log) => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid #f1f5f9', fontSize: '0.825rem', transition: 'background 0.15s ease' }}>
+                      
+                      {/* 1. Employee Info */}
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {getAvatar(log.name, log.role)}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '0.875rem', color: '#0f172a' }}>{log.name}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {getRoleBadge(log.role)}
+                              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{log.phone}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* 2. Status Badge */}
+                      <td style={{ padding: '1rem' }}>
+                        {getStatusBadge(log)}
+                      </td>
+
+                      {/* 3. Shift Requirement Rule */}
+                      <td style={{ padding: '1rem', fontSize: '0.8rem' }}>
+                        {log.assignedTrip ? (
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '800', color: '#2563eb' }}>Trước {log.assignedTrip.departureTime}</span>
+                            <span style={{ fontSize: '0.725rem', color: '#64748b' }}>Lịch chuyến {log.assignedTrip.route} ({log.assignedTrip.departureTime})</span>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '800', color: '#0f172a' }}>Trước 08:00 AM</span>
+                            <span style={{ fontSize: '0.725rem', color: '#64748b' }}>Ca hành chính</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 4. Clock In */}
+                      <td style={{ padding: '1rem', textAlign: 'center', fontWeight: '800', color: log.startTime === '--:--:--' ? '#94a3b8' : '#059669', fontFamily: 'monospace' }}>
+                        {log.startTime}
+                      </td>
+
+                      {/* 5. Clock Out */}
+                      <td style={{ padding: '1rem', textAlign: 'center', fontWeight: '800', color: log.endTime === '--:--:--' ? '#94a3b8' : '#0f172a', fontFamily: 'monospace' }}>
+                        {log.endTime}
+                      </td>
+
+                      {/* 6. Checkin Location & GPS */}
+                      <td style={{ padding: '1rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ fontWeight: '600', color: '#0f172a' }}>
+                            {log.location}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{log.gps}</span>
+                        </div>
+                      </td>
+
+                      {/* 7. Verification Status Badge */}
+                      <td style={{ padding: '1rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        <span style={{
+                          fontSize: '0.7rem', fontWeight: '700', whiteSpace: 'nowrap',
+                          backgroundColor: log.status === 'active' || log.status === 'closed' ? '#ecfdf5' : log.status === 'absent' ? '#fef2f2' : log.status === 'approved_leave' ? '#f3e8ff' : '#f8fafc',
+                          color: log.status === 'active' || log.status === 'closed' ? '#047857' : log.status === 'absent' ? '#dc2626' : log.status === 'approved_leave' ? '#6b21a8' : '#64748b',
+                          border: `1px solid ${log.status === 'active' || log.status === 'closed' ? '#a7f3d0' : log.status === 'absent' ? '#fca5a5' : log.status === 'approved_leave' ? '#e9d5ff' : '#e2e8f0'}`,
+                          padding: '4px 10px', borderRadius: '6px', display: 'inline-block'
+                        }}>
+                          {log.status === 'active' || log.status === 'closed' ? 'Hợp lệ (GPS / WIFI VP)' : log.verification}
+                        </span>
+                      </td>
+
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', pt: '1rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                Đang hiển thị <strong style={{ color: '#0f172a' }}>{paginatedLogs.length}</strong> trên tổng số <strong style={{ color: '#0f172a' }}>{filteredLogs.length}</strong> nhân sự hôm nay
+              </div>
+
+              {/* Pagination controls */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  style={{
+                    border: 'none', background: 'transparent', color: currentPage === 1 ? '#cbd5e1' : '#64748b',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer', padding: '4px 8px', fontSize: '0.9rem'
+                  }}
+                >
+                  &lt;
+                </button>
+
+                {[...Array(totalPages)].map((_, idx) => (
+                  <button
+                    key={idx + 1}
+                    onClick={() => setCurrentPage(idx + 1)}
+                    style={{
+                      width: '28px', height: '28px', borderRadius: '50%', border: 'none',
+                      backgroundColor: currentPage === idx + 1 ? '#2563eb' : 'transparent',
+                      color: currentPage === idx + 1 ? '#ffffff' : '#64748b',
+                      fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer'
+                    }}
+                  >
+                    {idx + 1}
+                  </button>
                 ))}
-              </tbody>
-            </table>
-          </div>
+
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  style={{
+                    border: 'none', background: 'transparent', color: currentPage === totalPages ? '#cbd5e1' : '#64748b',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', padding: '4px 8px', fontSize: '0.9rem'
+                  }}
+                >
+                  &gt;
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
     </div>

@@ -97,7 +97,7 @@ body {
 
 /* Sidebar Styling */
 .sidebar {
-  width: 190px;
+  width: 215px;
   flex-shrink: 0;
   background-color: var(--bg-sidebar);
   height: 100%;

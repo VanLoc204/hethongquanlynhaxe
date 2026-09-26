@@ -1,4 +1,5 @@
 const pricingService = require('../services/pricingService');
+const { getExecutiveAiChatResponse } = require('../services/geminiService');
 
 // @desc    Get all pricing rules
 // @route   GET /api/v1/pricing/rules
@@ -17,6 +18,58 @@ exports.getRules = async (req, res) => {
       success: false,
       message: 'Lỗi hệ thống khi lấy danh sách quy định giá.',
       error: error.message
+    });
+  }
+};
+
+// @desc    Executive AI Chat Assistant for General Manager
+// @route   POST /api/v1/pricing/gm-ai-chat
+// @access  Private (General Manager / Admin)
+exports.getExecutiveAiChat = async (req, res) => {
+  try {
+    const { history, message } = req.body;
+    if (!message) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập nội dung câu hỏi cho AI.'
+      });
+    }
+
+    const reply = await getExecutiveAiChatResponse(history || [], message);
+
+    res.status(200).json({
+      success: true,
+      reply,
+    });
+  } catch (error) {
+    console.error('Lỗi Executive AI Chat:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xử lý phản hồi từ AI Gemini.',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Get demand analytics & AI strategic action recommendations
+// @route   GET /api/v1/pricing/demand-analytics
+// @access  Private (General Manager / Admin)
+exports.getDemandAnalytics = async (req, res) => {
+  try {
+    const { search, status, routeId } = req.query;
+    const result = await pricingService.getDemandAnalytics({ search, status, routeId });
+
+    res.status(200).json({
+      success: true,
+      data: result.analytics,
+      aiStrategicActions: result.aiStrategicActions,
+    });
+  } catch (error) {
+    console.error('Lỗi lấy phân tích nhu cầu:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi phân tích nhu cầu.',
+      error: error.message,
     });
   }
 };

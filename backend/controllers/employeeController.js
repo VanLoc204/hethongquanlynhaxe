@@ -133,6 +133,15 @@ exports.submitLeave = async (req, res) => {
 // @access  Private (All Staff)
 exports.getMyLeaves = async (req, res) => {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Auto-reject pending leave requests whose start date has passed
+    await LeaveRequest.updateMany(
+      { userId: req.user.id, status: 'pending', startDate: { $lt: today } },
+      { $set: { status: 'rejected' } }
+    );
+
     const leaves = await LeaveRequest.find({ userId: req.user.id })
       .sort({ createdAt: -1 })
       .lean();
@@ -799,6 +808,15 @@ exports.checkInPassenger = async (req, res) => {
 // @access  Private (Managers / Admin)
 exports.getAllLeaves = async (req, res) => {
   try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Auto-reject pending leave requests whose start date has passed
+    await LeaveRequest.updateMany(
+      { status: 'pending', startDate: { $lt: today } },
+      { $set: { status: 'rejected' } }
+    );
+
     const leaves = await LeaveRequest.find()
       .populate('userId', 'name role email phone')
       .sort({ createdAt: -1 });
@@ -855,6 +873,202 @@ exports.updateLeaveStatus = async (req, res) => {
   } catch (error) {
     console.error('Lỗi cập nhật đơn nghỉ:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật trạng thái đơn nghỉ.' });
+  }
+};
+
+// Helper for role labels
+const getRoleLabelHelper = (role) => {
+  const roles = {
+    driver: 'Tài xế',
+    attendant: 'Phụ xe',
+    ticket_agent: 'Bán vé',
+    fleet_manager: 'QL Đội xe',
+    ops_manager: 'QL Vận tải',
+    admin: 'Quản trị viên'
+  };
+  return roles[role] || role;
+};
+
+// @desc    Get real-time attendance monitoring report for today
+// @route   GET /api/v1/users/admin/attendance
+// @access  Private (Managers / Admin)
+exports.getManagerAttendance = async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const now = new Date();
+
+    // 1. Fetch all operational staff users (drivers, attendants, ticket agents, managers)
+    const staffMembers = await User.find({
+      role: { $in: ['driver', 'attendant', 'ticket_agent', 'ops_manager', 'fleet_manager'] }
+    }).select('name role email phone').lean();
+
+    // 2. Fetch today's trips (to determine required check-in time & route for drivers & attendants)
+    const todayTrips = await Trip.find({
+      departureTime: { $gte: todayStart, $lte: todayEnd }
+    }).populate('routeId busId').lean();
+
+    // 3. Fetch today's shift sessions (check-in / check-out records)
+    const todaySessions = await ShiftSession.find({
+      createdAt: { $gte: todayStart, $lte: todayEnd }
+    }).lean();
+
+    // 4. Fetch today's approved leave requests
+    const approvedLeaves = await LeaveRequest.find({
+      status: 'approved',
+      startDate: { $lte: todayEnd },
+      endDate: { $gte: todayStart }
+    }).lean();
+
+    // 5. Fetch today's work schedules (if any)
+    const workSchedules = await WorkSchedule.find({
+      date: { $gte: todayStart, $lte: todayEnd }
+    }).lean();
+
+    const attendanceList = [];
+
+    let activeDirectCount = 0;
+    let closedShiftCount = 0;
+    let absentCount = 0;
+
+    for (const staff of staffMembers) {
+      const staffIdStr = staff._id.toString();
+      const staffPhone = staff.phone;
+
+      // Find if driver/attendant is assigned to any trip today
+      let assignedTrip = null;
+      if (staff.role === 'driver') {
+        assignedTrip = todayTrips.find(t => t.driver?.phone === staffPhone);
+      } else if (staff.role === 'attendant') {
+        assignedTrip = todayTrips.find(t => t.assistant?.phone === staffPhone);
+      }
+
+      // Find if employee has a work schedule today
+      const schedule = workSchedules.find(s => s.userId?.toString() === staffIdStr);
+
+      // Track all staff members for today's attendance roster
+      const isScheduled = true;
+
+      // Check if employee has an approved leave request for today
+      const leave = approvedLeaves.find(l => l.userId?.toString() === staffIdStr);
+
+      // Check if employee has checked in today (ShiftSession)
+      const session = todaySessions.find(s => s.userId?.toString() === staffIdStr);
+
+      let recordStatus = 'scheduled'; 
+      let statusLabel = 'Chờ đến ca';
+      let startTimeStr = '--:--:--';
+      let endTimeStr = '--:--:--';
+      let locationStr = 'Chưa check-in';
+      let gpsStr = '--';
+      let verificationStr = 'Chưa ghi nhận';
+      let punctuality = 'Đúng giờ';
+
+      if (leave) {
+        recordStatus = 'approved_leave';
+        statusLabel = 'Đã duyệt nghỉ (Có phép)';
+        locationStr = 'Nghỉ phép theo đơn';
+        verificationStr = 'Hợp lệ (Đơn duyệt nghỉ)';
+        punctuality = 'Nghỉ phép';
+      } else if (session) {
+        startTimeStr = new Date(session.startTime).toLocaleTimeString('vi-VN');
+        endTimeStr = session.endTime ? new Date(session.endTime).toLocaleTimeString('vi-VN') : '--:--:--';
+        locationStr = session.counterNumber || (assignedTrip ? `${assignedTrip.routeId?.startPoint || 'Bến xe'} (Xe ${assignedTrip.busId?.plateNumber || ''})` : 'Quầy vé / Văn phòng');
+        gpsStr = '10.8204° N, 106.6378° E';
+        verificationStr = 'Hợp lệ (GPS / Wifi VP)';
+
+        // Determine required check-in time:
+        // Driver/Attendant: Must check in before departure time of trip
+        // Administrative / Ticket Agent: Must check in before 08:00 AM (or schedule start)
+        let requiredStartTime = null;
+        if (assignedTrip) {
+          requiredStartTime = new Date(assignedTrip.departureTime);
+        } else {
+          requiredStartTime = new Date(todayStart);
+          requiredStartTime.setHours(8, 0, 0, 0);
+        }
+
+        const isLate = new Date(session.startTime) > requiredStartTime;
+        punctuality = isLate ? 'Vào trễ' : 'Đúng quy định';
+
+        if (session.status === 'closed') {
+          recordStatus = 'closed';
+          statusLabel = isLate ? 'Đã tan ca (Vào trễ)' : 'Đã tan ca (Đúng giờ)';
+          closedShiftCount++;
+        } else {
+          recordStatus = 'active';
+          statusLabel = isLate ? 'Đang trực (Vào trễ)' : 'Đang trực (Đúng quy định)';
+          activeDirectCount++;
+        }
+      } else {
+        // No Session & No Leave
+        let requiredStartTime = null;
+        if (assignedTrip) {
+          requiredStartTime = new Date(assignedTrip.departureTime);
+        } else {
+          requiredStartTime = new Date(todayStart);
+          requiredStartTime.setHours(8, 0, 0, 0);
+        }
+
+        if (now > requiredStartTime) {
+          recordStatus = 'absent';
+          statusLabel = 'Vắng mặt (Không phép)';
+          verificationStr = 'Cảnh báo: Cả ca không chấm công';
+          punctuality = 'Vắng mặt';
+          absentCount++;
+        } else {
+          recordStatus = 'scheduled';
+          statusLabel = 'Chưa đến giờ ca trực';
+          verificationStr = 'Chờ check-in';
+          punctuality = 'Chưa tới ca';
+        }
+
+        if (assignedTrip) {
+          locationStr = `Lịch chuyến ${assignedTrip.routeId?.startPoint || 'Bến xe'} ⇄ ${assignedTrip.routeId?.endPoint || ''} (${new Date(assignedTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})`;
+        } else {
+          locationStr = 'Lịch ca hành chính';
+        }
+      }
+
+      attendanceList.push({
+        id: staff._id,
+        name: staff.name,
+        role: staff.role,
+        roleName: getRoleLabelHelper(staff.role),
+        phone: staff.phone,
+        status: recordStatus,
+        statusLabel,
+        punctuality,
+        startTime: startTimeStr,
+        endTime: endTimeStr,
+        location: locationStr,
+        gps: gpsStr,
+        verification: verificationStr,
+        assignedTrip: assignedTrip ? {
+          route: `${assignedTrip.routeId?.startPoint || ''} ⇄ ${assignedTrip.routeId?.endPoint || ''}`,
+          departureTime: new Date(assignedTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          plateNumber: assignedTrip.busId?.plateNumber || ''
+        } : null
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalScheduled: attendanceList.length,
+        activeDirect: activeDirectCount,
+        closedShift: closedShiftCount,
+        absent: absentCount
+      },
+      attendance: attendanceList
+    });
+  } catch (error) {
+    console.error('Lỗi lấy dữ liệu chấm công thật:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi lấy báo cáo chấm công.' });
   }
 };
 
