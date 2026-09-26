@@ -8,13 +8,17 @@ const tripRoutes = require('./routes/tripRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const pricingRoutes = require('./routes/pricingRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const systemRoutes = require('./routes/systemRoutes');
+const { systemLogger } = require('./middlewares/systemLogger');
 
 const app = express();
 
 // Global Middlewares
+app.set('trust proxy', true);
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
+app.use(systemLogger);
 
 // Routes
 app.use('/api/v1/auth', authRoutes);
@@ -23,6 +27,7 @@ app.use('/api/v1/trips', tripRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/pricing', pricingRoutes);
 app.use('/api/v1/reviews', chatRoutes);
+app.use('/api/v1/system', systemRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
