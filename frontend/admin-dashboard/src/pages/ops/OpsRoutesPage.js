@@ -152,7 +152,7 @@ const OpsRoutesPage = () => {
     };
 
     try {
-      const url = editingRoute 
+      const url = editingRoute
         ? `${API_BASE}/trips/ops/routes/${editingRoute._id}`
         : `${API_BASE}/trips/ops/routes`;
       const method = editingRoute ? 'PUT' : 'POST';
@@ -207,7 +207,7 @@ const OpsRoutesPage = () => {
 
       {/* Hover Itinerary Tooltip */}
       {hoveredRoute && (
-        <div 
+        <div
           style={{
             position: 'absolute',
             top: `${tooltipPos.y - 140}px`,
@@ -229,7 +229,7 @@ const OpsRoutesPage = () => {
               Lộ trình chi tiết: <span style={{ color: '#2563eb' }}>{hoveredRoute.startPoint} → {hoveredRoute.endPoint}</span>
             </div>
           </div>
-          
+
           <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '12px', display: 'flex', gap: '12px' }}>
             <span>Khoảng cách ước tính: <strong style={{ color: '#0f172a' }}>{hoveredRoute.distance}</strong></span>
             <span>Thời gian: <strong style={{ color: '#0f172a' }}>{hoveredRoute.duration}</strong></span>
@@ -324,57 +324,57 @@ const OpsRoutesPage = () => {
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-        <thead>
-          <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            <th style={{ padding: '12px' }}>Điểm đi</th>
-            <th style={{ padding: '12px' }}>Điểm đến</th>
-            <th style={{ padding: '12px' }}>Khoảng cách ước tính</th>
-            <th style={{ padding: '12px' }}>Thời gian đi</th>
-            <th style={{ padding: '12px' }}>Trạng thái</th>
-            <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
-          </tr>
-        </thead>
-        <tbody>
-          {routes.map((route) => (
-            <tr 
-              key={route._id} 
-              onMouseEnter={(e) => handleMouseEnterRow(e, route)}
-              onMouseLeave={handleMouseLeaveRow}
-              style={{ 
-                borderBottom: '1px solid var(--border-color)', 
-                verticalAlign: 'middle',
-                transition: 'background-color 0.2s ease',
-                cursor: 'pointer'
-              }}
-              className="route-row-hover"
-            >
-              <td style={{ padding: '14px 12px', fontWeight: '600', color: '#0f172a' }}>{route.startPoint}</td>
-              <td style={{ padding: '14px 12px', fontWeight: '600', color: '#0f172a' }}>{route.endPoint}</td>
-              <td style={{ padding: '14px 12px' }}>{route.distance}</td>
-              <td style={{ padding: '14px 12px' }}>{route.duration}</td>
-              <td style={{ padding: '14px 12px' }}>{getStatusBadge(route.status)}</td>
-              <td style={{ padding: '14px 12px', textAlign: 'right' }}>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleOpenEdit(route); }} 
-                  className="btn btn-secondary" 
-                  style={{ marginRight: '8px', padding: '6px 12px', fontSize: '0.85rem' }}
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                <th style={{ padding: '12px' }}>Điểm đi</th>
+                <th style={{ padding: '12px' }}>Điểm đến</th>
+                <th style={{ padding: '12px' }}>Khoảng cách ước tính</th>
+                <th style={{ padding: '12px' }}>Thời gian đi</th>
+                <th style={{ padding: '12px' }}>Trạng thái</th>
+                <th style={{ padding: '12px', textAlign: 'right' }}>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {routes.map((route) => (
+                <tr
+                  key={route._id}
+                  onMouseEnter={(e) => handleMouseEnterRow(e, route)}
+                  onMouseLeave={handleMouseLeaveRow}
+                  style={{
+                    borderBottom: '1px solid var(--border-color)',
+                    verticalAlign: 'middle',
+                    transition: 'background-color 0.2s ease',
+                    cursor: 'pointer'
+                  }}
+                  className="route-row-hover"
                 >
-                  Sửa
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleDelete(route); }} 
-                  className="btn btn-secondary" 
-                  style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '6px 12px', fontSize: '0.85rem' }}
-                >
-                  Xóa
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                  <td style={{ padding: '14px 12px', fontWeight: '600', color: '#0f172a' }}>{route.startPoint}</td>
+                  <td style={{ padding: '14px 12px', fontWeight: '600', color: '#0f172a' }}>{route.endPoint}</td>
+                  <td style={{ padding: '14px 12px' }}>{route.distance}</td>
+                  <td style={{ padding: '14px 12px' }}>{route.duration}</td>
+                  <td style={{ padding: '14px 12px' }}>{getStatusBadge(route.status)}</td>
+                  <td style={{ padding: '14px 12px', textAlign: 'right' }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleOpenEdit(route); }}
+                      className="btn btn-secondary"
+                      style={{ marginRight: '8px', padding: '6px 12px', fontSize: '0.85rem' }}
+                    >
+                      Sửa
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(route); }}
+                      className="btn btn-secondary"
+                      style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '6px 12px', fontSize: '0.85rem' }}
+                    >
+                      Xóa
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Add/Edit Modal */}
@@ -389,16 +389,16 @@ const OpsRoutesPage = () => {
             <h3 style={{ marginBottom: '20px', color: '#0f172a', fontWeight: '700' }}>
               {editingRoute ? 'Cập nhật tuyến đường & Các trạm ghé' : 'Thêm tuyến đường & Trạm ghé mới'}
             </h3>
-            
+
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: '600' }}>Điểm đi</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={startPoint} 
-                    onChange={(e) => setStartPoint(e.target.value)} 
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={startPoint}
+                    onChange={(e) => setStartPoint(e.target.value)}
                     placeholder="Ví dụ: Hồ Chí Minh"
                     required
                   />
@@ -406,11 +406,11 @@ const OpsRoutesPage = () => {
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: '600' }}>Điểm đến</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={endPoint} 
-                    onChange={(e) => setEndPoint(e.target.value)} 
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={endPoint}
+                    onChange={(e) => setEndPoint(e.target.value)}
                     placeholder="Ví dụ: Đà Lạt"
                     required
                   />
@@ -420,11 +420,11 @@ const OpsRoutesPage = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: '600' }}>Khoảng cách ước tính (km)</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={distance} 
-                    onChange={(e) => setDistance(e.target.value)} 
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={distance}
+                    onChange={(e) => setDistance(e.target.value)}
                     placeholder="Ví dụ: 305km"
                     required
                   />
@@ -432,11 +432,11 @@ const OpsRoutesPage = () => {
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: '600' }}>Thời gian đi dự kiến</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={duration} 
-                    onChange={(e) => setDuration(e.target.value)} 
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
                     placeholder="Ví dụ: 7 giờ"
                     required
                   />
@@ -449,13 +449,13 @@ const OpsRoutesPage = () => {
                   <label className="form-label" style={{ margin: 0, fontWeight: '700', color: '#1e293b' }}>
                     🏣 Danh sách Các điểm & Trạm xe sẽ ghé qua:
                   </label>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={handleAddStop}
-                    style={{ 
-                      backgroundColor: '#2563eb', color: 'white', border: 'none', 
-                      padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', 
-                      fontWeight: '600', cursor: 'pointer' 
+                    style={{
+                      backgroundColor: '#2563eb', color: 'white', border: 'none',
+                      padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem',
+                      fontWeight: '600', cursor: 'pointer'
                     }}
                   >
                     + Thêm trạm ghé
@@ -464,8 +464,8 @@ const OpsRoutesPage = () => {
 
                 {stops.map((stop, idx) => (
                   <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
-                    <select 
-                      value={stop.type} 
+                    <select
+                      value={stop.type}
                       onChange={(e) => handleStopChange(idx, 'type', e.target.value)}
                       style={{ padding: '6px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: 'white' }}
                     >
@@ -474,25 +474,25 @@ const OpsRoutesPage = () => {
                       <option value="end">Điểm đích</option>
                     </select>
 
-                    <input 
-                      type="text" 
-                      placeholder="Tên trạm (Ví dụ: Trạm dừng chân Bảo Lộc)" 
-                      value={stop.name} 
+                    <input
+                      type="text"
+                      placeholder="Tên trạm (Ví dụ: Trạm dừng chân Bảo Lộc)"
+                      value={stop.name}
                       onChange={(e) => handleStopChange(idx, 'name', e.target.value)}
                       style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                     />
 
-                    <input 
-                      type="text" 
-                      placeholder="Địa chỉ chi tiết (Tùy chọn)" 
-                      value={stop.address} 
+                    <input
+                      type="text"
+                      placeholder="Địa chỉ chi tiết (Tùy chọn)"
+                      value={stop.address}
                       onChange={(e) => handleStopChange(idx, 'address', e.target.value)}
                       style={{ flex: 1, padding: '6px 10px', fontSize: '0.85rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
                     />
 
                     {stops.length > 2 && (
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => handleRemoveStop(idx)}
                         style={{ color: '#ef4444', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '0.8rem' }}
                       >
