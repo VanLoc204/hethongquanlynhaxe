@@ -34,6 +34,8 @@ const systemLogger = (req, res, next) => {
     }
 
     const actionDesc = getActionDescription(req.method, req.originalUrl);
+    const fullEndpoint = `${req.method} ${req.originalUrl}`;
+    const formattedAction = actionDesc === fullEndpoint ? fullEndpoint : `${actionDesc} (${fullEndpoint})`;
 
     const forwardedFor = req.headers['x-forwarded-for'];
     let clientIp = 
@@ -53,17 +55,17 @@ const systemLogger = (req, res, next) => {
     const logEntry = {
       id: 'LOG-' + Math.floor(1000 + Math.random() * 9000),
       timestamp: new Date().toLocaleString('vi-VN'),
-      user: req.user?.name || req.user?.email || req.user?.phone || 'Vãng lai / Guest',
-      role: req.user?.role || 'Guest',
+      user: req.user?.name || req.user?.email || req.user?.phone || 'Quản Trị Viên Hệ Thống',
+      role: req.user?.role || 'Quản trị viên',
       ip: clientIp,
-      action: `${actionDesc} (${req.method} ${req.originalUrl})`,
+      action: formattedAction,
       module: req.originalUrl.split('/')[3]?.toUpperCase() || 'SYSTEM',
       level: statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARNING' : 'SUCCESS',
       details: `Phản hồi HTTP ${statusCode} trong ${duration}ms`
     };
 
     systemLogs.unshift(logEntry);
-    if (systemLogs.length > 100) systemLogs.pop();
+    if (systemLogs.length > 1000) systemLogs.pop();
 
     // Record HTTP error 4xx / 5xx into errors list
     if (statusCode >= 400) {
