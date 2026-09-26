@@ -52,6 +52,11 @@ import DriverAttendancePage from './pages/driver/DriverAttendancePage';
 import DriverStatusPage from './pages/driver/DriverStatusPage';
 import DriverMapPage from './pages/driver/DriverMapPage';
 
+// Admin Pages
+import AdminUsersPage from './pages/admin/AdminUsersPage';
+import AdminLogsPage from './pages/admin/AdminLogsPage';
+import AdminErrorsPage from './pages/admin/AdminErrorsPage';
+
 function DashboardLayout() {
   const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -104,6 +109,14 @@ function DashboardLayout() {
         return <GmStaffPage />;
       case 'gm-pricing':
         return <GmPricingPage />;
+
+      // Admin views
+      case 'admin-users':
+        return <AdminUsersPage />;
+      case 'admin-logs':
+        return <AdminLogsPage />;
+      case 'admin-errors':
+        return <AdminErrorsPage />;
 
       // Shared Employee views
       case 'staff-schedule':
@@ -163,6 +176,12 @@ function DashboardLayout() {
     switch (activeTab) {
       case 'dashboard':
         return 'Dashboard';
+      case 'admin-users':
+        return 'Quản lý tài khoản người dùng';
+      case 'admin-logs':
+        return 'Giám sát nhật ký (logs)';
+      case 'admin-errors':
+        return 'Giám sát lỗi hệ thống';
       case 'fleet-buses':
         return 'Quản lý phương tiện';
       case 'fleet-maintenance':
@@ -256,8 +275,8 @@ function DashboardLayout() {
   return (
     <div className="dashboard-wrapper">
       {/* Top Header */}
-      <header className="top-header">
-        <div className="logo-block">
+      <header className="top-header" style={{ padding: '0 1.5rem', background: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
+        <div className="logo-block" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="sidebar-toggle-btn"
@@ -273,14 +292,33 @@ function DashboardLayout() {
           >
             ☰
           </button>
-          <span className="logo-concept">AN BÌNH LINES</span>
+          
         </div>
-        <div className="header-right">
-          <div className="role-indicator-header" style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '0.95rem' }}>
-            {ROLE_LABEL[user?.role] || user?.role}
-          </div>
-          <div className="user-profile">
-            <span className="avatar">AB</span>
+
+        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+          {/* Bell & Help Icons */}
+          <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          </button>
+          <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </button>
+
+          <div style={{ height: '24px', width: '1px', backgroundColor: '#e2e8f0' }}></div>
+
+          {/* Profile Section */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.85rem' }}>
+                {ROLE_LABEL[user?.role] || user?.role}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                {user?.email || 'admin@anbinhlines.vn'}
+              </div>
+            </div>
+            <div className="user-profile">
+              <span className="avatar" style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '800' }}>AB</span>
+            </div>
           </div>
         </div>
       </header>
@@ -298,12 +336,14 @@ function DashboardLayout() {
 
         {/* Main Content */}
         <main className="main-content">
-          <div className="content-header">
-            <h1>{getHeaderTitle()}</h1>
-            <p className="subtitle">
-              Chào mừng trở lại, {user?.name}! Hệ thống vận hành An Bình Lines
-            </p>
-          </div>
+          {activeTab !== 'dashboard' && activeTab !== 'admin-users' && activeTab !== 'admin-logs' && activeTab !== 'admin-errors' && (
+            <div className="content-header">
+              <h1>{getHeaderTitle()}</h1>
+              <p className="subtitle">
+                Chào mừng trở lại, {user?.name}! Hệ thống vận hành An Bình Lines
+              </p>
+            </div>
+          )}
           {renderContent()}
         </main>
       </div>
