@@ -22,6 +22,9 @@ import OpsTrackingPage from './pages/ops/OpsTrackingPage';
 import GmStaffPage from './pages/gm/GmStaffPage';
 import GmPricingPage from './pages/gm/GmPricingPage';
 import GmReportsPage from './pages/gm/GmReportsPage';
+import GmTargetsPage from './pages/gm/GmTargetsPage';
+import GmPromotionsPage from './pages/gm/GmPromotionsPage';
+import GmAnalysisPage from './pages/gm/GmAnalysisPage';
 
 // Shared Employee Pages
 import StaffSchedulePage from './pages/common/StaffSchedulePage';
@@ -109,6 +112,12 @@ function DashboardLayout() {
         return <GmStaffPage />;
       case 'gm-pricing':
         return <GmPricingPage />;
+      case 'gm-targets':
+        return <GmTargetsPage />;
+      case 'gm-promotions':
+        return <GmPromotionsPage />;
+      case 'gm-analysis':
+        return <GmAnalysisPage />;
 
       // Admin views
       case 'admin-users':
@@ -216,6 +225,10 @@ function DashboardLayout() {
         return 'Quản lý nhân viên';
       case 'gm-pricing':
         return 'Quản lý giá vé';
+      case 'gm-promotions':
+        return 'Quản lý khuyến mãi';
+      case 'gm-analysis':
+        return 'Xem phân tích nhu cầu';
 
       // Shared Employee views
       case 'staff-schedule':
@@ -336,14 +349,6 @@ function DashboardLayout() {
 
         {/* Main Content */}
         <main className="main-content">
-          {activeTab !== 'dashboard' && activeTab !== 'admin-users' && activeTab !== 'admin-logs' && activeTab !== 'admin-errors' && (
-            <div className="content-header">
-              <h1>{getHeaderTitle()}</h1>
-              <p className="subtitle">
-                Chào mừng trở lại, {user?.name}! Hệ thống vận hành An Bình Lines
-              </p>
-            </div>
-          )}
           {renderContent()}
         </main>
       </div>

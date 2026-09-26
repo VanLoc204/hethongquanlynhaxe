@@ -19,7 +19,8 @@ const {
   getTripBookings,
   checkInPassenger,
   getAllLeaves,
-  updateLeaveStatus
+  updateLeaveStatus,
+  getManagerAttendance
 } = require('../controllers/employeeController');
 
 const router = express.Router();
@@ -61,6 +62,7 @@ router.route('/staff/:id')
 
 router.get('/admin/leaves', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getAllLeaves);
 router.patch('/admin/leaves/:id', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), updateLeaveStatus);
+router.get('/admin/attendance', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getManagerAttendance);
 
 // 2. Dynamic ID routes (placed at the end to prevent route hijacking)
 router.patch('/:id/points', updateUserPoints);

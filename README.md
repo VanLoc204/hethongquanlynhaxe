@@ -169,23 +169,158 @@ Theo dõi chi tiết lịch sử bảo dưỡng phương tiện:
 
 ---
 
-## 5. Hướng Dẫn Khởi Chạy Dự Án Bằng Docker
+## 5. Công Nghệ Mới: Thuật Toán & Quy Trình AI Định Giá Vé Động (AI Dynamic Pricing Engine)
 
-Dự án được đóng gói Docker giúp việc khởi chạy trên máy cục bộ cực kỳ đơn giản.
+Hệ thống nhà xe An Bỉnh Lines tích hợp **Công nghệ AI Định giá vé động (Yield Management & Dynamic Pricing Engine)** vận hành tại Backend service (`pricingService.js`).
 
-### Bước 1: Khởi động Containers
-Mở Terminal tại thư mục gốc của dự án và chạy:
+### A. Logic Hoạt Động & Quy Trình Nghiệp Vụ (Workflow Process)
+
+```
+[ Dữ liệu Vé & Chuyến xe MongoDB ]
+              │
+              ▼
+   (1) Tính Tỷ lệ Lấp đầy Ghế Thực tế (Occupancy Rate Or)
+              │
+              ▼
+   (2) Áp dụng Đơn giá Định mức theo Cự ly (Km Base Rate)
+              │
+              ▼
+   (3) Nhân Hệ số Đàn hồi Nhu cầu (Demand Elasticity Md)
+              │
+              ▼
+   (4) Sinh Phân tích & Gợi ý Giá vé AI (AI Recommendation)
+              │
+              ▼
+[ Giao diện Admin GM: Duyệt (Approve) / Từ chối (Reject) ]
+              │
+     ┌────────┴────────┐
+     ▼                 ▼
+[ Duyệt: Lưu BasePrice ] [ Từ chối: Giữ giá gốc ]
+```
+
+1. **Thu thập dữ liệu thời gian thực**: Backend tự động tổng hợp toàn bộ các chuyến xe (`trips`) và danh sách vé đã đặt thanh toán (`bookings` với status `paid`/`confirmed`) từ MongoDB.
+2. **Tính toán Chỉ số Lấp đầy Ghế ($O_r$)**: Xác định tỷ lệ nhu cầu thực tế của hành khách đối với từng Cặp Tuyến đường ⇄ Loại xe.
+3. **Tính toán Giá đề xuất AI**: Kết hợp Đơn giá định mức cự ly km và Hệ số đàn hồi nhu cầu thị trường.
+4. **Phân tích ngôn ngữ chuyên sâu**: Tự động tạo câu phân tích đánh giá bằng tiếng Việt đưa lên Dashboard cho Ban Giám đốc.
+5. **Quy trình Phê duyệt của Ban Giám đốc (Human-in-the-loop Approval)**: Ban Giám đốc xem gợi ý tại tab **"Xem gợi ý giá vé (AI Suggestions)"** và chọn:
+   * **Duyệt (Approve)**: Cập nhật giá vé mới vào cơ sở dữ liệu `BasePrice`, áp dụng ngay lập tức cho toàn hệ thống.
+   * **Từ chối (Reject)**: Bỏ qua gợi ý, giữ nguyên biểu giá hiện tại.
+
+---
+
+### B. Công Thức & Thuật Toán Tính Giá Chi Tiết
+
+#### 1. Công thức Giá Cơ Sở theo Cự ly ($P_{base}$)
+$$P_{base} = \text{Cự ly (km)} \times \text{Đơn giá định mức theo dòng xe (VNĐ/km)}$$
+
+**Bảng Đơn giá Định mức Vận tải ($Cost_{km}$):**
+* **Xe Limousine VIP**: `1.700 VNĐ / km`
+* **Xe Giường nằm (36 / 40 chỗ)**: `1.200 VNĐ / km`
+* **Xe Ghế ngồi 16 chỗ**: `800 VNĐ / km`
+* **Xe Ghế ngồi 29 chỗ**: `750 VNĐ / km`
+* **Xe Ghế ngồi 45 chỗ**: `700 VNĐ / km`
+
+*Ví dụ:* Tuyến HCM ➔ Đà Lạt (310 km) đi xe Limousine ➔ $P_{base} = 310 \times 1.700 = 527.000\text{đ}$.
+
+---
+
+#### 2. Thuật toán Tỷ lệ Lấp đầy Ghế Thực tế ($O_r$)
+$$O_r = \left( \frac{\sum \text{Tổng số ghế đã bán trong các chuyến}}{\sum \text{Tổng sức chứa ghế của các chuyến xe}} \right) \times 100\%$$
+
+---
+
+#### 3. Thuật toán Hệ số Đàn hồi Nhu cầu Thị trường ($M_d$)
+Dựa trên chỉ số $O_r$, thuật toán điều chỉnh hệ số $M_d$:
+* **Nhu cầu Cao ($O_r \ge 80\%$)**: Tự động tăng 10% giá vé nhằm tối ưu hóa lợi nhuận khung giờ cao điểm.
+  $$M_d = 1.10 \quad (+10\%)$$
+  *Phân tích AI:* `✓ Tỷ lệ lấp đầy XX% (Cao), đề xuất tối ưu lợi nhuận`
+
+* **Nhu cầu Thấp ($O_r \le 40\%$)**: Tự động giảm 10% giá vé để kích cầu thu hút khách hàng.
+  $$M_d = 0.90 \quad (-10\%)$$
+  *Phân tích AI:* `⚠️ Tỷ lệ ghế lấp đầy chỉ XX%, đề xuất giảm 10% kích cầu`
+
+* **Nhu cầu Đạt chuẩn ($40\% < O_r < 80\%$)**: Giữ giá định mức cơ bản.
+  $$M_d = 1.00$$
+  *Phân tích AI:* `✓ Tỷ lệ lấp đầy XX%, công suất đạt chuẩn`
+
+---
+
+#### 4. Công thức Giá Đề Xuất Cuối Cùng ($P_{rec}$)
+$$P_{rec} = \text{Round}_{5000} \left( P_{base} \times M_d \right)$$
+
+*(Giá đề xuất được làm tròn đến bội số 5.000 VNĐ gần nhất để tối ưu giao dịch tiền mặt & thanh toán chuyển khoản VietQR).*
+
+---
+
+## 6. Hướng Dẫn Khởi Chạy Code Local (Development Mode)
+
+Chế độ khởi chạy Local dành cho việc phát triển, kiểm thử và debug trực tiếp code Node.js & ReactJS trên máy cục bộ, kết nối với cơ sở dữ liệu MongoDB chạy trong Docker Container.
+
+### Bước 1: Dừng các Docker Container ứng dụng không cần thiết (Nếu đang chạy)
+Mở Terminal tại thư mục gốc dự án để tắt các container app cũ (chỉ giữ container Database):
+```bash
+docker-compose down
+```
+
+### Bước 2: Chỉ bật duy nhất Container Database (MongoDB / Redis)
+Chạy container MongoDB (và Redis/MySQL/RabbitMQ nếu cần) trong background:
+```bash
+docker-compose up -d mongodb
+# Hoặc bật tất cả các dịch vụ Database phụ trợ:
+# npm run docker:db:up
+```
+
+### Bước 3: Nạp dữ liệu mẫu ban đầu vào MongoDB (Seed Data)
+Mở Terminal tại thư mục gốc dự án và chạy:
+```bash
+# Nạp dữ liệu Chuyến xe, Tài xế, Bảng lương, Lịch làm việc
+npm run seed
+
+# Nạp dữ liệu Mã khuyến mãi (Promotions)
+cd backend && node seed_promotions.js && cd ..
+```
+
+### Bước 4: Chạy đồng thời Backend & Frontend Local
+Mở 3 cửa sổ Terminal riêng biệt tại thư mục gốc của dự án (`HeThongQuanLyNhaXe`):
+
+* **Terminal 1 - Unified Backend Service (Port 8000)**:
+  ```bash
+  npm run backend:dev
+  ```
+
+* **Terminal 2 - Admin Dashboard Frontend (Port 3001)**:
+  ```bash
+  npm run admin:dev
+  ```
+
+* **Terminal 3 - Customer App Frontend (Port 3000)**:
+  ```bash
+  npm run customer:dev
+  ```
+
+### Bước 5: Truy cập hệ thống trên Trình duyệt
+* **Giao diện Quản lý Admin Dashboard**: [http://localhost:3001](http://localhost:3001)
+* **Giao diện Khách hàng Customer App**: [http://localhost:3000](http://localhost:3000)
+* **Địa chỉ Backend API Gateway**: [http://localhost:8000/api/v1](http://localhost:8000/api/v1)
+
+---
+
+## 6. Hướng Dẫn Khởi Chạy Toàn Bộ Dự Án Bằng Docker (Production / Staging)
+
+Nếu muốn đóng gói và chạy toàn bộ dịch vụ (Backend, Frontends, MongoDB, Redis, RabbitMQ) hoàn toàn bên trong Docker Containers:
+
+### Bước 1: Khởi động toàn bộ Containers
 ```bash
 docker-compose up -d --build
 ```
 
-### Bước 2: Nạp dữ liệu mẫu ban đầu (Data Seeding)
-Chạy lệnh seed dữ liệu mẫu chứa đầy đủ Chuyến xe, Tài xế, Bảng lương, và Lịch làm việc vào MongoDB:
+### Bước 2: Seed dữ liệu ban đầu trong Container Backend
 ```bash
 docker-compose exec -T backend npm run seed
+docker-compose exec -T backend node seed_promotions.js
 ```
 
-### Bước 3: Truy cập Giao diện Ứng dụng
-* **Ứng dụng Khách Hàng (Customer App)**: [http://localhost:3000](http://localhost:3000)
-* **Trang Quản Lý & Điều Hành (Admin Dashboard)**: [http://localhost:3001](http://localhost:3001)
-* **Backend API Gateway**: [http://localhost:8000/api/v1](http://localhost:8000/api/v1)
+### Bước 3: Tắt toàn bộ hệ thống Docker
+```bash
+docker-compose down
+```

@@ -6,13 +6,19 @@ const {
   deleteRule,
   getBasePrices,
   setBasePrice,
-  lookupPrice
+  lookupPrice,
+  getExecutiveAiChat,
+  getDemandAnalytics,
 } = require('../controllers/pricingController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
 router.use(protect);
+
+// GM Executive AI Chat Assistant & Analytics
+router.post('/gm-ai-chat', restrictTo('general_manager', 'admin'), getExecutiveAiChat);
+router.get('/demand-analytics', restrictTo('general_manager', 'admin'), getDemandAnalytics);
 
 // Pricing rules / Adjustments routes
 router.route('/rules')

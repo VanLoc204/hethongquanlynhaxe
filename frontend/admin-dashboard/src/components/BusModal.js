@@ -1,8 +1,57 @@
 import React, { useState, useEffect } from 'react';
 
-const AVAILABLE_AMENITIES = [
-  'Tivi LED', 'Toilet', 'Sạc điện thoại', 'Đèn đọc sách', 'Rèm cửa',
-  'Chăn đắp', 'Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh', 'Gối nằm', 'Búa phá kính'
+// Clean SVG Icon mapping matching mockup 2 perfectly
+const ALL_AMENITIES = [
+  { 
+    id: 'Wifi tốc độ cao', 
+    label: 'Wifi tốc độ cao', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg> 
+  },
+  { 
+    id: 'Nước uống', 
+    label: 'Nước uống', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg> 
+  },
+  { 
+    id: 'Điều hòa 2 chiều', 
+    label: 'Điều hòa 2 chiều', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12h20M12 2v20M20 16l-4-4 4-4M4 8l4 4-4 4M16 4l-4 4-4-4M8 20l4-4 4 4"/></svg> 
+  },
+  { 
+    id: 'Khăn lạnh', 
+    label: 'Khăn lạnh', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg> 
+  },
+  { 
+    id: 'Chăn đắp cao cấp', 
+    label: 'Chăn đắp cao cấp', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9"/></svg> 
+  },
+  { 
+    id: 'Sạc điện thoại', 
+    label: 'Sạc điện thoại', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> 
+  },
+  { 
+    id: 'Tivi LED giải trí', 
+    label: 'Tivi LED giải trí', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="2" y="7" width="20" height="13" rx="2"/><polyline points="17 2 12 7 7 2"/></svg> 
+  },
+  { 
+    id: 'Nhà vệ sinh (WC)', 
+    label: 'Nhà vệ sinh (WC)', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M18 8l4 4-4 4"/></svg> 
+  },
+  { 
+    id: 'Đèn đọc sách', 
+    label: 'Đèn đọc sách', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M9 18h6M10 22h4M12 2v1a7 7 0 0 0 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-1.26C6.19 14.47 5 12.38 5 10a7 7 0 0 1 7-7z"/></svg> 
+  },
+  { 
+    id: 'Rèm che riêng tư', 
+    label: 'Rèm che riêng tư', 
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg> 
+  }
 ];
 
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80';
@@ -171,50 +220,6 @@ const generateDefaultSeatLayout = (totalSeats, busType = '') => {
     return { lowerFloor, upperFloor: [], columns: 5 };
   }
 
-  if (totalSeats === 35) {
-    lowerFloor.push([null, null, null, 'A1', 'A2']);
-    lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
-    lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
-    lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
-    lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
-    lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
-    lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
-    lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
-    lowerFloor.push(['A31', 'A32', 'A33', 'A34', 'A35']);
-    return { lowerFloor, upperFloor: [], columns: 5 };
-  }
-
-  if (totalSeats === 45) {
-    lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
-    lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
-    lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
-    lowerFloor.push(['A13', 'A14', null, 'A15', 'A16']);
-    lowerFloor.push(['A17', 'A18', null, 'A19', 'A20']);
-    lowerFloor.push(['A21', 'A22', null, 'A23', 'A24']);
-    lowerFloor.push(['A25', 'A26', null, 'A27', 'A28']);
-    lowerFloor.push(['A29', 'A30', null, 'A31', 'A32']);
-    lowerFloor.push(['A33', 'A34', null, 'A35', 'A36']);
-    lowerFloor.push(['A37', 'A38', null, 'A39', 'A40']);
-    lowerFloor.push(['A41', 'A42', 'A43', 'A44', 'A45']);
-    return { lowerFloor, upperFloor: [], columns: 5 };
-  }
-
-  if (totalSeats === 47) {
-    lowerFloor.push([null, null, null, 'A1', 'A2']);
-    lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
-    lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
-    lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
-    lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
-    lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
-    lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
-    lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
-    lowerFloor.push(['A31', 'A32', null, 'A33', 'A34']);
-    lowerFloor.push(['A35', 'A36', null, 'A37', 'A38']);
-    lowerFloor.push(['A39', 'A40', null, 'A41', 'A42']);
-    lowerFloor.push(['A43', 'A44', 'A45', 'A46', 'A47']);
-    return { lowerFloor, upperFloor: [], columns: 5 };
-  }
-
   // fallback general generator
   const fallbackLower = [];
   const rowsCount = Math.ceil(totalSeats / 4);
@@ -228,16 +233,18 @@ const generateDefaultSeatLayout = (totalSeats, busType = '') => {
 const BusModal = ({ bus, token, onClose, onSaved }) => {
   const isEdit = !!bus;
   const [plateNumber, setPlateNumber] = useState(bus?.plateNumber || '');
-  const [busType, setBusType] = useState(bus?.type || 'Limousine 22 Phòng (WC)');
-  const [totalSeats, setTotalSeats] = useState(bus?.totalSeats || 22);
+  const [busType, setBusType] = useState(bus?.type || 'Xe Giường Nằm 44 Chỗ');
+  const [totalSeats, setTotalSeats] = useState(bus?.totalSeats || 44);
   const [imageUrl, setImageUrl] = useState(bus?.images?.[0] || '');
-  const [amenities, setAmenities] = useState(bus?.amenities || ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh']);
+  const [amenities, setAmenities] = useState(bus?.amenities || [
+    'Wifi tốc độ cao', 'Nước uống', 'Điều hòa 2 chiều', 'Khăn lạnh', 'Chăn đắp cao cấp'
+  ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
 
   // Interactive Seat Layout states
-  const initialLayout = bus?.seatLayout || generateDefaultSeatLayout(bus?.totalSeats || 22, bus?.type || 'Limousine 22 Phòng (WC)');
+  const initialLayout = bus?.seatLayout || generateDefaultSeatLayout(bus?.totalSeats || 44, bus?.type || 'Xe Giường Nằm 44 Chỗ');
   const [columns, setColumns] = useState(initialLayout.columns || 5);
   const [lowerFloor, setLowerFloor] = useState(initialLayout.lowerFloor || []);
   const [upperFloor, setUpperFloor] = useState(initialLayout.upperFloor || []);
@@ -245,17 +252,21 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
 
   const API_BASE = 'http://localhost:8000/api/v1';
 
-  // Keep totalSeats in sync with non-null grid cells
+  // Calculate live seats per floor
+  const countLower = lowerFloor.flat().filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;
+  const countUpper = upperFloor.flat().filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;
+  const calculatedTotalSeats = countLower + countUpper;
+
+  // Keep totalSeats synced
   useEffect(() => {
-    const countLower = lowerFloor.flat().filter(c => c !== null && c.trim() !== '').length;
-    const countUpper = upperFloor.flat().filter(c => c !== null && c.trim() !== '').length;
-    setTotalSeats(countLower + countUpper);
-  }, [lowerFloor, upperFloor]);
+    setTotalSeats(calculatedTotalSeats);
+  }, [calculatedTotalSeats]);
 
-  const toggleAmenity = (am) =>
-    setAmenities(prev => prev.includes(am) ? prev.filter(a => a !== am) : [...prev, am]);
+  const toggleAmenity = (amId) => {
+    setAmenities(prev => prev.includes(amId) ? prev.filter(a => a !== amId) : [...prev, amId]);
+  };
 
-  // Toggle visual cell between spacer and seat
+  // Toggle cell (seat vs empty)
   const toggleCell = (rowIndex, colIndex) => {
     const currentGrid = activeFloor === 'lower' ? lowerFloor : upperFloor;
     const setGrid = activeFloor === 'lower' ? setLowerFloor : setUpperFloor;
@@ -265,9 +276,8 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
       return row.map((cell, cIdx) => {
         if (cIdx !== colIndex) return cell;
         if (cell === null) {
-          // Count active seats on this floor to calculate next ID prefix
-          const seatCount = currentGrid.flat().filter(c => c !== null).length;
           const prefix = activeFloor === 'lower' ? 'A' : 'B';
+          const seatCount = currentGrid.flat().filter(c => c !== null).length;
           return `${prefix}${seatCount + 1}`;
         } else {
           return null;
@@ -277,22 +287,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
     setGrid(nextGrid);
   };
 
-  // Change individual seat label
-  const updateSeatLabel = (rowIndex, colIndex, newLabel) => {
-    const currentGrid = activeFloor === 'lower' ? lowerFloor : upperFloor;
-    const setGrid = activeFloor === 'lower' ? setLowerFloor : setUpperFloor;
-
-    const nextGrid = currentGrid.map((row, rIdx) => {
-      if (rIdx !== rowIndex) return row;
-      return row.map((cell, cIdx) => {
-        if (cIdx !== colIndex) return cell;
-        return newLabel;
-      });
-    });
-    setGrid(nextGrid);
-  };
-
-  // Resize columns count
+  // Resize columns
   const handleColumnsChange = (newCols) => {
     const val = Number(newCols);
     if (val < 2 || val > 10) return;
@@ -326,24 +321,20 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
 
   const removeRow = () => {
     if (activeFloor === 'lower') {
-      if (lowerFloor.length > 1) {
-        setLowerFloor(lowerFloor.slice(0, -1));
-      }
+      if (lowerFloor.length > 1) setLowerFloor(lowerFloor.slice(0, -1));
     } else {
-      if (upperFloor.length > 1) {
-        setUpperFloor(upperFloor.slice(0, -1));
-      }
+      if (upperFloor.length > 1) setUpperFloor(upperFloor.slice(0, -1));
     }
   };
 
   const resetToDefaultTemplate = () => {
     setConfirmModal({
       show: true,
-      title: 'Thiết lập lại sơ đồ',
-      message: 'Cảnh báo: Sơ đồ ghế hiện tại sẽ bị ghi đè bằng mẫu chuẩn của loại xe này. Tiếp tục?',
+      title: 'Thiết lập lại mẫu chuẩn',
+      message: `Tải lại sơ đồ mẫu chuẩn cho loại xe ${busType}? Các chỉnh sửa tùy biến hiện tại sẽ được thay thế.`,
       onConfirm: () => {
         const match = busType.match(/\d+/);
-        const seatsVal = match ? Number(match[0]) : 22;
+        const seatsVal = match ? Number(match[0]) : 44;
         const template = generateDefaultSeatLayout(seatsVal, busType);
         setColumns(template.columns);
         setLowerFloor(template.lowerFloor);
@@ -353,13 +344,12 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
     });
   };
 
-  // Toggle second deck configuration
   const toggleDoubleDecker = () => {
     if (upperFloor && upperFloor.length > 0) {
       setConfirmModal({
         show: true,
         title: 'Xóa Tầng 2',
-        message: 'Bạn có chắc muốn xóa Tầng 2? Mọi ghế đã đặt trên tầng này sẽ mất.',
+        message: 'Bạn có chắc chắn muốn xóa Tầng 2? Sơ đồ ghế tầng trên sẽ bị xóa bỏ.',
         onConfirm: () => {
           setUpperFloor([]);
           setActiveFloor('lower');
@@ -391,7 +381,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!plateNumber || !busType || !totalSeats) {
-      setError('Vui lòng nhập đầy đủ Biển số, Loại xe.');
+      setError('Vui lòng nhập đầy đủ Biển số và Loại phương tiện.');
       return;
     }
     setLoading(true);
@@ -433,233 +423,405 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
     }
   };
 
+  const isDoubleDecker = upperFloor && upperFloor.length > 0;
+
   return (
-    <div className="modal-backdrop">
-      <div className="modal-content" style={{ maxWidth: '880px', width: '95%' }}>
-        <div className="modal-header">
-          <h2>{isEdit ? `Chỉnh sửa phương tiện: ${bus.plateNumber}` : 'Thêm phương tiện mới'}</h2>
-          <button onClick={onClose} className="modal-close">&times;</button>
-        </div>
-
-        <form onSubmit={handleSave}>
-          <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '2rem', maxHeight: '72vh', overflowY: 'auto' }}>
-            
-            {/* Left Column: Form Fields */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div className="form-group">
-                <label>Biển số xe</label>
-                <input className="form-control" placeholder="VD: 49B-999.99" value={plateNumber}
-                  onChange={e => setPlateNumber(e.target.value)} required />
-              </div>
-
-              <div className="form-group">
-                <label>Loại xe</label>
-                <select className="form-control" value={busType} onChange={e => handleBusTypeChange(e.target.value)}>
-                  <option value="" disabled>-- Chọn loại xe & số ghế --</option>
-                  <optgroup label="Xe Khách Ghế Ngồi">
-                    <option value="Xe Ghế Ngồi 16 Chỗ">Xe Ghế Ngồi 16 Chỗ (Transit, Solati)</option>
-                    <option value="Xe Ghế Ngồi 29 Chỗ">Xe Ghế Ngồi 29 Chỗ (County, Samco)</option>
-                    <option value="Xe Ghế Ngồi 35 Chỗ">Xe Ghế Ngồi 35 Chỗ (Town, Samco)</option>
-                    <option value="Xe Ghế Ngồi 45 Chỗ">Xe Ghế Ngồi 45 Chỗ (Universe)</option>
-                    <option value="Xe Ghế Ngồi 47 Chỗ">Xe Ghế Ngồi 47 Chỗ (Bluesky)</option>
-                  </optgroup>
-                  <optgroup label="Xe Giường Nằm Truyền Thống">
-                    <option value="Xe Giường Nằm 32 Chỗ">Xe Giường Nằm 32 Chỗ</option>
-                    <option value="Xe Giường Nằm 34 Chỗ">Xe Giường Nằm 34 Chỗ</option>
-                    <option value="Xe Giường Nằm 40 Chỗ">Xe Giường Nằm 40 Chỗ</option>
-                    <option value="Xe Giường Nằm 44 Chỗ">Xe Giường Nằm 44 Chỗ</option>
-                  </optgroup>
-                  <optgroup label="Xe Giường Phòng Cabin VIP">
-                    <option value="Limousine 20 Phòng (VIP)">Limousine 20 Phòng (VIP)</option>
-                    <option value="Limousine 22 Phòng (WC)">Limousine 22 Phòng (WC)</option>
-                    <option value="Limousine 24 Phòng (VIP)">Limousine 24 Phòng (VIP)</option>
-                  </optgroup>
-                  <optgroup label="Xe Limousine Ghế Ngồi">
-                    <option value="Limousine Ghế Ngồi 9 Chỗ">Limousine Ghế Ngồi 9 Chỗ VIP</option>
-                    <option value="Limousine Ghế Ngồi 19 Chỗ">Limousine Ghế Ngồi 19 Chỗ VIP</option>
-                  </optgroup>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Tổng số ghế / giường (Tự động tính từ sơ đồ)</label>
-                <input className="form-control" type="number" value={totalSeats} readOnly style={{ backgroundColor: 'rgba(255,255,255,0.05)', cursor: 'not-allowed' }} />
-              </div>
-
-              <div className="form-group">
-                <label>URL hình ảnh (tùy chọn)</label>
-                <input className="form-control" placeholder="Để trống dùng ảnh mặc định"
-                  value={imageUrl} onChange={e => setImageUrl(e.target.value)} />
-              </div>
-
-              <div className="form-group">
-                <label>Tiện ích đi kèm</label>
-                <div className="checkbox-group">
-                  {AVAILABLE_AMENITIES.map(am => (
-                    <label key={am} className="checkbox-item">
-                      <input type="checkbox" checked={amenities.includes(am)}
-                        onChange={() => toggleAmenity(am)} />
-                      {am}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {error && <p className="error-message">{error}</p>}
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(4px)', zIndex: 1100,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+    }}>
+      <div style={{
+        background: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        width: '100%', maxWidth: '1060px', maxHeight: '92vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden'
+      }}>
+        
+        {/* Modal Header Bar matching screenshot 2 */}
+        <div style={{
+          padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: '#ffffff'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
+            {/* Bus Icon Square */}
+            <div style={{
+              width: '44px', height: '44px', borderRadius: '12px', background: '#eff6ff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px'
+            }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
             </div>
 
-            {/* Right Column: Visual Seat Map Builder */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', paddingLeft: '1.5rem', borderLeft: '1px solid var(--card-border)' }}>
-              <div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.25rem', color: 'var(--primary)' }}>Thiết kế sơ đồ ghế</h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Click vào ô để Bật/Tắt ghế. Sửa trực tiếp tên ghế trong ô bên dưới.</p>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  {isEdit ? 'Chỉnh sửa phương tiện:' : 'Thêm phương tiện mới:'}
+                </h2>
+                {/* Plate Badge */}
+                <span style={{
+                  border: '2px solid #cbd5e1', borderRadius: '8px', padding: '2px 10px',
+                  fontWeight: '800', fontFamily: 'monospace', color: '#0f172a', fontSize: '0.95rem', background: '#ffffff'
+                }}>
+                  {plateNumber || 'Mới'}
+                </span>
+                {/* Type Pill */}
+                <span style={{ background: '#eff6ff', color: '#2563eb', padding: '3px 10px', borderRadius: '8px', fontWeight: '700', fontSize: '0.75rem' }}>
+                  {busType}
+                </span>
+                {/* Status Pill */}
+                <span style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '3px 10px', borderRadius: '12px', fontWeight: '700', fontSize: '0.72rem' }}>
+                  • Đã kiểm định
+                </span>
               </div>
+              <p style={{ color: '#64748b', fontSize: '0.75rem', margin: '4px 0 0 0' }}>
+                Cập nhật thông số kỹ thuật, tiện ích phục vụ và tùy biến cấu hình sơ đồ ghế theo tầng.
+              </p>
+            </div>
+          </div>
 
-              {/* Grid Column Control */}
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                  <label style={{ fontSize: '0.8rem' }}>Số cột dọc</label>
-                  <select 
-                    className="form-control" 
-                    value={columns} 
-                    onChange={e => handleColumnsChange(e.target.value)}
-                    style={{ padding: '0.4rem 0.6rem' }}
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.35rem', cursor: 'pointer', padding: '4px' }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Modal Form Content */}
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: '360px 1fr', gap: '1.25rem',
+            padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1
+          }}>
+
+            {/* LEFT COLUMN: THÔNG SỐ CƠ BẢN & TIỆN ÍCH */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              
+              {/* Card 1: THÔNG SỐ CƠ BẢN */}
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1.1rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                  THÔNG SỐ CƠ BẢN
+                </div>
+
+                {/* Field 1: Biển số xe */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>Biển số xe *</label>
+                  <div style={{ position: 'relative' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }}><rect x="1" y="3" width="15" height="13" rx="2"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    <input
+                      type="text"
+                      value={plateNumber}
+                      onChange={(e) => setPlateNumber(e.target.value)}
+                      placeholder="51B-044.44"
+                      required
+                      style={{
+                        width: '100%', padding: '0.5rem 0.75rem 0.5rem 2.2rem', fontSize: '0.85rem',
+                        fontWeight: '700', fontFamily: 'monospace', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Field 2: Loại phương tiện */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>Loại phương tiện &amp; Cấu hình</label>
+                  <select
+                    value={busType}
+                    onChange={(e) => handleBusTypeChange(e.target.value)}
+                    style={{
+                      padding: '0.5rem 0.75rem', fontSize: '0.8rem', fontWeight: '600',
+                      borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none', background: '#ffffff'
+                    }}
                   >
-                    {[2, 3, 4, 5, 6].map(c => <option key={c} value={c}>{c} Cột</option>)}
+                    <optgroup label="Xe Giường Nằm Truyền Thống">
+                      <option value="Xe Giường Nằm 44 Chỗ">Xe Giường Nằm 44 Chỗ (2 Tầng)</option>
+                      <option value="Xe Giường Nằm 40 Chỗ">Xe Giường Nằm 40 Chỗ (2 Tầng)</option>
+                      <option value="Xe Giường Nằm 34 Chỗ">Xe Giường Nằm 34 Chỗ (2 Tầng)</option>
+                      <option value="Xe Giường Nằm 32 Chỗ">Xe Giường Nằm 32 Chỗ (2 Tầng)</option>
+                    </optgroup>
+                    <optgroup label="Xe Giường Phòng Cabin VIP">
+                      <option value="Limousine 22 Phòng (WC)">Limousine 22 Phòng (WC)</option>
+                      <option value="Limousine 20 Phòng (VIP)">Limousine 20 Phòng (VIP)</option>
+                      <option value="Limousine 24 Phòng (VIP)">Limousine 24 Phòng (VIP)</option>
+                    </optgroup>
+                    <optgroup label="Xe Khách Ghế Ngồi">
+                      <option value="Xe Ghế Ngồi 45 Chỗ">Xe Ghế Ngồi 45 Chỗ (Universe)</option>
+                      <option value="Xe Ghế Ngồi 29 Chỗ">Xe Ghế Ngồi 29 Chỗ (County, Samco)</option>
+                      <option value="Xe Ghế Ngồi 16 Chỗ">Xe Ghế Ngồi 16 Chỗ (Transit, Solati)</option>
+                      <option value="Limousine Ghế Ngồi 9 Chỗ">Limousine Ghế Ngồi 9 Chỗ VIP</option>
+                    </optgroup>
                   </select>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0, flex: 1 }}>
-                  <label style={{ fontSize: '0.8rem' }}>Số tầng xe</label>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={toggleDoubleDecker}
-                    style={{ padding: '0.4rem 0.8rem', width: '100%', fontSize: '0.85rem' }}
-                  >
-                    {upperFloor && upperFloor.length > 0 ? 'Xóa Tầng 2' : 'Thêm Tầng 2'}
-                  </button>
+                {/* Field 3: Tổng số ghế badge box */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>Tổng số ghế / giường</label>
+                    <button
+                      type="button"
+                      onClick={resetToDefaultTemplate}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.7rem', fontWeight: '700', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: '3px' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                      Tự động tính từ sơ đồ
+                    </button>
+                  </div>
+                  <div style={{
+                    background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px',
+                    padding: '0.5rem 0.75rem', color: '#1d4ed8', fontWeight: '700', fontSize: '0.8rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}>
+                    <span>
+                      {calculatedTotalSeats} giường {isDoubleDecker ? `(Tầng 1: ${countLower} | Tầng 2: ${countUpper})` : ''}
+                    </span>
+                    <span style={{ color: '#16a34a' }}>✓</span>
+                  </div>
+                </div>
+
+                {/* Field 4: Image URL */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>URL hình ảnh đại diện xe</label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      type="text"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/..."
+                      style={{
+                        flex: 1, padding: '0.45rem 0.75rem', fontSize: '0.78rem',
+                        borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => window.open(imageUrl || DEFAULT_IMAGE, '_blank')}
+                      style={{
+                        padding: '0.45rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1',
+                        background: '#f8fafc', color: '#334155', fontWeight: '700', fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap',
+                        display: 'flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      Xem
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Floor selector if double decker */}
-              {upperFloor && upperFloor.length > 0 && (
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button 
-                    type="button" 
-                    className={`btn ${activeFloor === 'lower' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveFloor('lower')}
-                    style={{ flex: 1, padding: '0.45rem', fontSize: '0.85rem' }}
-                  >
-                    Tầng dưới (Tầng 1)
-                  </button>
-                  <button 
-                    type="button" 
-                    className={`btn ${activeFloor === 'upper' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveFloor('upper')}
-                    style={{ flex: 1, padding: '0.45rem', fontSize: '0.85rem' }}
-                  >
-                    Tầng trên (Tầng 2)
-                  </button>
+              {/* Card 2: TIỆN ÍCH ĐI KÈM XE */}
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', boxSizing: 'border-box', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb', fontWeight: '800', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    TIỆN ÍCH ĐI KÈM XE
+                  </div>
+                  <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Chọn tiện ích có sẵn</span>
                 </div>
-              )}
 
-              {/* Interactive Bus Seat Designer Grid */}
-              <div style={{ 
-                border: '1px solid var(--card-border)', 
-                borderRadius: '12px', 
-                padding: '1.25rem', 
-                backgroundColor: 'rgba(0,0,0,0.2)',
-                maxHeight: '380px',
-                overflowY: 'auto'
+                {/* Checkbox Grid matching mockup 2 with strict 50-50 bounds */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', width: '100%', boxSizing: 'border-box' }}>
+                  {ALL_AMENITIES.map((am) => {
+                    const isChecked = amenities.includes(am.id);
+                    return (
+                      <div
+                        key={am.id}
+                        onClick={() => toggleAmenity(am.id)}
+                        style={{
+                          padding: '0.4rem 0.5rem',
+                          borderRadius: '8px',
+                          border: isChecked ? '1.5px solid #3b82f6' : '1px solid #cbd5e1',
+                          background: isChecked ? '#eff6ff' : '#ffffff',
+                          color: isChecked ? '#1e40af' : '#475569',
+                          fontWeight: isChecked ? '700' : '500',
+                          fontSize: '0.72rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          transition: 'all 0.15s ease',
+                          minHeight: '36px',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          overflow: 'hidden'
+                        }}
+                      >
+                        <div style={{
+                          width: '16px', height: '16px', borderRadius: '4px',
+                          border: isChecked ? 'none' : '1.5px solid #cbd5e1',
+                          background: isChecked ? '#2563eb' : '#ffffff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#ffffff', fontSize: '0.65rem', fontWeight: '900', flexShrink: 0
+                        }}>
+                          {isChecked && '✓'}
+                        </div>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: isChecked ? '#2563eb' : '#64748b', flexShrink: 0, width: '14px', height: '14px'
+                        }}>
+                          {am.svg}
+                        </div>
+                        <span style={{ lineHeight: '1.1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>
+                          {am.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+
+            {/* RIGHT COLUMN: THIẾT KẾ SƠ ĐỒ GHẾ (VISUAL SEAT DESIGNER) */}
+            <div style={{
+              background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px',
+              padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem'
+            }}>
+              {/* Header line of Seat Builder */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2"><rect x="9" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M12 9v3M6 15v-3h12v3"/></svg>
+                    Thiết kế sơ đồ ghế
+                  </h3>
+                  <p style={{ color: '#64748b', fontSize: '0.72rem', margin: '2px 0 0 0' }}>
+                    Click ô để sửa mã/xóa. Click dấu (+) để thêm vị trí giường mới.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleDoubleDecker}
+                  style={{
+                    border: '1px solid #fca5a5', background: '#fff1f2', color: '#e11d48',
+                    padding: '0.35rem 0.75rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '5px'
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  {isDoubleDecker ? 'Xóa Tầng 2' : 'Thêm Tầng 2'}
+                </button>
+              </div>
+
+              {/* Controls bar: Columns select + Deck selector buttons */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569' }}>Số cột dọc:</span>
+                  <select
+                    value={columns}
+                    onChange={(e) => handleColumnsChange(e.target.value)}
+                    style={{
+                      padding: '0.35rem 0.65rem', fontSize: '0.75rem', fontWeight: '700',
+                      borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', outline: 'none'
+                    }}
+                  >
+                    <option value={3}>3 Cột (2 Dãy)</option>
+                    <option value={4}>4 Cột (2 Dãy kép)</option>
+                    <option value={5}>5 Cột (3 Dãy)</option>
+                    <option value={6}>6 Cột (3 Dãy rộng)</option>
+                  </select>
+                </div>
+
+                {/* Deck switcher pills matching screenshot 2 */}
+                {isDoubleDecker && (
+                  <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '3px', borderRadius: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFloor('lower')}
+                      style={{
+                        padding: '0.35rem 0.85rem', borderRadius: '6px', border: 'none',
+                        fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
+                        background: activeFloor === 'lower' ? '#2563eb' : 'transparent',
+                        color: activeFloor === 'lower' ? '#ffffff' : '#475569',
+                        display: 'flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polygon points="2 17 12 22 22 17"/><polygon points="2 12 12 17 22 12"/></svg>
+                      Tầng dưới (Tầng 1)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFloor('upper')}
+                      style={{
+                        padding: '0.35rem 0.85rem', borderRadius: '6px', border: 'none',
+                        fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
+                        background: activeFloor === 'upper' ? '#2563eb' : 'transparent',
+                        color: activeFloor === 'upper' ? '#ffffff' : '#475569',
+                        display: 'flex', alignItems: 'center', gap: '4px'
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polygon points="2 17 12 22 22 17"/><polygon points="2 12 12 17 22 12"/></svg>
+                      Tầng trên (Tầng 2)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Visual Seat Map Container matching screenshot 2 */}
+              <div style={{
+                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px',
+                padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem',
+                maxHeight: '380px', overflowY: 'auto'
               }}>
-                {/* Driver Steering wheel mock */}
-                <div style={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  borderBottom: '1px dashed var(--card-border)', 
-                  paddingBottom: '0.5rem', 
-                  marginBottom: '1rem',
-                  fontSize: '0.75rem',
-                  color: 'var(--text-muted)'
+                {/* Driver & Entrance Top Bar */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  paddingBottom: '0.5rem', borderBottom: '1px dashed #cbd5e1', fontSize: '0.75rem', fontWeight: '700'
                 }}>
-                  <span>ĐẦU XE & TÀI XẾ</span>
-                  <span style={{ fontSize: '1rem' }}>☸</span>
+                  <span style={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M13 4v16M17 8l4 4-4 4M7 8L3 12l4 4"/></svg>
+                    CỬA LÊN XUỐNG
+                  </span>
+                  <span style={{ color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    ĐẦU XE &amp; TÀI XẾ 
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  </span>
                 </div>
 
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: `repeat(${columns}, 1fr)`, 
-                  gap: '8px' 
+                {/* Seats Grid */}
+                <div style={{
+                  display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '10px'
                 }}>
-                  {(activeFloor === 'lower' ? lowerFloor : upperFloor).map((row, rIdx) => 
+                  {(activeFloor === 'lower' ? lowerFloor : upperFloor).map((row, rIdx) =>
                     row.map((cell, cIdx) => {
-                      const isSeat = cell !== null;
+                      const isSeat = cell !== null && cell !== undefined && String(cell).trim() !== '';
                       return (
-                        <div 
-                          key={`${rIdx}-${cIdx}`} 
+                        <div
+                          key={`${rIdx}-${cIdx}`}
                           style={{
-                            height: '52px',
-                            borderRadius: '8px',
-                            border: isSeat ? '2px solid var(--primary)' : '1px dashed rgba(255,255,255,0.15)',
-                            backgroundColor: isSeat ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '3px',
+                            height: '56px', borderRadius: '10px',
+                            border: isSeat ? '2px solid #2563eb' : '1.5px dashed #cbd5e1',
+                            background: isSeat ? '#eff6ff' : '#ffffff',
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                            padding: '2px', position: 'relative', cursor: 'pointer',
                             transition: 'all 0.15s ease'
                           }}
                         >
                           {isSeat ? (
                             <>
-                              <input 
-                                type="text"
-                                value={cell}
-                                onChange={e => updateSeatLabel(rIdx, cIdx, e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  background: 'none',
-                                  border: 'none',
-                                  color: 'var(--text-main)',
-                                  textAlign: 'center',
-                                  fontSize: '0.8rem',
-                                  fontWeight: '700',
-                                  outline: 'none'
-                                }}
-                              />
-                              <button 
+                              <span style={{ fontSize: '0.85rem', fontWeight: '800', color: '#1d4ed8' }}>
+                                {cell}
+                              </span>
+                              <button
                                 type="button"
                                 onClick={() => toggleCell(rIdx, cIdx)}
                                 style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  color: '#ef4444',
-                                  fontSize: '0.65rem',
-                                  cursor: 'pointer',
-                                  padding: 0,
-                                  lineHeight: 1
+                                  background: 'none', border: 'none', color: '#ef4444',
+                                  fontSize: '0.62rem', fontWeight: '600', cursor: 'pointer', padding: 0
                                 }}
                               >
                                 Xóa
                               </button>
                             </>
                           ) : (
-                            <button 
+                            <button
                               type="button"
                               onClick={() => toggleCell(rIdx, cIdx)}
                               style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'rgba(255,255,255,0.3)',
-                                fontSize: '0.75rem',
-                                cursor: 'pointer',
-                                width: '100%',
-                                height: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
+                                background: 'none', border: 'none', color: '#94a3b8',
+                                fontSize: '1.1rem', fontWeight: '600', cursor: 'pointer',
+                                width: '100%', height: '100%'
                               }}
                             >
                               +
@@ -670,43 +832,132 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
                     })
                   )}
                 </div>
+
+                {/* Toolbar inside Grid: Add/Remove Rows & Preset info */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.5rem', borderTop: '1px dashed #cbd5e1' }}>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={addRow}
+                      style={{
+                        padding: '0.3rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1',
+                        background: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer'
+                      }}
+                    >
+                      + Hàng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeRow}
+                      style={{
+                        padding: '0.3rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1',
+                        background: '#ffffff', color: '#0f172a', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer'
+                      }}
+                    >
+                      - Hàng
+                    </button>
+                  </div>
+
+                  <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                    Mẫu chuẩn {calculatedTotalSeats} chỗ
+                  </span>
+                </div>
               </div>
 
-              {/* Row configuration tools */}
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button type="button" className="btn btn-secondary" onClick={addRow} style={{ flex: 1, padding: '0.45rem', fontSize: '0.85rem' }}>
-                  + Hàng
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={removeRow} style={{ flex: 1, padding: '0.45rem', fontSize: '0.85rem' }}>
-                  - Hàng
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={resetToDefaultTemplate} style={{ padding: '0.45rem 0.8rem', fontSize: '0.85rem', color: 'var(--warning)' }}>
-                  Mẫu chuẩn
-                </button>
+              {/* Bottom Legend Bar */}
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: '#64748b', fontWeight: '600', flexWrap: 'wrap' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#eff6ff', border: '1px solid #2563eb' }}></span>
+                  Giường đã thiết lập
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#ffffff', border: '1px dashed #cbd5e1' }}></span>
+                  Vị trí trống / Lối đi
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  Vị trí khoang lái
+                </span>
               </div>
-
             </div>
 
           </div>
 
-          <div className="modal-footer">
-            <button type="button" onClick={onClose} className="btn btn-secondary">Hủy bỏ</button>
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Đang lưu...' : 'Lưu lại'}
-            </button>
+          {/* Modal Footer Bar matching screenshot 2 */}
+          <div style={{
+            padding: '1rem 1.5rem', borderTop: '1px solid #e2e8f0', background: '#ffffff',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+          }}>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span>Cập nhật gần nhất bởi <strong>admin_system</strong> lúc {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} Hôm nay</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none',
+                  background: 'transparent', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer'
+                }}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  padding: '0.55rem 1.5rem', borderRadius: '10px', border: 'none',
+                  background: '#2563eb', color: '#ffffff', fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer',
+                  boxShadow: '0 3px 6px rgba(37,99,235,0.25)', display: 'flex', alignItems: 'center', gap: '6px'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                {loading ? 'Đang lưu...' : 'Lưu lại'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* Confirm Modal */}
       {confirmModal.show && (
-        <div className="confirm-backdrop" style={{ zIndex: 1200 }}>
-          <div className="confirm-card">
-            <div className="confirm-header">{confirmModal.title}</div>
-            <div className="confirm-body">{confirmModal.message}</div>
-            <div className="confirm-footer">
-              <button type="button" className="btn btn-secondary" onClick={() => setConfirmModal({ ...confirmModal, show: false })}>
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(2px)', zIndex: 1200,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{
+            background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0',
+            width: '100%', maxWidth: '420px', padding: '1.25rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+          }}>
+            <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>
+              {confirmModal.title}
+            </h4>
+            <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.8rem', color: '#64748b' }}>
+              {confirmModal.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setConfirmModal({ ...confirmModal, show: false })}
+                style={{
+                  padding: '0.45rem 0.95rem', borderRadius: '8px', border: '1px solid #cbd5e1',
+                  background: '#ffffff', color: '#475569', fontWeight: '600', fontSize: '0.78rem', cursor: 'pointer'
+                }}
+              >
                 Hủy
               </button>
-              <button type="button" className="btn btn-danger" onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}>
+              <button
+                type="button"
+                onClick={() => { confirmModal.onConfirm(); setConfirmModal({ ...confirmModal, show: false }); }}
+                style={{
+                  padding: '0.45rem 0.95rem', borderRadius: '8px', border: 'none',
+                  background: '#ef4444', color: '#ffffff', fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer'
+                }}
+              >
                 Xác nhận
               </button>
             </div>
