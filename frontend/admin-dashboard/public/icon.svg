@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="busGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e40af" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#busGrad)"/>
+  <!-- Bus Body -->
+  <rect x="100" y="120" width="312" height="230" rx="40" fill="#ffffff"/>
+  <!-- Front Windshield -->
+  <rect x="130" y="150" width="252" height="100" rx="20" fill="#0f172a"/>
+  <!-- Headlights -->
+  <circle cx="160" cy="300" r="22" fill="#38bdf8"/>
+  <circle cx="352" cy="300" r="22" fill="#38bdf8"/>
+  <!-- Grille -->
+  <rect x="216" y="295" width="80" height="12" rx="6" fill="#64748b"/>
+  <!-- License Plate -->
+  <rect x="226" y="320" width="60" height="14" rx="4" fill="#fbbf24"/>
+  <!-- Wheels -->
+  <circle cx="145" cy="380" r="38" fill="#0f172a"/>
+  <circle cx="367" cy="380" r="38" fill="#0f172a"/>
+  <circle cx="145" cy="380" r="16" fill="#e2e8f0"/>
+  <circle cx="367" cy="380" r="16" fill="#e2e8f0"/>
+</svg>

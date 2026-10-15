@@ -1,0 +1,30 @@
+{
+  "short_name": "Tài Xế An Bình",
+  "name": "An Bình Lines - Trợ Lý & Bản Đồ GPS Tài Xế",
+  "description": "Ứng dụng buồng lái di động (Cockpit PWA) dành cho tài xế xe khách An Bình Lines: Theo dõi lộ trình OSRM, báo trạm dừng và phát định vị GPS thời gian thực.",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/?pwa=driver",
+  "background_color": "#0b0f19",
+  "theme_color": "#1d4ed8",
+  "display": "standalone",
+  "orientation": "any",
+  "scope": "/"
+}

@@ -79,7 +79,15 @@ const tripSchema = new mongoose.Schema(
         address: { type: String },
         desc: { type: String }
       }
-    ]
+    ],
+    liveGps: {
+      lat: { type: Number },
+      lng: { type: Number },
+      speed: { type: Number, default: 0 },
+      heading: { type: Number, default: 0 },
+      status: { type: String, default: 'moving' }, // 'moving', 'stopped', 'arrived'
+      lastUpdated: { type: Date }
+    }
   },
   {
     timestamps: true

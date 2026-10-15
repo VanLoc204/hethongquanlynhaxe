@@ -916,4 +916,49 @@ exports.updateTripPunctuality = async (req, res) => {
   }
 };
 
+// @desc    Update live GPS coordinates from driver PWA device
+// @route   PUT /api/v1/trips/:id/live-gps
+// @access  Public / Private (Driver)
+exports.updateLiveGps = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { lat, lng, speed, heading, status, currentStopIndex } = req.body;
+
+    const trip = await Trip.findById(id);
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy chuyến xe.' });
+    }
+
+    trip.liveGps = {
+      lat: Number(lat),
+      lng: Number(lng),
+      speed: Number(speed) || 0,
+      heading: Number(heading) || 0,
+      status: status || 'moving',
+      lastUpdated: new Date()
+    };
+
+    if (typeof currentStopIndex === 'number' && currentStopIndex >= 0) {
+      trip.currentStopIndex = currentStopIndex;
+    }
+
+    if (trip.journeyStatus === 'scheduled') {
+      trip.journeyStatus = 'in_transit';
+    }
+
+    await trip.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã cập nhật vị trí GPS thành công.',
+      liveGps: trip.liveGps,
+      journeyStatus: trip.journeyStatus,
+      currentStopIndex: trip.currentStopIndex
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật Live GPS:', error);
+    res.status(500).json({ success: false, message: error.message || 'Lỗi cập nhật GPS.' });
+  }
+};
+
 
