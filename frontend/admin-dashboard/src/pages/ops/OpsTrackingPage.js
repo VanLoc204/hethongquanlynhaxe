@@ -1,128 +1,30 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import { AuthContext } from '../../context/AuthContext';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
-// Initial route waypoints in S.Vietnam for GPS simulation
-const DEMO_TRACKING_DATA = [
-  {
-    id: 'TRIP-001',
-    plateNumber: '51B-016.16',
-    busType: 'Xe Ghế Ngồi 16 Chỗ',
-    driverName: 'Nguyen Van Tai',
-    driverPhone: '0908123456',
-    routeName: 'Hồ Chí Minh ➔ Cần Thơ',
-    startPoint: 'Bến Xe Miền Tây',
-    endPoint: 'Bến Xe Trung Tâm Cần Thơ',
-    departureTime: '08:30',
-    estimatedArrival: '11:30',
-    speed: 68,
-    speedLimit: 80,
-    status: 'on_track',
-    statusText: 'Đúng lộ trình chuẩn (QL1A)',
-    progressPct: 58,
-    lat: 10.4532,
-    lng: 106.0123,
-    waypoints: [
-      { lat: 10.7512, lng: 106.6152 }, // HCM
-      { lat: 10.5378, lng: 106.4156 }, // Tân An
-      { lat: 10.4532, lng: 106.0123 }, // Cai Lậy
-      { lat: 10.2541, lng: 105.9723 }, // Vĩnh Long
-      { lat: 10.0321, lng: 105.7821 }  // Cần Thơ
-    ]
-  },
-  {
-    id: 'TRIP-002',
-    plateNumber: '51B-045.45',
-    busType: 'Xe Giường Nằm 44 Chỗ',
-    driverName: 'Tran Van Phuong',
-    driverPhone: '0912345678',
-    routeName: 'Hồ Chí Minh ➔ Đà Lạt',
-    startPoint: 'Bến Xe Miền Đông',
-    endPoint: 'Bến Xe Liên Tỉnh Đà Lạt',
-    departureTime: '07:00',
-    estimatedArrival: '14:00',
-    speed: 74,
-    speedLimit: 80,
-    status: 'on_track',
-    statusText: 'Đang leo đèo Bảo Lộc (QL20)',
-    progressPct: 62,
-    lat: 11.5432,
-    lng: 107.8012,
-    waypoints: [
-      { lat: 10.8123, lng: 106.7123 }, // HCM
-      { lat: 10.9512, lng: 107.1245 }, // Dầu Giây
-      { lat: 11.5432, lng: 107.8012 }, // Bảo Lộc
-      { lat: 11.6621, lng: 108.0652 }, // Di Linh
-      { lat: 11.9404, lng: 108.4583 }  // Đà Lạt
-    ]
-  },
-  {
-    id: 'TRIP-003',
-    plateNumber: '51B-029.29',
-    busType: 'Limousine VIP 22 Phòng',
-    driverName: 'Le Hoang Nam',
-    driverPhone: '0988776655',
-    routeName: 'Cần Thơ ➔ Hồ Chí Minh',
-    startPoint: 'Bến Xe Trung Tâm Cần Thơ',
-    endPoint: 'Bến Xe Miền Tây',
-    departureTime: '09:00',
-    estimatedArrival: '12:00',
-    speed: 84,
-    speedLimit: 80,
-    status: 'speeding',
-    statusText: 'Cảnh báo: Vượt quá tốc độ (84/80 km/h)',
-    progressPct: 35,
-    lat: 10.2214,
-    lng: 105.9521,
-    waypoints: [
-      { lat: 10.0321, lng: 105.7821 }, // Cần Thơ
-      { lat: 10.2541, lng: 105.9723 }, // Vĩnh Long
-      { lat: 10.5378, lng: 106.4156 }, // Tân An
-      { lat: 10.7512, lng: 106.6152 }  // HCM
-    ]
-  },
-  {
-    id: 'TRIP-004',
-    plateNumber: '51B-123.45',
-    busType: 'Xe Ghế Ngồi 29 Chỗ',
-    driverName: 'Pham Quoc Huy',
-    driverPhone: '0933445566',
-    routeName: 'Đà Lạt ➔ Hồ Chí Minh',
-    startPoint: 'Bến Xe Đà Lạt',
-    endPoint: 'Bến Xe Miền Đông',
-    departureTime: '06:00',
-    estimatedArrival: '13:00',
-    speed: 0,
-    speedLimit: 80,
-    status: 'stopped',
-    statusText: 'Đang dừng nghỉ tại Trạm Tâm Châu',
-    progressPct: 45,
-    lat: 11.5321,
-    lng: 107.7912,
-    waypoints: [
-      { lat: 11.9404, lng: 108.4583 }, // Đà Lạt
-      { lat: 11.6621, lng: 108.0652 }, // Di Linh
-      { lat: 11.5432, lng: 107.8012 }, // Bảo Lộc
-      { lat: 10.9512, lng: 107.1245 }, // Dầu Giây
-      { lat: 10.8123, lng: 106.7123 }  // HCM
-    ]
-  }
-];
-
 const OpsTrackingPage = () => {
-  const [buses, setBuses] = useState(DEMO_TRACKING_DATA);
-  const [selectedBusId, setSelectedBusId] = useState('TRIP-001');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const { token } = useContext(AuthContext);
+  const [allTrips, setAllTrips] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Date selector (default to current local date)
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Selected Trip for focused tracking
+  const [selectedTripId, setSelectedTripId] = useState(null);
+  
+  // Map and OSRM state
   const [mapLoaded, setMapLoaded] = useState(false);
   const [osrmPaths, setOsrmPaths] = useState({});
+  const [fetchingOsrm, setFetchingOsrm] = useState(false);
 
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const markersRef = useRef({});
-  const polylineRef = useRef(null);
+  const layerGroupRef = useRef(null);
 
-  // Load Leaflet CDN dynamically
+  // 1. Dynamically load Leaflet library if not already present
   useEffect(() => {
     if (window.L) {
       setMapLoaded(true);
@@ -140,40 +42,107 @@ const OpsTrackingPage = () => {
     document.head.appendChild(script);
   }, []);
 
-  // Fetch real highway geometries from OSRM for selected bus
-  useEffect(() => {
-    const fetchOSRMPath = async (bus) => {
-      if (osrmPaths[bus.id]) return; // Already fetched
+  // 2. Fetch real trips from database
+  const fetchRealTrips = async () => {
+    try {
+      setLoading(true);
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+      const res = await fetch(`${API_BASE}/trips/ops/trips`, { headers });
+      const data = await res.json();
+      if (data.success && data.trips) {
+        setAllTrips(data.trips);
+      }
+    } catch (err) {
+      console.error('Lỗi nạp dữ liệu chuyến xe:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    fetchRealTrips();
+  }, [token]);
+
+  // 3. Filter trips for the selected date (Today by default)
+  const tripsForDate = useMemo(() => {
+    return allTrips.filter(t => {
+      if (!t.departureTime) return false;
+      const tripDateStr = new Date(t.departureTime).toLocaleDateString('en-CA');
+      return tripDateStr === selectedDate;
+    }).sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+  }, [allTrips, selectedDate]);
+
+  // Filtered by search query
+  const filteredTrips = useMemo(() => {
+    if (!searchQuery.trim()) return tripsForDate;
+    const q = searchQuery.toLowerCase();
+    return tripsForDate.filter(t => {
+      const plate = (t.busId?.plateNumber || '').toLowerCase();
+      const rName = (t.routeId ? `${t.routeId.startPoint} ${t.routeId.endPoint}` : '').toLowerCase();
+      const driver = (t.driver?.name || '').toLowerCase();
+      return plate.includes(q) || rName.includes(q) || driver.includes(q);
+    });
+  }, [tripsForDate, searchQuery]);
+
+  // Automatically select the first trip when list changes
+  useEffect(() => {
+    if (filteredTrips.length > 0) {
+      if (!selectedTripId || !filteredTrips.some(t => t._id === selectedTripId)) {
+        setSelectedTripId(filteredTrips[0]._id);
+      }
+    } else {
+      setSelectedTripId(null);
+    }
+  }, [filteredTrips, selectedTripId]);
+
+  // Active selected trip object
+  const activeTrip = useMemo(() => {
+    return allTrips.find(t => t._id === selectedTripId) || filteredTrips[0] || null;
+  }, [allTrips, filteredTrips, selectedTripId]);
+
+  // Normalized stops with GPS coordinates for active trip
+  const activeStops = useMemo(() => {
+    if (!activeTrip) return [];
+    const pickups = (activeTrip.pickupPoints || []).map(p => ({ ...p, type: 'pickup' }));
+    const dropoffs = (activeTrip.dropoffPoints || []).map(d => ({ ...d, type: 'dropoff' }));
+    return [...pickups, ...dropoffs].filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+  }, [activeTrip]);
+
+  // 4. Fetch OSRM real highway curve for active trip
+  useEffect(() => {
+    if (!activeTrip || activeStops.length < 2) return;
+    const tripKey = activeTrip._id;
+    if (osrmPaths[tripKey]) return; // Already cached
+
+    const fetchOSRM = async () => {
       try {
-        const waypointsStr = bus.waypoints.map(wp => `${wp.lng},${wp.lat}`).join(';');
+        setFetchingOsrm(true);
+        const waypointsStr = activeStops.map(s => `${s.lng},${s.lat}`).join(';');
         const url = `https://router.project-osrm.org/route/v1/driving/${waypointsStr}?overview=full&geometries=geojson`;
         const res = await fetch(url);
         const data = await res.json();
-
         if (data.code === 'Ok' && data.routes && data.routes[0]) {
-          const latLngs = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
-          setOsrmPaths(prev => ({ ...prev, [bus.id]: latLngs }));
+          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          setOsrmPaths(prev => ({ ...prev, [tripKey]: coords }));
         } else {
-          setOsrmPaths(prev => ({ ...prev, [bus.id]: bus.waypoints.map(w => [w.lat, w.lng]) }));
+          setOsrmPaths(prev => ({ ...prev, [tripKey]: activeStops.map(s => [s.lat, s.lng]) }));
         }
       } catch {
-        setOsrmPaths(prev => ({ ...prev, [bus.id]: bus.waypoints.map(w => [w.lat, w.lng]) }));
+        setOsrmPaths(prev => ({ ...prev, [tripKey]: activeStops.map(s => [s.lat, s.lng]) }));
+      } finally {
+        setFetchingOsrm(false);
       }
     };
 
-    const selectedBus = buses.find(b => b.id === selectedBusId);
-    if (selectedBus) {
-      fetchOSRMPath(selectedBus);
-    }
-  }, [selectedBusId, buses, osrmPaths]);
+    fetchOSRM();
+  }, [activeTrip, activeStops, osrmPaths]);
 
-  // Initialize & update Leaflet Map
+  // 5. Initialize & Render Map with Single Selected Trip Focus
   useEffect(() => {
     if (!mapLoaded || !window.L || !mapContainerRef.current) return;
-
     const L = window.L;
 
+    // Create Map instance if not exists
     if (!mapInstanceRef.current) {
       const map = L.map(mapContainerRef.current, {
         center: [10.8, 106.7],
@@ -190,121 +159,148 @@ const OpsTrackingPage = () => {
 
     const map = mapInstanceRef.current;
 
-    // Clear existing markers & polyline
-    Object.values(markersRef.current).forEach(m => m.remove());
-    markersRef.current = {};
-    if (polylineRef.current) polylineRef.current.remove();
+    // Reset Layer Group
+    if (layerGroupRef.current) {
+      layerGroupRef.current.clearLayers();
+    } else {
+      layerGroupRef.current = L.layerGroup().addTo(map);
+    }
+    const layerGroup = layerGroupRef.current;
 
-    // Custom Icon Generator
-    const createBusIcon = (status, plate) => {
-      let iconColor = '#2563eb'; // blue
-      if (status === 'speeding') iconColor = '#dc2626'; // red
-      if (status === 'stopped') iconColor = '#d97706'; // yellow
+    if (!activeTrip || activeStops.length === 0) {
+      map.setView([10.8, 106.7], 7);
+      return;
+    }
 
-      return L.divIcon({
-        className: 'custom-bus-marker',
+    const latLngs = [];
+
+    // --- Render Pickup & Dropoff Stops exactly as setup in Route Management ---
+    activeStops.forEach((stop, idx) => {
+      const isPickup = stop.type === 'pickup';
+      const isFirst = idx === 0;
+      const isLast = idx === activeStops.length - 1;
+      const markerColor = isPickup ? '#10b981' : '#ef4444';
+      const badgeText = isFirst ? 'Khởi hành (Đón)' : isLast ? 'Điểm đích (Trả)' : isPickup ? 'Điểm đón' : 'Điểm trả';
+
+      const stopIcon = L.divIcon({
+        className: 'custom-station-pin',
         html: `
           <div style="
-            background: ${iconColor};
+            background: ${markerColor};
             color: #ffffff;
-            font-weight: 800;
-            font-size: 0.65rem;
-            padding: 4px 8px;
+            font-weight: 700;
+            font-size: 0.68rem;
+            padding: 3px 8px;
             border-radius: 12px;
             border: 2px solid #ffffff;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            box-shadow: 0 3px 8px rgba(0,0,0,0.25);
             white-space: nowrap;
             display: flex;
             align-items: center;
             gap: 4px;
+            font-family: system-ui, -apple-system, sans-serif;
           ">
-            <span>🚌 ${plate}</span>
+            <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stop.location}</span>
           </div>
         `,
-        iconSize: [80, 26],
-        iconAnchor: [40, 13]
+        iconSize: [110, 24],
+        iconAnchor: [55, 12]
       });
-    };
 
-    // Add markers for all buses
-    buses.forEach(bus => {
-      const marker = L.marker([bus.lat, bus.lng], {
-        icon: createBusIcon(bus.status, bus.plateNumber)
-      }).addTo(map);
-
+      const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(layerGroup);
       marker.bindPopup(`
-        <div style="font-family: system-ui; padding: 4px;">
-          <strong style="color: #0f172a; font-size: 0.9rem;">🚌 Xe ${bus.plateNumber}</strong>
-          <div style="fontSize: 0.75rem; color: #475569; margin-top: 4px;">Tuyến: <strong>${bus.routeName}</strong></div>
-          <div style="fontSize: 0.75rem; color: #475569;">Tài xế: <strong>${bus.driverName}</strong> (${bus.driverPhone})</div>
-          <div style="fontSize: 0.75rem; color: #2563eb; margin-top: 4px;">Tốc độ: <strong>${bus.speed} km/h</strong> | Tiến độ: <strong>${bus.progressPct}%</strong></div>
-          <div style="fontSize: 0.7rem; color: ${bus.status === 'speeding' ? '#dc2626' : '#16a34a'}; margin-top: 4px; font-weight: 700;">
-            ${bus.statusText}
+        <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
+          <div style="font-weight: 800; color: #0f172a; font-size: 0.88rem;">${stop.location}</div>
+          <div style="font-size: 0.72rem; color: ${isPickup ? '#047857' : '#b91c1c'}; font-weight: 700; margin: 4px 0;">
+            ${badgeText} (${stop.time || 'N/A'})
           </div>
+          <div style="font-size: 0.74rem; color: #64748b; line-height: 1.35;">${stop.address || 'Đang cập nhật địa chỉ'}</div>
+          <div style="font-size: 0.68rem; color: #2563eb; margin-top: 4px;">Tọa độ GPS: ${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}</div>
         </div>
       `);
 
-      marker.on('click', () => setSelectedBusId(bus.id));
-      markersRef.current[bus.id] = marker;
+      latLngs.push([stop.lat, stop.lng]);
     });
 
-    // Draw real OSRM highway polyline for selected bus
-    const selectedBus = buses.find(b => b.id === selectedBusId);
-    const activeRoutePath = osrmPaths[selectedBusId] || selectedBus?.waypoints.map(w => [w.lat, w.lng]);
+    // --- Render Highway Polyline connecting all stops ---
+    const cachedPath = osrmPaths[activeTrip._id];
+    const polylineCoords = (cachedPath && cachedPath.length > 1) ? cachedPath : latLngs;
 
-    if (activeRoutePath && activeRoutePath.length > 0) {
-      polylineRef.current = L.polyline(activeRoutePath, {
+    if (polylineCoords.length > 1) {
+      L.polyline(polylineCoords, {
         color: '#2563eb',
         weight: 5,
         opacity: 0.85,
         lineCap: 'round',
         lineJoin: 'round'
-      }).addTo(map);
-
-      map.setView([selectedBus.lat, selectedBus.lng], 9, { animate: true });
+      }).addTo(layerGroup);
     }
-  }, [mapLoaded, buses, selectedBusId, osrmPaths]);
 
-  // Live GPS Movement Simulation
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setBuses(prevBuses =>
-        prevBuses.map(bus => {
-          if (bus.speed === 0) return bus;
+    // --- Render Vehicle GPS Position (Ready for real GPS device coordinates) ---
+    // In real GPS mode, vehicle sits at real coordinates if available, or at first stop (origin)
+    const busLat = activeTrip.liveGps?.lat || activeStops[0]?.lat;
+    const busLng = activeTrip.liveGps?.lng || activeStops[0]?.lng;
 
-          const deltaLat = (Math.random() - 0.3) * 0.002;
-          const deltaLng = (Math.random() - 0.2) * 0.002;
+    if (typeof busLat === 'number' && typeof busLng === 'number') {
+      const busPlate = activeTrip.busId?.plateNumber || 'Xe khách';
+      const busIcon = L.divIcon({
+        className: 'custom-bus-pin',
+        html: `
+          <div style="
+            background: #1e40af;
+            color: #ffffff;
+            font-weight: 800;
+            font-size: 0.72rem;
+            padding: 4px 10px;
+            border-radius: 14px;
+            border: 2px solid #ffffff;
+            box-shadow: 0 4px 12px rgba(30, 64, 175, 0.4);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-family: system-ui;
+          ">
+            <span>Xe ${busPlate}</span>
+          </div>
+        `,
+        iconSize: [96, 28],
+        iconAnchor: [48, 14]
+      });
 
-          const newLat = bus.lat + deltaLat;
-          const newLng = bus.lng + deltaLng;
-          const newProgress = Math.min(99, bus.progressPct + 0.1);
+      const busMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(layerGroup);
+      busMarker.bindPopup(`
+        <div style="font-family: system-ui; padding: 4px;">
+          <div style="font-weight: 800; font-size: 0.88rem; color: #1e40af;">Xe ${busPlate}</div>
+          <div style="font-size: 0.75rem; color: #475569; margin-top: 4px;">
+            Tuyến: <strong>${activeTrip.routeId?.startPoint} → ${activeTrip.routeId?.endPoint}</strong>
+          </div>
+          <div style="font-size: 0.75rem; color: #475569;">
+            Tài xế: <strong>${activeTrip.driver?.name || 'Chưa phân công'}</strong>
+          </div>
+          <div style="font-size: 0.72rem; color: #16a34a; font-weight: 700; margin-top: 4px;">
+            Sẵn sàng kết nối định vị GPS thiết bị
+          </div>
+        </div>
+      `);
+    }
 
-          return {
-            ...bus,
-            lat: newLat,
-            lng: newLng,
-            progressPct: Number(newProgress.toFixed(1))
-          };
-        })
-      );
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const filteredBuses = buses.filter(b => {
-    const matchSearch = b.plateNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        b.routeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        b.driverName.toLowerCase().includes(searchQuery.toLowerCase());
-    if (filterStatus === 'all') return matchSearch;
-    return matchSearch && b.status === filterStatus;
-  });
-
-  const selectedBus = buses.find(b => b.id === selectedBusId) || buses[0];
+    // Fit map bounds to view all stops of this trip
+    if (latLngs.length > 0) {
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+          mapInstanceRef.current.fitBounds(latLngs, { padding: [50, 50], maxZoom: 12 });
+        }
+      }, 150);
+    }
+  }, [mapLoaded, activeTrip, activeStops, osrmPaths]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-      {/* Page Title & Quick Summary Bar */}
+      {/* =========================================================================
+          KHỐI 1 (TRÊN): HEADER & THẺ TỔNG QUAN (DASHBOARD STYLE)
+          ========================================================================= */}
       <div style={{
         background: '#ffffff',
         borderRadius: '16px',
@@ -312,47 +308,93 @@ const OpsTrackingPage = () => {
         padding: '1.25rem 1.5rem',
         boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
         display: 'flex',
-        justify: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '1rem'
+        flexDirection: 'column',
+        gap: '1.25rem'
       }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-              Định Vị Giám Sát Lộ Trình &amp; GPS Đội Xe
-            </h1>
-            <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '12px', fontSize: '0.65rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#16a34a' }}></span>
-              Real-time GPS Tracking
-            </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Định Vị Giám Sát Lộ Trình Chuyến Xe
+              </h1>
+              <span style={{ background: '#dcfce7', color: '#15803d', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', border: '1px solid #bbf7d0' }}>
+                • Dữ liệu chuyến xe thực tế MongoDB
+              </span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', margin: '4px 0 0 0' }}>
+              Giám sát chính xác từng chuyến xe, lộ trình quốc lộ và toàn bộ danh sách điểm đón/trả khách đã thiết lập
+            </p>
           </div>
-          <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '2px', margin: 0 }}>
-            Giám sát trực tiếp vị trí địa lý, vận tốc, lộ trình uốn lượn theo đường Quốc lộ và cảnh báo an toàn thời gian thực
-          </p>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={fetchRealTrips}
+              className="btn btn-secondary"
+              style={{ padding: '0.45rem 0.9rem', fontSize: '0.78rem', fontWeight: '600', borderRadius: '8px' }}
+            >
+              Làm mới dữ liệu
+            </button>
+          </div>
         </div>
 
-        {/* Live Counters */}
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '10px', padding: '6px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: '0.68rem', color: '#1d4ed8', fontWeight: '700', textTransform: 'uppercase' }}>XE ĐANG CHẠY</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#1e40af' }}>{buses.filter(b => b.speed > 0).length} phương tiện</div>
+        {/* 4 Stats Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              CHUYẾN XE HÔM NAY ({selectedDate})
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>
+              {tripsForDate.length} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>chuyến</span>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: '600', marginTop: '4px' }}>
+              • Sẵn sàng xuất bến và giám sát
+            </div>
           </div>
-          <div style={{ background: '#fef2f2', border: '1px solid #fecdd3', borderRadius: '10px', padding: '6px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: '0.68rem', color: '#b91c1c', fontWeight: '700', textTransform: 'uppercase' }}>CẢNH BÁO TỐC ĐỘ</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#991b1b' }}>{buses.filter(b => b.status === 'speeding').length} sự cố</div>
+
+          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              XE ĐANG CHỌN GIÁM SÁT
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#1e40af', marginTop: '4px' }}>
+              {activeTrip?.busId?.plateNumber || 'Chưa chọn xe'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600', marginTop: '4px' }}>
+              {activeTrip?.busId?.type || 'Chưa gán loại xe'}
+            </div>
           </div>
-          <div style={{ background: '#fefce8', border: '1px solid #fef08a', borderRadius: '10px', padding: '6px 14px', textAlign: 'center' }}>
-            <div style={{ fontSize: '0.68rem', color: '#a16207', fontWeight: '700', textTransform: 'uppercase' }}>ĐANG DỪNG NGHỈ</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#854d0e' }}>{buses.filter(b => b.speed === 0).length} xe</div>
+
+          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              LỘ TRÌNH ĐANG XEM
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0f172a', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {activeTrip?.routeId ? `${activeTrip.routeId.startPoint} → ${activeTrip.routeId.endPoint}` : 'Chưa chọn'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: '600', marginTop: '4px' }}>
+              {activeStops.length} trạm dừng đón/trả cố định
+            </div>
+          </div>
+
+          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              TRẠM ĐÓN &amp; TRẢ
+            </div>
+            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>
+              <span style={{ color: '#16a34a' }}>{activeTrip?.pickupPoints?.length || 0} Đón</span> / <span style={{ color: '#dc2626' }}>{activeTrip?.dropoffPoints?.length || 0} Trả</span>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600', marginTop: '4px' }}>
+              • Ghim chính xác theo GPS thực tế
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Grid: Map (70%) + Fleet Controls (30%) */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '1rem', minHeight: '600px' }}>
+      {/* =========================================================================
+          KHỐI 2 (DƯỚI): BẢN ĐỒ LỘ TRÌNH 1 XE (BÊN TRÁI) + DANH SÁCH CHUYẾN XE (BÊN PHẢI)
+          ========================================================================= */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1rem', minHeight: '620px' }}>
         
-        {/* Left Interactive OpenStreetMap Container */}
+        {/* --- CỘT TRÁI: BẢN ĐỒ LEAFLET CHỈ HIỂN THỊ 1 TUYẾN ĐƯỜNG CỦA 1 CHUYẾN XE --- */}
         <div style={{
           background: '#ffffff',
           borderRadius: '16px',
@@ -363,25 +405,42 @@ const OpsTrackingPage = () => {
           flexDirection: 'column',
           position: 'relative'
         }}>
-          {/* Map Status Top Header */}
+          {/* Header thanh trạng thái bản đồ */}
           <div style={{
-            padding: '10px 16px',
+            padding: '12px 18px',
             background: '#f8fafc',
             borderBottom: '1px solid #e2e8f0',
             display: 'flex',
-            justify: 'space-between',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: '0.78rem'
+            fontSize: '0.8rem',
+            flexWrap: 'wrap',
+            gap: '8px'
           }}>
-            <div style={{ fontWeight: '700', color: '#0f172a' }}>
-              Bản đồ GPS Quốc Lộ Thực Tế: <span style={{ color: '#2563eb' }}>{selectedBus.routeName}</span> ({selectedBus.plateNumber})
+            <div style={{ fontWeight: '800', color: '#0f172a' }}>
+              Lộ trình chuyến: <span style={{ color: '#2563eb' }}>{activeTrip?.routeId ? `${activeTrip.routeId.startPoint} → ${activeTrip.routeId.endPoint}` : 'Chưa chọn'}</span>
+              {activeTrip?.busId?.plateNumber && (
+                <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '6px', background: '#e2e8f0', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                  {activeTrip.busId.plateNumber}
+                </span>
+              )}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-              Tọa độ live: <strong style={{ color: '#0f172a', fontFamily: 'monospace' }}>{selectedBus.lat.toFixed(4)}° N, {selectedBus.lng.toFixed(4)}° E</strong>
+
+            {/* Chú thích màu điểm dừng */}
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', fontSize: '0.72rem', fontWeight: '600' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#047857' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span> Điểm đón khách
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#b91c1c' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span> Điểm trả khách
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#1d4ed8' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span> Vị trí xe
+              </span>
             </div>
           </div>
 
-          {/* Leaflet Map Div */}
+          {/* Khung bản đồ Leaflet */}
           <div ref={mapContainerRef} style={{ width: '100%', flex: 1, minHeight: '520px', background: '#e2e8f0' }}>
             {!mapLoaded && (
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b', fontWeight: '600' }}>
@@ -390,74 +449,96 @@ const OpsTrackingPage = () => {
             )}
           </div>
 
-          {/* Selected Bus Live Telemetry Overlay Footer */}
-          {selectedBus && (
+          {/* Footer thông tin chuyến xe & trạm đang chọn */}
+          {activeTrip && (
             <div style={{
-              padding: '12px 16px',
+              padding: '14px 20px',
               background: '#ffffff',
               borderTop: '1px solid #e2e8f0',
               display: 'grid',
               gridTemplateColumns: 'repeat(4, 1fr)',
               gap: '12px',
-              fontSize: '0.78rem'
+              fontSize: '0.8rem'
             }}>
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>XE &amp; LOẠI XE</div>
-                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>{selectedBus.plateNumber}</div>
-                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{selectedBus.busType}</div>
+                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>PHƯƠNG TIỆN</div>
+                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>{activeTrip.busId?.plateNumber || 'Chưa gán xe'}</div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{activeTrip.busId?.type || 'N/A'}</div>
               </div>
 
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>TÀI XẾ ĐIỀU KHIỂN</div>
-                <div style={{ fontWeight: '700', color: '#2563eb', marginTop: '2px' }}>{selectedBus.driverName}</div>
-                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>📞 {selectedBus.driverPhone}</div>
+                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>TÀI XẾ PHỤ TRÁCH</div>
+                <div style={{ fontWeight: '700', color: '#2563eb', marginTop: '2px' }}>{activeTrip.driver?.name || 'Chưa phân công'}</div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{activeTrip.driver?.phone || 'Chưa có SĐT'}</div>
               </div>
 
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>TỐC ĐỘ THỰC TẾ</div>
-                <div style={{
-                  fontWeight: '800',
-                  color: selectedBus.speed > selectedBus.speedLimit ? '#dc2626' : selectedBus.speed === 0 ? '#d97706' : '#16a34a',
-                  marginTop: '2px',
-                  fontSize: '0.95rem'
-                }}>
-                  {selectedBus.speed} km/h
-                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '600', marginLeft: '4px' }}>
-                    (Tối đa {selectedBus.speedLimit} km/h)
-                  </span>
+                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>GIỜ CHẠY &amp; ĐẾN</div>
+                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+                  {new Date(activeTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} → {new Date(activeTrip.arrivalTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: '600' }}>
+                  Ngày: {new Date(activeTrip.departureTime).toLocaleDateString('vi-VN')}
                 </div>
               </div>
 
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>HOÀN THÀNH LỘ TRÌNH</div>
-                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>{selectedBus.progressPct}% chặng đường</div>
-                <div style={{ height: '4px', width: '100%', backgroundColor: '#f1f5f9', borderRadius: '2px', marginTop: '3px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${selectedBus.progressPct}%`, backgroundColor: '#2563eb' }}></div>
+                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>TRẠM ĐÓN / TRẢ DỌC TUYẾN</div>
+                <div style={{ fontWeight: '800', color: '#2563eb', marginTop: '2px' }}>
+                  {activeStops.length} trạm dừng
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                  Ghim chi tiết trên bản đồ
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Right Sidebar: Fleet List & Search Controls */}
+        {/* --- CỘT PHẢI: DANH SÁCH CÁC CHUYẾN XE HÔM NAY --- */}
         <div style={{
           background: '#ffffff',
           borderRadius: '16px',
           border: '1px solid #e2e8f0',
           boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-          padding: '1.1rem 1.25rem',
+          padding: '1.25rem',
           display: 'flex',
           flexDirection: 'column',
           gap: '1rem'
         }}>
-          {/* Search Input */}
+          {/* Bộ lọc ngày & Tìm kiếm */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+                CHỌN NGÀY CHẠY:
+              </label>
+              <button
+                type="button"
+                onClick={() => setSelectedDate(new Date().toLocaleDateString('en-CA'))}
+                style={{
+                  background: 'none', border: 'none', color: '#2563eb', fontSize: '0.72rem',
+                  fontWeight: '700', cursor: 'pointer', padding: 0
+                }}
+              >
+                Hôm nay
+              </button>
+            </div>
+            <input 
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="form-control"
+              style={{ width: '100%', padding: '7px 10px', fontSize: '0.8rem', borderRadius: '8px', boxSizing: 'border-box' }}
+            />
+          </div>
+
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
-              TÌM XE / TÀI XẾ KHẢ DỤNG
+              TÌM BIỂN SỐ / TUYẾN / TÀI XẾ:
             </label>
             <input
               type="text"
-              placeholder="Nhập biển số xe (VD: 51B-016.16)..."
+              placeholder="Nhập biển số (51B-016.16) hoặc tuyến..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -472,81 +553,66 @@ const OpsTrackingPage = () => {
             />
           </div>
 
-          {/* Filter Status Pills */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {[
-              { id: 'all', label: 'Tất cả xe' },
-              { id: 'on_track', label: 'Đúng lộ trình' },
-              { id: 'speeding', label: 'Quá tốc độ' },
-              { id: 'stopped', label: 'Đang dừng' }
-            ].map(pill => (
-              <button
-                key={pill.id}
-                onClick={() => setFilterStatus(pill.id)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  fontSize: '0.68rem',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  backgroundColor: filterStatus === pill.id ? '#2563eb' : '#f1f5f9',
-                  color: filterStatus === pill.id ? '#ffffff' : '#475569'
-                }}
-              >
-                {pill.label}
-              </button>
-            ))}
+          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            DANH SÁCH CHUYẾN XE ({filteredTrips.length})
           </div>
 
-          {/* Bus List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', overflowY: 'auto', maxHeight: '420px', paddingRight: '4px' }}>
-            {filteredBuses.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontSize: '0.78rem' }}>
-                Không tìm thấy phương tiện nào phù hợp.
+          {/* Danh sách các chuyến xe trong ngày */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', overflowY: 'auto', maxHeight: '460px', paddingRight: '4px' }}>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.78rem' }}>
+                Đang tải danh sách chuyến xe...
+              </div>
+            ) : filteredTrips.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.78rem', background: '#f8fafc', borderRadius: '10px' }}>
+                Không có chuyến xe nào chạy vào ngày {selectedDate}.
               </div>
             ) : (
-              filteredBuses.map(bus => {
-                const isSelected = bus.id === selectedBusId;
-                const isSpeeding = bus.status === 'speeding';
-                const isStopped = bus.status === 'stopped';
+              filteredTrips.map(trip => {
+                const isSelected = trip._id === selectedTripId;
+                const dep = new Date(trip.departureTime);
+                const arr = new Date(trip.arrivalTime);
+                const depTime = dep.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                const arrTime = arr.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                const stopsCount = (trip.pickupPoints?.length || 0) + (trip.dropoffPoints?.length || 0);
 
                 return (
                   <div
-                    key={bus.id}
-                    onClick={() => setSelectedBusId(bus.id)}
+                    key={trip._id}
+                    onClick={() => setSelectedTripId(trip._id)}
                     style={{
-                      padding: '10px 12px',
-                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
                       border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
                       backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
+                      boxShadow: isSelected ? '0 4px 12px rgba(37,99,235,0.08)' : '0 1px 2px rgba(0,0,0,0.02)',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.82rem' }}>
-                        🚌 {bus.plateNumber}
+                      <div style={{ fontWeight: '800', color: isSelected ? '#1e40af' : '#0f172a', fontSize: '0.85rem' }}>
+                        Xe {trip.busId?.plateNumber || 'Chưa gán'}
                       </div>
                       <span style={{
                         fontSize: '0.65rem',
                         fontWeight: '700',
-                        padding: '2px 6px',
+                        padding: '2px 8px',
                         borderRadius: '6px',
-                        backgroundColor: isSpeeding ? '#fee2e2' : isStopped ? '#fef3c7' : '#dcfce7',
-                        color: isSpeeding ? '#b91c1c' : isStopped ? '#b45309' : '#15803d'
+                        backgroundColor: isSelected ? '#dbeafe' : '#f1f5f9',
+                        color: isSelected ? '#1d4ed8' : '#475569'
                       }}>
-                        {isSpeeding ? 'Cảnh báo 84km/h' : isStopped ? 'Đang dừng' : 'Đúng lộ trình'}
+                        {depTime} → {arrTime}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '3px', fontWeight: '600' }}>
-                      {bus.routeName}
+                    <div style={{ fontSize: '0.78rem', color: '#1e293b', marginTop: '4px', fontWeight: '700' }}>
+                      {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '0.68rem', color: '#64748b' }}>
-                      <span>Tài xế: <strong>{bus.driverName}</strong></span>
-                      <span style={{ fontWeight: '700', color: '#2563eb' }}>{bus.progressPct}%</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '0.72rem', color: '#64748b' }}>
+                      <span>Tài xế: <strong style={{ color: '#334155' }}>{trip.driver?.name || 'Chưa phân công'}</strong></span>
+                      <span style={{ fontWeight: '600', color: '#2563eb' }}>{stopsCount} điểm đón/trả</span>
                     </div>
                   </div>
                 );

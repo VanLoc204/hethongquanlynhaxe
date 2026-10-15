@@ -88,7 +88,7 @@ function DashboardLayout() {
         return <FleetReportsPage />;
       case 'fleet-forecast':
         return <FleetForecastPage />;
-      
+
       // Ops views
       case 'ops-routes':
         return <OpsRoutesPage />;
@@ -97,14 +97,14 @@ function DashboardLayout() {
       case 'ops-staff':
         return <OpsStaffPage />;
       case 'ops-reports':
-        return <GmReportsPage />;
+        return <OpsReportsPage />;
       case 'ops-tracking':
         return <OpsTrackingPage />;
       case 'manager-approvals':
         return <ManagerApprovalsPage />;
       case 'manager-attendance':
         return <ManagerAttendancePage />;
-      
+
       // GM views
       case 'gm-reports':
         return <GmReportsPage />;
@@ -201,7 +201,7 @@ function DashboardLayout() {
         return 'Tạo báo cáo đội xe';
       case 'fleet-forecast':
         return 'Xem dự báo bảo trì';
-      
+
       // Ops views
       case 'ops-routes':
         return 'Quản lý tuyến đường';
@@ -216,7 +216,7 @@ function DashboardLayout() {
       case 'manager-approvals':
         return 'Xem danh sách chờ duyệt';
       case 'manager-attendance':
-        return 'Quản lý chấm công nhân sự';
+        return user?.role === 'ops_manager' ? 'Quản lý chấm công tổ lái' : 'Quản lý chấm công nhân sự';
 
       // GM views
       case 'gm-reports':
@@ -287,65 +287,75 @@ function DashboardLayout() {
 
   return (
     <div className="dashboard-wrapper">
-      {/* Top Header */}
-      <header className="top-header" style={{ padding: '0 1.5rem', background: '#ffffff', borderBottom: '1px solid #e2e8f0' }}>
-        <div className="logo-block" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="sidebar-toggle-btn"
-            style={{
-              display: 'none',
-              background: 'none',
-              border: 'none',
-              fontSize: '1.5rem',
-              cursor: 'pointer',
-              color: 'var(--text-main)',
-              marginRight: '0.75rem'
-            }}
-          >
-            ☰
-          </button>
-          
-        </div>
+      {/* 1. Sidebar Full Chiều Cao Bên Trái */}
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          setSidebarOpen(false);
+        }}
+        isOpen={sidebarOpen}
+      />
 
-        <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-          {/* Bell & Help Icons */}
-          <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          </button>
-          <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </button>
+      {/* 2. Khung Nội Dung Chính Bên Phải (Top Header + Main Content) */}
+      <div className="dashboard-main-area">
+        {/* Top Header - Chỉ chứa Breadcrumb & Profile (Không trùng logo An Bình Lines) */}
+        <header className="top-header">
+          <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="sidebar-toggle-btn"
+              style={{
+                display: 'none',
+                background: 'none',
+                border: 'none',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                color: 'var(--text-main)',
+                marginRight: '0.5rem'
+              }}
+            >
+              ☰
+            </button>
 
-          <div style={{ height: '24px', width: '1px', backgroundColor: '#e2e8f0' }}></div>
-
-          {/* Profile Section */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.85rem' }}>
-                {ROLE_LABEL[user?.role] || user?.role}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                {user?.email || 'admin@anbinhlines.vn'}
-              </div>
-            </div>
-            <div className="user-profile">
-              <span className="avatar" style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '800' }}>AB</span>
+            {/* Breadcrumb Navigation - Chuẩn theo hình 2 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.825rem', color: '#64748b' }}>
+              <span>Hệ thống</span>
+              <span style={{ color: '#cbd5e1' }}>&gt;</span>
+              <span>{user?.role === 'ticket_agent' ? 'Nhân sự quầy vé' : ROLE_LABEL[user?.role] || 'Quản trị'}</span>
+              <span style={{ color: '#cbd5e1' }}>&gt;</span>
+              <strong style={{ color: '#2563eb', fontWeight: '700' }}>{getHeaderTitle()}</strong>
             </div>
           </div>
-        </div>
-      </header>
 
-      <div className="dashboard-container">
-        {/* Sidebar */}
-        <Sidebar
-          activeTab={activeTab}
-          onTabChange={(tab) => {
-            setActiveTab(tab);
-            setSidebarOpen(false);
-          }}
-          isOpen={sidebarOpen}
-        />
+          <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+            {/* Bell Icon với chấm xanh thông báo */}
+            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              <span style={{ position: 'absolute', top: '1px', right: '1px', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981', border: '1.5px solid #ffffff' }}></span>
+            </button>
+            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+            </button>
+
+            <div style={{ height: '24px', width: '1px', backgroundColor: '#e2e8f0' }}></div>
+
+            {/* Profile Section */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.85rem' }}>
+                  {ROLE_LABEL[user?.role] || user?.role}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                  {user?.email || 'admin@anbinhlines.vn'}
+                </div>
+              </div>
+              <div className="user-profile">
+                <span className="avatar" style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '800' }}>AB</span>
+              </div>
+            </div>
+          </div>
+        </header>
 
         {/* Main Content */}
         <main className="main-content">

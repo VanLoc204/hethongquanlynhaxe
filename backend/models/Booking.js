@@ -67,6 +67,16 @@ const bookingSchema = new mongoose.Schema(
     },
     boardedAt: {
       type: Date
+    },
+    // Giá vé thực tế tại thời điểm đặt (sau khi áp pricing rules & promotions)
+    pricePerSeat: {
+      type: Number,
+      default: 0
+    },
+    // Tổng tiền thực tế của booking này = pricePerSeat × seats.length
+    totalAmount: {
+      type: Number,
+      default: 0
     }
   },
   {

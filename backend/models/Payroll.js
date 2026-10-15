@@ -44,6 +44,16 @@ const payrollSchema = new mongoose.Schema(
       required: [true, 'Khấu trừ bảo hiểm là bắt buộc.'],
       min: 0
     },
+    absentDays: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    absentDeduction: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
     netSalary: {
       type: Number,
       required: [true, 'Thực lĩnh là bắt buộc.'],

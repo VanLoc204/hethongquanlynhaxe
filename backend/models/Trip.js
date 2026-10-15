@@ -28,14 +28,18 @@ const tripSchema = new mongoose.Schema(
       {
         time: { type: String, required: true },
         location: { type: String, required: true },
-        address: { type: String, required: true }
+        address: { type: String, required: true },
+        lat: { type: Number },
+        lng: { type: Number }
       }
     ],
     dropoffPoints: [
       {
         time: { type: String, required: true },
         location: { type: String, required: true },
-        address: { type: String, required: true }
+        address: { type: String, required: true },
+        lat: { type: Number },
+        lng: { type: Number }
       }
     ],
     bookedSeats: [

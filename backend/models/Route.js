@@ -27,7 +27,14 @@ const routeSchema = new mongoose.Schema(
       {
         name: { type: String, required: true },
         address: { type: String, default: '' },
-        type: { type: String, enum: ['start', 'waypoint', 'end'], default: 'waypoint' }
+        type: { 
+          type: String, 
+          enum: ['start', 'waypoint', 'end', 'pickup', 'dropoff', 'both', 'rest'], 
+          default: 'pickup' 
+        },
+        lat: { type: Number },
+        lng: { type: Number },
+        arrivalTimeOffset: { type: Number, default: 0 }
       }
     ]
   },

@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { 
-  searchTrips, 
-  getTripById, 
-  payosWebhook, 
+const {
+  searchTrips,
+  getTripById,
+  payosWebhook,
   createShipment,
   updateShipmentPayment,
   trackShipment,
@@ -24,7 +24,9 @@ const {
   autoScheduleTrips,
   updateJourneyStatus,
   getMaintenanceRecords,
-  createMaintenanceRecord
+  createMaintenanceRecord,
+  getPunctualityReport,
+  updateTripPunctuality
 } = require('../controllers/tripController');
 const { createBooking, updateBookingPayment, cancelExpiredBooking, getMyBookings } = require('../controllers/bookingController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
@@ -82,6 +84,10 @@ router.delete('/ops/trips/:id', protect, restrictTo('ops_manager', 'admin', 'gen
 
 // Internal: Release seats on booking cancellation
 router.patch('/:id/release-seats', releaseSeats);
+
+// Ops Punctuality & Operations Report Routes
+router.get('/ops/reports/punctuality', protect, restrictTo('ops_manager', 'general_manager', 'admin'), getPunctualityReport);
+router.patch('/ops/trips/:id/punctuality', protect, restrictTo('ops_manager', 'general_manager', 'admin'), updateTripPunctuality);
 
 // Driver Journey Updates
 router.patch('/:id/update-journey', protect, updateJourneyStatus);

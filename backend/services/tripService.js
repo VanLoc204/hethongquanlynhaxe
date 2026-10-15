@@ -475,18 +475,34 @@ class TripService {
   async getTrips() {
     const trips = await tripRepository.findWithPopulate({}, { departureTime: -1 });
     
-    // Add bookedSeats dynamically for dashboard monitoring
+    // Tính toán dữ liệu thực tế từ bookings cho từng chuyến
     const tripsWithBookings = await Promise.all(trips.map(async (t) => {
       const bookingsForTrip = await bookingRepository.find({ tripId: t._id, status: { $ne: 'cancelled' } });
       const seatsList = bookingsForTrip.flatMap(b => b.seats);
+
+      // Doanh thu thực tế = tổng totalAmount của các booking đã lưu lúc đặt
+      // Ưu tiên dùng booking.totalAmount (chính xác), fallback booking.pricePerSeat × seats, fallback trip.price × seats
+      const actualRevenue = bookingsForTrip.reduce((sum, b) => {
+        if (b.totalAmount && b.totalAmount > 0) {
+          return sum + b.totalAmount;
+        }
+        if (b.pricePerSeat && b.pricePerSeat > 0) {
+          return sum + (b.pricePerSeat * b.seats.length);
+        }
+        // Fallback cho bookings cũ chưa có trường totalAmount
+        return sum + (t.price * b.seats.length);
+      }, 0);
+
       let tripObj = t.toObject();
       tripObj.bookedSeats = seatsList;
-      tripObj = await this.applyPricingRules(tripObj);
+      tripObj.actualRevenue = actualRevenue; // Doanh thu thực tế từ bookings
+      tripObj = await this.applyPricingRules(tripObj); // Cập nhật trip.price cho hiển thị giá hiện tại (KHÔNG dùng để tính doanh thu)
       return tripObj;
     }));
 
     return tripsWithBookings;
   }
+
 
   async createTrip(tripData) {
     const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy } = tripData;
@@ -507,14 +523,62 @@ class TripService {
       throw new Error(`Chưa thiết lập giá vé cho tuyến đường này với loại xe "${bus.type}". Vui lòng liên hệ Quản lý thiết lập giá vé trước.`);
     }
 
+    let finalPickups = pickupPoints || [];
+    let finalDropoffs = dropoffPoints || [];
+
+    if ((finalPickups.length <= 1 || finalDropoffs.length <= 1) && routeId) {
+      const route = await routeRepository.findById(routeId);
+      if (route && route.stops && route.stops.length > 0) {
+        const depDate = new Date(departureTime);
+        const depVNHours = (depDate.getUTCHours() + 7) % 24;
+        const depVNMinutes = depDate.getUTCMinutes();
+        const depTotalMin = depVNHours * 60 + depVNMinutes;
+
+        const pStops = route.stops.filter(s => s.type === 'start' || s.type === 'pickup' || s.type === 'both');
+        const dStops = route.stops.filter(s => s.type === 'end' || s.type === 'dropoff' || s.type === 'both');
+
+        if (finalPickups.length <= 1 && pStops.length > 0) {
+          finalPickups = pStops.map(s => {
+            const offset = typeof s.arrivalTimeOffset === 'number' ? s.arrivalTimeOffset : 0;
+            const total = depTotalMin + offset;
+            const h = Math.floor(total / 60) % 24;
+            const m = total % 60;
+            return {
+              time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+              location: s.name,
+              address: s.address || '',
+              lat: s.lat,
+              lng: s.lng
+            };
+          });
+        }
+
+        if (finalDropoffs.length <= 1 && dStops.length > 0) {
+          finalDropoffs = dStops.map(s => {
+            const offset = typeof s.arrivalTimeOffset === 'number' ? s.arrivalTimeOffset : 0;
+            const total = depTotalMin + offset;
+            const h = Math.floor(total / 60) % 24;
+            const m = total % 60;
+            return {
+              time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+              location: s.name,
+              address: s.address || '',
+              lat: s.lat,
+              lng: s.lng
+            };
+          });
+        }
+      }
+    }
+
     const trip = await tripRepository.create({
       routeId,
       busId,
       departureTime: new Date(departureTime),
       arrivalTime: new Date(arrivalTime),
       price: basePriceDoc.price,
-      pickupPoints: pickupPoints || [],
-      dropoffPoints: dropoffPoints || [],
+      pickupPoints: finalPickups,
+      dropoffPoints: finalDropoffs,
       policy: policy || {
         cancellation: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.',
         luggage: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.'

@@ -86,7 +86,7 @@ const AgentAIPage = () => {
   };
 
   return (
-    <section className="panel" style={{ animation: 'fadeIn 0.4s ease', display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>
+    <section className="panel" style={{ animation: 'fadeIn 0.4s ease', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
         <h2>Trợ Lý Tư Vấn Vé & Dịch Vụ AI</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '0.25rem 0 0 0' }}>Trợ lý AI hỗ trợ nhân viên tư vấn nhanh giá vé, chính sách hành lý, đổi trả vé và tra cứu xe trống tức thời bằng dữ liệu lớn.</p>
