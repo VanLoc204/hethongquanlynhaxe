@@ -4,7 +4,9 @@ import { AuthContext } from '../../context/AuthContext';
 const API_BASE = 'http://localhost:8000/api/v1';
 
 const ManagerAttendancePage = () => {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
+  const isOpsManager = user?.role === 'ops_manager';
+
   const [attendanceData, setAttendanceData] = useState([]);
   const [stats, setStats] = useState({ totalScheduled: 0, activeDirect: 0, closedShift: 0, absent: 0 });
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ const ManagerAttendancePage = () => {
         setAttendanceData(data.attendance || []);
         setStats(data.stats || { totalScheduled: 0, activeDirect: 0, closedShift: 0, absent: 0 });
       } else {
-        setError(data.message || 'Không thể tải báo cáo chấm công nhân sự.');
+        setError(data.message || 'Không thể tải báo cáo chấm công.');
       }
     } catch (err) {
       setError('Lỗi kết nối máy chủ khi tải bảng chấm công.');
@@ -45,7 +47,7 @@ const ManagerAttendancePage = () => {
   }, [token]);
 
   const exportExcelMock = () => {
-    alert('Đang xuất danh sách chấm công nhân sự hôm nay ra file Excel thành công!');
+    alert(`Đang xuất danh sách chấm công ${isOpsManager ? 'tổ lái (Tài xế & Phụ xe)' : 'nhân sự'} hôm nay ra file Excel thành công!`);
   };
 
   const getStatusBadge = (log) => {
@@ -93,6 +95,17 @@ const ManagerAttendancePage = () => {
           }}>
             <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
             • Vắng mặt (Không phép)
+          </span>
+        );
+      case 'standby':
+        return (
+          <span style={{ 
+            display: 'inline-flex', alignItems: 'center', gap: '6px',
+            background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0',
+            padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' 
+          }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#94a3b8', display: 'inline-block' }}></span>
+            • Nghỉ giữa tua / Dự phòng
           </span>
         );
       default:
@@ -168,12 +181,26 @@ const ManagerAttendancePage = () => {
     );
   };
 
-  const filteredLogs = attendanceData.filter(log => {
+  // Nếu là ops_manager, chỉ quản lý chấm công của Tài xế và Phụ xe (Tổ lái)
+  const baseAttendance = isOpsManager
+    ? attendanceData.filter(log => log.role === 'driver' || log.role === 'attendant')
+    : attendanceData;
+
+  const displayStats = isOpsManager ? {
+    totalScheduled: baseAttendance.length,
+    activeDirect: baseAttendance.filter(l => l.status === 'active').length,
+    closedShift: baseAttendance.filter(l => l.status === 'closed').length,
+    absent: baseAttendance.filter(l => l.status === 'absent').length,
+    standby: baseAttendance.filter(l => l.status === 'standby').length
+  } : stats;
+
+  const filteredLogs = baseAttendance.filter(log => {
     const matchesRole = filterRole === 'all' || log.role === filterRole;
     const matchesStatus = filterStatus === 'all' || 
       (filterStatus === 'active' && log.status === 'active') ||
       (filterStatus === 'closed' && log.status === 'closed') ||
       (filterStatus === 'approved_leave' && log.status === 'approved_leave') ||
+      (filterStatus === 'standby' && log.status === 'standby') ||
       (filterStatus === 'absent' && log.status === 'absent') ||
       (filterStatus === 'late' && log.punctuality === 'Vào trễ') ||
       (filterStatus === 'scheduled' && log.status === 'scheduled');
@@ -198,7 +225,7 @@ const ManagerAttendancePage = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-              Quản Lý Chấm Công Nhân Sự Hôm Nay
+              {isOpsManager ? 'Quản Lý Chấm Công Tổ Lái Hôm Nay' : 'Quản Lý Chấm Công Nhân Sự Hôm Nay'}
             </h1>
             <span style={{
               backgroundColor: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe',
@@ -208,7 +235,9 @@ const ManagerAttendancePage = () => {
             </span>
           </div>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '6px', margin: 0 }}>
-            Giám sát thời gian vào ca, tan ca thực tế từ dữ liệu MongoDB thật của Tài xế, Phụ xe và Nhân viên quầy vé.
+            {isOpsManager 
+              ? 'Giám sát thời gian vào ca, tan ca thực tế theo chuyến xe của kíp Tài xế và Phụ xe.'
+              : 'Giám sát thời gian vào ca, tan ca thực tế từ dữ liệu MongoDB thật của Tài xế, Phụ xe và Nhân viên quầy vé.'}
           </p>
         </div>
 
@@ -250,11 +279,17 @@ const ManagerAttendancePage = () => {
           boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
         }}>
           <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>NHÂN SỰ HÔM NAY</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>
+              {isOpsManager ? 'TỔ LÁI HÔM NAY' : 'NHÂN SỰ HÔM NAY'}
+            </span>
             <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 2px 0' }}>
-              {stats.totalScheduled} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>nhân viên</span>
+              {displayStats.totalScheduled} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>{isOpsManager ? 'tài xế & phụ xe' : 'nhân viên'}</span>
             </div>
-            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Lịch ca &amp; Chuyến chạy hôm nay</span>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>
+              {isOpsManager 
+                ? `${displayStats.totalScheduled - (displayStats.standby || 0)} có chuyến hôm nay • ${displayStats.standby || 0} nghỉ tua / dự phòng`
+                : 'Lịch ca & Chuyến chạy hôm nay'}
+            </span>
           </div>
           <div style={{ background: '#eff6ff', color: '#2563eb', width: '42px', height: '42px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
@@ -270,7 +305,7 @@ const ManagerAttendancePage = () => {
           <div>
             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#047857', letterSpacing: '0.5px' }}>ĐANG TRONG CA TRỰC</span>
             <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#059669', margin: '4px 0 2px 0' }}>
-              {stats.activeDirect} <span style={{ fontSize: '0.85rem', color: '#047857', fontWeight: '600' }}>đang trực</span>
+              {displayStats.activeDirect} <span style={{ fontSize: '0.85rem', color: '#047857', fontWeight: '600' }}>đang trực</span>
             </div>
             <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '600' }}>Đã check-in hệ thống</span>
           </div>
@@ -288,7 +323,7 @@ const ManagerAttendancePage = () => {
           <div>
             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>ĐÃ HOÀN THÀNH TAN CA</span>
             <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#334155', margin: '4px 0 2px 0' }}>
-              {stats.closedShift} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>nhân viên</span>
+              {displayStats.closedShift} <span style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>nhân viên</span>
             </div>
             <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Đã check-out chốt ca</span>
           </div>
@@ -304,11 +339,15 @@ const ManagerAttendancePage = () => {
           boxShadow: '0 2px 6px rgba(239, 68, 68, 0.05)'
         }}>
           <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#b91c1c', letterSpacing: '0.5px' }}>VẮNG MẶT HÔM NAY</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#b91c1c', letterSpacing: '0.5px' }}>
+              {isOpsManager ? 'VẮNG MẶT / TRỄ CHUYẾN' : 'VẮNG MẶT HÔM NAY'}
+            </span>
             <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#dc2626', margin: '4px 0 2px 0' }}>
-              {stats.absent} <span style={{ fontSize: '0.85rem', color: '#b91c1c', fontWeight: '600' }}>vắng mặt</span>
+              {displayStats.absent} <span style={{ fontSize: '0.85rem', color: '#b91c1c', fontWeight: '600' }}>{isOpsManager ? 'chưa nhận chuyến' : 'vắng mặt'}</span>
             </div>
-            <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: '600' }}>Cảnh báo không phép / Quá giờ ca</span>
+            <span style={{ fontSize: '0.75rem', color: '#dc2626', fontWeight: '600' }}>
+              {isOpsManager ? 'Quá giờ xuất bến chưa nhận ca' : 'Cảnh báo không phép / Quá giờ ca'}
+            </span>
           </div>
           <div style={{ background: '#fef2f2', color: '#ef4444', width: '42px', height: '42px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
@@ -325,14 +364,16 @@ const ManagerAttendancePage = () => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
-                Bảng Theo Dõi Chấm Công Hôm Nay
+                {isOpsManager ? 'Bảng Theo Dõi Chấm Công Tổ Lái Hôm Nay' : 'Bảng Theo Dõi Chấm Công Hôm Nay'}
               </h2>
               <span style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.7rem', fontWeight: '700', padding: '2px 8px', borderRadius: '10px' }}>
                 Dữ Liệu Thật 100%
               </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', margin: 0 }}>
-              Kiểm tra quy định giờ vào ca trước giờ xe chạy (Tài xế/Phụ xe) và ca hành chính cố định (Nhân viên quầy).
+              {isOpsManager
+                ? 'Kiểm tra quy định giờ vào ca trước giờ xe chạy (Tối thiểu 30-45 phút trước khi xuất bến đối với Tài xế & Phụ xe).'
+                : 'Kiểm tra quy định giờ vào ca trước giờ xe chạy (Tài xế/Phụ xe) và ca hành chính cố định (Nhân viên quầy).'}
             </p>
           </div>
 
@@ -353,8 +394,11 @@ const ManagerAttendancePage = () => {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm tên, SĐT, tuyến xe hoặc điểm trực..."
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder={isOpsManager ? "Tìm tên tài xế, phụ xe, SĐT, tuyến xe..." : "Tìm tên, SĐT, tuyến xe hoặc điểm trực..."}
                 style={{
                   padding: '7px 12px 7px 32px', fontSize: '0.8rem',
                   border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff',
@@ -367,36 +411,53 @@ const ManagerAttendancePage = () => {
             {/* Filter Role */}
             <select
               value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
+              onChange={(e) => {
+                setFilterRole(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{
                 padding: '7px 12px', fontSize: '0.8rem', border: '1px solid #cbd5e1',
                 borderRadius: '8px', background: '#ffffff', color: '#0f172a', fontWeight: '600', outline: 'none'
               }}
             >
-              <option value="all">Bộ phận: Tất cả bộ phận</option>
-              <option value="driver">Tài xế</option>
-              <option value="attendant">Phụ xe</option>
-              <option value="ticket_agent">Nhân viên bán vé</option>
-              <option value="fleet_manager">QL Đội xe</option>
-              <option value="ops_manager">QL Vận tải</option>
+              {isOpsManager ? (
+                <>
+                  <option value="all">Bộ phận: Tất cả tổ lái (Tài xế &amp; Phụ xe)</option>
+                  <option value="driver">Tài xế</option>
+                  <option value="attendant">Phụ xe</option>
+                </>
+              ) : (
+                <>
+                  <option value="all">Bộ phận: Tất cả bộ phận</option>
+                  <option value="driver">Tài xế</option>
+                  <option value="attendant">Phụ xe</option>
+                  <option value="ticket_agent">Nhân viên bán vé</option>
+                  <option value="fleet_manager">QL Đội xe</option>
+                  <option value="ops_manager">QL Vận tải</option>
+                </>
+              )}
             </select>
 
             {/* Filter Status */}
             <select
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{
                 padding: '7px 12px', fontSize: '0.8rem', border: '1px solid #cbd5e1',
                 borderRadius: '8px', background: '#ffffff', color: '#0f172a', fontWeight: '600', outline: 'none'
               }}
             >
               <option value="all">Trạng thái: Tất cả</option>
-              <option value="scheduled">Chưa đến giờ ca trực</option>
-              <option value="active">Đang trực</option>
-              <option value="closed">Đã tan ca</option>
+              {isOpsManager && <option value="standby">Nghỉ giữa tua / Sẵn sàng điều động</option>}
+              <option value="scheduled">{isOpsManager ? 'Chưa đến giờ xuất bến' : 'Chưa đến giờ ca trực'}</option>
+              <option value="active">{isOpsManager ? 'Đang chạy chuyến' : 'Đang trực'}</option>
+              <option value="closed">{isOpsManager ? 'Đã hoàn thành chuyến' : 'Đã tan ca'}</option>
               <option value="late">Vào trễ</option>
               <option value="approved_leave">Đã duyệt nghỉ</option>
-              <option value="absent">Vắng mặt (Không phép)</option>
+              <option value="absent">{isOpsManager ? 'Chưa nhận chuyến (Quá giờ)' : 'Vắng mặt (Không phép)'}</option>
             </select>
           </div>
         </div>
@@ -457,6 +518,11 @@ const ManagerAttendancePage = () => {
                             <span style={{ fontWeight: '800', color: '#2563eb' }}>Trước {log.assignedTrip.departureTime}</span>
                             <span style={{ fontSize: '0.725rem', color: '#64748b' }}>Lịch chuyến {log.assignedTrip.route} ({log.assignedTrip.departureTime})</span>
                           </div>
+                        ) : (log.role === 'driver' || log.role === 'attendant') ? (
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ fontWeight: '700', color: '#475569' }}>Không có chuyến hôm nay</span>
+                            <span style={{ fontSize: '0.725rem', color: '#94a3b8' }}>Nghỉ giữa tua / Sẵn sàng điều động</span>
+                          </div>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <span style={{ fontWeight: '800', color: '#0f172a' }}>Trước 08:00 AM</span>
@@ -489,8 +555,8 @@ const ManagerAttendancePage = () => {
                       <td style={{ padding: '1rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <span style={{
                           fontSize: '0.7rem', fontWeight: '700', whiteSpace: 'nowrap',
-                          backgroundColor: log.status === 'active' || log.status === 'closed' ? '#ecfdf5' : log.status === 'absent' ? '#fef2f2' : log.status === 'approved_leave' ? '#f3e8ff' : '#f8fafc',
-                          color: log.status === 'active' || log.status === 'closed' ? '#047857' : log.status === 'absent' ? '#dc2626' : log.status === 'approved_leave' ? '#6b21a8' : '#64748b',
+                          backgroundColor: log.status === 'active' || log.status === 'closed' ? '#ecfdf5' : log.status === 'absent' ? '#fef2f2' : log.status === 'approved_leave' ? '#f3e8ff' : log.status === 'standby' ? '#f8fafc' : '#f8fafc',
+                          color: log.status === 'active' || log.status === 'closed' ? '#047857' : log.status === 'absent' ? '#dc2626' : log.status === 'approved_leave' ? '#6b21a8' : log.status === 'standby' ? '#475569' : '#64748b',
                           border: `1px solid ${log.status === 'active' || log.status === 'closed' ? '#a7f3d0' : log.status === 'absent' ? '#fca5a5' : log.status === 'approved_leave' ? '#e9d5ff' : '#e2e8f0'}`,
                           padding: '4px 10px', borderRadius: '6px', display: 'inline-block'
                         }}>
@@ -507,7 +573,7 @@ const ManagerAttendancePage = () => {
             {/* Pagination Footer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', pt: '1rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '1rem' }}>
               <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                Đang hiển thị <strong style={{ color: '#0f172a' }}>{paginatedLogs.length}</strong> trên tổng số <strong style={{ color: '#0f172a' }}>{filteredLogs.length}</strong> nhân sự hôm nay
+                Đang hiển thị <strong style={{ color: '#0f172a' }}>{paginatedLogs.length}</strong> trên tổng số <strong style={{ color: '#0f172a' }}>{filteredLogs.length}</strong> {isOpsManager ? 'tổ lái' : 'nhân sự'} hôm nay
               </div>
 
               {/* Pagination controls */}

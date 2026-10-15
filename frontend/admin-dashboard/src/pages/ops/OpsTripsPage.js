@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const API_BASE = 'http://localhost:8000/api/v1';
@@ -69,34 +69,56 @@ const OpsTripsPage = () => {
     }
   }, [filterDate]);
 
-  const getDefaultPoints = (routeIdVal, depTimeStr, arrTimeStr) => {
+  const calculateStopTime = (baseTimeStr, offsetMinutes) => {
+    if (!baseTimeStr || !baseTimeStr.includes(':')) return '';
+    const [h, m] = baseTimeStr.split(':').map(Number);
+    const total = h * 60 + m + (offsetMinutes || 0);
+    const newH = Math.floor(total / 60) % 24;
+    const newM = total % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+  };
+
+  const getPointsFromRoute = (routeIdVal, depTimeStr, arrTimeStr) => {
     const selectedRoute = routes.find(r => r._id === routeIdVal);
     if (!selectedRoute) return { pickup: [], dropoff: [] };
-
-    const start = selectedRoute.startPoint.toLowerCase();
-    const end = selectedRoute.endPoint.toLowerCase();
 
     let pickup = [];
     let dropoff = [];
 
-    if (start.includes('hồ chí minh') || start.includes('hcm')) {
-      pickup = [{ time: depTimeStr || '08:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }];
-    } else if (start.includes('đà lạt')) {
-      pickup = [{ time: depTimeStr || '08:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }];
-    } else if (start.includes('cần thơ')) {
-      pickup = [{ time: depTimeStr || '08:00', location: 'Bến xe Cần Thơ', address: 'Bến xe Cần Thơ, TP. Cần Thơ' }];
-    } else {
-      pickup = [{ time: depTimeStr || '08:00', location: `Bến xe ${selectedRoute.startPoint}`, address: `Địa chỉ tại ${selectedRoute.startPoint}` }];
+    if (selectedRoute.stops && selectedRoute.stops.length > 0) {
+      const pickupStops = selectedRoute.stops.filter(s => s.type === 'start' || s.type === 'pickup' || s.type === 'both');
+      const dropoffStops = selectedRoute.stops.filter(s => s.type === 'end' || s.type === 'dropoff' || s.type === 'both');
+
+      const baseDep = depTimeStr || '08:00';
+
+      if (pickupStops.length > 0) {
+        pickup = pickupStops.map(s => ({
+          time: calculateStopTime(baseDep, s.arrivalTimeOffset || 0),
+          location: s.name,
+          address: s.address || '',
+          lat: s.lat,
+          lng: s.lng
+        }));
+      }
+
+      if (dropoffStops.length > 0) {
+        dropoff = dropoffStops.map((s, idx) => ({
+          time: (idx === dropoffStops.length - 1 && arrTimeStr)
+            ? arrTimeStr
+            : calculateStopTime(baseDep, s.arrivalTimeOffset || 0),
+          location: s.name,
+          address: s.address || '',
+          lat: s.lat,
+          lng: s.lng
+        }));
+      }
     }
 
-    if (end.includes('hồ chí minh') || end.includes('hcm')) {
-      dropoff = [{ time: arrTimeStr || '15:00', location: 'Văn Phòng Tân Bình', address: '266 Đồng Đen, Phường 10, Tân Bình, Hồ Chí Minh' }];
-    } else if (end.includes('đà lạt')) {
-      dropoff = [{ time: arrTimeStr || '15:00', location: 'Văn Phòng Đà Lạt', address: 'Văn phòng Đà Lạt, Lâm Đồng' }];
-    } else if (end.includes('cần thơ')) {
-      dropoff = [{ time: arrTimeStr || '15:00', location: 'Bến xe Cần Thơ', address: 'Bến xe Cần Thơ, TP. Cần Thơ' }];
-    } else {
-      dropoff = [{ time: arrTimeStr || '15:00', location: `Bến xe ${selectedRoute.endPoint}`, address: `Địa chỉ tại ${selectedRoute.endPoint}` }];
+    if (pickup.length === 0) {
+      pickup = [{ time: depTimeStr || '08:00', location: selectedRoute.startPoint, address: `Bến xe ${selectedRoute.startPoint}` }];
+    }
+    if (dropoff.length === 0) {
+      dropoff = [{ time: arrTimeStr || '15:00', location: selectedRoute.endPoint, address: `Bến xe ${selectedRoute.endPoint}` }];
     }
 
     return { pickup, dropoff };
@@ -134,7 +156,7 @@ const OpsTripsPage = () => {
 
     // Build configurations with smart station lookup
     const configs = autoSlots.map(slot => {
-      const { pickup, dropoff } = getDefaultPoints(autoRouteId, slot.departureTime, slot.arrivalTime);
+      const { pickup, dropoff } = getPointsFromRoute(autoRouteId, slot.departureTime, slot.arrivalTime);
       return {
         routeId: autoRouteId,
         busId: autoBusId,
@@ -351,31 +373,108 @@ const OpsTripsPage = () => {
     return localISOTime;
   };
 
+  const handleRouteChange = (newRouteId) => {
+    setRouteId(newRouteId);
+    const depTimeStr = departureTime ? departureTime.split('T')[1]?.slice(0, 5) || '08:00' : '08:00';
+    const arrTimeStr = arrivalTime ? arrivalTime.split('T')[1]?.slice(0, 5) || '15:00' : '15:00';
+    const { pickup, dropoff } = getPointsFromRoute(newRouteId, depTimeStr, arrTimeStr);
+    if (pickup.length > 0) setPickupPoints(pickup);
+    if (dropoff.length > 0) setDropoffPoints(dropoff);
+  };
+
+  const handleDepartureChange = (val) => {
+    setDepartureTime(val);
+    if (val && val.includes('T')) {
+      const timePart = val.split('T')[1]?.slice(0, 5);
+      if (timePart && routeId) {
+        const { pickup, dropoff } = getPointsFromRoute(routeId, timePart, arrivalTime?.split('T')[1]?.slice(0, 5));
+        if (pickup.length > 0) setPickupPoints(pickup);
+        if (dropoff.length > 0) setDropoffPoints(dropoff);
+
+        // Auto calculate arrival time if route has last stop offset
+        const selectedRoute = routes.find(r => r._id === routeId);
+        if (selectedRoute && selectedRoute.stops && selectedRoute.stops.length > 0) {
+          const dropoffs = selectedRoute.stops.filter(s => s.type === 'end' || s.type === 'dropoff' || s.type === 'both');
+          const lastDropoff = dropoffs[dropoffs.length - 1];
+          if (lastDropoff && typeof lastDropoff.arrivalTimeOffset === 'number' && lastDropoff.arrivalTimeOffset > 0) {
+            const depDate = new Date(val);
+            if (!isNaN(depDate.getTime())) {
+              const newArrDate = new Date(depDate.getTime() + lastDropoff.arrivalTimeOffset * 60000);
+              setArrivalTime(formatDatetimeForInput(newArrDate.toISOString()));
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const handleArrivalChange = (val) => {
+    setArrivalTime(val);
+    if (val && val.includes('T')) {
+      const timePart = val.split('T')[1]?.slice(0, 5);
+      if (timePart && dropoffPoints.length > 0) {
+        setDropoffPoints(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          updated[lastIdx] = { ...updated[lastIdx], time: timePart };
+          return updated;
+        });
+      }
+    }
+  };
+
   const handleOpenAdd = () => {
     setEditingTrip(null);
-    setRouteId(routes[0]?._id || '');
+    const initialRouteId = routes[0]?._id || '';
+    setRouteId(initialRouteId);
     setBusId(buses[0]?._id || '');
     setDepartureTime('');
     setArrivalTime('');
     setPrice('');
-    setPickupPoints([
-      { time: '08:00', location: 'Trạm Đi', address: 'Địa chỉ xuất phát' }
-    ]);
-    setDropoffPoints([
-      { time: '15:00', location: 'Trạm Đến', address: 'Địa chỉ kết thúc' }
-    ]);
+    const { pickup, dropoff } = getPointsFromRoute(initialRouteId, '08:00', '15:00');
+    setPickupPoints(pickup);
+    setDropoffPoints(dropoff);
     setShowModal(true);
+  };
+
+  const handleSyncStopsWithRoute = () => {
+    if (!routeId) {
+      showToast('Vui lòng chọn tuyến đường trước.', 'warning');
+      return;
+    }
+    const depTimeStr = departureTime ? departureTime.split('T')[1]?.slice(0, 5) || '08:00' : '08:00';
+    const arrTimeStr = arrivalTime ? arrivalTime.split('T')[1]?.slice(0, 5) || '15:00' : '15:00';
+    const { pickup, dropoff } = getPointsFromRoute(routeId, depTimeStr, arrTimeStr);
+    setPickupPoints(pickup);
+    setDropoffPoints(dropoff);
+    showToast('Đã đồng bộ lại toàn bộ điểm đón và điểm trả từ Tuyến đường!');
   };
 
   const handleOpenEdit = (trip) => {
     setEditingTrip(trip);
-    setRouteId(trip.routeId?._id || '');
+    const rId = trip.routeId?._id || '';
+    setRouteId(rId);
     setBusId(trip.busId?._id || '');
-    setDepartureTime(formatDatetimeForInput(trip.departureTime));
-    setArrivalTime(formatDatetimeForInput(trip.arrivalTime));
+    const depFormatted = formatDatetimeForInput(trip.departureTime);
+    const arrFormatted = formatDatetimeForInput(trip.arrivalTime);
+    setDepartureTime(depFormatted);
+    setArrivalTime(arrFormatted);
     setPrice(trip.price);
-    setPickupPoints(trip.pickupPoints || []);
-    setDropoffPoints(trip.dropoffPoints || []);
+
+    let curPickup = trip.pickupPoints && trip.pickupPoints.length > 0 ? trip.pickupPoints : [];
+    let curDropoff = trip.dropoffPoints && trip.dropoffPoints.length > 0 ? trip.dropoffPoints : [];
+
+    // Auto-sync if trip had only 1 or 0 points
+    if ((curPickup.length <= 1 || curDropoff.length <= 1) && rId) {
+      const depTimeStr = depFormatted ? depFormatted.split('T')[1]?.slice(0, 5) || '08:00' : '08:00';
+      const arrTimeStr = arrFormatted ? arrFormatted.split('T')[1]?.slice(0, 5) || '15:00' : '15:00';
+      const pts = getPointsFromRoute(rId, depTimeStr, arrTimeStr);
+      if (curPickup.length <= 1 && pts.pickup.length > 0) curPickup = pts.pickup;
+      if (curDropoff.length <= 1 && pts.dropoff.length > 0) curDropoff = pts.dropoff;
+    }
+
+    setPickupPoints(curPickup);
+    setDropoffPoints(curDropoff);
     setShowModal(true);
   };
 
@@ -476,9 +575,47 @@ const OpsTripsPage = () => {
     }
   };
 
+  // Dashboard Stats Memo
+  const totalBookedSeats = useMemo(() => {
+    return trips.reduce((acc, t) => acc + (t.bookedSeats?.length || 0), 0);
+  }, [trips]);
+
+  const avgOccupancy = useMemo(() => {
+    const totalCapacity = trips.reduce((acc, t) => acc + (t.busId?.totalSeats || 0), 0);
+    return totalCapacity > 0 ? Math.round((totalBookedSeats / totalCapacity) * 100) : 0;
+  }, [trips, totalBookedSeats]);
+
+  const runningTripsCount = useMemo(() => {
+    const now = new Date();
+    return trips.filter(t => new Date(t.departureTime) <= now && new Date(t.arrivalTime) >= now).length;
+  }, [trips]);
+
+  const upcomingTripsCount = useMemo(() => {
+    const now = new Date();
+    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    return trips.filter(t => new Date(t.departureTime) > now && new Date(t.departureTime) <= in24h).length;
+  }, [trips]);
+
+  const getTripDurationStr = (depTime, arrTime) => {
+    if (!depTime || !arrTime) return '';
+    const diffMs = new Date(arrTime) - new Date(depTime);
+    if (diffMs <= 0) return '';
+    const totalMin = Math.round(diffMs / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return `${h}h ${m > 0 ? String(m).padStart(2, '0') + 'm' : '00m'}`;
+  };
+
+  const getTodayStr = () => new Date().toLocaleDateString('en-CA');
+  const getTomorrowStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toLocaleDateString('en-CA');
+  };
+
   return (
-    <section className="panel" style={{ minHeight: '400px' }}>
-      {/* Toast */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: '400px' }}>
+      {/* Toast Alert */}
       {toast && (
         <div style={{
           position: 'fixed', top: '80px', right: '20px', zIndex: 9999,
@@ -490,401 +627,645 @@ const OpsTripsPage = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h2>Quản lý chuyến xe</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            {filteredTrips.length} chuyến xe hiển thị (Tổng số: {trips.length})
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={handleOpenAutoModal} className="btn btn-secondary" style={{ borderColor: 'var(--accent)', color: 'var(--accent)', fontWeight: '600' }}>
-            Xếp lịch tự động
-          </button>
-          <button onClick={handleOpenAdd} className="btn btn-primary">
-            + Tạo chuyến xe mới
-          </button>
-        </div>
-      </div>
-
-      {/* Filters & View Switcher */}
+      {/* =========================================================================
+          KHỐI 1 (TRÊN): HEADER & 4 THẺ THỐNG KÊ TỔNG QUAN (DASHBOARD STYLE)
+          ========================================================================= */}
       <div style={{
-        background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px',
-        padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px',
-        marginBottom: '24px'
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '16px',
+        padding: '1.25rem 1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem'
       }}>
-        {/* Row 1: Route, Date, View mode */}
+        {/* Top Header Row */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Tuyến:</span>
-              <select 
-                value={filterRoute} 
-                onChange={(e) => setFilterRoute(e.target.value)}
-                className="form-control"
-                style={{ width: '180px', padding: '6px 12px' }}
-              >
-                <option value="">Tất cả các tuyến</option>
-                {routes.map(r => (
-                  <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
-                ))}
-              </select>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Quản lý chuyến xe
+              </h1>
+              <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700', border: '1px solid #bfdbfe' }}>
+                • {filteredTrips.length} chuyến đang hiển thị (Tổng số: {trips.length})
+              </span>
             </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--text-muted)' }}>Thời gian:</span>
-              <input 
-                type="date" 
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="form-control"
-                style={{ width: '160px', padding: '5px 12px' }}
-              />
-            </div>
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', margin: '4px 0 0 0' }}>
+              Theo dõi kế hoạch vận hành, điều phối lộ trình và kiểm soát lấp đầy số ghế • <span style={{ color: '#16a34a', fontWeight: '600' }}>{runningTripsCount} chuyến đang chạy</span> • <span style={{ color: '#d97706', fontWeight: '600' }}>{upcomingTripsCount} sắp xuất bến</span>
+            </p>
           </div>
 
-          {/* Right: View Switcher */}
-          <div style={{ display: 'flex', background: '#e2e8f0', padding: '4px', borderRadius: '8px', gap: '4px' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
             <button 
-              onClick={() => setViewMode('list')}
-              style={{
-                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-                cursor: 'pointer', background: viewMode === 'list' ? 'white' : 'transparent',
-                color: viewMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
-                boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-              }}
+              onClick={handleOpenAutoModal} 
+              className="btn btn-secondary" 
+              style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: '700', borderRadius: '10px', borderColor: '#c084fc', color: '#7e22ce', backgroundColor: '#faf5ff' }}
             >
-              Danh sách
+              Xếp lịch tự động
             </button>
             <button 
-              onClick={() => setViewMode('calendar')}
-              style={{
-                padding: '6px 14px', border: 'none', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '600',
-                cursor: 'pointer', background: viewMode === 'calendar' ? 'white' : 'transparent',
-                color: viewMode === 'calendar' ? 'var(--primary)' : 'var(--text-secondary)',
-                boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-              }}
+              onClick={handleOpenAdd} 
+              className="btn btn-primary"
+              style={{ padding: '0.5rem 1.15rem', fontSize: '0.82rem', fontWeight: '700', borderRadius: '10px', backgroundColor: '#2563eb', border: 'none', boxShadow: '0 2px 6px rgba(37,99,235,0.25)' }}
             >
-              Lịch tuần
+              + Tạo chuyến xe mới
             </button>
           </div>
         </div>
 
-        {/* Row 2: Advanced filters */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-          gap: '12px', 
-          paddingTop: '12px', 
-          borderTop: '1px solid #e2e8f0' 
-        }}>
-          {/* 1. Loại xe */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Loại xe:</label>
-            <select
-              value={filterBusType}
-              onChange={(e) => setFilterBusType(e.target.value)}
-              className="form-control"
-              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
-            >
-              <option value="all">Tất cả loại xe</option>
-              <option value="giường nằm">Giường nằm</option>
-              <option value="ghế ngồi">Ghế ngồi</option>
-              <option value="limousine">Limousine / Phòng nằm</option>
-            </select>
+        {/* 4 Overview Metric Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          {/* Card 1: Tuyến khai thác */}
+          <div style={{ background: '#f8fafc', padding: '1rem 1.15rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+              TUYẾN ĐƯỜNG KHAI THÁC
+            </div>
+            <div style={{ fontSize: '1.45rem', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+              {routes.length} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>tuyến</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: '600', marginTop: '6px' }}>
+              • {routes.length} tuyến đang vận hành ổn định
+            </div>
           </div>
 
-          {/* 2. Khung giờ chạy */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Khung giờ chạy:</label>
-            <select
-              value={filterTimeOfDay}
-              onChange={(e) => setFilterTimeOfDay(e.target.value)}
-              className="form-control"
-              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
-            >
-              <option value="all">Tất cả khung giờ</option>
-              <option value="morning">Buổi sáng (06:00 - 12:00)</option>
-              <option value="afternoon">Buổi chiều (12:00 - 18:00)</option>
-              <option value="evening">Buổi tối &amp; đêm (18:00 - 06:00)</option>
-            </select>
+          {/* Card 2: Chuyến xe vận hành */}
+          <div style={{ background: '#f8fafc', padding: '1rem 1.15rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+              CHUYẾN XE VẬN HÀNH
+            </div>
+            <div style={{ fontSize: '1.45rem', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+              {trips.length} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>chuyến</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: '600', marginTop: '6px' }}>
+              • {runningTripsCount} chuyến đang chạy trong ngày
+            </div>
           </div>
 
-          {/* 3. Số chỗ ngồi */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Số chỗ:</label>
-            <select
-              value={filterSeats}
-              onChange={(e) => setFilterSeats(e.target.value)}
-              className="form-control"
-              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
-            >
-              <option value="all">Tất cả số chỗ</option>
-              <option value="16">16 chỗ</option>
-              <option value="20">20 chỗ</option>
-              <option value="22">22 chỗ</option>
-              <option value="29">29 chỗ</option>
-              <option value="32">32 chỗ</option>
-              <option value="34">34 chỗ</option>
-              <option value="44">44 chỗ</option>
-              <option value="45">45 chỗ</option>
-            </select>
+          {/* Card 3: Đội xe khả dụng */}
+          <div style={{ background: '#f8fafc', padding: '1rem 1.15rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+              ĐỘI XE KHẢ DỤNG
+            </div>
+            <div style={{ fontSize: '1.45rem', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+              {buses.length} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>phương tiện</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: '600', marginTop: '6px' }}>
+              • {buses.filter(b => b.status === 'active' || !b.status).length} xe sẵn sàng xuất bến
+            </div>
           </div>
 
-          {/* 4. Giá vé tối đa */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Giá vé tối đa (VND):</label>
-            <input
-              type="number"
-              value={filterMaxPrice}
-              onChange={(e) => setFilterMaxPrice(e.target.value)}
-              placeholder="Ví dụ: 300000"
-              className="form-control"
-              style={{ padding: '5px 10px', fontSize: '0.8rem' }}
-            />
-          </div>
-
-          {/* 5. Dịch vụ đi kèm */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>Dịch vụ đi kèm:</label>
-            <select
-              value={filterAmenity}
-              onChange={(e) => setFilterAmenity(e.target.value)}
-              className="form-control"
-              style={{ padding: '6px 10px', fontSize: '0.8rem' }}
-            >
-              <option value="all">Tất cả dịch vụ</option>
-              <option value="wifi">Wifi miễn phí</option>
-              <option value="điều hòa">Điều hòa</option>
-              <option value="nước">Nước uống / Khăn lạnh</option>
-              <option value="tivi">Màn hình Tivi</option>
-              <option value="cổng sạc">Cổng sạc USB</option>
-            </select>
+          {/* Card 4: Tổng vé đã đặt */}
+          <div style={{ background: '#f8fafc', padding: '1rem 1.15rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+              TỔNG VÉ ĐÃ ĐẶT
+            </div>
+            <div style={{ fontSize: '1.45rem', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
+              {totalBookedSeats} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>vé</span>
+            </div>
+            <div style={{ fontSize: '0.75rem', color: '#d97706', fontWeight: '600', marginTop: '6px' }}>
+              • {avgOccupancy}% Tỷ lệ lấp đầy ghế trung bình
+            </div>
           </div>
         </div>
-
-        {/* Row 3: Action Buttons */}
-        {(filterRoute || filterDate || filterBusType !== 'all' || filterTimeOfDay !== 'all' || filterSeats !== 'all' || filterMaxPrice || filterAmenity !== 'all') && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px' }}>
-            <button 
-              onClick={() => {
-                setFilterRoute('');
-                setFilterDate('');
-                setFilterBusType('all');
-                setFilterTimeOfDay('all');
-                setFilterSeats('all');
-                setFilterMaxPrice('');
-                setFilterAmenity('all');
-              }}
-              className="btn btn-secondary"
-              style={{ padding: '6px 12px', fontSize: '0.8rem', fontWeight: '700', color: '#ef4444', borderColor: '#fca5a5' }}
-            >
-              Đặt lại tất cả bộ lọc
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Hover Itinerary Tooltip for Trips */}
-      {hoveredTrip && (
-        <div 
-          style={{
-            position: 'absolute',
-            top: `${tripTooltipPos.y - 120}px`,
-            left: `${tripTooltipPos.x}px`,
-            zIndex: 9999,
-            width: '380px',
-            backgroundColor: '#ffffff',
-            borderRadius: '16px',
-            boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(37, 99, 235, 0.08)',
-            border: '1px solid #cbd5e1',
-            padding: '16px 20px',
-            pointerEvents: 'none',
-            animation: 'fadeIn 0.2s ease-in-out'
-          }}
-        >
-          {/* Header Tooltip */}
-          <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', marginBottom: '12px' }}>
-            <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.95rem' }}>
-              Danh sách trạm đón/trả chuyến: <span style={{ color: '#2563eb' }}>{hoveredTrip.routeId ? `${hoveredTrip.routeId.startPoint} → ${hoveredTrip.routeId.endPoint}` : ''}</span>
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-              Xe: <strong>{hoveredTrip.busId?.plateNumber || 'Chưa gán'}</strong> ({hoveredTrip.busId?.type || 'N/A'})
-            </div>
-          </div>
-
-          {/* Timeline of Pickup & Dropoff Stops */}
-          <div style={{ position: 'relative', paddingLeft: '20px' }}>
-            {/* Timeline Line */}
-            <div style={{
-              position: 'absolute',
-              top: '8px',
-              bottom: '8px',
-              left: '6px',
-              width: '2px',
-              backgroundColor: '#cbd5e1',
-              borderRadius: '1px'
-            }} />
-
-            {/* Pickup Points */}
-            {(hoveredTrip.pickupPoints || []).map((p, idx) => (
-              <div key={`p-${idx}`} style={{ position: 'relative', marginBottom: '10px' }}>
-                <div style={{
-                  position: 'absolute',
-                  left: '-18px',
-                  top: '4px',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: '#10b981',
-                  border: '2px solid #ffffff',
-                  boxShadow: '0 0 0 2px rgba(16,185,129,0.2)'
-                }} />
-                <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.83rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: '#059669', fontWeight: '700' }}>[{p.time || 'Đón'}]</span>
-                  <span>{p.location}</span>
-                  <span style={{ fontSize: '0.7rem', backgroundColor: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: '4px' }}>Điểm đón</span>
-                </div>
-                {p.address && <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{p.address}</div>}
+      {/* =========================================================================
+          KHỐI 2 (DƯỚI): BỘ LỌC ĐA NĂNG & DANH SÁCH CHUYẾN XE / LỊCH TUẦN
+          ========================================================================= */}
+      <div style={{
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '16px',
+        padding: '1.25rem 1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
+        {/* Filters Top Bar */}
+        <div style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '14px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px'
+        }}>
+          {/* Row 1: Route, Date, Quick Date Buttons, View Mode Switcher */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {/* Route filter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>TUYẾN:</span>
+                <select 
+                  value={filterRoute} 
+                  onChange={(e) => setFilterRoute(e.target.value)}
+                  className="form-control"
+                  style={{ width: '190px', padding: '6px 10px', fontSize: '0.82rem', borderRadius: '8px' }}
+                >
+                  <option value="">Tất cả các tuyến</option>
+                  {routes.map(r => (
+                    <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
+                  ))}
+                </select>
               </div>
-            ))}
-
-            {/* Dropoff Points */}
-            {(hoveredTrip.dropoffPoints || []).map((d, idx) => (
-              <div key={`d-${idx}`} style={{ position: 'relative', marginBottom: idx === hoveredTrip.dropoffPoints.length - 1 ? 0 : '10px' }}>
-                <div style={{
-                  position: 'absolute',
-                  left: '-18px',
-                  top: '4px',
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: '#ef4444',
-                  border: '2px solid #ffffff',
-                  boxShadow: '0 0 0 2px rgba(239,68,68,0.2)'
-                }} />
-                <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.83rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ color: '#dc2626', fontWeight: '700' }}>[{d.time || 'Trả'}]</span>
-                  <span>{d.location}</span>
-                  <span style={{ fontSize: '0.7rem', backgroundColor: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: '4px' }}>Điểm trả</span>
-                </div>
-                {d.address && <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>{d.address}</div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-          Đang tải danh sách chuyến xe...
-        </div>
-      ) : viewMode === 'list' ? (
-        /* List View */
-        filteredTrips.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-            Chưa có chuyến xe nào khớp với điều kiện lọc.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {filteredTrips.map((trip) => {
-              const departureDate = new Date(trip.departureTime);
-              const arrivalDate = new Date(trip.arrivalTime);
-              const totalSeats = trip.busId?.totalSeats || 0;
-              const bookedSeatsCount = trip.bookedSeats?.length || 0;
               
-              return (
-                <div 
-                  key={trip._id} 
-                  className="panel" 
-                  onMouseEnter={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setTripTooltipPos({
-                      x: rect.left + window.scrollX + 280,
-                      y: rect.top + window.scrollY
-                    });
-                    setHoveredTrip(trip);
-                  }}
-                  onMouseLeave={() => setHoveredTrip(null)}
-                  style={{ 
-                    display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '16px 20px', border: '1px solid var(--border-color)', borderRadius: '12px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+              {/* Date filter & Quick Date buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#475569', textTransform: 'uppercase' }}>THỜI GIAN:</span>
+                <input 
+                  type="date" 
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className="form-control"
+                  style={{ width: '145px', padding: '5px 10px', fontSize: '0.82rem', borderRadius: '8px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setFilterDate(getTodayStr())}
+                  style={{
+                    padding: '4px 10px', fontSize: '0.75rem', fontWeight: '600', borderRadius: '8px',
+                    border: '1px solid #cbd5e1', cursor: 'pointer',
+                    backgroundColor: filterDate === getTodayStr() ? '#2563eb' : '#ffffff',
+                    color: filterDate === getTodayStr() ? '#ffffff' : '#475569'
                   }}
                 >
-                  {/* Left info: Route & DateTime */}
-                  <div style={{ minWidth: '220px' }}>
-                    <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--primary)', marginBottom: '6px' }}>
-                      {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
-                    </div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text-main)' }}>
-                      Khởi hành: {departureDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      Dự kiến đến: {arrivalDate.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
-                    </div>
-                    {/* Badge Trạm Đón/Trả */}
-                    <div style={{ marginTop: '6px' }}>
-                      <span style={{ 
-                        fontSize: '0.75rem', 
-                        backgroundColor: '#eff6ff', 
-                        color: '#2563eb', 
-                        padding: '2px 8px', 
-                        borderRadius: '12px',
-                        border: '1px solid #bfdbfe',
-                        fontWeight: '600' 
+                  Hôm nay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterDate(getTomorrowStr())}
+                  style={{
+                    padding: '4px 10px', fontSize: '0.75rem', fontWeight: '600', borderRadius: '8px',
+                    border: '1px solid #cbd5e1', cursor: 'pointer',
+                    backgroundColor: filterDate === getTomorrowStr() ? '#2563eb' : '#ffffff',
+                    color: filterDate === getTomorrowStr() ? '#ffffff' : '#475569'
+                  }}
+                >
+                  Ngày mai
+                </button>
+                {filterDate && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterDate('')}
+                    style={{
+                      padding: '4px 10px', fontSize: '0.75rem', fontWeight: '600', borderRadius: '8px',
+                      border: '1px solid #e2e8f0', cursor: 'pointer', backgroundColor: '#f1f5f9', color: '#64748b'
+                    }}
+                  >
+                    Tất cả ngày
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Right: View Switcher (Danh sách / Lịch tuần) */}
+            <div style={{ display: 'flex', background: '#e2e8f0', padding: '3px', borderRadius: '10px', gap: '4px' }}>
+              <button 
+                onClick={() => setViewMode('list')}
+                style={{
+                  padding: '6px 16px', border: 'none', borderRadius: '8px', fontSize: '0.82rem', fontWeight: '700',
+                  cursor: 'pointer', background: viewMode === 'list' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'list' ? '#2563eb' : '#64748b',
+                  boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Danh sách
+              </button>
+              <button 
+                onClick={() => setViewMode('calendar')}
+                style={{
+                  padding: '6px 16px', border: 'none', borderRadius: '8px', fontSize: '0.82rem', fontWeight: '700',
+                  cursor: 'pointer', background: viewMode === 'calendar' ? '#ffffff' : 'transparent',
+                  color: viewMode === 'calendar' ? '#2563eb' : '#64748b',
+                  boxShadow: viewMode === 'calendar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Lịch tuần
+              </button>
+            </div>
+          </div>
+
+          {/* Row 2: Advanced filters */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', 
+            gap: '12px', 
+            paddingTop: '12px', 
+            borderTop: '1px solid #e2e8f0',
+            alignItems: 'flex-end'
+          }}>
+            {/* 1. Loại xe */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>LOẠI XE:</label>
+              <select
+                value={filterBusType}
+                onChange={(e) => setFilterBusType(e.target.value)}
+                className="form-control"
+                style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+              >
+                <option value="all">Tất cả loại xe</option>
+                <option value="giường nằm">Giường nằm</option>
+                <option value="ghế ngồi">Ghế ngồi</option>
+                <option value="limousine">Limousine / VIP</option>
+              </select>
+            </div>
+
+            {/* 2. Khung giờ chạy */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>KHUNG GIỜ CHẠY:</label>
+              <select
+                value={filterTimeOfDay}
+                onChange={(e) => setFilterTimeOfDay(e.target.value)}
+                className="form-control"
+                style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+              >
+                <option value="all">Tất cả khung giờ</option>
+                <option value="morning">Buổi sáng (06:00 - 12:00)</option>
+                <option value="afternoon">Buổi chiều (12:00 - 18:00)</option>
+                <option value="evening">Buổi tối &amp; đêm (18:00 - 06:00)</option>
+              </select>
+            </div>
+
+            {/* 3. Số chỗ ngồi */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>SỐ CHỖ:</label>
+              <select
+                value={filterSeats}
+                onChange={(e) => setFilterSeats(e.target.value)}
+                className="form-control"
+                style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+              >
+                <option value="all">Tất cả số chỗ</option>
+                <option value="16">16 chỗ</option>
+                <option value="20">20 chỗ</option>
+                <option value="22">22 chỗ</option>
+                <option value="29">29 chỗ</option>
+                <option value="32">32 chỗ</option>
+                <option value="34">34 chỗ</option>
+                <option value="44">44 chỗ</option>
+                <option value="45">45 chỗ</option>
+              </select>
+            </div>
+
+            {/* 4. Giá vé tối đa */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>GIÁ VÉ TỐI ĐA (VND):</label>
+              <input
+                type="number"
+                value={filterMaxPrice}
+                onChange={(e) => setFilterMaxPrice(e.target.value)}
+                placeholder="Ví dụ: 300000"
+                className="form-control"
+                style={{ padding: '5px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+              />
+            </div>
+
+            {/* 5. Dịch vụ đi kèm */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>DỊCH VỤ ĐI KÈM:</label>
+              <select
+                value={filterAmenity}
+                onChange={(e) => setFilterAmenity(e.target.value)}
+                className="form-control"
+                style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '8px' }}
+              >
+                <option value="all">Tất cả dịch vụ</option>
+                <option value="wifi">Wifi miễn phí</option>
+                <option value="điều hòa">Điều hòa</option>
+                <option value="nước">Nước uống / Khăn lạnh</option>
+                <option value="tivi">Màn hình Tivi</option>
+                <option value="cổng sạc">Cổng sạc USB</option>
+              </select>
+            </div>
+
+            {/* Reset Filters */}
+            {(filterRoute || filterDate || filterBusType !== 'all' || filterTimeOfDay !== 'all' || filterSeats !== 'all' || filterMaxPrice || filterAmenity !== 'all') && (
+              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                <button 
+                  onClick={() => {
+                    setFilterRoute('');
+                    setFilterDate('');
+                    setFilterBusType('all');
+                    setFilterTimeOfDay('all');
+                    setFilterSeats('all');
+                    setFilterMaxPrice('');
+                    setFilterAmenity('all');
+                  }}
+                  className="btn btn-secondary"
+                  style={{ width: '100%', padding: '6px 12px', fontSize: '0.78rem', fontWeight: '700', color: '#ef4444', borderColor: '#fca5a5', borderRadius: '8px', backgroundColor: '#ffffff' }}
+                >
+                  Đặt lại bộ lọc
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Hover Itinerary Tooltip for Trips */}
+        {hoveredTrip && (
+          <div 
+            style={{
+              position: 'absolute',
+              top: `${tripTooltipPos.y - 120}px`,
+              left: `${tripTooltipPos.x}px`,
+              zIndex: 9999,
+              width: '380px',
+              backgroundColor: '#ffffff',
+              borderRadius: '16px',
+              boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18), 0 4px 12px rgba(37, 99, 235, 0.08)',
+              border: '1px solid #cbd5e1',
+              padding: '16px 20px',
+              pointerEvents: 'none',
+              animation: 'fadeIn 0.2s ease-in-out'
+            }}
+          >
+            {/* Header Tooltip */}
+            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', marginBottom: '12px' }}>
+              <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.92rem' }}>
+                Danh sách trạm đón/trả: <span style={{ color: '#2563eb' }}>{hoveredTrip.routeId ? `${hoveredTrip.routeId.startPoint} → ${hoveredTrip.routeId.endPoint}` : ''}</span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                Xe: <strong>{hoveredTrip.busId?.plateNumber || 'Chưa gán'}</strong> ({hoveredTrip.busId?.type || 'N/A'})
+              </div>
+            </div>
+
+            {/* Timeline of Pickup & Dropoff Stops */}
+            <div style={{ position: 'relative', paddingLeft: '20px' }}>
+              <div style={{
+                position: 'absolute',
+                top: '8px',
+                bottom: '8px',
+                left: '6px',
+                width: '2px',
+                backgroundColor: '#cbd5e1',
+                borderRadius: '1px'
+              }} />
+
+              {/* Pickup Points */}
+              {(hoveredTrip.pickupPoints || []).map((p, idx) => (
+                <div key={`p-${idx}`} style={{ position: 'relative', marginBottom: '10px' }}>
+                  <div style={{
+                    position: 'absolute',
+                    left: '-18px',
+                    top: '4px',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    backgroundColor: '#10b981',
+                    border: '2px solid #ffffff',
+                    boxShadow: '0 0 0 2px rgba(16,185,129,0.2)'
+                  }} />
+                  <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: '#059669', fontWeight: '700' }}>[{p.time || 'Đón'}]</span>
+                    <span>{p.location}</span>
+                    <span style={{ fontSize: '0.68rem', backgroundColor: '#d1fae5', color: '#065f46', padding: '1px 6px', borderRadius: '4px' }}>Điểm đón</span>
+                  </div>
+                  {p.address && <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>{p.address}</div>}
+                </div>
+              ))}
+
+              {/* Dropoff Points */}
+              {(hoveredTrip.dropoffPoints || []).map((d, idx) => (
+                <div key={`d-${idx}`} style={{ position: 'relative', marginBottom: idx === hoveredTrip.dropoffPoints.length - 1 ? 0 : '10px' }}>
+                  <div style={{
+                    position: 'absolute',
+                    left: '-18px',
+                    top: '4px',
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ef4444',
+                    border: '2px solid #ffffff',
+                    boxShadow: '0 0 0 2px rgba(239,68,68,0.2)'
+                  }} />
+                  <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: '#dc2626', fontWeight: '700' }}>[{d.time || 'Trả'}]</span>
+                    <span>{d.location}</span>
+                    <span style={{ fontSize: '0.68rem', backgroundColor: '#fee2e2', color: '#991b1b', padding: '1px 6px', borderRadius: '4px' }}>Điểm trả</span>
+                  </div>
+                  {d.address && <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>{d.address}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b', fontSize: '0.9rem' }}>
+            Đang tải danh sách chuyến xe...
+          </div>
+        ) : viewMode === 'list' ? (
+          /* List View Cards */
+          filteredTrips.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b', fontSize: '0.9rem' }}>
+              Chưa có chuyến xe nào khớp với điều kiện lọc.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {filteredTrips.map((trip) => {
+                const departureDate = new Date(trip.departureTime);
+                const arrivalDate = new Date(trip.arrivalTime);
+                const totalSeats = trip.busId?.totalSeats || 0;
+                const bookedSeatsCount = trip.bookedSeats?.length || 0;
+                const remainingSeats = Math.max(0, totalSeats - bookedSeatsCount);
+                const occupancyPercent = totalSeats > 0 ? Math.min(100, Math.round((bookedSeatsCount / totalSeats) * 100)) : 0;
+                const isHighOccupancy = occupancyPercent >= 85;
+                const isLimousine = (trip.busId?.type || '').toLowerCase().includes('limousine');
+                const durationStr = getTripDurationStr(trip.departureTime, trip.arrivalTime);
+                const totalStops = (trip.pickupPoints?.length || 0) + (trip.dropoffPoints?.length || 0);
+                const depTimeStr = departureDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                const depDateStr = departureDate.toLocaleDateString('vi-VN');
+                const arrTimeStr = arrivalDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+                return (
+                  <div 
+                    key={trip._id}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '16px',
+                      padding: '18px 22px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '20px',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.06)';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.02)';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                    }}
+                  >
+                    {/* Col 1: Route & Schedule */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: '1 1 320px' }}>
+                      <div style={{
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '50%',
+                        backgroundColor: isLimousine ? '#f3e8ff' : isHighOccupancy ? '#fef3c7' : '#eff6ff',
+                        color: isLimousine ? '#7e22ce' : isHighOccupancy ? '#b45309' : '#2563eb',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: '700',
+                        fontSize: '1.15rem',
+                        flexShrink: 0
                       }}>
-                        {(trip.pickupPoints?.length || 0) + (trip.dropoffPoints?.length || 0)} Trạm đón/trả (Rê chuột)
-                      </span>
-                    </div>
-                  </div>
+                        ⇄
+                      </div>
 
-                  {/* Middle info: Bus Details */}
-                  <div style={{ minWidth: '180px' }}>
-                    <div style={{ fontSize: '0.95rem', fontWeight: '700' }}>
-                      Xe: {trip.busId?.plateNumber || 'Chưa gán'}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Loại: {trip.busId?.type || 'N/A'}
-                    </div>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px', fontWeight: '600' }}>
-                      Đã đặt: {bookedSeatsCount}/{totalSeats} ghế (Còn {totalSeats - bookedSeatsCount} trống)
-                    </div>
-                  </div>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>
+                            {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+                          </span>
+                          {isHighOccupancy ? (
+                            <span style={{ fontSize: '0.72rem', fontWeight: '700', backgroundColor: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '12px' }}>
+                              Sắp hết vé
+                            </span>
+                          ) : isLimousine ? (
+                            <span style={{ fontSize: '0.72rem', fontWeight: '700', backgroundColor: '#f3e8ff', color: '#7e22ce', padding: '2px 8px', borderRadius: '12px' }}>
+                              VIP Limousine
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.72rem', fontWeight: '700', backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '12px' }}>
+                              Đúng giờ
+                            </span>
+                          )}
+                        </div>
 
-                  {/* Right info: Price & Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '20px', minWidth: '200px', justifyContent: 'flex-end' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '1.15rem', fontWeight: '800', color: 'var(--accent)' }}>
-                        {trip.price?.toLocaleString('vi-VN')} đ
+                        <div style={{ fontSize: '0.85rem', color: '#334155', marginTop: '6px', fontWeight: '600' }}>
+                          <span>Khởi hành: </span>
+                          <strong style={{ color: '#2563eb' }}>{depTimeStr}</strong> - {depDateStr}
+                          <span style={{ margin: '0 8px', color: '#cbd5e1' }}>|</span>
+                          <span style={{ color: '#64748b', fontWeight: '500' }}>Dự kiến: {arrTimeStr} {durationStr ? `(${durationStr})` : ''}</span>
+                        </div>
+
+                        <div style={{ marginTop: '8px' }}>
+                          <span
+                            onMouseEnter={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setTripTooltipPos({
+                                x: rect.left + window.scrollX,
+                                y: rect.top + window.scrollY
+                              });
+                              setHoveredTrip(trip);
+                            }}
+                            onMouseLeave={() => setHoveredTrip(null)}
+                            style={{
+                              fontSize: '0.75rem',
+                              backgroundColor: '#f1f5f9',
+                              color: '#2563eb',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              border: '1px solid #e2e8f0',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            {totalStops} Trạm đón/trả (Rê chuột)
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleOpenEdit(trip); }} 
-                        className="btn btn-secondary" 
-                        style={{ padding: '8px 14px', fontSize: '0.85rem' }}
-                      >
-                        Sửa
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(trip); }} 
-                        className="btn btn-secondary" 
-                        style={{ color: '#ef4444', borderColor: '#fca5a5', padding: '8px 14px', fontSize: '0.85rem' }}
-                      >
-                        Xóa
-                      </button>
+
+                    {/* Col 2: Vehicle & Occupancy */}
+                    <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{
+                          fontFamily: 'monospace',
+                          fontWeight: '700',
+                          fontSize: '0.85rem',
+                          backgroundColor: '#f8fafc',
+                          border: '1px solid #cbd5e1',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          color: '#1e293b'
+                        }}>
+                          {trip.busId?.plateNumber || 'Chưa gán xe'}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#475569' }}>
+                          {trip.busId?.type || 'Xe khách'}
+                        </span>
+                        {remainingSeats <= 2 ? (
+                          <span style={{ fontSize: '0.72rem', fontWeight: '700', backgroundColor: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: '12px' }}>
+                            {remainingSeats === 0 ? 'Hết chỗ' : `Chỉ còn ${remainingSeats} ghế`}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.72rem', fontWeight: '700', backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '12px' }}>
+                            Còn {remainingSeats} trống
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', fontWeight: '600', color: '#64748b', marginBottom: '4px' }}>
+                          <span>Đã đặt: {bookedSeatsCount}/{totalSeats} ghế</span>
+                          <span style={{ color: occupancyPercent >= 85 ? '#d97706' : '#2563eb' }}>{occupancyPercent}%</span>
+                        </div>
+                        <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${occupancyPercent}%`,
+                            height: '100%',
+                            backgroundColor: occupancyPercent >= 85 ? '#f59e0b' : '#2563eb',
+                            borderRadius: '3px',
+                            transition: 'width 0.3s'
+                          }} />
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                        Tài xế: <strong style={{ color: '#334155' }}>{trip.driver?.name ? `${trip.driver.name} (Chính)${trip.assistant?.name ? ` • ${trip.assistant.name} (Phụ)` : ''}` : 'Chưa phân công'}</strong>
+                      </div>
+                    </div>
+
+                    {/* Col 3: Price & Actions */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', justifyContent: 'flex-end', flex: '0 0 auto' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                          GIÁ VÉ NIÊM YẾT
+                        </div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#2563eb', marginTop: '2px' }}>
+                          {trip.price?.toLocaleString('vi-VN')} đ
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleOpenEdit(trip); }} 
+                          className="btn btn-secondary" 
+                          style={{ padding: '6px 14px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', border: '1px solid #cbd5e1', backgroundColor: '#ffffff', cursor: 'pointer' }}
+                        >
+                          Sửa
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDelete(trip); }} 
+                          className="btn btn-secondary" 
+                          style={{ color: '#ef4444', borderColor: '#fca5a5', backgroundColor: '#ffffff', padding: '6px 14px', fontSize: '0.85rem', fontWeight: '600', borderRadius: '8px', cursor: 'pointer' }}
+                        >
+                          Xóa
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )
-      ) : (
+                );
+              })}
+            </div>
+          )
+        ) : (
         /* Weekly Calendar View */
         <div>
           {/* Week Selector */}
@@ -1078,6 +1459,7 @@ const OpsTripsPage = () => {
           </div>
         </div>
       )}
+      </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
@@ -1106,7 +1488,7 @@ const OpsTripsPage = () => {
                   <select 
                     className="form-control" 
                     value={routeId} 
-                    onChange={(e) => setRouteId(e.target.value)}
+                    onChange={(e) => handleRouteChange(e.target.value)}
                     required
                   >
                     <option value="">-- Chọn tuyến --</option>
@@ -1140,7 +1522,7 @@ const OpsTripsPage = () => {
                     type="datetime-local" 
                     className="form-control" 
                     value={departureTime} 
-                    onChange={(e) => setDepartureTime(e.target.value)} 
+                    onChange={(e) => handleDepartureChange(e.target.value)} 
                     required
                   />
                 </div>
@@ -1151,7 +1533,7 @@ const OpsTripsPage = () => {
                     type="datetime-local" 
                     className="form-control" 
                     value={arrivalTime} 
-                    onChange={(e) => setArrivalTime(e.target.value)} 
+                    onChange={(e) => handleArrivalChange(e.target.value)} 
                     required
                   />
                 </div>
@@ -1177,44 +1559,51 @@ const OpsTripsPage = () => {
               </div>
 
               {/* Pickup points builder */}
-              <div style={{ marginBottom: '20px', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0 }}>Điểm đón khách</h4>
-                  <button type="button" onClick={handleAddPickupPoint} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
-                    + Thêm điểm đón
-                  </button>
+              <div style={{ marginBottom: '20px', border: '1px solid #cbd5e1', padding: '16px', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h4 style={{ margin: 0, color: '#166534', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Danh sách Điểm đón khách</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#15803d', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                      Cố định theo tuyến ({pickupPoints.length} điểm)
+                    </span>
+                  </h4>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="button" onClick={handleSyncStopsWithRoute} className="btn btn-secondary" style={{ padding: '3px 10px', fontSize: '0.75rem', color: '#2563eb', borderColor: '#bfdbfe' }}>
+                      Đồng bộ theo tuyến
+                    </button>
+                    <button type="button" onClick={handleAddPickupPoint} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: '0.75rem' }}>
+                      + Thêm điểm ngoài tuyến
+                    </button>
+                  </div>
                 </div>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '0 0 12px 0' }}>
+                  Các trạm đón đã được đồng bộ tự động từ Tuyến đường. Bạn chỉ cần thiết lập <strong>Giờ xe đón</strong> tại từng trạm:
+                </p>
                 {pickupPoints.map((pt, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
-                    <input 
-                      type="text" 
-                      placeholder="Giờ (VD: 08:00)" 
-                      value={pt.time} 
-                      onChange={(e) => handlePickupChange(idx, 'time', e.target.value)}
-                      style={{ width: '120px' }}
-                      className="form-control"
-                      required
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Tên điểm đón" 
-                      value={pt.location} 
-                      onChange={(e) => handlePickupChange(idx, 'location', e.target.value)}
-                      style={{ flex: 1 }}
-                      className="form-control"
-                      required
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Địa chỉ chi tiết" 
-                      value={pt.address} 
-                      onChange={(e) => handlePickupChange(idx, 'address', e.target.value)}
-                      style={{ flex: 1.5 }}
-                      className="form-control"
-                      required
-                    />
+                  <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px', backgroundColor: '#ffffff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <label style={{ fontSize: '0.68rem', fontWeight: '700', color: '#475569' }}>Giờ đón *</label>
+                      <input 
+                        type="text" 
+                        placeholder="08:00" 
+                        value={pt.time} 
+                        onChange={(e) => handlePickupChange(idx, 'time', e.target.value)}
+                        style={{ width: '90px', padding: '6px 8px', fontSize: '0.85rem', fontWeight: '700', color: '#166534', textAlign: 'center', borderRadius: '6px' }}
+                        className="form-control"
+                        required
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#0f172a' }}>
+                        {idx === 0 && <span style={{ color: '#16a34a', marginRight: '4px' }}>[Khởi hành]</span>}
+                        {pt.location}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                        {pt.address || 'Địa chỉ đang cập nhật'}
+                      </div>
+                    </div>
                     {pickupPoints.length > 1 && (
-                      <button type="button" onClick={() => handleRemovePickupPoint(idx)} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>
+                      <button type="button" onClick={() => handleRemovePickupPoint(idx)} title="Xóa điểm này" style={{ color: '#94a3b8', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}>
                         &times;
                       </button>
                     )}
@@ -1223,44 +1612,51 @@ const OpsTripsPage = () => {
               </div>
 
               {/* Dropoff points builder */}
-              <div style={{ marginBottom: '24px', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0 }}>Điểm trả khách</h4>
-                  <button type="button" onClick={handleAddDropoffPoint} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
-                    + Thêm điểm trả
-                  </button>
+              <div style={{ marginBottom: '24px', border: '1px solid #cbd5e1', padding: '16px', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <h4 style={{ margin: 0, color: '#991b1b', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>Danh sách Điểm trả khách</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#b91c1c', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '12px', border: '1px solid #fecaca' }}>
+                      Cố định theo tuyến ({dropoffPoints.length} điểm)
+                    </span>
+                  </h4>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="button" onClick={handleSyncStopsWithRoute} className="btn btn-secondary" style={{ padding: '3px 10px', fontSize: '0.75rem', color: '#b91c1c', borderColor: '#fecaca' }}>
+                      Đồng bộ theo tuyến
+                    </button>
+                    <button type="button" onClick={handleAddDropoffPoint} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: '0.75rem' }}>
+                      + Thêm điểm ngoài tuyến
+                    </button>
+                  </div>
                 </div>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '0 0 12px 0' }}>
+                  Các trạm trả đã được đồng bộ tự động từ Tuyến đường. Bạn chỉ cần thiết lập <strong>Giờ xe trả</strong> tại từng trạm:
+                </p>
                 {dropoffPoints.map((pt, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
-                    <input 
-                      type="text" 
-                      placeholder="Giờ (VD: 15:00)" 
-                      value={pt.time} 
-                      onChange={(e) => handleDropoffChange(idx, 'time', e.target.value)}
-                      style={{ width: '120px' }}
-                      className="form-control"
-                      required
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Tên điểm trả" 
-                      value={pt.location} 
-                      onChange={(e) => handleDropoffChange(idx, 'location', e.target.value)}
-                      style={{ flex: 1 }}
-                      className="form-control"
-                      required
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Địa chỉ chi tiết" 
-                      value={pt.address} 
-                      onChange={(e) => handleDropoffChange(idx, 'address', e.target.value)}
-                      style={{ flex: 1.5 }}
-                      className="form-control"
-                      required
-                    />
+                  <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px', backgroundColor: '#ffffff', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                      <label style={{ fontSize: '0.68rem', fontWeight: '700', color: '#475569' }}>Giờ trả *</label>
+                      <input 
+                        type="text" 
+                        placeholder="15:00" 
+                        value={pt.time} 
+                        onChange={(e) => handleDropoffChange(idx, 'time', e.target.value)}
+                        style={{ width: '90px', padding: '6px 8px', fontSize: '0.85rem', fontWeight: '700', color: '#991b1b', textAlign: 'center', borderRadius: '6px' }}
+                        className="form-control"
+                        required
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#0f172a' }}>
+                        {idx === dropoffPoints.length - 1 && <span style={{ color: '#dc2626', marginRight: '4px' }}>[Điểm đích]</span>}
+                        {pt.location}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                        {pt.address || 'Địa chỉ đang cập nhật'}
+                      </div>
+                    </div>
                     {dropoffPoints.length > 1 && (
-                      <button type="button" onClick={() => handleRemoveDropoffPoint(idx)} style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem' }}>
+                      <button type="button" onClick={() => handleRemoveDropoffPoint(idx)} title="Xóa điểm này" style={{ color: '#94a3b8', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}>
                         &times;
                       </button>
                     )}
@@ -1425,7 +1821,7 @@ const OpsTripsPage = () => {
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 };
 

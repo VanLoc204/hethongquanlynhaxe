@@ -56,10 +56,12 @@ exports.getMySchedule = async (req, res) => {
 
     if (isFixedSchedule) {
       const schedules = await WorkSchedule.find({ userId: req.user.id }).sort({ date: 1 }).lean();
+      const tripService = require('../services/tripService');
+      const trips = await tripService.getTrips();
       return res.status(200).json({
         success: true,
         fixedSchedule: true,
-        trips: [],
+        trips,
         schedules
       });
     }
@@ -179,9 +181,95 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-// @desc    Get mock payroll details (Fixed Salary)
+// Helper function to compute and upsert real MongoDB payroll record for any employee month/year
+const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
+  const roleSalary = {
+    driver: { base: 12000000, allowance: 1000000, insurance: 500000 },
+    attendant: { base: 8000000, allowance: 800000, insurance: 400000 },
+    ticket_agent: { base: 7500000, allowance: 500000, insurance: 375000 },
+    fleet_manager: { base: 15000000, allowance: 1500000, insurance: 750000 },
+    ops_manager: { base: 16000000, allowance: 1500000, insurance: 800000 },
+    general_manager: { base: 20000000, allowance: 2000000, insurance: 1000000 },
+    admin: { base: 18000000, allowance: 1800000, insurance: 900000 }
+  };
+
+  const details = roleSalary[userRole];
+  if (!details) return null;
+
+  const startOfMonth = new Date(qYear, qMonth - 1, 1, 0, 0, 0, 0);
+  const endOfMonth = new Date(qYear, qMonth, 0, 23, 59, 59, 999);
+
+  const absentSchedules = await WorkSchedule.find({
+    userId,
+    date: { $gte: startOfMonth, $lte: endOfMonth },
+    status: { $in: ['absent', 'leave'] }
+  }).lean();
+
+  const absentDates = new Set();
+  absentSchedules.forEach(s => {
+    if (s.date) {
+      absentDates.add(new Date(s.date).toISOString().split('T')[0]);
+    }
+  });
+
+  const approvedLeaves = await LeaveRequest.find({
+    userId,
+    status: 'approved',
+    startDate: { $lte: endOfMonth },
+    endDate: { $gte: startOfMonth }
+  }).lean();
+
+  approvedLeaves.forEach(l => {
+    if (l.startDate && l.endDate) {
+      let cur = new Date(Math.max(new Date(l.startDate).getTime(), startOfMonth.getTime()));
+      const end = new Date(Math.min(new Date(l.endDate).getTime(), endOfMonth.getTime()));
+      cur.setHours(0, 0, 0, 0);
+      end.setHours(0, 0, 0, 0);
+      while (cur <= end) {
+        absentDates.add(cur.toISOString().split('T')[0]);
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+  });
+
+  const absentDays = absentDates.size;
+  const standardWorkingDays = 26;
+  const dailyRate = details.base / standardWorkingDays;
+  const absentDeduction = Math.round(absentDays * dailyRate);
+  const netSalary = Math.max(0, details.base + details.allowance - details.insurance - absentDeduction);
+
+  const fullUser = await User.findById(userId).select('name phone').lean();
+
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth() + 1;
+  const isFuture = qYear > nowYear || (qYear === nowYear && qMonth > nowMonth);
+  const status = isFuture ? 'pending' : 'paid';
+
+  return await Payroll.findOneAndUpdate(
+    { employeeId: userId, month: qMonth, year: qYear },
+    {
+      $set: {
+        phone: fullUser?.phone || 'N/A',
+        name: fullUser?.name || 'N/A',
+        role: userRole,
+        baseSalary: details.base,
+        allowance: details.allowance,
+        insuranceDeduction: details.insurance,
+        absentDays,
+        absentDeduction,
+        netSalary,
+        status,
+        paymentDate: new Date(qYear, qMonth - 1, 5)
+      }
+    },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+};
+
+// @desc    Get real payroll details (Fixed Salary minus Absent Days)
 // @route   GET /api/v1/users/salary
-// @access  Private (All Staff)
+// @access  Private (All Staff & Managers)
 exports.getMySalary = async (req, res) => {
   try {
     const qMonth = req.query.month ? Number(req.query.month) : new Date().getMonth() + 1;
@@ -191,53 +279,40 @@ exports.getMySalary = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Tháng hoặc năm không hợp lệ.' });
     }
 
-    // Query MongoDB for the payroll record
-    let payroll = await Payroll.findOne({
-      employeeId: req.user.id,
-      month: qMonth,
-      year: qYear
-    }).lean();
+    const fullUser = await User.findById(req.user.id).select('createdAt').lean();
+    const joinedDate = fullUser?.createdAt ? new Date(fullUser.createdAt) : new Date(2026, 6, 1);
+    const joinedMonth = Math.min(joinedDate.getMonth() + 1, 7);
+    const joinedYear = Math.min(joinedDate.getFullYear(), 2026);
 
-    // If not found, compute it and save it to MongoDB as a permanent record
+    const payroll = await computePayrollRecord(req.user.id, req.user.role, qMonth, qYear);
     if (!payroll) {
-      const roleSalary = {
-        driver: { base: 12000000, allowance: 1000000, insurance: 500000 },
-        attendant: { base: 8000000, allowance: 800000, insurance: 400000 },
-        ticket_agent: { base: 7500000, allowance: 500000, insurance: 375000 },
-        fleet_manager: { base: 15000000, allowance: 1500000, insurance: 750000 },
-        ops_manager: { base: 16000000, allowance: 1500000, insurance: 800000 }
-      };
+      return res.status(403).json({ success: false, message: 'Vai trò này không nằm trong danh sách hưởng lương cố định nhân viên.' });
+    }
 
-      const details = roleSalary[req.user.role];
-      if (!details) {
-        return res.status(403).json({ success: false, message: 'Vai trò này không nằm trong danh sách hưởng lương cố định nhân viên.' });
+    // Compute real historical payroll list from joinedMonth/joinedYear up to requested qMonth/qYear
+    const history = [];
+    for (let i = 0; i < 6; i++) {
+      let m = qMonth - i;
+      let y = qYear;
+      if (m <= 0) {
+        m += 12;
+        y -= 1;
       }
-
-      const netSalary = details.base + details.allowance - details.insurance;
-
-      const fullUser = await User.findById(req.user.id).select('name phone').lean();
-
-      const newPayroll = await Payroll.create({
-        employeeId: req.user.id,
-        phone: fullUser?.phone || 'N/A',
-        name: fullUser?.name || 'N/A',
-        role: req.user.role,
-        month: qMonth,
-        year: qYear,
-        baseSalary: details.base,
-        allowance: details.allowance,
-        insuranceDeduction: details.insurance,
-        netSalary,
-        status: 'paid',
-        paymentDate: new Date(qYear, qMonth - 1, 5)
-      });
-      
-      payroll = newPayroll.toObject();
+      if (y < joinedYear || (y === joinedYear && m < joinedMonth)) {
+        break;
+      }
+      const hPayroll = await computePayrollRecord(req.user.id, req.user.role, m, y);
+      if (hPayroll) {
+        history.push(hPayroll);
+      }
     }
 
     res.status(200).json({
       success: true,
-      payroll
+      joinedMonth,
+      joinedYear,
+      payroll,
+      history
     });
   } catch (error) {
     console.error('Lỗi tải thông tin lương:', error);
@@ -902,9 +977,14 @@ exports.getManagerAttendance = async (req, res) => {
 
     const now = new Date();
 
-    // 1. Fetch all operational staff users (drivers, attendants, ticket agents, managers)
+    // 1. Fetch staff members: ops_manager only manages drivers & attendants
+    const isOps = req.user?.role === 'ops_manager';
+    const allowedRoles = isOps
+      ? ['driver', 'attendant']
+      : ['driver', 'attendant', 'ticket_agent', 'ops_manager', 'fleet_manager'];
+
     const staffMembers = await User.find({
-      role: { $in: ['driver', 'attendant', 'ticket_agent', 'ops_manager', 'fleet_manager'] }
+      role: { $in: allowedRoles }
     }).select('name role email phone').lean();
 
     // 2. Fetch today's trips (to determine required check-in time & route for drivers & attendants)
@@ -934,6 +1014,7 @@ exports.getManagerAttendance = async (req, res) => {
     let activeDirectCount = 0;
     let closedShiftCount = 0;
     let absentCount = 0;
+    let standbyCount = 0;
 
     for (const staff of staffMembers) {
       const staffIdStr = staff._id.toString();
@@ -977,16 +1058,24 @@ exports.getManagerAttendance = async (req, res) => {
       } else if (session) {
         startTimeStr = new Date(session.startTime).toLocaleTimeString('vi-VN');
         endTimeStr = session.endTime ? new Date(session.endTime).toLocaleTimeString('vi-VN') : '--:--:--';
-        locationStr = session.counterNumber || (assignedTrip ? `${assignedTrip.routeId?.startPoint || 'Bến xe'} (Xe ${assignedTrip.busId?.plateNumber || ''})` : 'Quầy vé / Văn phòng');
+        if (session.counterNumber) {
+          locationStr = session.counterNumber;
+        } else if (assignedTrip) {
+          locationStr = `${assignedTrip.routeId?.startPoint || 'Bến xe'} (Xe ${assignedTrip.busId?.plateNumber || ''})`;
+        } else if (staff.role === 'driver' || staff.role === 'attendant') {
+          locationStr = 'Bãi xe / Trực điều động';
+        } else {
+          locationStr = 'Quầy vé / Văn phòng';
+        }
         gpsStr = '10.8204° N, 106.6378° E';
         verificationStr = 'Hợp lệ (GPS / Wifi VP)';
 
         // Determine required check-in time:
-        // Driver/Attendant: Must check in before departure time of trip
-        // Administrative / Ticket Agent: Must check in before 08:00 AM (or schedule start)
         let requiredStartTime = null;
         if (assignedTrip) {
           requiredStartTime = new Date(assignedTrip.departureTime);
+        } else if (staff.role === 'driver' || staff.role === 'attendant') {
+          requiredStartTime = new Date(session.startTime);
         } else {
           requiredStartTime = new Date(todayStart);
           requiredStartTime.setHours(8, 0, 0, 0);
@@ -1006,30 +1095,50 @@ exports.getManagerAttendance = async (req, res) => {
         }
       } else {
         // No Session & No Leave
-        let requiredStartTime = null;
-        if (assignedTrip) {
-          requiredStartTime = new Date(assignedTrip.departureTime);
+        if (staff.role === 'driver' || staff.role === 'attendant') {
+          if (assignedTrip) {
+            const departureDate = new Date(assignedTrip.departureTime);
+            if (now > departureDate) {
+              recordStatus = 'absent';
+              statusLabel = 'Vắng mặt (Chưa nhận chuyến)';
+              verificationStr = 'Cảnh báo: Quá giờ xuất bến chưa nhận ca';
+              punctuality = 'Vắng mặt';
+              absentCount++;
+            } else {
+              recordStatus = 'scheduled';
+              statusLabel = 'Chưa đến giờ xuất bến';
+              verificationStr = 'Chờ nhận xe & xuất bến';
+              punctuality = 'Chưa tới ca';
+            }
+            locationStr = `Lịch chuyến ${assignedTrip.routeId?.startPoint || 'Bến xe'} ⇄ ${assignedTrip.routeId?.endPoint || ''} (${departureDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})`;
+          } else {
+            // Tài xế / Phụ xe không có chuyến chạy hôm nay:
+            // Theo quy trình vận tải đường dài, nhân sự tổ lái chạy theo tua xoay vòng.
+            // Ngày không có chuyến chạy là ngày nghỉ phục hồi sức khỏe theo tua hoặc sẵn sàng điều động dự phòng.
+            recordStatus = 'standby';
+            statusLabel = 'Nghỉ giữa ca tua / Chờ điều động';
+            verificationStr = 'Hợp lệ (Nghỉ phục hồi thể lực theo tua)';
+            punctuality = 'Nghỉ giữa tua';
+            locationStr = 'Đội xe / Bến xe (Sẵn sàng điều động)';
+            standbyCount++;
+          }
         } else {
-          requiredStartTime = new Date(todayStart);
+          // Khối nhân viên văn phòng / Bán vé: Giờ hành chính 08:00 AM
+          const requiredStartTime = new Date(todayStart);
           requiredStartTime.setHours(8, 0, 0, 0);
-        }
 
-        if (now > requiredStartTime) {
-          recordStatus = 'absent';
-          statusLabel = 'Vắng mặt (Không phép)';
-          verificationStr = 'Cảnh báo: Cả ca không chấm công';
-          punctuality = 'Vắng mặt';
-          absentCount++;
-        } else {
-          recordStatus = 'scheduled';
-          statusLabel = 'Chưa đến giờ ca trực';
-          verificationStr = 'Chờ check-in';
-          punctuality = 'Chưa tới ca';
-        }
-
-        if (assignedTrip) {
-          locationStr = `Lịch chuyến ${assignedTrip.routeId?.startPoint || 'Bến xe'} ⇄ ${assignedTrip.routeId?.endPoint || ''} (${new Date(assignedTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})`;
-        } else {
+          if (now > requiredStartTime) {
+            recordStatus = 'absent';
+            statusLabel = 'Vắng mặt (Không phép)';
+            verificationStr = 'Cảnh báo: Cả ca không chấm công';
+            punctuality = 'Vắng mặt';
+            absentCount++;
+          } else {
+            recordStatus = 'scheduled';
+            statusLabel = 'Chưa đến giờ ca trực';
+            verificationStr = 'Chờ check-in';
+            punctuality = 'Chưa tới ca';
+          }
           locationStr = 'Lịch ca hành chính';
         }
       }
@@ -1062,13 +1171,61 @@ exports.getManagerAttendance = async (req, res) => {
         totalScheduled: attendanceList.length,
         activeDirect: activeDirectCount,
         closedShift: closedShiftCount,
-        absent: absentCount
+        absent: absentCount,
+        standby: standbyCount
       },
       attendance: attendanceList
     });
   } catch (error) {
     console.error('Lỗi lấy dữ liệu chấm công thật:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi lấy báo cáo chấm công.' });
+  }
+};
+
+// @desc    Ghi nhận báo cáo sự cố hành trình & kỹ thuật phương tiện
+// @route   POST /api/v1/users/admin/incidents
+// @access  Private (Ops Manager, Driver, Attendant, Fleet Manager, Admin)
+exports.createIncidentReport = async (req, res) => {
+  try {
+    const { typeName, severity, details, estimatedCost, location, tripCode, category } = req.body;
+    
+    if (!details) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp mô tả chi tiết sự cố.' });
+    }
+
+    const formattedDetails = `[Phân loại: ${category || 'Sự cố kỹ thuật'}] [Mức độ: ${severity || 'Vừa'}] [Hiện trường: ${location || 'Trên đường'}] ${tripCode ? `[Chuyến: ${tripCode}] ` : ''}${details}${estimatedCost ? ` [Chi phí ước tính: ${Number(estimatedCost).toLocaleString('vi-VN')} đ]` : ''}`;
+
+    const incident = await LeaveRequest.create({
+      userId: req.user.id,
+      type: 'incident',
+      typeName: typeName || `Sự cố: ${category || 'Hành trình xe'}`,
+      details: formattedDetails,
+      startDate: new Date(),
+      endDate: new Date(),
+      reason: details,
+      status: 'pending'
+    });
+
+    await incident.populate('userId', 'name role email phone');
+
+    try {
+      await Notification.create({
+        title: `[Cảnh báo Sự Cố] ${typeName || 'Sự cố lộ trình & phương tiện'}`,
+        content: `${req.user.name} vừa báo cáo sự cố: ${formattedDetails}. Quản lý vận tải và kỹ thuật cần phối hợp xử lý.`,
+        recipientRole: 'ops_manager'
+      });
+    } catch (notifErr) {
+      console.warn('Không tạo được thông báo:', notifErr.message);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Ghi nhận báo cáo sự cố thành công!',
+      incident
+    });
+  } catch (error) {
+    console.error('Lỗi tạo báo cáo sự cố:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi ghi nhận sự cố.' });
   }
 };
 

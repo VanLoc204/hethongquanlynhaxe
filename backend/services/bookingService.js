@@ -2,6 +2,7 @@ const bookingRepository = require('../repositories/bookingRepository');
 const tripRepository = require('../repositories/tripRepository');
 const userService = require('./userService');
 const { sendBookingInvoiceEmail } = require('./emailService');
+const mongoose = require('mongoose');
 
 class BookingService {
   async fetchTripDetails(tripId) {
@@ -53,7 +54,12 @@ class BookingService {
       paymentExpiresAt.setDate(paymentExpiresAt.getDate() + 5);
     }
 
-    // 4. Save booking
+    // 4. Tính giá vé thực tế tại thời điểm đặt (sau khi áp pricing rules)
+    //    Đây là nguồn sự thật cho báo cáo doanh thu - không được tính lại sau
+    const pricePerSeat = await this._getActualPriceForTrip(trip);
+    const totalAmount = pricePerSeat * seats.length;
+
+    // 5. Save booking kèm giá thực tế tại thời điểm đặt
     const booking = await bookingRepository.create({
       tripId,
       userId,
@@ -68,10 +74,57 @@ class BookingService {
       paymentType: paymentType || 'immediate',
       paymentExpiresAt,
       orderCode,
-      status: 'pending'
+      status: 'pending',
+      pricePerSeat,
+      totalAmount
     });
 
     return booking;
+  }
+
+  // Helper: Tính giá thực tế cho chuyến đi sau khi áp tất cả pricing rules hiện hành
+  // Logic này mirror tripService.applyPricingRules() nhưng chỉ trả về giá số
+  async _getActualPriceForTrip(trip) {
+    try {
+      const tripObj = trip.toObject ? trip.toObject() : trip;
+      const basePrice = tripObj.price || 0;
+      const departureDate = new Date(tripObj.departureTime);
+      const dayOfWeek = departureDate.getDay();
+
+      const activeRules = await mongoose.connection.db
+        .collection('pricingrules')
+        .find({ isActive: true })
+        .toArray();
+
+      let finalPrice = basePrice;
+
+      const routeIdStr = tripObj.routeId?._id
+        ? tripObj.routeId._id.toString()
+        : (tripObj.routeId || '').toString();
+
+      const busType = tripObj.busId?.type || '';
+
+      for (const rule of activeRules) {
+        const routeMatch = rule.routeId === 'all' || rule.routeId.toString() === routeIdStr;
+        const busMatch = rule.busType === 'all' ||
+          (busType && busType.toLowerCase().includes(rule.busType.toLowerCase()));
+        const dayMatch = !rule.dayOfWeek?.length || rule.dayOfWeek.includes(dayOfWeek);
+
+        if (routeMatch && busMatch && dayMatch) {
+          if (rule.adjustmentType === 'percentage') {
+            finalPrice = finalPrice * (1 + rule.adjustmentValue / 100);
+          } else if (rule.adjustmentType === 'flat') {
+            finalPrice = finalPrice + rule.adjustmentValue;
+          }
+        }
+      }
+
+      return Math.max(0, Math.round(finalPrice));
+    } catch (err) {
+      console.error('[BookingService] Error calculating actual price, using base price:', err.message);
+      const tripObj = trip.toObject ? trip.toObject() : trip;
+      return tripObj.price || 0;
+    }
   }
 
   async updateBookingPayment(id, { paymentType }) {
@@ -120,14 +173,14 @@ class BookingService {
         await bookingRepository.save(booking);
         console.log(`[PayOS Webhook in booking-service] Payment confirmed. Booking ID: ${booking._id} status updated to paid.`);
         
-        // 1. Fetch trip and compute total price
+        // 1. Lấy tổng tiền thực tế đã lưu trong booking (chính xác 100%)
+        //    Không cần fetch trip lại và tính lại — giá đã được snapshot lúc đặt
         let trip = null;
-        let totalPrice = 0;
+        const totalPrice = booking.totalAmount || (booking.pricePerSeat * booking.seats.length) || 0;
         try {
           trip = await this.fetchTripDetails(booking.tripId);
-          totalPrice = trip ? (trip.price * booking.seats.length) : 0;
         } catch (tripErr) {
-          console.error('[BookingService Webhook] Error fetching trip details for price calculation:', tripErr.message);
+          console.error('[BookingService Webhook] Error fetching trip details for email:', tripErr.message);
         }
 
         // 2. Crediting points based on membership tier rules

@@ -1,5 +1,6 @@
 const tripService = require('../services/tripService');
 const Trip = require('../models/Trip');
+const Notification = require('../models/Notification');
 
 // @desc    Search trips by origin, destination and date
 // @route   GET /api/v1/trips/search
@@ -87,10 +88,10 @@ exports.payosWebhook = async (req, res) => {
     const result = await tripService.payosWebhook({ code, data, description });
 
     if (result) {
-      const typeMsg = result.type === 'booking' 
-        ? 'Thanh toán thành công qua PayOS Webhook' 
+      const typeMsg = result.type === 'booking'
+        ? 'Thanh toán thành công qua PayOS Webhook'
         : 'Thanh toán cước phí vận đơn thành công qua PayOS Webhook';
-      
+
       return res.status(200).json({
         success: true,
         message: typeMsg
@@ -343,7 +344,7 @@ exports.createRoute = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: status === 'pending' 
+      message: status === 'pending'
         ? 'Tạo tuyến đường thành công, vui lòng chờ Quản lý nhà xe duyệt.'
         : 'Tạo tuyến đường thành công.',
       route
@@ -468,7 +469,7 @@ exports.updateTrip = async (req, res) => {
         'driver.phone': driver.phone,
         busId: { $ne: busId }
       }).populate('busId');
-      
+
       if (otherTrip) {
         return res.status(400).json({
           success: false,
@@ -729,4 +730,190 @@ exports.createMaintenanceRecord = async (req, res) => {
     });
   }
 };
+
+// ==========================================
+// OPS REPORTING & PUNCTUALITY CONTROLLERS
+// ==========================================
+
+// @desc    Get Operations & Punctuality Report
+// @route   GET /api/v1/trips/ops/reports/punctuality
+// @access  Private (Ops Manager, General Manager, Admin)
+exports.getPunctualityReport = async (req, res) => {
+  try {
+    const { timeRange, startDate, endDate, routeId, status } = req.query;
+
+    let start = startDate ? new Date(startDate) : null;
+    let end = endDate ? new Date(endDate) : null;
+
+    const now = new Date();
+    if (!start || !end) {
+      if (timeRange === 'today') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (timeRange === 'week') {
+        const firstDayOfWeek = new Date(now);
+        const day = now.getDay() || 7;
+        firstDayOfWeek.setDate(now.getDate() - day + 1);
+        firstDayOfWeek.setHours(0, 0, 0, 0);
+        start = firstDayOfWeek;
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (timeRange === 'month') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      } else {
+        // default 30 days
+        start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      }
+    }
+
+    const query = {
+      departureTime: { $gte: start, $lte: end }
+    };
+
+    if (routeId && routeId !== 'all') {
+      query.routeId = routeId;
+    }
+
+    if (status && status !== 'all') {
+      if (['on_time', 'delayed', 'cancelled', 'scheduled'].includes(status)) {
+        query.punctualityStatus = status;
+      } else if (['in_transit', 'completed'].includes(status)) {
+        query.journeyStatus = status;
+      }
+    }
+
+    const trips = await Trip.find(query)
+      .populate('routeId')
+      .populate('busId')
+      .sort({ departureTime: -1 })
+      .lean();
+
+    const totalPlannedTrips = trips.length;
+    let operatedTrips = 0;
+    let completedTrips = 0;
+    let inTransitTrips = 0;
+    let cancelledTrips = 0;
+    let scheduledTrips = 0;
+    let onTimeTrips = 0;
+    let delayedTrips = 0;
+    let totalDelayMinutes = 0;
+    let totalBookedSeats = 0;
+
+    const delayReasonMap = {};
+
+    trips.forEach(t => {
+      const bookedCount = t.bookedSeats ? t.bookedSeats.length : 0;
+      totalBookedSeats += bookedCount;
+
+      if (t.journeyStatus === 'cancelled' || t.punctualityStatus === 'cancelled') {
+        cancelledTrips++;
+      } else if (t.journeyStatus === 'in_transit') {
+        inTransitTrips++;
+        operatedTrips++;
+      } else if (t.journeyStatus === 'completed') {
+        completedTrips++;
+        operatedTrips++;
+      } else {
+        scheduledTrips++;
+      }
+
+      const isDelayed = t.punctualityStatus === 'delayed' || (t.delayDepartureMinutes && t.delayDepartureMinutes > 10) || (t.delayArrivalMinutes && t.delayArrivalMinutes > 15);
+      const isOnTime = t.punctualityStatus === 'on_time' || (!isDelayed && (t.journeyStatus === 'completed' || t.journeyStatus === 'in_transit'));
+
+      if (isDelayed) {
+        delayedTrips++;
+        const maxDelay = Math.max(t.delayDepartureMinutes || 0, t.delayArrivalMinutes || 0);
+        totalDelayMinutes += maxDelay;
+
+        const reason = t.delayReason || 'Ùn tắc giao thông / Kẹt xe cao điểm';
+        delayReasonMap[reason] = (delayReasonMap[reason] || 0) + 1;
+      } else if (isOnTime) {
+        onTimeTrips++;
+      }
+    });
+
+    const punctualityRate = operatedTrips > 0 ? Math.round((onTimeTrips / operatedTrips) * 100) : 100;
+    const delayRate = operatedTrips > 0 ? Math.round((delayedTrips / operatedTrips) * 100) : 0;
+    const cancellationRate = totalPlannedTrips > 0 ? Math.round((cancelledTrips / totalPlannedTrips) * 100) : 0;
+    const avgDelayMinutes = delayedTrips > 0 ? Math.round(totalDelayMinutes / delayedTrips) : 0;
+
+    const delayReasonSummary = Object.keys(delayReasonMap).map(key => ({
+      reason: key,
+      count: delayReasonMap[key]
+    })).sort((a, b) => b.count - a.count);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        timeRange: timeRange || 'custom',
+        startDate: start,
+        endDate: end,
+        summary: {
+          totalPlannedTrips,
+          operatedTrips,
+          completedTrips,
+          inTransitTrips,
+          cancelledTrips,
+          scheduledTrips,
+          onTimeTrips,
+          delayedTrips,
+          punctualityRate,
+          delayRate,
+          cancellationRate,
+          avgDelayMinutes,
+          totalBookedSeats
+        },
+        delayReasonSummary,
+        trips
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi tính toán báo cáo đúng giờ:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi tải báo cáo vận hành & đúng giờ.'
+    });
+  }
+};
+
+// @desc    Update trip delay reasons and punctuality status
+// @route   PATCH /api/v1/trips/ops/trips/:id/punctuality
+// @access  Private (Ops Manager, Admin)
+exports.updateTripPunctuality = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { delayReason, delayDepartureMinutes, delayArrivalMinutes, punctualityStatus } = req.body;
+
+    const trip = await Trip.findById(id);
+    if (!trip) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy chuyến xe.' });
+    }
+
+    if (delayReason !== undefined) trip.delayReason = delayReason;
+    if (delayDepartureMinutes !== undefined) trip.delayDepartureMinutes = Number(delayDepartureMinutes);
+    if (delayArrivalMinutes !== undefined) trip.delayArrivalMinutes = Number(delayArrivalMinutes);
+    if (punctualityStatus) trip.punctualityStatus = punctualityStatus;
+
+    if (!punctualityStatus && (trip.delayDepartureMinutes > 10 || trip.delayArrivalMinutes > 15)) {
+      trip.punctualityStatus = 'delayed';
+    } else if (!punctualityStatus && trip.delayDepartureMinutes <= 10 && trip.delayArrivalMinutes <= 15 && trip.journeyStatus === 'completed') {
+      trip.punctualityStatus = 'on_time';
+    }
+
+    await trip.save();
+    await trip.populate('routeId');
+    await trip.populate('busId');
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật tình trạng trễ và nguyên nhân thành công.',
+      trip
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật trễ chuyến:', error);
+    res.status(500).json({ success: false, message: error.message || 'Lỗi hệ thống khi cập nhật trễ chuyến.' });
+  }
+};
+
 

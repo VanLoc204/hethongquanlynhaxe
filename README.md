@@ -252,7 +252,141 @@ $$P_{rec} = \text{Round}_{5000} \left( P_{base} \times M_d \right)$$
 
 ---
 
-## 6. Hướng Dẫn Khởi Chạy Code Local (Development Mode)
+## 6. Công Nghệ & Thuật Toán Tính Lộ Trình, ETA Thông Minh & Đồng Bộ Chuyến Xe (Smart Routing & Dynamic Stop Sync Engine) [NEW]
+
+Hệ thống tích hợp bộ công cụ tự động hóa tính toán lộ trình vận tải, ước lượng thời gian đến (Estimated Time of Arrival - ETA) và đồng bộ trạm dừng đón/trả cho toàn bộ các chuyến xe từ cấp độ Tuyến đường (`Route`) xuống cấp độ Chuyến xe (`Trip`).
+
+### A. Quy Trình Vận Hành & Luồng Dữ Liệu (Workflow Process)
+
+```
+[ Thiết lập Tuyến đường & Danh sách Trạm Stops (GPS Lat/Lng) ]
+                           │
+                           ▼
+  (1) Thuật toán Haversine & Hệ số Uốn cong Đường bộ (Winding Factor)
+      -> Tính Khoảng cách giữa các trạm liên tiếp (Distance d_i)
+                           │
+                           ▼
+  (2) Mô hình Vận tốc Đa cấp & Thời gian Dừng Trạm (Multi-tier Speed & Dwell Time)
+      -> Ước lượng Thời gian di chuyển từng chặng (Leg Duration Δt_i)
+                           │
+                           ▼
+  (3) Thuật toán Tích lũy Thời gian Lũy kế (Cumulative Arrival Time Offset)
+      -> Xác định arrivalTimeOffset cho từng trạm trung gian và điểm đích
+                           │
+                           ▼
+  (4) Công cụ Đồng bộ Tự động Tuyến ➔ Chuyến (Route-to-Trip Dynamic Sync)
+      -> Áp dụng Giờ khởi hành chuyến (Departure Time T_dep)
+      -> Tự động tịnh tiến Giờ đón/trả cho toàn bộ các trạm: T_stop = T_dep + Offset
+      -> Tự động xác định Giờ đến dự kiến điểm đích (Arrival Time)
+```
+
+---
+
+### B. Công Thức & Thuật Toán Chi Tiết
+
+#### 1. Thuật toán Khoảng cách Cung tròn Lớn (Haversine Formula) & Hệ số Uốn cong Đường bộ
+Khoảng cách đường chim bay giữa hai trạm dừng liên tiếp $S_1(\text{lat}_1, \text{lng}_1)$ và $S_2(\text{lat}_2, \text{lng}_2)$ được tính theo công thức Haversine:
+
+$$\Delta\phi = \frac{(\text{lat}_2 - \text{lat}_1) \times \pi}{180}, \quad \Delta\lambda = \frac{(\text{lng}_2 - \text{lng}_1) \times \pi}{180}$$
+
+$$a = \sin^2\left(\frac{\Delta\phi}{2}\right) + \cos\left(\frac{\text{lat}_1 \times \pi}{180}\right) \times \cos\left(\frac{\text{lat}_2 \times \pi}{180}\right) \times \sin^2\left(\frac{\Delta\lambda}{2}\right)$$
+
+$$c = 2 \times \text{atan2}\left(\sqrt{a}, \sqrt{1 - a}\right)$$
+
+$$d_{\text{aerial}} = R \times c \quad (\text{với bán kính Trái Đất } R \approx 6.371\text{ km})$$
+
+Do địa hình đường bộ Việt Nam qua đèo dốc và các nút giao cong, cự ly thực tế giữa hai trạm được chuẩn hóa bằng hệ số uốn lượn đường bộ ($K_{\text{road}}$):
+$$d_{\text{actual}} = d_{\text{aerial}} \times K_{\text{road}} \quad (K_{\text{road}} \approx 1.22 - 1.25)$$
+
+---
+
+#### 2. Mô hình Vận tốc Giao thông Đa cấp & Thời gian Dừng Trạm (Dwell Time Model)
+Thời gian xe chạy giữa 2 trạm liên tiếp ($\Delta t_{\text{leg}}$) phụ thuộc vào cung đường đô thị hoặc cao tốc/quốc lộ:
+
+$$\Delta t_{\text{leg}} = \frac{d_{\text{actual}}}{v_{\text{segment}}} \times 60 \quad (\text{phút})$$
+
+Trong đó:
+* **Chặng nội đô / xuất phát / cập bến**: $v_{\text{urban}} \approx 30 - 35\text{ km/h}$.
+* **Chặng quốc lộ / cao tốc liên tỉnh**: $v_{\text{highway}} \approx 60 - 70\text{ km/h}$.
+* **Thời gian dừng đón/trả khách tại trạm ($T_{\text{dwell}}$)**: Mỗi trạm trung gian cộng thêm $3 - 5\text{ phút}$ cho hành khách lên/xuống và xếp dỡ hành lý.
+
+---
+
+#### 3. Thuật toán Tích lũy Thời gian Lũy kế (Cumulative Offset Algorithm)
+Thời điểm đến dự kiến của trạm thứ $k$ so với giờ xuất phát ban đầu được tính tích lũy:
+
+$$\text{arrivalTimeOffset}_k = \sum_{i=1}^{k} \left( \Delta t_{\text{leg}, i} + T_{\text{dwell}, i} \right)$$
+
+*Ví dụ Tuyến Hồ Chí Minh ➔ Cần Thơ:*
+* Trạm 1: Bến Xe Miền Tây (Khởi hành) $\rightarrow \text{Offset} = 0\text{ phút}$.
+* Trạm 2: VP Lê Hồng Phong $\rightarrow \text{Offset} = 8\text{ phút}$.
+* Trạm 3: Trạm Tân An (Long An) $\rightarrow \text{Offset} = 47\text{ phút}$.
+* Trạm 4: VP Cai Lậy $\rightarrow \text{Offset} = 97\text{ phút}$.
+* Trạm 5: Trạm Cái Bè $\rightarrow \text{Offset} = 113\text{ phút}$.
+* Trạm 6: VP Vĩnh Long $\rightarrow \text{Offset} = 143\text{ phút}$.
+* Trạm 7: VP Bình Minh $\rightarrow \text{Offset} = 170\text{ phút}$.
+* Trạm 8: Bến Xe Trung Tâm Cần Thơ (Đích) $\rightarrow \text{Offset} = 212\text{ phút}$ (~3h32p).
+
+---
+
+#### 4. Thuật toán Tịnh tiến Thời gian Động theo Chuyến xe (Dynamic Time Shifting Engine)
+Khi người điều hành chọn hoặc điều chỉnh giờ khởi hành của chuyến xe ($T_{\text{dep}}$ dạng `HH:mm`), hệ thống tự động tịnh tiến thời gian đón/trả của toàn bộ các trạm dọc tuyến:
+
+$$T_{\text{stop}, i} = (T_{\text{dep}} + \text{arrivalTimeOffset}_i) \pmod{24 \times 60}$$
+
+* **Tự động cập nhật giờ đến dự kiến (Arrival Time)**:
+  $$\text{ArrivalTime} = \text{DepartureTime} + \text{arrivalTimeOffset}_{\text{last}}$$
+* **Tính đồng bộ 2 chiều (Bi-directional Sync)**:
+  - Cho phép người điều hành tùy chỉnh thủ công giờ đón/trả tại từng trạm nếu có biến động giao thông thực tế.
+  - Cung cấp nút **"Đồng bộ theo tuyến"** để khôi phục nhanh về chuẩn ETA tính từ tuyến đường gốc.
+  - Tích hợp Fallback tự động tại Backend Service (`tripService.js`): khi tạo mới chuyến xe mà chưa có danh sách điểm dừng, hệ thống tự động trích xuất toàn bộ trạm từ tuyến và tính toán giờ đón/trả chuẩn xác.
+
+---
+
+## 7. Công Nghệ Giám Sát GPS & Lộ Trình Xe Thời Gian Thực (Real-time Fleet GPS Tracking & Telemetry) [NEW]
+
+Module giám sát vận tải trực quan hóa toàn bộ đội xe khách đang hoạt động trên hệ thống bản đồ OpenStreetMap & Leaflet kết hợp OSRM Routing Engine.
+
+### A. Kiến Trúc & Quy Trình Giám Sát GPS
+
+```
+[ MongoDB Trips & Route Stops (GPS Lat/Lng) ]
+                      │
+                      ▼
+[ Thuật toán Nhận diện Vị trí Xe & Trạm Kế tiếp (Next Stop Detection) ]
+                      │
+                      ▼
+[ OSRM Highway Engine: Vẽ lộ trình uốn lượn thực tế theo Quốc lộ (QL1A, QL20) ]
+                      │
+                      ▼
+[ Render Trạm Đón (Xanh) & Trạm Trả (Đỏ) dọc lộ trình trên Leaflet Map ]
+                      │
+                      ▼
+[ Telemetry Dashboard: Giám sát Tốc độ (km/h), Cảnh báo vượt tốc độ, Tiến độ % ]
+```
+
+---
+
+### B. Các Thuật Toán & Kỹ Thuật Chính
+
+#### 1. Tích hợp Hình học Tuyến Đường OSRM Thực tế (OSRM Route Geometry)
+Thay vì vẽ đường thẳng nối các trạm làm méo mó lộ trình thực tế, hệ thống kết nối OSRM API để lấy danh sách tọa độ chi tiết của toàn bộ tuyến cao tốc và quốc lộ:
+$$\text{Coordinates} = \text{OSRM\_Driving}(\text{Stop}_1, \text{Stop}_2, \dots, \text{Stop}_n)$$
+Đường vẽ polyline bám sát từng khúc cua, đèo dốc và nút giao thông thực tế.
+
+#### 2. Định vị Trạm Kế Tiếp & ETA Tức thời (Next Stop & Dynamic ETA)
+Dựa vào chỉ số phần trăm hoàn thành hành trình ($P_{\text{progress}}$) và danh sách trạm đón/trả tích hợp sẵn giờ ETA:
+* **Xác định trạm hiện tại & trạm kế tiếp**:
+  $$i_{\text{current}} = \min\left(N - 1, \left\lfloor \frac{P_{\text{progress}}}{100} \times N \right\rfloor\right)$$
+  $$S_{\text{next}} = \text{Stops}[\min(N - 1, i_{\text{current}} + 1)]$$
+* **Cảnh báo tức thời (Telemetry Alerts)**:
+  - **Đúng lộ trình (`on_track`)**: Xe chạy trong phạm vi tốc độ cho phép ($v \le 80\text{ km/h}$).
+  - **Quá tốc độ (`speeding`)**: Xe vượt quá giới hạn an toàn ($v > 80\text{ km/h}$), lập tức đổi màu cảnh báo đỏ trên bản đồ và danh sách điều hành.
+  - **Đang dừng nghỉ (`stopped`)**: Vận tốc $v = 0\text{ km/h}$ tại các trạm dừng chân hoặc văn phòng đón/trả.
+
+---
+
+## 8. Hướng Dẫn Khởi Chạy Code Local (Development Mode)
 
 Chế độ khởi chạy Local dành cho việc phát triển, kiểm thử và debug trực tiếp code Node.js & ReactJS trên máy cục bộ, kết nối với cơ sở dữ liệu MongoDB chạy trong Docker Container.
 
@@ -305,7 +439,7 @@ Mở 3 cửa sổ Terminal riêng biệt tại thư mục gốc của dự án (
 
 ---
 
-## 6. Hướng Dẫn Khởi Chạy Toàn Bộ Dự Án Bằng Docker (Production / Staging)
+## 9. Hướng Dẫn Khởi Chạy Toàn Bộ Dự Án Bằng Docker (Production / Staging)
 
 Nếu muốn đóng gói và chạy toàn bộ dịch vụ (Backend, Frontends, MongoDB, Redis, RabbitMQ) hoàn toàn bên trong Docker Containers:
 
@@ -324,3 +458,12 @@ docker-compose exec -T backend node seed_promotions.js
 ```bash
 docker-compose down
 ```
+
+---
+
+## 10. Từ Điển Dữ Liệu Chi Tiết MongoDB (Database Data Dictionary)
+
+Toàn bộ tài liệu chi tiết giải thích cấu trúc dữ liệu, các trường (fields), mục đích thiết kế và ứng dụng thực tế theo từng Actor cho tất cả các bảng (Collections) trong cơ sở dữ liệu `bus_management` được quản lý tại file riêng để đảm bảo tính trực quan và dễ tra cứu:
+
+👉 **Xem chi tiết tài liệu tại:** [DATABASE_DICTIONARY.md](./DATABASE_DICTIONARY.md)
+

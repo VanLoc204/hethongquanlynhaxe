@@ -7,7 +7,7 @@ const DAYS_MAP = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'T
 
 const GmPricingPage = () => {
   const { token } = useContext(AuthContext);
-  
+
   // Navigation tabs: 'rules', 'base-prices', or 'dynamic-suggestions'
   const [activeTab, setActiveTab] = useState('base-prices');
 
@@ -221,7 +221,7 @@ const GmPricingPage = () => {
     };
 
     try {
-      const url = editingRule 
+      const url = editingRule
         ? `${API_BASE}/pricing/rules/${editingRule._id}`
         : `${API_BASE}/pricing/rules`;
       const method = editingRule ? 'PUT' : 'POST';
@@ -296,18 +296,18 @@ const GmPricingPage = () => {
   // Calculated Stats
   const activeRulesCount = rules.filter(r => r.isActive).length;
   const setBasePricesList = basePrices.filter(bp => bp.isSet);
-  const avgBasePrice = setBasePricesList.length > 0 
+  const avgBasePrice = setBasePricesList.length > 0
     ? Math.round(setBasePricesList.reduce((acc, cur) => acc + (cur.price || 0), 0) / setBasePricesList.length)
     : 215000;
 
   // Filtered Base Prices
   const filteredBasePrices = basePrices.filter(bp => {
-    const matchSearch = 
+    const matchSearch =
       bp.routeName.toLowerCase().includes(baseSearch.toLowerCase()) ||
       bp.busType.toLowerCase().includes(baseSearch.toLowerCase()) ||
       (bp.startStation && bp.startStation.toLowerCase().includes(baseSearch.toLowerCase())) ||
       (bp.endStation && bp.endStation.toLowerCase().includes(baseSearch.toLowerCase()));
-    
+
     const matchRoute = selectedRouteFilter === 'all' || bp.routeId === selectedRouteFilter;
     const matchBusType = selectedBusTypeFilter === 'all' || bp.busType === selectedBusTypeFilter;
 
@@ -316,12 +316,12 @@ const GmPricingPage = () => {
 
   // Filtered Rules
   const filteredRules = rules.filter(r => {
-    const matchSearch = 
+    const matchSearch =
       r.name.toLowerCase().includes(ruleSearch.toLowerCase()) ||
       r.routeName.toLowerCase().includes(ruleSearch.toLowerCase()) ||
       r.busType.toLowerCase().includes(ruleSearch.toLowerCase());
 
-    const matchType = ruleTypeFilter === 'all' || 
+    const matchType = ruleTypeFilter === 'all' ||
       (ruleTypeFilter === 'percentage' && r.adjustmentType === 'percentage') ||
       (ruleTypeFilter === 'flat' && r.adjustmentType === 'flat');
 
@@ -347,7 +347,7 @@ const GmPricingPage = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', animation: 'fadeIn 0.3s ease' }}>
-      
+
       {/* Toast Alert */}
       {toast && (
         <div style={{
@@ -372,7 +372,7 @@ const GmPricingPage = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button 
+          <button
             onClick={handleExportExcel}
             style={{
               backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1',
@@ -380,12 +380,12 @@ const GmPricingPage = () => {
               display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer'
             }}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
             Xuất bảng giá (Excel)
           </button>
 
           {activeTab === 'rules' ? (
-            <button 
+            <button
               onClick={handleOpenAddRule}
               style={{
                 backgroundColor: '#2563eb', color: '#ffffff', border: 'none',
@@ -394,11 +394,11 @@ const GmPricingPage = () => {
                 boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
               }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
               Thêm quy định giá mới
             </button>
           ) : (
-            <button 
+            <button
               onClick={() => showToast('Chức năng thiết lập tuyến mới đã sẵn sàng!', 'info')}
               style={{
                 backgroundColor: '#2563eb', color: '#ffffff', border: 'none',
@@ -407,12 +407,12 @@ const GmPricingPage = () => {
                 boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
               }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
               Thiết lập tuyến mới
             </button>
           )}
 
-          <button 
+          <button
             onClick={() => { fetchBasePrices(); fetchRules(); showToast('Đã đồng bộ dữ liệu CSDL MongoDB mới nhất!'); }}
             style={{
               backgroundColor: '#059669', color: '#ffffff', border: 'none',
@@ -421,7 +421,7 @@ const GmPricingPage = () => {
               boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
             }}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
             Lưu thay đổi
           </button>
         </div>
@@ -430,14 +430,14 @@ const GmPricingPage = () => {
       {/* 2. DYNAMIC 4 STAT CARDS BASED ON ACTIVE TAB */}
       {activeTab === 'base-prices' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-          
+
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.15rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TỔNG CẶP TUYẾN KHAI THÁC</div>
               <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#0f172a', marginTop: '4px' }}>{routes.length} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>Tuyến đường</span></div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="19" r="3"/><circle cx="18" cy="5" r="3"/><path d="M12 12h.01"/><path d="M18 8c0 4-3 6-6 6s-6 2-6 5"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="6" cy="19" r="3" /><circle cx="18" cy="5" r="3" /><path d="M12 12h.01" /><path d="M18 8c0 4-3 6-6 6s-6 2-6 5" /></svg>
             </div>
           </div>
 
@@ -447,7 +447,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#0f172a', marginTop: '4px' }}>{basePrices.length} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>Cấu hình</span></div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#f3e8ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
             </div>
           </div>
 
@@ -457,7 +457,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#2563eb', marginTop: '4px' }}>{avgBasePrice.toLocaleString('vi-VN')} đ</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>
             </div>
           </div>
 
@@ -468,7 +468,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>✓ Đã áp dụng toàn hệ thống</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
             </div>
           </div>
 
@@ -477,7 +477,7 @@ const GmPricingPage = () => {
 
       {activeTab === 'rules' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
-          
+
           <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.15rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>QUY ĐỊNH ĐANG ÁP DỤNG</div>
@@ -485,7 +485,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>✓ Đồng bộ máy chủ toàn hệ thống</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
             </div>
           </div>
 
@@ -496,7 +496,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: '700', marginTop: '2px' }}>⚡ Tự động kích hoạt theo lịch</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>
             </div>
           </div>
 
@@ -507,7 +507,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>Áp dụng tất cả dòng xe Limousine</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
             </div>
           </div>
 
@@ -518,7 +518,7 @@ const GmPricingPage = () => {
               <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>↗ So với chu kỳ trước</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#faf5ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
             </div>
           </div>
 
@@ -527,8 +527,8 @@ const GmPricingPage = () => {
 
       {/* 3. NAVIGATION TABS WITH COUNTERS & BADGES */}
       <div style={{ display: 'flex', gap: '2rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '2px', marginTop: '0.25rem' }}>
-        
-        <button 
+
+        <button
           onClick={() => setActiveTab('rules')}
           style={{
             padding: '10px 0', background: 'none', border: 'none',
@@ -544,7 +544,7 @@ const GmPricingPage = () => {
           </span>
         </button>
 
-        <button 
+        <button
           onClick={() => setActiveTab('base-prices')}
           style={{
             padding: '10px 0', background: 'none', border: 'none',
@@ -556,7 +556,7 @@ const GmPricingPage = () => {
           Giá vé cơ bản theo Tuyến &amp; Loại xe
         </button>
 
-        <button 
+        <button
           onClick={() => setActiveTab('dynamic-suggestions')}
           style={{
             padding: '10px 0', background: 'none', border: 'none',
@@ -572,7 +572,7 @@ const GmPricingPage = () => {
 
       {/* 4. MAIN CONTENT PANEL */}
       <section className="panel" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem' }}>
-        
+
         {/* TAB 1: RULES TABLE */}
         {activeTab === 'rules' && (
           <div>
@@ -589,7 +589,7 @@ const GmPricingPage = () => {
                     border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', background: '#ffffff'
                   }}
                 />
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -613,12 +613,12 @@ const GmPricingPage = () => {
                   <option value="inactive">Tạm ngưng</option>
                 </select>
 
-                <button 
+                <button
                   onClick={fetchRules}
                   style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   title="Tải lại danh sách"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
                 </button>
               </div>
             </div>
@@ -647,7 +647,7 @@ const GmPricingPage = () => {
                       const codeStr = `SUR-${rule._id ? rule._id.toString().slice(-6).toUpperCase() : 'RULE'}`;
                       const isDiscount = rule.adjustmentValue < 0;
                       const isPercentage = rule.adjustmentType === 'percentage';
-                      
+
                       let typeBadge = { label: '⚡ Phụ thu cao điểm', bg: '#fffbe6', color: '#d97706' };
                       if (isDiscount) {
                         typeBadge = { label: '% Chiết khấu ưu đãi', bg: '#ecfdf5', color: '#059669' };
@@ -726,20 +726,20 @@ const GmPricingPage = () => {
                                 }}></span>
                               </button>
 
-                              <button 
-                                onClick={() => handleOpenEditRule(rule)} 
+                              <button
+                                onClick={() => handleOpenEditRule(rule)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#2563eb' }}
                                 title="Chỉnh sửa"
                               >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                               </button>
 
-                              <button 
-                                onClick={() => handleDeleteRule(rule)} 
+                              <button
+                                onClick={() => handleDeleteRule(rule)}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: '#ef4444' }}
                                 title="Xóa"
                               >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
                               </button>
                             </div>
                           </td>
@@ -757,7 +757,7 @@ const GmPricingPage = () => {
                 Hiển thị {startRuleIndex + 1} - {Math.min(startRuleIndex + pageSize, totalRuleItems)} trong tổng số {totalRuleItems} quy định điều chỉnh
               </div>
               <div style={{ display: 'flex', gap: '4px' }}>
-                <button 
+                <button
                   disabled={currentPage === 1}
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   style={{ padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
@@ -767,7 +767,7 @@ const GmPricingPage = () => {
                 <button style={{ padding: '4px 10px', border: '1px solid #2563eb', borderRadius: '6px', background: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.75rem' }}>
                   {currentPage}
                 </button>
-                <button 
+                <button
                   disabled={startRuleIndex + pageSize >= totalRuleItems}
                   onClick={() => setCurrentPage(prev => prev + 1)}
                   style={{ padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', cursor: (startRuleIndex + pageSize >= totalRuleItems) ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
@@ -796,7 +796,7 @@ const GmPricingPage = () => {
                     border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', background: '#ffffff'
                   }}
                 />
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -828,12 +828,12 @@ const GmPricingPage = () => {
                   </select>
                 </div>
 
-                <button 
+                <button
                   onClick={fetchBasePrices}
                   style={{ padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   title="Tải lại giá vé cơ bản"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
                 </button>
               </div>
             </div>
@@ -953,7 +953,7 @@ const GmPricingPage = () => {
                 Đang hiển thị {startBaseIndex + 1} - {Math.min(startBaseIndex + pageSize, totalBaseItems)} trong tổng số {totalBaseItems} tổ hợp giá
               </div>
               <div style={{ display: 'flex', gap: '4px' }}>
-                <button 
+                <button
                   disabled={currentPage === 1}
                   onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                   style={{ padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
@@ -963,7 +963,7 @@ const GmPricingPage = () => {
                 <button style={{ padding: '4px 10px', border: '1px solid #2563eb', borderRadius: '6px', background: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.75rem' }}>
                   {currentPage}
                 </button>
-                <button 
+                <button
                   disabled={startBaseIndex + pageSize >= totalBaseItems}
                   onClick={() => setCurrentPage(prev => prev + 1)}
                   style={{ padding: '4px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', cursor: (startBaseIndex + pageSize >= totalBaseItems) ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
@@ -994,16 +994,16 @@ const GmPricingPage = () => {
             <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', marginBottom: '1rem', margin: 0 }}>
               {editingRule ? 'Cập nhật quy định điều chỉnh giá' : 'Thêm quy định giá mới'}
             </h3>
-            
+
             <form onSubmit={handleSubmitRule} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Tên quy định *</label>
-                <input 
-                  type="text" 
-                  value={name} 
-                  onChange={(e) => setName(e.target.value)} 
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="Ví dụ: Phụ thu cao điểm cuối tuần (Thứ 6, T7, CN)"
-                  required 
+                  required
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
                 />
               </div>
@@ -1011,8 +1011,8 @@ const GmPricingPage = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Tuyến đường áp dụng</label>
-                  <select 
-                    value={routeId} 
+                  <select
+                    value={routeId}
                     onChange={(e) => setRouteId(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', background: '#fff' }}
                   >
@@ -1025,8 +1025,8 @@ const GmPricingPage = () => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Loại xe áp dụng</label>
-                  <select 
-                    value={busType} 
+                  <select
+                    value={busType}
                     onChange={(e) => setBusType(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', background: '#fff' }}
                   >
@@ -1045,10 +1045,10 @@ const GmPricingPage = () => {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
                   {[1, 2, 3, 4, 5, 6, 0].map(dayNum => (
                     <label key={dayNum} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.775rem', color: '#334155', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={dayOfWeek.includes(dayNum)} 
-                        onChange={() => handleToggleDay(dayNum)} 
+                      <input
+                        type="checkbox"
+                        checked={dayOfWeek.includes(dayNum)}
+                        onChange={() => handleToggleDay(dayNum)}
                       />
                       {DAYS_MAP[dayNum]}
                     </label>
@@ -1059,8 +1059,8 @@ const GmPricingPage = () => {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Hình thức điều chỉnh *</label>
-                  <select 
-                    value={adjustmentType} 
+                  <select
+                    value={adjustmentType}
                     onChange={(e) => setAdjustmentType(e.target.value)}
                     style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', background: '#fff' }}
                   >
@@ -1071,23 +1071,23 @@ const GmPricingPage = () => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Giá trị tăng/giảm *</label>
-                  <input 
-                    type="number" 
-                    value={adjustmentValue} 
-                    onChange={(e) => setAdjustmentValue(e.target.value)} 
+                  <input
+                    type="number"
+                    value={adjustmentValue}
+                    onChange={(e) => setAdjustmentValue(e.target.value)}
                     placeholder={adjustmentType === 'percentage' ? 'Ví dụ: 15 (+15%) hoặc -10' : 'Ví dụ: 40000 hoặc -20000'}
-                    required 
+                    required
                     style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
                   />
                 </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   id="activeCheck"
-                  checked={isActive} 
-                  onChange={(e) => setIsActive(e.target.checked)} 
+                  checked={isActive}
+                  onChange={(e) => setIsActive(e.target.checked)}
                 />
                 <label htmlFor="activeCheck" style={{ fontSize: '0.8rem', fontWeight: '700', color: '#334155', cursor: 'pointer' }}>
                   Kích hoạt quy định ngay sau khi lưu
@@ -1118,36 +1118,36 @@ const GmPricingPage = () => {
             <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
               Thiết lập giá vé cơ bản
             </h3>
-            
+
             <form onSubmit={handleBasePriceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.25rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Tuyến đường</label>
-                <input 
-                  type="text" 
-                  value={selectedCombo.routeName} 
-                  disabled 
+                <input
+                  type="text"
+                  value={selectedCombo.routeName}
+                  disabled
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', color: '#64748b', fontWeight: '700' }}
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Loại xe</label>
-                <input 
-                  type="text" 
-                  value={selectedCombo.busType} 
-                  disabled 
+                <input
+                  type="text"
+                  value={selectedCombo.busType}
+                  disabled
                   style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc', color: '#64748b', fontWeight: '700' }}
                 />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Giá vé cơ bản niêm yết (VNĐ) *</label>
-                <input 
-                  type="number" 
-                  value={newBasePrice} 
-                  onChange={(e) => setNewBasePrice(e.target.value)} 
+                <input
+                  type="number"
+                  value={newBasePrice}
+                  onChange={(e) => setNewBasePrice(e.target.value)}
                   placeholder="Ví dụ: 290000"
-                  required 
+                  required
                   min="0"
                   autoFocus
                   style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', fontWeight: '800', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#2563eb', outline: 'none' }}
