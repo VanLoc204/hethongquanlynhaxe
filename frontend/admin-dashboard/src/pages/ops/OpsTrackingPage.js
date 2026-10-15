@@ -42,10 +42,10 @@ const OpsTrackingPage = () => {
     document.head.appendChild(script);
   }, []);
 
-  // 2. Fetch real trips from database
-  const fetchRealTrips = async () => {
+  // 2. Fetch real trips from database (with silent background polling)
+  const fetchRealTrips = async (isBackground = false) => {
     try {
-      setLoading(true);
+      if (!isBackground) setLoading(true);
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
       const res = await fetch(`${API_BASE}/trips/ops/trips`, { headers });
       const data = await res.json();
@@ -55,12 +55,17 @@ const OpsTrackingPage = () => {
     } catch (err) {
       console.error('Lỗi nạp dữ liệu chuyến xe:', err);
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchRealTrips();
+    fetchRealTrips(false);
+    // Real-time polling every 3.5s to listen to driver's GPS updates
+    const interval = setInterval(() => {
+      fetchRealTrips(true);
+    }, 3500);
+    return () => clearInterval(interval);
   }, [token]);
 
   // 3. Filter trips for the selected date (Today by default)
@@ -269,8 +274,11 @@ const OpsTrackingPage = () => {
       });
 
       const busMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(layerGroup);
+      const isLive = activeTrip.liveGps?.lastUpdated && (Date.now() - new Date(activeTrip.liveGps.lastUpdated).getTime() < 30000);
+      const speedVal = activeTrip.liveGps?.speed || 0;
+
       busMarker.bindPopup(`
-        <div style="font-family: system-ui; padding: 4px;">
+        <div style="font-family: system-ui; padding: 4px; min-width: 180px;">
           <div style="font-weight: 800; font-size: 0.88rem; color: #1e40af;">Xe ${busPlate}</div>
           <div style="font-size: 0.75rem; color: #475569; margin-top: 4px;">
             Tuyến: <strong>${activeTrip.routeId?.startPoint} → ${activeTrip.routeId?.endPoint}</strong>
@@ -278,8 +286,11 @@ const OpsTrackingPage = () => {
           <div style="font-size: 0.75rem; color: #475569;">
             Tài xế: <strong>${activeTrip.driver?.name || 'Chưa phân công'}</strong>
           </div>
-          <div style="font-size: 0.72rem; color: #16a34a; font-weight: 700; margin-top: 4px;">
-            Sẵn sàng kết nối định vị GPS thiết bị
+          <div style="font-size: 0.75rem; color: #0284c7; font-weight: 700; margin-top: 4px;">
+            Vận tốc: <strong>${speedVal} km/h</strong>
+          </div>
+          <div style="font-size: 0.72rem; color: ${isLive ? '#16a34a' : '#64748b'}; font-weight: 700; margin-top: 2px;">
+            ${isLive ? '• Đang phát GPS trực tiếp' : '• Tọa độ điểm dừng khởi hành'}
           </div>
         </div>
       `);

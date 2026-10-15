@@ -26,7 +26,8 @@ const {
   getMaintenanceRecords,
   createMaintenanceRecord,
   getPunctualityReport,
-  updateTripPunctuality
+  updateTripPunctuality,
+  updateLiveGps
 } = require('../controllers/tripController');
 const { createBooking, updateBookingPayment, cancelExpiredBooking, getMyBookings } = require('../controllers/bookingController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
@@ -88,6 +89,9 @@ router.patch('/:id/release-seats', releaseSeats);
 // Ops Punctuality & Operations Report Routes
 router.get('/ops/reports/punctuality', protect, restrictTo('ops_manager', 'general_manager', 'admin'), getPunctualityReport);
 router.patch('/ops/trips/:id/punctuality', protect, restrictTo('ops_manager', 'general_manager', 'admin'), updateTripPunctuality);
+
+// Driver Live GPS Tracking & Telemetry
+router.put('/:id/live-gps', updateLiveGps);
 
 // Driver Journey Updates
 router.patch('/:id/update-journey', protect, updateJourneyStatus);

@@ -297,6 +297,14 @@ function DashboardLayout() {
         isOpen={sidebarOpen}
       />
 
+      {/* Backdrop khi mở sidebar trên màn hình nhỏ */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* 2. Khung Nội Dung Chính Bên Phải (Top Header + Main Content) */}
       <div className="dashboard-main-area">
         {/* Top Header - Chỉ chứa Breadcrumb & Profile (Không trùng logo An Bình Lines) */}
@@ -305,60 +313,64 @@ function DashboardLayout() {
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="sidebar-toggle-btn"
-              style={{
-                display: 'none',
-                background: 'none',
-                border: 'none',
-                fontSize: '1.5rem',
-                cursor: 'pointer',
-                color: 'var(--text-main)',
-                marginRight: '0.5rem'
-              }}
+              title="Đóng / Mở Menu"
             >
               ☰
             </button>
 
-            {/* Breadcrumb Navigation - Chuẩn theo hình 2 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.825rem', color: '#64748b' }}>
-              <span>Hệ thống</span>
-              <span style={{ color: '#cbd5e1' }}>&gt;</span>
-              <span>{user?.role === 'ticket_agent' ? 'Nhân sự quầy vé' : ROLE_LABEL[user?.role] || 'Quản trị'}</span>
-              <span style={{ color: '#cbd5e1' }}>&gt;</span>
+            {/* Breadcrumb Navigation - Tự co gọn trên mobile */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <span className="breadcrumb-prefix">Hệ thống</span>
+              <span className="breadcrumb-prefix" style={{ color: '#cbd5e1' }}>&gt;</span>
+              <span className="breadcrumb-prefix">{user?.role === 'ticket_agent' ? 'Nhân sự quầy vé' : ROLE_LABEL[user?.role] || 'Quản trị'}</span>
+              <span className="breadcrumb-prefix" style={{ color: '#cbd5e1' }}>&gt;</span>
               <strong style={{ color: '#2563eb', fontWeight: '700' }}>{getHeaderTitle()}</strong>
             </div>
           </div>
 
-          <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            {/* Bell Icon với chấm xanh thông báo */}
-            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-              <span style={{ position: 'absolute', top: '1px', right: '1px', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981', border: '1.5px solid #ffffff' }}></span>
+          <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+            {/* Bell Icon với chấm đỏ/xanh thông báo */}
+            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative', padding: '4px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
+              <span style={{ position: 'absolute', top: '2px', right: '2px', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', border: '1.5px solid #ffffff' }}></span>
             </button>
-            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
             </button>
-
-            <div style={{ height: '24px', width: '1px', backgroundColor: '#e2e8f0' }}></div>
 
             {/* Profile Section */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.85rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="header-user-text" style={{ textAlign: 'right' }}>
+                <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                   {ROLE_LABEL[user?.role] || user?.role}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>
                   {user?.email || 'admin@anbinhlines.vn'}
                 </div>
               </div>
               <div className="user-profile">
-                <span className="avatar" style={{ backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '800' }}>AB</span>
+                <span className="avatar" style={{
+                  backgroundColor: '#eff6ff',
+                  color: '#2563eb',
+                  fontWeight: '800',
+                  fontSize: '0.8rem',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {user?.role === 'driver' ? 'TX' : user?.role === 'attendant' ? 'PX' : 'AB'}
+                </span>
               </div>
             </div>
           </div>
         </header>
 
-        {/* Main Content */}
-        <main className="main-content">
+        {/* Main Content: Khi vào bản đồ GPS tài xế, tự động tràn viền 100% không đệm viền */}
+        <main className={`main-content ${activeTab === 'driver-map' ? 'main-content-map-full' : ''}`}>
           {renderContent()}
         </main>
       </div>
