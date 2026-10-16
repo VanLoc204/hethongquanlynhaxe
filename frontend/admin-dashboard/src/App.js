@@ -76,7 +76,7 @@ function DashboardLayout() {
         if (user?.role === 'attendant') {
           return <AttendantDashboardPage setActiveTab={setActiveTab} />;
         }
-        return <DashboardOverviewPage />;
+        return <DashboardOverviewPage setActiveTab={setActiveTab} />;
       case 'fleet-buses':
         return <FleetBusesPage />;
       case 'fleet-maintenance':
