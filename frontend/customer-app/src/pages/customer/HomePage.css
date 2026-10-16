@@ -1,0 +1,788 @@
+/* ==========================================================================
+   AN BÌNH LINES - HOMEPAGE PREMIUM STYLES
+   Khớp 100% mẫu thiết kế giao diện chính hiện đại, sang trọng
+   ========================================================================== */
+
+.home-container {
+  width: 100%;
+  background-color: #f8fafc;
+  overflow-x: hidden;
+}
+
+/* 1. HERO SECTION */
+.home-hero {
+  position: relative;
+  background-size: cover;
+  background-position: center 30%;
+  background-repeat: no-repeat;
+  padding: 4.5rem 2rem 7rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #ffffff;
+}
+
+.home-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.72) 0%, rgba(15, 23, 42, 0.85) 100%);
+  z-index: 1;
+}
+
+.home-hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 960px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Pill badge top */
+.home-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+  padding: 6px 18px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #e2e8f0;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+}
+
+.home-hero-badge span.badge-shield {
+  color: #f59e0b;
+}
+
+/* Main H1 Headline */
+.home-hero-title {
+  font-size: 2.85rem;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.home-hero-subtitle {
+  font-size: 1.1rem;
+  color: #cbd5e1;
+  max-width: 680px;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+/* Trust Badges */
+.home-trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.trust-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.trust-check-icon {
+  color: #10b981;
+}
+
+/* 2. SEARCH BOX CONTAINER */
+.home-search-wrapper {
+  position: relative;
+  z-index: 10;
+  max-width: 1140px;
+  margin: -4.5rem auto 0 auto;
+  padding: 0 20px;
+}
+
+.search-card-main {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 24px 28px 20px 28px;
+  box-shadow: 0 20px 50px -10px rgba(15, 23, 42, 0.12), 0 0 1px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.search-card-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.search-radio-group {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.search-radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.search-radio-label input[type="radio"] {
+  accent-color: #2563eb;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.search-card-links {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.84rem;
+}
+
+.search-top-link {
+  color: #64748b;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+
+.search-top-link:hover {
+  color: #2563eb;
+}
+
+/* 4-Input Grid */
+.search-inputs-grid-4 {
+  display: grid;
+  grid-template-columns: 1.15fr 1.15fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.search-field-box {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 10px 14px;
+  position: relative;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.search-field-box:focus-within,
+.search-field-box:hover {
+  border-color: #2563eb;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.search-field-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 4px;
+}
+
+.search-field-label.dest {
+  color: #0284c7;
+}
+
+.search-field-input-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.search-field-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  outline: none;
+}
+
+.search-field-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.search-field-chevron {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+/* Search Bottom Row */
+.search-card-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+}
+
+.search-status-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #059669;
+  font-weight: 600;
+}
+
+.status-dot-green {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.search-btn-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 13px 32px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+  transition: all 0.25s ease;
+}
+
+.search-btn-submit:hover {
+  background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%);
+  transform: translateY(-1.5px);
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.45);
+}
+
+/* 3. QUICK ACTION CARDS (2 thẻ nổi bên dưới form tìm kiếm) */
+.home-quick-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  max-width: 1140px;
+  margin: 22px auto 0 auto;
+  padding: 0 20px;
+}
+
+.quick-action-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px 20px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+  text-decoration: none;
+  transition: all 0.25s ease;
+}
+
+.quick-action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+  border-color: #cbd5e1;
+}
+
+.action-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.action-icon-box.blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.action-icon-box.purple {
+  background: #f5f3ff;
+  color: #7c3aed;
+}
+
+.action-text-box h4 {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 2px;
+}
+
+.action-text-box p {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin: 0;
+}
+
+/* 4. POPULAR ROUTES SECTION ("TUYẾN ĐƯỜNG TRỌNG ĐIỂM") */
+.section-popular-routes {
+  max-width: 1140px;
+  margin: 4.5rem auto 0 auto;
+  padding: 0 20px;
+}
+
+.section-routes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+
+.routes-badge-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #dc2626;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.routes-title-main {
+  font-size: 1.85rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.routes-subtitle-main {
+  font-size: 0.92rem;
+  color: #64748b;
+}
+
+.routes-view-all-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #2563eb;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: gap 0.2s ease;
+}
+
+.routes-view-all-link:hover {
+  gap: 9px;
+  text-decoration: underline;
+}
+
+/* 4-Route Grid */
+.popular-routes-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+.route-card-vip {
+  background: #ffffff;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.route-card-vip:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+  border-color: #cbd5e1;
+}
+
+.route-card-img-wrapper {
+  position: relative;
+  height: 155px;
+  overflow: hidden;
+}
+
+.route-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.route-card-vip:hover .route-card-img {
+  transform: scale(1.05);
+}
+
+.route-badge-pill {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #ffffff;
+  z-index: 2;
+}
+
+.badge-blue { background: #0284c7; }
+.badge-purple { background: #7c3aed; }
+.badge-green { background: #059669; }
+.badge-amber { background: #d97706; }
+
+.route-meta-distance-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.route-card-body {
+  padding: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-card-title {
+  font-size: 1.08rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.route-features-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px 0;
+  flex: 1;
+}
+
+.route-features-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.route-feature-icon {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.route-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.route-price-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.price-label-small {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.price-val-big {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #2563eb;
+}
+
+.btn-choose-seat {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-choose-seat:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+/* 5. WHY CHOOSE US SECTION ("Tại Sao Nên Chọn An Bình Lines?") */
+.section-why-us {
+  max-width: 1140px;
+  margin: 5rem auto;
+  padding: 0 20px;
+  text-align: center;
+}
+
+.why-us-title {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.why-us-subtitle {
+  font-size: 0.95rem;
+  color: #64748b;
+  max-width: 650px;
+  margin: 0 auto 36px auto;
+}
+
+.why-us-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.why-us-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.why-us-icon-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  margin-bottom: 16px;
+  transition: transform 0.25s ease;
+}
+
+.why-us-item:hover .why-us-icon-circle {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.15);
+}
+
+.why-us-item h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.why-us-item p {
+  font-size: 0.84rem;
+  color: #64748b;
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* 6. DARK NAVY FOOTER */
+.home-footer-dark {
+  background: #090e1a;
+  color: #94a3b8;
+  padding: 4rem 2rem 1.5rem 2rem;
+  font-size: 0.88rem;
+}
+
+.footer-dark-inner {
+  max-width: 1140px;
+  margin: 0 auto;
+}
+
+.footer-dark-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr 1.2fr;
+  gap: 36px;
+  margin-bottom: 3.5rem;
+}
+
+.footer-brand-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 14px;
+}
+
+.footer-brand-desc {
+  font-size: 0.84rem;
+  color: #94a3b8;
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+
+.footer-social-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.social-circle-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.social-circle-btn:hover {
+  background: #2563eb;
+  transform: translateY(-2px);
+}
+
+.footer-col-header {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 18px;
+}
+
+.footer-links-col {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.footer-links-col li {
+  margin-bottom: 10px;
+}
+
+.footer-links-col a {
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: color 0.2s ease;
+}
+
+.footer-links-col a:hover {
+  color: #ffffff;
+}
+
+.footer-hotline-big {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.footer-contact-detail {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.footer-dark-bottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .search-inputs-grid-4 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .popular-routes-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .why-us-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .footer-dark-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .home-hero-title {
+    font-size: 1.85rem;
+  }
+  .home-trust-badges {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .search-inputs-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  .search-card-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .search-card-bottom-row {
+    flex-direction: column;
+    gap: 14px;
+    align-items: stretch;
+  }
+  .home-quick-actions {
+    grid-template-columns: 1fr;
+  }
+  .popular-routes-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  .why-us-grid-4 {
+    grid-template-columns: 1fr;
+  }
+  .footer-dark-grid {
+    grid-template-columns: 1fr;
+  }
+}

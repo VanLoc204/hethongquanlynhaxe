@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Calendar, Users, Search } from 'lucide-react';
+import { MapPin, Calendar, Users, Search, ChevronDown } from 'lucide-react';
 
 const SearchBox = ({
   from,
@@ -22,6 +22,14 @@ const SearchBox = ({
 
   const [fromLocations, setFromLocations] = useState([]);
   const [toLocations, setToLocations] = useState([]);
+
+  // Set default date to today or tomorrow if empty
+  useEffect(() => {
+    if (!date) {
+      const today = new Date().toISOString().split('T')[0];
+      setDate(today);
+    }
+  }, [date, setDate]);
 
   // Fetch unique locations from database
   useEffect(() => {
@@ -51,7 +59,6 @@ const SearchBox = ({
       .toLowerCase()
       .trim();
 
-
     const map = {
       'sg': 'ho chi minh',
       'hcm': 'ho chi minh',
@@ -68,27 +75,21 @@ const SearchBox = ({
     return map[clean] || clean;
   };
 
-  // Filter locations based on user input
   const filteredFromLocations = fromLocations.filter(loc => {
     const canonicalInput = resolveAbbr(from);
     if (!canonicalInput) return true;
-    
     const canonicalName = resolveAbbr(loc.name);
     const canonicalParent = loc.parent ? resolveAbbr(loc.parent) : '';
-    
     return canonicalName.includes(canonicalInput) || canonicalParent.includes(canonicalInput);
   });
 
   const filteredToLocations = toLocations.filter(loc => {
     const canonicalInput = resolveAbbr(to);
     if (!canonicalInput) return true;
-    
     const canonicalName = resolveAbbr(loc.name);
     const canonicalParent = loc.parent ? resolveAbbr(loc.parent) : '';
-    
     return canonicalName.includes(canonicalInput) || canonicalParent.includes(canonicalInput);
   });
-
 
   // Click outside to close suggestion dropdowns
   useEffect(() => {
@@ -107,42 +108,47 @@ const SearchBox = ({
   }, []);
 
   return (
-    <div className="search-container-futa">
-      <form onSubmit={onSubmit} className="search-box-futa">
-
-        {/* Trip Type Selector */}
-        <div className="trip-type-selector">
-          <label className="radio-label">
-            <input
-              type="radio"
-              name="tripType"
-              value="one-way"
-              checked={tripType === 'one-way'}
-              onChange={() => setTripType('one-way')}
-            />
-            Một chiều
-          </label>
-          <label className="radio-label">
-            <input
-              type="radio"
-              name="tripType"
-              value="round-trip"
-              checked={tripType === 'round-trip'}
-              onChange={() => setTripType('round-trip')}
-            />
-            Khứ hồi
-          </label>
+    <div className="home-search-wrapper">
+      <form onSubmit={onSubmit} className="search-card-main">
+        {/* Top Row: Radio Một chiều / Khứ hồi */}
+        <div className="search-card-top-row">
+          <div className="search-radio-group">
+            <label className="search-radio-label">
+              <input
+                type="radio"
+                name="tripType"
+                value="one-way"
+                checked={tripType === 'one-way'}
+                onChange={() => setTripType('one-way')}
+              />
+              <span>Một chiều</span>
+            </label>
+            <label className="search-radio-label">
+              <input
+                type="radio"
+                name="tripType"
+                value="round-trip"
+                checked={tripType === 'round-trip'}
+                onChange={() => setTripType('round-trip')}
+              />
+              <span>Khứ hồi</span>
+            </label>
+          </div>
         </div>
 
-        {/* Search Input Fields */}
-        <div className="search-inputs-grid">
-          <div className="form-group" ref={fromRef} style={{ position: 'relative' }}>
-            <label className="form-label">Điểm đi</label>
-            <div className="input-icon-wrapper">
+        {/* 4-Input Grid */}
+        <div className="search-inputs-grid-4">
+          {/* 1. Điểm đi */}
+          <div className="search-field-box" ref={fromRef}>
+            <div className="search-field-label">
+              <MapPin size={13} color="#2563eb" />
+              <span>ĐIỂM ĐI</span>
+            </div>
+            <div className="search-field-input-wrapper">
               <input
                 type="text"
-                className="form-control"
-                placeholder="Chọn điểm đi"
+                className="search-field-input"
+                placeholder="Chọn điểm đi (VD: Sài Gòn)"
                 value={from}
                 onChange={(e) => {
                   setFrom(e.target.value);
@@ -151,10 +157,10 @@ const SearchBox = ({
                 onFocus={() => setShowFromSuggestions(true)}
                 required
               />
-              <MapPin size={18} className="input-icon" />
+              <ChevronDown size={16} className="search-field-chevron" />
             </div>
 
-            {/* From Suggestions Dropdown */}
+            {/* Suggestions */}
             {showFromSuggestions && (
               <div className="search-suggestions-dropdown">
                 {filteredFromLocations.map((loc, index) => (
@@ -182,13 +188,17 @@ const SearchBox = ({
             )}
           </div>
 
-          <div className="form-group" ref={toRef} style={{ position: 'relative' }}>
-            <label className="form-label">Điểm đến</label>
-            <div className="input-icon-wrapper">
+          {/* 2. Điểm đến */}
+          <div className="search-field-box" ref={toRef}>
+            <div className="search-field-label dest">
+              <MapPin size={13} color="#0284c7" />
+              <span>ĐIỂM ĐẾN</span>
+            </div>
+            <div className="search-field-input-wrapper">
               <input
                 type="text"
-                className="form-control"
-                placeholder="Chọn điểm đến"
+                className="search-field-input"
+                placeholder="Chọn điểm đến (VD: Nha Trang)"
                 value={to}
                 onChange={(e) => {
                   setTo(e.target.value);
@@ -197,10 +207,10 @@ const SearchBox = ({
                 onFocus={() => setShowToSuggestions(true)}
                 required
               />
-              <MapPin size={18} className="input-icon" style={{ color: 'var(--accent)' }} />
+              <ChevronDown size={16} className="search-field-chevron" />
             </div>
 
-            {/* To Suggestions Dropdown */}
+            {/* Suggestions */}
             {showToSuggestions && (
               <div className="search-suggestions-dropdown">
                 {filteredToLocations.map((loc, index) => (
@@ -228,40 +238,53 @@ const SearchBox = ({
             )}
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Ngày đi</label>
-            <div className="input-icon-wrapper">
+          {/* 3. Ngày đi */}
+          <div className="search-field-box">
+            <div className="search-field-label">
+              <Calendar size={13} color="#2563eb" />
+              <span>NGÀY ĐI</span>
+            </div>
+            <div className="search-field-input-wrapper">
               <input
                 type="date"
-                className="form-control"
+                className="search-field-input"
+                style={{ cursor: 'pointer' }}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 required
               />
-              <Calendar size={18} className="input-icon" />
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Số vé</label>
-            <div className="input-icon-wrapper">
+          {/* 4. Số lượng vé */}
+          <div className="search-field-box">
+            <div className="search-field-label">
+              <Users size={13} color="#2563eb" />
+              <span>SỐ LƯỢNG VÉ</span>
+            </div>
+            <div className="search-field-input-wrapper">
               <select
-                className="form-control"
+                className="search-field-input"
+                style={{ cursor: 'pointer' }}
                 value={passengers}
                 onChange={(e) => setPassengers(Number(e.target.value))}
               >
-                <option value={1}>1 vé</option>
-                <option value={2}>2 vé</option>
-                <option value={3}>3 vé</option>
-                <option value={4}>4 vé</option>
+                <option value={1}>1 vé (1 Hành khách)</option>
+                <option value={2}>2 vé (2 Hành khách)</option>
+                <option value={3}>3 vé (3 Hành khách)</option>
+                <option value={4}>4 vé (4 Hành khách)</option>
+                <option value={5}>5 vé (5 Hành khách)</option>
               </select>
-              <Users size={18} className="input-icon" />
+              <ChevronDown size={16} className="search-field-chevron" />
             </div>
           </div>
+        </div>
 
-          <button type="submit" className="btn btn-primary search-submit-btn">
+        {/* Bottom Row: Search Button */}
+        <div className="search-card-bottom-row" style={{ justifyContent: 'flex-end' }}>
+          <button type="submit" className="search-btn-submit">
             <Search size={18} />
-            Tìm chuyến xe
+            <span>Tìm chuyến xe</span>
           </button>
         </div>
       </form>

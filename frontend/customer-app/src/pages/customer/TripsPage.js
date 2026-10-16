@@ -22,8 +22,16 @@ import {
   ChevronUp,
   Users,
   Search,
-  ArrowLeft
+  ArrowLeft,
+  ArrowRight,
+  Camera,
+  RotateCcw,
+  Sparkles,
+  ShieldCheck,
+  SlidersHorizontal,
+  Smartphone
 } from 'lucide-react';
+import './TripsPage.css';
 
 const API_BASE = 'http://localhost:8000/api/v1/trips';
 
@@ -183,9 +191,12 @@ const TripsPage = () => {
   const [detailsLoading, setDetailsLoading] = useState(false);
 
   // Filters State
-  const [busTypeFilter, setBusTypeFilter] = useState('all'); // 'all', '22', '34'
-  const [sortBy, setSortBy] = useState('time-asc'); // 'time-asc', 'price-asc', 'price-desc', 'rating-desc'
+  const [busTypeFilter, setBusTypeFilter] = useState('all'); // 'all', 'sleeper', 'limousine', 'seater'
+  const [sortBy, setSortBy] = useState('time-asc'); // 'time-asc', 'price-asc', 'price-desc', 'rating-desc', 'seats-desc'
   const [isDiscountOnly, setIsDiscountOnly] = useState(false);
+  const [isPickupDelivery, setIsPickupDelivery] = useState(false); // Xe đón tận nơi
+  const [isNightTrip, setIsNightTrip] = useState(false); // Chuyến đêm (21:00 - 05:00)
+  const [activeTimeSlot, setActiveTimeSlot] = useState('all'); // 'all', 'early', 'morning', 'afternoon', 'evening'
   const [startHour, setStartHour] = useState(0);
   const [endHour, setEndHour] = useState(24);
   const [maxPrice, setMaxPrice] = useState(2000000);
@@ -195,8 +206,31 @@ const TripsPage = () => {
   const [dropoffSearch, setDropoffSearch] = useState('');
   const [selectedDropoffs, setSelectedDropoffs] = useState([]);
 
+  const handleTimeSlotClick = (slot) => {
+    if (activeTimeSlot === slot) {
+      setActiveTimeSlot('all');
+      setStartHour(0);
+      setEndHour(24);
+    } else {
+      setActiveTimeSlot(slot);
+      if (slot === 'early') { setStartHour(0); setEndHour(6); }
+      else if (slot === 'morning') { setStartHour(6); setEndHour(12); }
+      else if (slot === 'afternoon') { setStartHour(12); setEndHour(18); }
+      else if (slot === 'evening') { setStartHour(18); setEndHour(24); }
+    }
+  };
+
+  const getTomorrowDate = (dStr) => {
+    const base = dStr ? new Date(dStr) : new Date();
+    base.setDate(base.getDate() + 1);
+    return base.toISOString().split('T')[0];
+  };
+
   const handleClearFilters = () => {
     setIsDiscountOnly(false);
+    setIsPickupDelivery(false);
+    setIsNightTrip(false);
+    setActiveTimeSlot('all');
     setStartHour(0);
     setEndHour(24);
     setMaxPrice(2000000);
@@ -754,6 +788,27 @@ const TripsPage = () => {
     loc.toLowerCase().includes(dropoffSearch.toLowerCase())
   );
 
+  // Counts for bus categories
+  const sleeperCount = trips.filter(t => {
+    const tp = t.busId?.type?.toLowerCase() || '';
+    return tp.includes('giường') || tp.includes('nằm');
+  }).length;
+
+  const limoCount = trips.filter(t => {
+    const tp = t.busId?.type?.toLowerCase() || '';
+    return tp.includes('limousine') || tp.includes('phòng');
+  }).length;
+
+  const cabinCount = trips.filter(t => {
+    const tp = t.busId?.type?.toLowerCase() || '';
+    return tp.includes('cabin') || tp.includes('cung điện');
+  }).length;
+
+  const seaterCount = trips.filter(t => {
+    const tp = t.busId?.type?.toLowerCase() || '';
+    return tp.includes('ghế') || tp.includes('ngồi');
+  }).length;
+
   // Apply filters and sorting
   const filteredTrips = trips
     .filter(trip => {
@@ -763,32 +818,49 @@ const TripsPage = () => {
         if (busTypeFilter === 'limousine' && !typeL.includes('limousine') && !typeL.includes('phòng') && !typeL.includes('cabin')) return false;
         if (busTypeFilter === 'sleeper' && !typeL.includes('giường') && !typeL.includes('nằm')) return false;
         if (busTypeFilter === 'seater' && !typeL.includes('ghế') && !typeL.includes('ngồi')) return false;
+        if (busTypeFilter === 'cabin' && !typeL.includes('cabin') && !typeL.includes('cung điện')) return false;
       }
 
-      // 2. Giảm giá (Discount check - simulate discount for trips priced < 300,000 or rating counts > 1000)
+      // 2. Giảm giá (Discount check)
       if (isDiscountOnly) {
         const hasDiscount = trip.price < 300000 || trip.ratings.count > 1000;
         if (!hasDiscount) return false;
       }
 
-      // 3. Departure hour
+      // 3. Xe đón tận nơi
+      if (isPickupDelivery) {
+        const hasDoorToDoor = trip.pickupPoints.some(p => 
+          p.location.toLowerCase().includes('tận nơi') || 
+          p.location.toLowerCase().includes('trung tâm') ||
+          p.location.toLowerCase().includes('văn phòng')
+        );
+        if (!hasDoorToDoor) return false;
+      }
+
+      // 4. Chuyến đêm (21:00 - 05:00)
+      if (isNightTrip) {
+        const depH = new Date(trip.departureTime).getHours();
+        if (!(depH >= 21 || depH <= 5)) return false;
+      }
+
+      // 5. Departure hour
       const depHour = new Date(trip.departureTime).getHours();
       if (depHour < startHour || depHour > endHour) return false;
 
-      // 4. Ticket price
+      // 6. Ticket price
       if (trip.price > maxPrice) return false;
 
-      // 5. Available seats count
+      // 7. Available seats count
       const remainingSeats = trip.busId.totalSeats - trip.bookedSeats.length;
       if (remainingSeats < minSeats) return false;
 
-      // 6. Selected Pickup locations
+      // 8. Selected Pickup locations
       if (selectedPickups.length > 0) {
         const hasMatchingPickup = trip.pickupPoints.some(p => selectedPickups.includes(p.location));
         if (!hasMatchingPickup) return false;
       }
 
-      // 7. Selected Dropoff locations
+      // 9. Selected Dropoff locations
       if (selectedDropoffs.length > 0) {
         const hasMatchingDropoff = trip.dropoffPoints.some(d => selectedDropoffs.includes(d.location));
         if (!hasMatchingDropoff) return false;
@@ -808,6 +880,11 @@ const TripsPage = () => {
       }
       if (sortBy === 'rating-desc') {
         return b.ratings.average - a.ratings.average;
+      }
+      if (sortBy === 'seats-desc') {
+        const remainingA = a.busId.totalSeats - a.bookedSeats.length;
+        const remainingB = b.busId.totalSeats - b.bookedSeats.length;
+        return remainingB - remainingA;
       }
       return 0;
     });
@@ -1335,54 +1412,66 @@ const TripsPage = () => {
   };
 
   return (
-    <div className="placeholder-page animate-fade-in" style={{ paddingBottom: '5rem' }}>
+    <div className="placeholder-page animate-fade-in" style={{ paddingBottom: '5rem', backgroundColor: '#f8fafc' }}>
 
-      {/* Search Header Banner */}
-      <div className="hero-section-futa" style={{ padding: '3.5rem 1rem 6rem 1rem', borderRadius: '0', minHeight: 'auto', marginBottom: '0', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '1.85rem', fontWeight: '800', marginBottom: '0.5rem' }}>
-          Tuyến xe: {fromParam} → {toParam}
-        </h2>
-        <p style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', opacity: 0.9 }}>
-          <Calendar size={16} />
-          {formatDateDisplay(dateParam)}
+      {/* 1. HERO BANNER */}
+      <div
+        className="trips-hero-banner"
+        style={{
+          backgroundImage: `linear-gradient(rgba(10, 25, 47, 0.78), rgba(10, 25, 47, 0.9)), url(${process.env.PUBLIC_URL}/auth_banner.jpg)`
+        }}
+      >
+        <div className="trips-hero-date-badge">
+          <Calendar size={15} />
+          <span>{formatDateDisplay(dateParam)}</span>
+        </div>
+        <h1 className="trips-hero-title">
+          {fromParam || 'Đà Lạt'} → {toParam || 'Hồ Chí Minh'}
+        </h1>
+        <p className="trips-hero-subtitle">
+          Tuyến đường vàng cao tốc • Cam kết không đón khách dọc đường • Hoàn tiền nếu trễ
         </p>
       </div>
 
-      {/* Re-Search Panel */}
-      <div className="search-container-futa" style={{ marginTop: '-4.5rem', marginBottom: '2.5rem' }}>
-        <form onSubmit={handleSearchSubmit} className="search-box-futa" style={{ boxShadow: '0 8px 30px rgba(0, 0, 0, 0.05)' }}>
-          {/* Trip Type Selector */}
-          <div className="trip-type-selector">
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="tripType"
-                value="one-way"
-                checked={tripType === 'one-way'}
-                onChange={() => setTripType('one-way')}
-              />
-              Một chiều
-            </label>
-            <label className="radio-label">
-              <input
-                type="radio"
-                name="tripType"
-                value="round-trip"
-                checked={tripType === 'round-trip'}
-                onChange={() => setTripType('round-trip')}
-              />
-              Khứ hồi
-            </label>
+      {/* 2. RE-SEARCH PANEL (FLOATING OVER HERO) */}
+      <div className="trips-search-floating-card">
+        <form onSubmit={handleSearchSubmit} className="trips-search-form">
+          <div className="trips-search-top-row">
+            <div className="trips-search-radios">
+              <label className="trips-radio-label">
+                <input
+                  type="radio"
+                  name="tripType"
+                  value="one-way"
+                  checked={tripType === 'one-way'}
+                  onChange={() => setTripType('one-way')}
+                />
+                <span>Một chiều</span>
+              </label>
+              <label className="trips-radio-label">
+                <input
+                  type="radio"
+                  name="tripType"
+                  value="round-trip"
+                  checked={tripType === 'round-trip'}
+                  onChange={() => setTripType('round-trip')}
+                />
+                <span>Khứ hồi</span>
+              </label>
+            </div>
           </div>
 
-          {/* Search Input Fields */}
-          <div className="search-inputs-grid">
-            <div className="form-group" ref={fromRef} style={{ position: 'relative' }}>
-              <label className="form-label" style={{ fontWeight: '600' }}>Điểm đi</label>
-              <div className="input-icon-wrapper">
+          <div className="trips-search-inputs-grid">
+            {/* Điểm đi */}
+            <div className="trips-search-field" ref={fromRef}>
+              <div className="trips-field-label">
+                <MapPin size={13} color="#2563eb" />
+                <span>ĐIỂM ĐI</span>
+              </div>
+              <div className="trips-field-input-box">
                 <input
                   type="text"
-                  className="form-control"
+                  className="trips-field-input"
                   placeholder="Chọn điểm đi"
                   value={from}
                   onChange={(e) => {
@@ -1392,12 +1481,10 @@ const TripsPage = () => {
                   onFocus={() => setShowFromSuggestions(true)}
                   required
                 />
-                <MapPin size={18} className="input-icon" />
+                <ChevronDown size={14} color="#94a3b8" />
               </div>
-
-              {/* From Suggestions Dropdown */}
               {showFromSuggestions && (
-                <div className="search-suggestions-dropdown">
+                <div className="search-suggestions-dropdown" style={{ top: '100%', left: 0, right: 0, zIndex: 100 }}>
                   {filteredFromLocations.map((loc, index) => (
                     <div
                       key={index}
@@ -1423,12 +1510,16 @@ const TripsPage = () => {
               )}
             </div>
 
-            <div className="form-group" ref={toRef} style={{ position: 'relative' }}>
-              <label className="form-label" style={{ fontWeight: '600' }}>Điểm đến</label>
-              <div className="input-icon-wrapper">
+            {/* Điểm đến */}
+            <div className="trips-search-field" ref={toRef}>
+              <div className="trips-field-label">
+                <MapPin size={13} color="#ef4444" />
+                <span>ĐIỂM ĐẾN</span>
+              </div>
+              <div className="trips-field-input-box">
                 <input
                   type="text"
-                  className="form-control"
+                  className="trips-field-input"
                   placeholder="Chọn điểm đến"
                   value={to}
                   onChange={(e) => {
@@ -1438,12 +1529,10 @@ const TripsPage = () => {
                   onFocus={() => setShowToSuggestions(true)}
                   required
                 />
-                <MapPin size={18} className="input-icon" style={{ color: 'var(--accent)' }} />
+                <ChevronDown size={14} color="#94a3b8" />
               </div>
-
-              {/* To Suggestions Dropdown */}
               {showToSuggestions && (
-                <div className="search-suggestions-dropdown">
+                <div className="search-suggestions-dropdown" style={{ top: '100%', left: 0, right: 0, zIndex: 100 }}>
                   {filteredToLocations.map((loc, index) => (
                     <div
                       key={index}
@@ -1469,331 +1558,441 @@ const TripsPage = () => {
               )}
             </div>
 
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>Ngày đi</label>
-              <div className="input-icon-wrapper">
+            {/* Ngày đi */}
+            <div className="trips-search-field">
+              <div className="trips-field-label">
+                <Calendar size={13} color="#2563eb" />
+                <span>NGÀY ĐI</span>
+              </div>
+              <div className="trips-field-input-box">
                 <input
                   type="date"
-                  className="form-control"
+                  className="trips-field-input"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
+                  style={{ cursor: 'pointer' }}
                   required
                 />
-                <Calendar size={18} className="input-icon" />
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="form-label" style={{ fontWeight: '600' }}>Số vé</label>
-              <div className="input-icon-wrapper">
+            {/* Số vé */}
+            <div className="trips-search-field">
+              <div className="trips-field-label">
+                <Users size={13} color="#2563eb" />
+                <span>SỐ VÉ</span>
+              </div>
+              <div className="trips-field-input-box">
                 <select
-                  className="form-control"
+                  className="trips-field-input"
                   value={passengers}
                   onChange={(e) => setPassengers(Number(e.target.value))}
+                  style={{ cursor: 'pointer' }}
                 >
                   <option value={1}>1 vé</option>
                   <option value={2}>2 vé</option>
                   <option value={3}>3 vé</option>
                   <option value={4}>4 vé</option>
+                  <option value={5}>5 vé</option>
                 </select>
-                <Users size={18} className="input-icon" />
+                <ChevronDown size={14} color="#94a3b8" />
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', height: '48px', marginBottom: '1.25rem', display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center' }}>
-              <Search size={18} />
-              <span>Tìm chuyến xe</span>
+            {/* Search Button */}
+            <button type="submit" className="trips-btn-search">
+              <Search size={17} />
+              <span>Tìm xe</span>
             </button>
           </div>
         </form>
       </div>
 
-      <div className="section-container" style={{ marginTop: '0' }}>
+      <div className="trips-main-container">
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem 0' }}>
-            <div className="form-label" style={{ fontSize: '1.2rem' }}>Đang tải danh sách chuyến đi...</div>
+          <div style={{ textAlign: 'center', padding: '4rem 0' }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1e3a8a' }}>Đang tìm kiếm chuyến xe...</div>
           </div>
         ) : error ? (
-          <div className="glass-card" style={{ padding: '3rem', textAlign: 'center', borderColor: '#ef4444' }}>
-            <AlertCircle size={48} style={{ color: '#ef4444', marginBottom: '1rem' }} />
-            <h3>Có lỗi xảy ra</h3>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>{error}</p>
-            <button className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={() => navigate('/')}>
+          <div className="trips-empty-card">
+            <AlertCircle size={48} style={{ color: '#ef4444', margin: '0 auto 1rem auto' }} />
+            <h3 className="trips-empty-title">Có lỗi xảy ra</h3>
+            <p className="trips-empty-desc">{error}</p>
+            <button className="btn btn-primary" onClick={() => navigate('/')}>
               Quay lại Trang chủ
             </button>
           </div>
         ) : trips.length === 0 ? (
-          <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-            <AlertCircle size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
-            <h3>Không tìm thấy chuyến đi nào</h3>
-            <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-              Rất tiếc, hiện tại không có chuyến xe nào chạy tuyến đường này vào ngày đã chọn.
+          <div className="trips-empty-card">
+            <div className="trips-empty-icon-box">
+              <Calendar size={36} />
+            </div>
+            <h3 className="trips-empty-title">Không tìm thấy chuyến xe trong ngày {formatDateDisplay(dateParam)}</h3>
+            <p className="trips-empty-desc">
+              Các chuyến xe trong ngày hôm nay có thể đã xuất bến hết hoặc tuyến đường chưa có chuyến chạy vào khung giờ này.
             </p>
-            <button className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={() => navigate('/')}>
-              Quay lại Trang chủ
-            </button>
+            <div className="trips-empty-actions">
+              <button
+                type="button"
+                className="btn-see-tomorrow"
+                onClick={() => {
+                  const tomorrow = getTomorrowDate(dateParam);
+                  navigate(`/trips?from=${encodeURIComponent(fromParam)}&to=${encodeURIComponent(toParam)}&date=${tomorrow}&passengers=${passengers}&type=${tripType}`);
+                }}
+              >
+                <Calendar size={18} />
+                <span>Xem chuyến xe ngày mai ({getTomorrowDate(dateParam)})</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate('/')}
+                style={{ padding: '12px 22px', borderRadius: '12px', fontWeight: '700' }}
+              >
+                Quay lại Trang chủ
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="search-results-layout">
-
-            {/* Left side: Filter Panel */}
-            <div className="glass-card" style={{ padding: '1.5rem', position: 'sticky', top: '20px', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem', marginBottom: '1.25rem' }}>
-                <h3 style={{ margin: 0, fontWeight: '700', fontSize: '1.15rem' }}>Bộ lọc tìm kiếm</h3>
-                <button
-                  onClick={handleClearFilters}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--primary)',
-                    fontWeight: '700',
-                    fontSize: '0.9rem',
-                    cursor: 'pointer',
-                    padding: '0'
-                  }}
-                >
-                  Xóa lọc
-                </button>
+          <>
+            {/* Results Header Bar */}
+            <div className="trips-results-header-bar">
+              <div className="trips-header-left">
+                <span className="trips-count-text">
+                  Kết quả tìm kiếm: <span className="trips-count-highlight">{filteredTrips.length} chuyến</span> phù hợp
+                </span>
               </div>
 
-              {/* Popular criteria */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Tiêu chí phổ biến</label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={isDiscountOnly}
-                    onChange={(e) => setIsDiscountOnly(e.target.checked)}
-                  />
-                  <span>Giảm giá</span>
-                </label>
+              <div className="trips-sort-group">
+                <span className="trips-sort-label">Sắp xếp theo:</span>
+                <div className="trips-sort-tabs">
+                  <button
+                    type="button"
+                    className={`trips-sort-tab-btn ${sortBy === 'time-asc' ? 'active' : ''}`}
+                    onClick={() => setSortBy('time-asc')}
+                  >
+                    Giờ đi sớm nhất
+                  </button>
+                  <button
+                    type="button"
+                    className={`trips-sort-tab-btn ${sortBy === 'price-asc' ? 'active' : ''}`}
+                    onClick={() => setSortBy('price-asc')}
+                  >
+                    Giá tăng dần
+                  </button>
+                </div>
               </div>
+            </div>
 
-              {/* Departure time */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Giờ đi</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <input
-                    type="range"
-                    min="0"
-                    max="24"
-                    value={startHour}
-                    onChange={(e) => setStartHour(Math.min(Number(e.target.value), endHour))}
-                    style={{ width: '100%', accentColor: 'var(--primary)' }}
-                  />
+            {/* Results Two Columns */}
+            <div className="trips-results-grid-layout">
+              {/* Left Sidebar Filter */}
+              <div className="trips-filter-card">
+                <div className="trips-filter-header">
+                  <div className="trips-filter-title">
+                    <SlidersHorizontal size={18} color="#2563eb" />
+                    <span>Bộ lọc tìm kiếm</span>
+                  </div>
+                  <button type="button" className="trips-filter-reset-btn" onClick={handleClearFilters}>
+                    <RotateCcw size={13} />
+                    <span>Xóa lọc</span>
+                  </button>
+                </div>
+
+                {/* 1. Tiêu chí phổ biến */}
+                <div className="trips-filter-section">
+                  <div className="trips-filter-sec-title">Tiêu chí phổ biến</div>
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="checkbox"
+                        checked={isDiscountOnly}
+                        onChange={(e) => setIsDiscountOnly(e.target.checked)}
+                      />
+                      <span>Giảm giá / Ưu đãi hôm nay</span>
+                    </div>
+                    <span className="trips-badge-discount">-10%</span>
+                  </label>
+
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="checkbox"
+                        checked={isPickupDelivery}
+                        onChange={(e) => setIsPickupDelivery(e.target.checked)}
+                      />
+                      <span>Xe đón tận nơi</span>
+                    </div>
+                  </label>
+
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="checkbox"
+                        checked={isNightTrip}
+                        onChange={(e) => setIsNightTrip(e.target.checked)}
+                      />
+                      <span>Chuyến đêm (21:00 - 05:00)</span>
+                    </div>
+                  </label>
+                </div>
+
+                {/* 2. Giờ đi trong ngày */}
+                <div className="trips-filter-section">
+                  <div className="trips-filter-sec-title">
+                    <span>Giờ đi trong ngày</span>
+                    <span style={{ color: '#2563eb', fontWeight: '700' }}>
+                      {startHour.toString().padStart(2, '0')}:00 - {endHour === 24 ? '23:59' : `${endHour.toString().padStart(2, '0')}:00`}
+                    </span>
+                  </div>
                   <input
                     type="range"
                     min="0"
                     max="24"
                     value={endHour}
-                    onChange={(e) => setEndHour(Math.max(Number(e.target.value), startHour))}
-                    style={{ width: '100%', accentColor: 'var(--primary)' }}
+                    onChange={(e) => setEndHour(Number(e.target.value))}
+                    className="trips-range-input"
                   />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                    <span>{startHour.toString().padStart(2, '0')}:00</span>
-                    <span>{endHour === 24 ? '23:59' : `${endHour.toString().padStart(2, '0')}:00`}</span>
+                  <div className="trips-time-slots-grid">
+                    <button
+                      type="button"
+                      className={`trips-time-slot-btn ${activeTimeSlot === 'early' ? 'active' : ''}`}
+                      onClick={() => handleTimeSlotClick('early')}
+                    >
+                      <span className="trips-time-slot-title">Sáng sớm</span>
+                      <span className="trips-time-slot-sub">(00h - 06h)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`trips-time-slot-btn ${activeTimeSlot === 'morning' ? 'active' : ''}`}
+                      onClick={() => handleTimeSlotClick('morning')}
+                    >
+                      <span className="trips-time-slot-title">Buổi sáng</span>
+                      <span className="trips-time-slot-sub">(06h - 12h)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`trips-time-slot-btn ${activeTimeSlot === 'afternoon' ? 'active' : ''}`}
+                      onClick={() => handleTimeSlotClick('afternoon')}
+                    >
+                      <span className="trips-time-slot-title">Buổi chiều</span>
+                      <span className="trips-time-slot-sub">(12h - 18h)</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`trips-time-slot-btn ${activeTimeSlot === 'evening' ? 'active' : ''}`}
+                      onClick={() => handleTimeSlotClick('evening')}
+                    >
+                      <span className="trips-time-slot-title">Buổi tối</span>
+                      <span className="trips-time-slot-sub">(18h - 24h)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Khoảng giá */}
+                <div className="trips-filter-section">
+                  <div className="trips-filter-sec-title">
+                    <span>Khoảng giá</span>
+                    <span style={{ color: '#2563eb', fontWeight: '700' }}>0 đ - {formatCurrency(maxPrice)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="100000"
+                    max="2000000"
+                    step="50000"
+                    value={maxPrice}
+                    onChange={(e) => setMaxPrice(Number(e.target.value))}
+                    className="trips-range-input"
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#94a3b8' }}>
+                    <span>0 đ</span>
+                    <span>2.000.000 đ</span>
+                  </div>
+                </div>
+
+                {/* 4. Loại xe */}
+                <div className="trips-filter-section">
+                  <div className="trips-filter-sec-title">Loại xe</div>
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="radio"
+                        name="busTypeFilterRadio"
+                        checked={busTypeFilter === 'all'}
+                        onChange={() => setBusTypeFilter('all')}
+                      />
+                      <span>Tất cả loại xe</span>
+                    </div>
+                    <span className="trips-count-badge-gray">({trips.length})</span>
+                  </label>
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="radio"
+                        name="busTypeFilterRadio"
+                        checked={busTypeFilter === 'sleeper'}
+                        onChange={() => setBusTypeFilter('sleeper')}
+                      />
+                      <span>Giường Nằm 44 Chỗ</span>
+                    </div>
+                    <span className="trips-count-badge-gray">({sleeperCount})</span>
+                  </label>
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="radio"
+                        name="busTypeFilterRadio"
+                        checked={busTypeFilter === 'limousine'}
+                        onChange={() => setBusTypeFilter('limousine')}
+                      />
+                      <span>Limousine VIP 34 Phòng</span>
+                    </div>
+                    <span className="trips-count-badge-gray">({limoCount})</span>
+                  </label>
+                  <label className="trips-checkbox-item">
+                    <div className="trips-checkbox-label-left">
+                      <input
+                        type="radio"
+                        name="busTypeFilterRadio"
+                        checked={busTypeFilter === 'cabin'}
+                        onChange={() => setBusTypeFilter('cabin')}
+                      />
+                      <span>Cabin Cung Điện Đôi 22 Phòng</span>
+                    </div>
+                    <span className="trips-count-badge-gray">({cabinCount})</span>
+                  </label>
+                  {seaterCount > 0 && (
+                    <label className="trips-checkbox-item">
+                      <div className="trips-checkbox-label-left">
+                        <input
+                          type="radio"
+                          name="busTypeFilterRadio"
+                          checked={busTypeFilter === 'seater'}
+                          onChange={() => setBusTypeFilter('seater')}
+                        />
+                        <span>Xe Ghế Ngồi</span>
+                      </div>
+                      <span className="trips-count-badge-gray">({seaterCount})</span>
+                    </label>
+                  )}
+                </div>
+
+                {/* 5. Điểm đón */}
+                <div className="trips-filter-section">
+                  <div className="trips-filter-sec-title">Điểm đón ({fromParam || 'Điểm đi'})</div>
+                  <div className="trips-filter-subsearch">
+                    <input
+                      type="text"
+                      placeholder="Tìm điểm đón..."
+                      className="trips-filter-subinput"
+                      value={pickupSearch}
+                      onChange={(e) => setPickupSearch(e.target.value)}
+                    />
+                    <Search size={13} className="trips-filter-subsearch-icon" />
+                  </div>
+                  <div className="trips-stops-scroll-list">
+                    {filteredPickupLocationsList.length === 0 ? (
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Không tìm thấy điểm đón</span>
+                    ) : (
+                      filteredPickupLocationsList.map((loc) => {
+                        const isChecked = selectedPickups.includes(loc);
+                        return (
+                          <label key={loc} className="trips-checkbox-item">
+                            <div className="trips-checkbox-label-left">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setSelectedPickups(selectedPickups.filter(item => item !== loc));
+                                  } else {
+                                    setSelectedPickups([...selectedPickups, loc]);
+                                  }
+                                }}
+                              />
+                              <span>{loc}</span>
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 6. Điểm trả */}
+                <div className="trips-filter-section" style={{ borderBottom: 'none' }}>
+                  <div className="trips-filter-sec-title">Điểm trả ({toParam || 'Điểm đến'})</div>
+                  <div className="trips-filter-subsearch">
+                    <input
+                      type="text"
+                      placeholder="Tìm điểm trả..."
+                      className="trips-filter-subinput"
+                      value={dropoffSearch}
+                      onChange={(e) => setDropoffSearch(e.target.value)}
+                    />
+                    <Search size={13} className="trips-filter-subsearch-icon" />
+                  </div>
+                  <div className="trips-stops-scroll-list">
+                    {filteredDropoffLocationsList.length === 0 ? (
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Không tìm thấy điểm trả</span>
+                    ) : (
+                      filteredDropoffLocationsList.map((loc) => {
+                        const isChecked = selectedDropoffs.includes(loc);
+                        return (
+                          <label key={loc} className="trips-checkbox-item">
+                            <div className="trips-checkbox-label-left">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setSelectedDropoffs(selectedDropoffs.filter(item => item !== loc));
+                                  } else {
+                                    setSelectedDropoffs([...selectedDropoffs, loc]);
+                                  }
+                                }}
+                              />
+                              <span>{loc}</span>
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Price */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Giá vé</label>
-                <input
-                  type="range"
-                  min="100000"
-                  max="2000000"
-                  step="50000"
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: 'var(--primary)' }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  <span>0 đ</span>
-                  <span>{formatCurrency(maxPrice)}</span>
-                </div>
-              </div>
-
-              {/* Available seats */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Số chỗ trống</label>
-                <input
-                  type="range"
-                  min="0"
-                  max="50"
-                  value={minSeats}
-                  onChange={(e) => setMinSeats(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: 'var(--primary)' }}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  <span>0</span>
-                  <span>50</span>
-                </div>
-                {minSeats > 0 && (
-                  <div style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600', marginTop: '4px' }}>
-                    Yêu cầu tối thiểu {minSeats} chỗ trống
+              {/* Right side: Trips List or Empty State */}
+              <div className="trips-list-column">
+                {expandedTripId ? (
+                  renderSeatSelectionView()
+                ) : filteredTrips.length === 0 ? (
+                  <div className="trips-empty-card">
+                    <AlertCircle size={48} style={{ color: 'var(--primary)', margin: '0 auto 1rem auto' }} />
+                    <h3 className="trips-empty-title">Không có chuyến xe nào khớp với bộ lọc</h3>
+                    <p className="trips-empty-desc">
+                      Không tìm thấy kết quả phù hợp. Bạn vui lòng thay đổi hoặc xóa các tiêu chí lọc ở cột bên trái để hiển thị lại chuyến đi.
+                    </p>
+                    <button className="btn btn-primary" onClick={handleClearFilters}>
+                      Xóa tất cả bộ lọc
+                    </button>
                   </div>
-                )}
-              </div>
-
-              {/* Pickup points */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Điểm đón</label>
-                <div style={{ position: 'relative', marginBottom: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Nhập điểm đón"
-                    className="form-control"
-                    value={pickupSearch}
-                    onChange={(e) => setPickupSearch(e.target.value)}
-                    style={{ paddingRight: '35px', fontSize: '0.85rem', height: '36px' }}
-                  />
-                  <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🔍</span>
-                </div>
-                <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', padding: '4px' }}>
-                  {filteredPickupLocationsList.length === 0 ? (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Không tìm thấy điểm đón nào</span>
-                  ) : (
-                    filteredPickupLocationsList.map((loc) => {
-                      const isChecked = selectedPickups.includes(loc);
-                      return (
-                        <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              if (isChecked) {
-                                setSelectedPickups(selectedPickups.filter(item => item !== loc));
-                              } else {
-                                setSelectedPickups([...selectedPickups, loc]);
-                              }
-                            }}
-                          />
-                          <span>{loc}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Dropoff points */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label" style={{ fontWeight: '700', marginBottom: '8px', display: 'block' }}>Điểm trả</label>
-                <div style={{ position: 'relative', marginBottom: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Nhập điểm trả"
-                    className="form-control"
-                    value={dropoffSearch}
-                    onChange={(e) => setDropoffSearch(e.target.value)}
-                    style={{ paddingRight: '35px', fontSize: '0.85rem', height: '36px' }}
-                  />
-                  <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>🔍</span>
-                </div>
-                <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', padding: '4px' }}>
-                  {filteredDropoffLocationsList.length === 0 ? (
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Không tìm thấy điểm trả nào</span>
-                  ) : (
-                    filteredDropoffLocationsList.map((loc) => {
-                      const isChecked = selectedDropoffs.includes(loc);
-                      return (
-                        <label key={loc} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              if (isChecked) {
-                                setSelectedDropoffs(selectedDropoffs.filter(item => item !== loc));
-                              } else {
-                                setSelectedDropoffs([...selectedDropoffs, loc]);
-                              }
-                            }}
-                          />
-                          <span>{loc}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              {/* Bus Type */}
-              <div className="form-group" style={{ marginBottom: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <label className="form-label" style={{ fontWeight: '700' }}>Loại xe</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input
-                      type="radio"
-                      name="busType"
-                      checked={busTypeFilter === 'all'}
-                      onChange={() => setBusTypeFilter('all')}
-                    />
-                    Tất cả các loại xe
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input
-                      type="radio"
-                      name="busType"
-                      checked={busTypeFilter === 'limousine'}
-                      onChange={() => setBusTypeFilter('limousine')}
-                    />
-                    Xe Limousine (9, 19, 22 VIP...)
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input
-                      type="radio"
-                      name="busType"
-                      checked={busTypeFilter === 'sleeper'}
-                      onChange={() => setBusTypeFilter('sleeper')}
-                    />
-                    Xe Giường Nằm (34, 40, 44 chỗ...)
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.9rem' }}>
-                    <input
-                      type="radio"
-                      name="busType"
-                      checked={busTypeFilter === 'seater'}
-                      onChange={() => setBusTypeFilter('seater')}
-                    />
-                    Xe Ghế Ngồi (16, 29, 45 chỗ...)
-                  </label>
-                </div>
-              </div>
-
-              {/* Sort By */}
-              <div className="form-group" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <label className="form-label" style={{ fontWeight: '700' }}>Sắp xếp theo</label>
-                <select className="form-control" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                  <option value="time-asc">Giờ xuất phát (Sớm → Muộn)</option>
-                  <option value="price-asc">Giá vé (Thấp → Cao)</option>
-                  <option value="price-desc">Giá vé (Cao → Thấp)</option>
-                  <option value="rating-desc">Đánh giá sao (Cao → Thấp)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Right side: Trips List or Empty State */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flexGrow: 1 }}>
-              {expandedTripId ? (
-                renderSeatSelectionView()
-              ) : filteredTrips.length === 0 ? (
-                <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
-                  <AlertCircle size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
-                  <h3>Không có chuyến xe nào khớp với bộ lọc</h3>
-                  <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                    Không tìm thấy kết quả phù hợp. Bạn vui lòng thay đổi hoặc xóa các tiêu chí lọc ở cột bên trái để hiển thị lại chuyến đi.
-                  </p>
-                  <button className="btn btn-primary" style={{ marginTop: '1.5rem' }} onClick={handleClearFilters}>
-                    Xóa tất cả bộ lọc
-                  </button>
-                </div>
-              ) : (
-                filteredTrips.map((trip) => {
+                ) : (
+                  filteredTrips.map((trip) => {
                   const isExpanded = expandedTripId === trip._id;
                   const remainingSeatsCount = trip.busId.totalSeats - trip.bookedSeats.length;
                   const departureDate = new Date(trip.departureTime);
                   const arrivalDate = new Date(trip.arrivalTime);
+                  const typeLow = (trip.busId?.type || '').toLowerCase();
+                  const isCabin = typeLow.includes('cabin') || typeLow.includes('cung điện');
+                  const isLimo = typeLow.includes('limousine') || typeLow.includes('phòng');
+                  const pillClass = isCabin ? 'cabin' : (isLimo ? 'limo' : '');
+                  const isBestSeller = (trip.ratings?.average || 4.9) >= 4.8;
+                  const durationText = trip.routeId?.duration || '5h 14p';
+                  const departureLocation = trip.pickupPoints[0]?.location || fromParam || 'Bến Xe Xuất Phát';
+                  const departureAddress = trip.pickupPoints[0]?.address || 'Điểm đón chính';
+                  const arrivalLocation = trip.dropoffPoints[trip.dropoffPoints.length - 1]?.location || toParam || 'Bến Xe Đến';
+                  const arrivalAddress = trip.dropoffPoints[trip.dropoffPoints.length - 1]?.address || 'Điểm trả chính';
 
                   // Helper to format hours
                   const formatTime = (dateObj) => {
@@ -1801,119 +2000,122 @@ const TripsPage = () => {
                   };
 
                   return (
-                    <div key={trip._id} className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+                    <div key={trip._id} className="trip-card-luxury animate-fade-in">
+                      {/* Top Bar with Tags & Ratings */}
+                      {/* Top Bar with Real Bus Type */}
+                      <div className="trip-card-top-bar">
+                        <div className="trip-card-tags-left">
+                          <span className={`trip-pill-bus-type ${pillClass}`}>
+                            💺 {trip.busId?.type || 'Xe khách'}
+                          </span>
+                        </div>
+                      </div>
 
-                      {/* Upper Trip Summary Card */}
-                      <div className="trip-card-inner-layout" style={{ padding: '1.75rem' }}>
-                        {/* Left: Bus Image */}
-                        <div>
+                      {/* Main 3-Column Body */}
+                      <div className="trip-card-main-body">
+                        {/* 1. Thumbnail Container */}
+                        <div className="trip-thumbnail-container">
                           <img
                             src={trip.busId.images[0] || 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=400&q=80'}
                             alt={trip.busId.type}
-                            style={{ width: '100%', height: '90px', objectFit: 'cover', borderRadius: '8px' }}
+                            className="trip-thumbnail-img"
                           />
+                          <span className="trip-photo-count-badge">
+                            <Camera size={11} />
+                            <span>{trip.busId.images?.length || 4} ảnh</span>
+                          </span>
                         </div>
 
-                        {/* Center: Route, Time and Amenities */}
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                            <span style={{ fontWeight: '700', fontSize: '1.15rem', color: 'var(--primary)' }}>{trip.busId.type}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', color: '#eab308' }}>
-                              <Star size={16} fill="#eab308" />
-                              <span style={{ fontWeight: '600' }}>{trip.ratings.average}</span>
-                              <span style={{ color: 'var(--text-muted)' }}>({trip.ratings.count})</span>
-                            </div>
-                          </div>
-
-                          {/* Journey Time Details */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', margin: '12px 0' }}>
-                            <div>
-                              <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>{formatTime(departureDate)}</span>
-                              <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{trip.pickupPoints[0]?.location || 'Điểm đi'}</span>
+                        {/* 2. Middle Timeline & Amenities */}
+                        <div className="trip-timeline-middle">
+                          <div className="trip-timeline-journey">
+                            {/* Departure */}
+                            <div className="trip-time-point">
+                              <div className="trip-point-hour">{formatTime(departureDate)}</div>
+                              <span className="trip-point-station" title={departureLocation}>{departureLocation}</span>
+                              {departureAddress && <span className="trip-point-address" title={departureAddress}>{departureAddress}</span>}
                             </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 0.5, position: 'relative' }}>
-                              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-                                {trip.routeId.duration}
-                              </span>
-                              {/* Horizontal Line connector */}
-                              <div style={{ height: '2px', backgroundColor: 'var(--border-color)', width: '100%', position: 'relative' }}>
-                                <div style={{
-                                  width: '6px',
-                                  height: '6px',
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--primary)',
-                                  position: 'absolute',
-                                  left: '0',
-                                  top: '-2px'
-                                }}></div>
-                                <div style={{
-                                  width: '6px',
-                                  height: '6px',
-                                  borderRadius: '50%',
-                                  backgroundColor: 'var(--accent)',
-                                  position: 'absolute',
-                                  right: '0',
-                                  top: '-2px'
-                                }}></div>
+                            {/* Duration graphic */}
+                            <div className="trip-journey-route-graphic">
+                              <span className="trip-duration-text">{durationText}</span>
+                              <span className="trip-badge-direct">Trực tiếp</span>
+                              <div className="trip-connector-line">
+                                <span className="trip-connector-dot-start" />
+                                <span className="trip-connector-dot-end" />
                               </div>
                             </div>
 
-                            <div>
-                              <span style={{ fontSize: '1.25rem', fontWeight: '700' }}>{formatTime(arrivalDate)}</span>
-                              <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{trip.dropoffPoints[trip.dropoffPoints.length - 1]?.location || 'Điểm trả'}</span>
+                            {/* Arrival */}
+                            <div className="trip-time-point">
+                              <div className="trip-point-hour">{formatTime(arrivalDate)}</div>
+                              <span className="trip-point-station" title={arrivalLocation}>{arrivalLocation}</span>
+                              {arrivalAddress && <span className="trip-point-address" title={arrivalAddress}>{arrivalAddress}</span>}
                             </div>
                           </div>
 
-                          {/* Amenities Icons */}
-                          <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)' }}>
-                            {trip.busId.amenities.includes('Tivi LED') && <Tv size={16} title="Tivi LED" />}
-                            {trip.busId.amenities.includes('Wifi') && <Wifi size={16} title="Wifi miễn phí" />}
-                            {trip.busId.amenities.includes('Toilet') && <Coffee size={16} title="Nhà vệ sinh" />}
-                            {trip.busId.amenities.includes('Điều hòa') && <Wind size={16} title="Điều hòa" />}
-                            {trip.busId.amenities.includes('Nước uống') && <Utensils size={16} title="Nước uống & Khăn lạnh" />}
-                          </div>
+                          {/* Amenities from DB */}
+                          {trip.busId?.amenities && trip.busId.amenities.length > 0 && (
+                            <div className="trip-amenities-row">
+                              {trip.busId.amenities.map((amenity, idx) => {
+                                let icon = <CheckCircle size={13} color="#0284c7" />;
+                                const aLower = (amenity || '').toLowerCase();
+                                if (aLower.includes('wifi')) {
+                                  icon = <Wifi size={13} color="#0284c7" />;
+                                } else if (aLower.includes('nước') || aLower.includes('uống') || aLower.includes('ăn')) {
+                                  icon = <Utensils size={13} color="#059669" />;
+                                } else if (aLower.includes('sạc') || aLower.includes('usb') || aLower.includes('điện thoại')) {
+                                  icon = <Smartphone size={13} color="#7c3aed" />;
+                                } else if (aLower.includes('điều hòa') || aLower.includes('lạnh') || aLower.includes('máy lạnh')) {
+                                  icon = <Wind size={13} color="#0891b2" />;
+                                } else if (aLower.includes('tivi') || aLower.includes('tv') || aLower.includes('màn hình')) {
+                                  icon = <Tv size={13} color="#2563eb" />;
+                                } else if (aLower.includes('gối') || aLower.includes('chăn') || aLower.includes('nệm')) {
+                                  icon = <Coffee size={13} color="#d97706" />;
+                                } else if (aLower.includes('khăn')) {
+                                  icon = <Sparkles size={13} color="#059669" />;
+                                }
 
-                          {/* Toggle Details Link */}
-                          <div style={{ marginTop: '12px' }}>
-                            <button
-                              onClick={() => toggleDetails(trip._id)}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--primary)',
-                                fontSize: '0.9rem',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                padding: '0',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'color 0.2s'
-                              }}
-                            >
-                              <span>{activeDetailsTripId === trip._id ? 'Thông tin chi tiết' : 'Thông tin chi tiết'}</span>
-                              {activeDetailsTripId === trip._id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
-                          </div>
+                                return (
+                                  <span key={idx} className="trip-amenity-item" title={amenity}>
+                                    {icon} {amenity}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
 
-                        {/* Right: Price & CTA */}
-                        <div style={{ textAlign: 'right', borderLeft: '1px solid var(--border-color)', paddingLeft: '1.5rem' }}>
-                          <div style={{ fontSize: '1.35rem', fontWeight: '800', color: 'var(--accent)' }}>
+                        {/* 3. Right Price Column & Action Button */}
+                        <div className="trip-card-price-col">
+                          <span className="trip-price-label-small">Giá vé niêm yết</span>
+                          <div className={`trip-price-main-big ${isCabin ? 'purple' : ''}`}>
                             {formatCurrency(trip.price)}
                           </div>
-                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '4px 0 12px 0' }}>
-                            Còn {remainingSeatsCount} chỗ trống
-                          </div>
+                          <span className={`trip-seats-left-pill ${remainingSeatsCount <= 5 ? 'few' : ''}`}>
+                            {remainingSeatsCount <= 5 ? `Chỉ còn ${remainingSeatsCount} chỗ` : `Còn ${remainingSeatsCount} chỗ trống`}
+                          </span>
                           <button
-                            className={`btn ${isExpanded ? 'btn-secondary' : 'btn-primary'}`}
-                            style={{ width: '100%', padding: '10px' }}
+                            type="button"
+                            className={`trip-btn-select-seat ${isCabin ? 'purple' : ''}`}
                             onClick={() => toggleSelectSeats(trip)}
                           >
-                            {isExpanded ? 'Đóng sơ đồ' : 'Chọn chỗ'}
+                            <span>{isExpanded ? 'Đóng sơ đồ' : 'Chọn chỗ'}</span>
+                            <ArrowRight size={15} />
                           </button>
                         </div>
+                      </div>
+
+                      {/* Card Bottom Bar (Details Toggle) */}
+                      <div className="trip-card-bottom-bar">
+                        <button
+                          type="button"
+                          className="trip-toggle-details-btn"
+                          onClick={() => toggleDetails(trip._id)}
+                        >
+                          <span>Thông tin chi tiết</span>
+                          {activeDetailsTripId === trip._id ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                        </button>
                       </div>
 
                       {/* Expandable Details Drawer */}
@@ -1922,9 +2124,8 @@ const TripsPage = () => {
                           {/* Tab Bar headers */}
                           <div style={{ display: 'flex', gap: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '1.25rem', overflowX: 'auto' }}>
                             {[
-                              { id: 'images', name: 'Hình ảnh' },
-                              { id: 'amenities', name: 'Tiện ích' },
                               { id: 'pickup-dropoff', name: 'Điểm đón, trả' },
+                              { id: 'amenities', name: 'Tiện ích' },
                               { id: 'policy', name: 'Chính sách' },
                               { id: 'reviews', name: 'Đánh giá' }
                             ].map(tab => {
@@ -1964,63 +2165,62 @@ const TripsPage = () => {
                                 const currentTrip = details.trip;
                                 const reviewsList = details.reviews;
 
-                                // Tab 1: Hình ảnh
-                                if (activeDetailTab === 'images') {
-                                  const busImages = currentTrip.busId.images && currentTrip.busId.images.length > 0
-                                    ? currentTrip.busId.images
-                                    : [
-                                      'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80',
-                                      'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?auto=format&fit=crop&w=600&q=80',
-                                      'https://images.unsplash.com/photo-1561361513-2d000a50f0db?auto=format&fit=crop&w=600&q=80'
-                                    ];
-                                  return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }} className="animate-fade-in">
-                                      {busImages.map((img, idx) => (
-                                        <img
-                                          key={idx}
-                                          src={img}
-                                          alt={`Bus view ${idx + 1}`}
-                                          style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }}
-                                        />
-                                      ))}
-                                    </div>
-                                  );
-                                }
-
-                                // Tab 2: Tiện ích
+                                // Tab: Tiện ích từ CSDL
                                 if (activeDetailTab === 'amenities') {
-                                  const amenitiesData = [
-                                    { name: 'Wifi', icon: <Wifi size={20} />, desc: 'Sóng wifi tốc độ cao kết nối ổn định suốt hành trình.' },
-                                    { name: 'Tivi LED', icon: <Tv size={20} />, desc: 'Màn hình LED giải trí cá nhân cài sẵn kho phim, ca nhạc phong phú.' },
-                                    { name: 'Toilet', icon: <Coffee size={20} />, desc: 'Buồng vệ sinh khép kín sạch sẽ, tiện lợi bố trí cuối xe.' },
-                                    { name: 'Điều hòa', icon: <Wind size={20} />, desc: 'Hệ thống máy lạnh lọc gió kháng khuẩn phân bổ đều các cabin.' },
-                                    { name: 'Nước uống', icon: <Utensils size={20} />, desc: 'Miễn phí nước uống đóng chai Aquafina cùng khăn lạnh cao cấp.' }
-                                  ];
-
+                                  const actualAmenities = currentTrip.busId?.amenities || [];
                                   return (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }} className="animate-fade-in">
-                                      {amenitiesData.map((item, idx) => {
-                                        const hasAmenity = currentTrip.busId.amenities.some(a => a.toLowerCase().includes(item.name.toLowerCase()));
-                                        return (
-                                          <div key={idx} style={{
-                                            display: 'flex',
-                                            gap: '15px',
-                                            opacity: hasAmenity ? 1 : 0.4,
-                                            border: '1px solid var(--border-color)',
-                                            borderRadius: '8px',
-                                            padding: '12px',
-                                            backgroundColor: '#ffffff'
-                                          }}>
-                                            <div style={{ color: hasAmenity ? 'var(--primary)' : 'var(--text-muted)' }}>
-                                              {item.icon}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '15px' }} className="animate-fade-in">
+                                      {actualAmenities.length === 0 ? (
+                                        <p style={{ color: 'var(--text-secondary)' }}>Chưa có thông tin tiện ích chi tiết cho xe này.</p>
+                                      ) : (
+                                        actualAmenities.map((amenity, idx) => {
+                                          let icon = <CheckCircle size={20} color="#2563eb" />;
+                                          let desc = 'Tiện ích phục vụ hành khách trên xe';
+                                          const aLower = (amenity || '').toLowerCase();
+                                          if (aLower.includes('wifi')) {
+                                            icon = <Wifi size={20} color="#0284c7" />;
+                                            desc = 'Sóng wifi tốc độ cao kết nối ổn định suốt hành trình';
+                                          } else if (aLower.includes('nước') || aLower.includes('uống') || aLower.includes('ăn')) {
+                                            icon = <Utensils size={20} color="#059669" />;
+                                            desc = 'Nước uống / đồ dùng đóng gói hợp vệ sinh';
+                                          } else if (aLower.includes('sạc') || aLower.includes('usb') || aLower.includes('điện thoại')) {
+                                            icon = <Smartphone size={20} color="#7c3aed" />;
+                                            desc = 'Cổng sạc thuận tiện cho thiết bị di động';
+                                          } else if (aLower.includes('điều hòa') || aLower.includes('lạnh') || aLower.includes('máy lạnh')) {
+                                            icon = <Wind size={20} color="#0891b2" />;
+                                            desc = 'Hệ thống điều hòa máy lạnh êm ái thoáng mát';
+                                          } else if (aLower.includes('tivi') || aLower.includes('tv') || aLower.includes('màn hình')) {
+                                            icon = <Tv size={20} color="#2563eb" />;
+                                            desc = 'Màn hình giải trí phục vụ hành khách';
+                                          } else if (aLower.includes('gối') || aLower.includes('chăn') || aLower.includes('nệm')) {
+                                            icon = <Coffee size={20} color="#d97706" />;
+                                            desc = 'Chăn gối sạch sẽ, thơm tho chuẩn nhà xe';
+                                          } else if (aLower.includes('khăn')) {
+                                            icon = <Sparkles size={20} color="#059669" />;
+                                            desc = 'Khăn lạnh sạch sẽ đóng gói riêng';
+                                          }
+
+                                          return (
+                                            <div key={idx} style={{
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '12px',
+                                              border: '1px solid var(--border-color)',
+                                              borderRadius: '8px',
+                                              padding: '12px 16px',
+                                              backgroundColor: '#ffffff'
+                                            }}>
+                                              <div style={{ flexShrink: 0 }}>
+                                                {icon}
+                                              </div>
+                                              <div>
+                                                <h5 style={{ fontWeight: '700', margin: '0 0 2px 0', fontSize: '0.95rem' }}>{amenity}</h5>
+                                                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>{desc}</p>
+                                              </div>
                                             </div>
-                                            <div>
-                                              <h5 style={{ fontWeight: '700', marginBottom: '4px', textDecoration: hasAmenity ? 'none' : 'line-through' }}>{item.name}</h5>
-                                              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{item.desc}</p>
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
+                                          );
+                                        })
+                                      )}
                                     </div>
                                   );
                                 }
@@ -2399,11 +2599,24 @@ const TripsPage = () => {
                   );
                 })
               )}
-            </div>
 
+              {filteredTrips.length > 0 && (
+                <div className="trips-pagination-bar">
+                  <span className="trips-pagination-info">
+                    Hiển thị {filteredTrips.length} trong tổng số {trips.length} chuyến xe ngày {new Date(dateParam).toLocaleDateString('vi-VN')}
+                  </span>
+                  <div className="trips-pagination-controls">
+                    <button type="button" className="trips-page-btn" disabled>&lt;</button>
+                    <button type="button" className="trips-page-btn active">1</button>
+                    <button type="button" className="trips-page-btn">&gt;</button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </>
+      )}
+    </div>
 
       {/* Auth Prompt Modal (Popup) */}
       {showAuthModal && (

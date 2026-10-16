@@ -93,6 +93,55 @@ const DriverMapPage = () => {
     });
   };
 
+  // Đặt lại hành trình / Restart xe về điểm xuất phát ban đầu khi lỡ di chuyển
+  const handleRestartJourney = () => {
+    const coords = routeCoordinates.length > 0
+      ? routeCoordinates
+      : allStops.map(s => [s.lat, s.lng]);
+
+    if (coords.length === 0) return;
+
+    const startLat = coords[0][0];
+    const startLng = coords[0][1];
+    const nextLat = coords[1]?.[0] || startLat;
+    const nextLng = coords[1]?.[1] || startLng;
+    const heading = calculateBearing(startLat, startLng, nextLat, nextLng);
+
+    // Kích hoạt restart trong background service GPS (an toàn kể cả khi Webpack HMR)
+    if (driverGpsService && typeof driverGpsService.restartSimulation === 'function') {
+      driverGpsService.restartSimulation(coords);
+    } else if (driverGpsService) {
+      driverGpsService.simIndex = 0;
+      driverGpsService.currentSpeed = 0;
+      driverGpsService.currentCoord = { lat: startLat, lng: startLng };
+      driverGpsService.currentHeading = heading;
+      if (typeof driverGpsService.sendGpsToBackend === 'function') {
+        driverGpsService.sendGpsToBackend(startLat, startLng, 0, heading);
+      }
+      if (typeof driverGpsService.notify === 'function') {
+        driverGpsService.notify();
+      }
+    }
+
+    // Cập nhật vị trí hiển thị cục bộ ngay tức thì
+    setCurrentCoord({ lat: startLat, lng: startLng });
+    setCurrentHeading(heading);
+    setCurrentSpeed(0);
+    setSimIndex(0);
+    setIsFollowMode(true);
+
+    // Gửi cập nhật trực tiếp lên backend để đồng bộ tức thời với phía khách hàng
+    sendGpsToBackend(startLat, startLng, 0, heading);
+
+    // Di chuyển camera bản đồ bay về điểm xuất phát ban đầu
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([startLat, startLng], 15, {
+        animate: true,
+        duration: 0.8
+      });
+    }
+  };
+
   // Chuyển đổi giữa chế độ Xoay theo hướng xe (Heading-Up) và Cố định hướng Bắc (North-Up)
   const toggleHeadingUp = () => {
     setIsHeadingUp(prev => !prev);
@@ -902,6 +951,31 @@ const DriverMapPage = () => {
           </svg>
         </button>
 
+        {/* 3. Nút Restart Về Bến Xuất Phát Ban Đầu */}
+        <button
+          onClick={handleRestartJourney}
+          title="Restart: Đặt lại vị trí xe về điểm xuất phát ban đầu"
+          style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            backgroundColor: '#ffffff',
+            border: '1px solid #cbd5e1',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            padding: 0
+          }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ea580c" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+        </button>
+
         {/* 3. Nút Phóng To / Thu Nhỏ */}
         <div style={{
           display: 'flex',
@@ -1024,33 +1098,64 @@ const DriverMapPage = () => {
             </div>
           </div>
 
-          {/* Hàng 2: Nút BẬT / DỪNG PHÁT GPS toàn chiều ngang */}
-          <button
-            onClick={toggleTracking}
-            style={{
-              width: '100%',
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: 'none',
-              backgroundColor: isTracking ? '#dc2626' : '#2563eb',
-              color: '#ffffff',
-              fontSize: '0.86rem',
-              fontWeight: '800',
-              cursor: 'pointer',
-              boxShadow: isTracking ? '0 4px 14px rgba(220,38,38,0.45)' : '0 4px 14px rgba(37,99,235,0.45)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px'
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-            <span>{isTracking ? 'DỪNG PHÁT GPS' : 'BẮT ĐẦU & PHÁT GPS'}</span>
-          </button>
+          {/* Hàng 2: Nút BẬT / DỪNG PHÁT GPS + Nút RESTART HÀNH TRÌNH */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              onClick={toggleTracking}
+              style={{
+                flex: 1,
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: 'none',
+                backgroundColor: isTracking ? '#dc2626' : '#2563eb',
+                color: '#ffffff',
+                fontSize: '0.86rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                boxShadow: isTracking ? '0 4px 14px rgba(220,38,38,0.45)' : '0 4px 14px rgba(37,99,235,0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+              <span>{isTracking ? 'DỪNG PHÁT GPS' : 'BẮT ĐẦU & PHÁT GPS'}</span>
+            </button>
+
+            {/* Nút Restart vị trí xe về điểm xuất phát ban đầu */}
+            <button
+              onClick={handleRestartJourney}
+              title="Đặt lại vị trí xe về điểm xuất phát ban đầu"
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                backgroundColor: '#334155',
+                color: '#ffffff',
+                fontSize: '0.86rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.25)'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              <span>Restart</span>
+            </button>
+          </div>
         </div>
       </div>
 

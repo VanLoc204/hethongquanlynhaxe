@@ -207,10 +207,63 @@ class DriverGpsService {
     }
     this.notify();
   }
+
+  restartSimulation(routeCoords) {
+    const coords = (routeCoords && routeCoords.length > 0)
+      ? routeCoords
+      : this.routeCoordinates;
+
+    this.simIndex = 0;
+    this.currentSpeed = 0;
+
+    if (coords && coords.length > 0) {
+      this.routeCoordinates = coords;
+      const first = coords[0];
+      const second = coords[1] || first;
+      const heading = this.calculateBearing(first[0], first[1], second[0], second[1]);
+      this.currentCoord = { lat: first[0], lng: first[1] };
+      this.currentHeading = heading;
+      this.sendGpsToBackend(first[0], first[1], 0, heading);
+    }
+
+    // Nếu đang bật phát mô phỏng, khởi động lại timer từ index 0
+    if (this.isTracking && this.trackingMode === 'simulation' && coords && coords.length > 0) {
+      if (this.simTimer) {
+        clearInterval(this.simTimer);
+        this.simTimer = null;
+      }
+      let currIdx = 0;
+      this.simTimer = setInterval(() => {
+        currIdx = (currIdx + 1) % coords.length;
+        this.simIndex = currIdx;
+
+        const target = coords[currIdx];
+        const nextTarget = coords[(currIdx + 1) % coords.length];
+        const lat = target[0];
+        const lng = target[1];
+        const simulatedSpeed = 58 + Math.floor(Math.random() * 12);
+        const heading = this.calculateBearing(lat, lng, nextTarget[0], nextTarget[1]);
+
+        this.currentCoord = { lat, lng };
+        this.currentSpeed = simulatedSpeed;
+        this.currentHeading = heading;
+
+        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading);
+      }, 3000);
+    }
+
+    this.pingStatus = 'Đã đặt lại về điểm xuất phát';
+    this.notify();
+  }
 }
 
 if (!window.__driverGpsServiceInstance) {
   window.__driverGpsServiceInstance = new DriverGpsService();
+} else {
+  // Cập nhật lại prototype và phương thức mới khi Webpack Hot Module Replacement (HMR) reload
+  Object.setPrototypeOf(window.__driverGpsServiceInstance, DriverGpsService.prototype);
+  window.__driverGpsServiceInstance.restartSimulation = DriverGpsService.prototype.restartSimulation.bind(window.__driverGpsServiceInstance);
 }
 
 export const driverGpsService = window.__driverGpsServiceInstance;
+

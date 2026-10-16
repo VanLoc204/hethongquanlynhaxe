@@ -1,6 +1,23 @@
 import React, { useContext, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
-import { Compass, User, LogIn, LogOut, Loader, Ticket, Map, Package, MessageSquare, Bell, Menu, X } from 'lucide-react';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
+import {
+  Bus,
+  User,
+  LogIn,
+  LogOut,
+  Loader,
+  Ticket,
+  MapPin,
+  Package,
+  MessageSquare,
+  Bell,
+  Menu,
+  X,
+  ChevronDown,
+  Sparkles,
+  Search,
+  Phone
+} from 'lucide-react';
 import './App.css';
 
 // Context
@@ -42,6 +59,7 @@ const ProtectedRoute = ({ children }) => {
 const Navigation = () => {
   const { user, isAuthenticated, logout, loading } = useContext(AuthContext);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const location = useLocation();
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -57,80 +75,266 @@ const Navigation = () => {
   };
 
   return (
-    <header className="navbar glass-card">
-      <Link to="/" className="nav-logo" onClick={handleLinkClick}>
-        <Compass className="logo-icon" />
-        <span>An Bình Lines</span>
+    <header className="navbar">
+      {/* Brand Logo An Bình Lines */}
+      <Link to="/" className="nav-logo" onClick={handleLinkClick} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{
+          width: '36px',
+          height: '36px',
+          background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+          borderRadius: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#ffffff',
+          boxShadow: '0 3px 10px rgba(37, 99, 235, 0.25)'
+        }}>
+          <Bus size={20} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '1.25rem', fontWeight: '900', color: '#1e3a8a', lineHeight: '1.1', letterSpacing: '-0.3px' }}>
+            An Bình Lines
+          </span>
+          <span style={{ fontSize: '0.62rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.6px', marginTop: '1px' }}>
+            CHẤT LƯỢNG LÀ DANH DỰ
+          </span>
+        </div>
       </Link>
 
       <button 
+        type="button"
         className="mobile-menu-toggle" 
         onClick={toggleMobileMenu}
         aria-label="Toggle menu"
-        style={{
-          background: 'none',
-          border: 'none',
-          color: 'var(--text-primary)',
-          cursor: 'pointer',
-          display: 'none', // Overridden in mobile media query
-          padding: '4px'
-        }}
       >
-        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
       </button>
+
+      {/* Lớp nền mờ để đóng menu khi bấm ra ngoài trên mobile */}
+      {isMobileMenuOpen && (
+        <div 
+          className="mobile-menu-backdrop" 
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
       
       <nav className={`nav-links ${isMobileMenuOpen ? 'active' : ''}`}>
-        <Link to="/" className="nav-item" onClick={handleLinkClick}>
-          Tìm chuyến
+        {/* Tìm chuyến (Active Pill) */}
+        <Link
+          to="/"
+          className={`nav-item ${location.pathname === '/' ? 'active-pill' : ''}`}
+          onClick={handleLinkClick}
+        >
+          <Search size={16} />
+          <span>Tìm chuyến</span>
+        </Link>
+
+        {/* Quản lý vé */}
+        <Link
+          to="/my-tickets"
+          className={`nav-item ${location.pathname === '/my-tickets' ? 'active-pill' : ''}`}
+          onClick={handleLinkClick}
+        >
+          <Ticket size={16} />
+          <span>Quản lý vé</span>
+        </Link>
+
+        {/* Hành trình */}
+        <Link
+          to="/track-journey"
+          className={`nav-item ${location.pathname === '/track-journey' ? 'active-pill' : ''}`}
+          onClick={handleLinkClick}
+        >
+          <MapPin size={16} />
+          <span>Hành trình</span>
+        </Link>
+
+        {/* Tư vấn AI với nhãn AI Badge */}
+        <Link
+          to="/ai-assistant"
+          className={`nav-item ${location.pathname === '/ai-assistant' ? 'active-pill' : ''}`}
+          onClick={handleLinkClick}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <Sparkles size={16} color="#4f46e5" />
+          <span>Tư vấn AI</span>
+          <span style={{
+            fontSize: '0.65rem',
+            fontWeight: '800',
+            color: '#ffffff',
+            background: 'linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%)',
+            padding: '1px 6px',
+            borderRadius: '6px',
+            marginLeft: '2px'
+          }}>AI</span>
+        </Link>
+
+        {/* Chuông thông báo */}
+        <Link
+          to="/notifications"
+          className="nav-item nav-notification-link"
+          onClick={handleLinkClick}
+          title="Thông báo"
+        >
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <Bell size={18} />
+            <span style={{
+              position: 'absolute',
+              top: '-2px',
+              right: '-3px',
+              width: '7px',
+              height: '7px',
+              borderRadius: '50%',
+              background: '#ef4444'
+            }} />
+          </div>
+          <span className="mobile-only-text">Thông báo</span>
         </Link>
         
         {loading ? (
           <Loader size={18} className="logo-icon" />
         ) : isAuthenticated && user ? (
-          <>
-            <Link to="/my-tickets" className="nav-item" onClick={handleLinkClick} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Ticket size={16} />
-              <span>Quản lý vé</span>
-            </Link>
-            <Link to="/track-journey" className="nav-item" onClick={handleLinkClick} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Map size={16} />
-              <span>Hành trình</span>
-            </Link>
-            <Link to="/shipment" className="nav-item" onClick={handleLinkClick} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Package size={16} />
-              <span>Gửi hàng</span>
-            </Link>
-            <Link to="/ai-assistant" className="nav-item" onClick={handleLinkClick} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <MessageSquare size={16} />
-              <span>Tư vấn AI</span>
-            </Link>
-            <Link to="/notifications" className="nav-item" onClick={handleLinkClick} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Bell size={16} />
-              <span>Thông báo</span>
+          <div className="nav-user-actions">
+            <Link to="/profile" className="user-profile-pill" onClick={handleLinkClick}>
+              <span style={{ fontSize: '0.88rem', color: '#0f172a', fontWeight: '800' }}>
+                {user.name}
+              </span>
+              <ChevronDown size={14} color="#64748b" />
             </Link>
 
-            <Link to="/profile" className="nav-item" onClick={handleLinkClick} style={{ color: 'var(--text-primary)', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px', marginLeft: '10px' }}>
-              <User size={18} style={{ color: 'var(--accent)' }} />
-              <span>{user.name}</span>
-            </Link>
-            <button onClick={handleLogoutClick} className="btn btn-secondary" style={{ padding: '8px 16px', marginLeft: '10px' }}>
-              <LogOut size={16} />
-              Đăng xuất
+            <button type="button" onClick={handleLogoutClick} className="btn-logout-pill">
+              <LogOut size={15} />
+              <span>Đăng xuất</span>
             </button>
-          </>
+          </div>
         ) : (
-          <>
-            <Link to="/login" className="nav-item" onClick={handleLinkClick}>
-              <LogIn size={18} />
-              Đăng nhập
+          <div className="nav-auth-actions">
+            <Link to="/login" className="btn-login-outline" onClick={handleLinkClick}>
+              <LogIn size={15} />
+              <span>Đăng nhập</span>
             </Link>
-            <Link to="/register" className="btn btn-primary" onClick={handleLinkClick} style={{ padding: '8px 16px' }}>
-              Đăng ký
+            <Link to="/register" className="btn-register-solid" onClick={handleLinkClick}>
+              <span>Đăng ký</span>
             </Link>
-          </>
+          </div>
         )}
       </nav>
     </header>
+  );
+};
+
+const AppContent = () => {
+  const location = useLocation();
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  const isAssistantPage = location.pathname === '/ai-assistant';
+
+  return (
+    <div className={`app-container ${isAuthPage ? 'auth-mode-container' : ''}`}>
+      {/* Navigation Header - ẩn trên trang Login/Register vì trang Auth có Header riêng */}
+      {!isAuthPage && <Navigation />}
+
+      {/* Main Content Area */}
+      <main className={isAuthPage ? 'auth-main-content' : 'main-content'}>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/trips" element={<TripsPage />} />
+          <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
+          <Route path="/track-journey" element={<ProtectedRoute><TrackJourneyPage /></ProtectedRoute>} />
+          <Route path="/shipment" element={<ProtectedRoute><ShipmentPage /></ProtectedRoute>} />
+          <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistantPage /></ProtectedRoute>} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+        </Routes>
+      </main>
+
+      {/* Floating AI Chatbot Widget (ẩn trên Login/Register và trên trang AI Assistant chuyên biệt) */}
+      {!isAuthPage && !isAssistantPage && <AIChatbotWidget />}
+
+      {/* Footer Dark Navy Luxury theo thiết kế */}
+      {!isAuthPage && (
+        <footer className="home-footer-dark">
+          <div className="footer-dark-inner">
+            <div className="footer-dark-grid">
+              {/* Cột 1: Thông tin thương hiệu */}
+              <div>
+                <div className="footer-brand-title">
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ffffff'
+                  }}>
+                    <Bus size={18} />
+                  </div>
+                  <span>An Bình Lines</span>
+                </div>
+                <p className="footer-brand-desc">
+                  Hãng vận tải hành khách công nghệ cao với phương châm "Chất lượng là danh dự". Chúng tôi đồng hành cùng hàng triệu chuyến đi an toàn khắp mọi miền tổ quốc.
+                </p>
+                <div className="footer-social-row">
+                  <a href="https://facebook.com" target="_blank" rel="noreferrer" className="social-circle-btn" aria-label="Facebook">
+                    f
+                  </a>
+                  <a href="https://tiktok.com" target="_blank" rel="noreferrer" className="social-circle-btn" aria-label="TikTok">
+                    ♪
+                  </a>
+                  <a href="https://youtube.com" target="_blank" rel="noreferrer" className="social-circle-btn" aria-label="YouTube">
+                    ▶
+                  </a>
+                </div>
+              </div>
+
+              {/* Cột 2: Tuyến đường */}
+              <div>
+                <h4 className="footer-col-header">TUYẾN ĐƯỜNG</h4>
+                <ul className="footer-links-col">
+                  <li><Link to="/trips?from=TP.+Hồ+Chí+Minh&to=Nha+Trang">Xe Sài Gòn - Nha Trang</Link></li>
+                  <li><Link to="/trips?from=TP.+Hồ+Chí+Minh&to=Đà+Lạt">Xe Sài Gòn - Đà Lạt</Link></li>
+                  <li><Link to="/trips?from=Hà+Nội&to=Sapa">Xe Hà Nội - Sapa</Link></li>
+                  <li><Link to="/trips?from=Đà+Nẵng&to=Quy+Nhơn">Xe Đà Nẵng - Quy Nhơn</Link></li>
+                  <li><Link to="/trips?from=TP.+Hồ+Chí+Minh&to=Cần+Thơ">Xe Sài Gòn - Cần Thơ</Link></li>
+                </ul>
+              </div>
+
+              {/* Cột 3: Chính sách */}
+              <div>
+                <h4 className="footer-col-header">CHÍNH SÁCH</h4>
+                <ul className="footer-links-col">
+                  <li><a href="#terms">Điều khoản dịch vụ</a></li>
+                  <li><a href="#privacy">Chính sách bảo mật</a></li>
+                  <li><a href="#refund">Quy chế đổi trả vé</a></li>
+                  <li><a href="#luggage">Quy định đặt chỗ & hành lý xách tay</a></li>
+                  <li><a href="#payment">Hướng dẫn thanh toán</a></li>
+                </ul>
+              </div>
+
+              {/* Cột 4: Tổng đài 24/7 */}
+              <div>
+                <h4 className="footer-col-header">TỔNG ĐÀI 24/7</h4>
+                <div className="footer-hotline-big">
+                  <Phone size={22} color="#38bdf8" />
+                  <span>1900 6868</span>
+                </div>
+                <p className="footer-contact-detail">Email: <strong>hotro@anbinhlines.vn</strong></p>
+                <p className="footer-contact-detail">
+                  Văn phòng chính: Bến Xe Miền Đông Mới, TP. Thủ Đức, TP. Hồ Chí Minh
+                </p>
+              </div>
+            </div>
+
+            <div className="footer-dark-bottom">
+              <p>© 2024 - 2026 An Bình Lines. Toàn bộ bản quyền được bảo lưu.</p>
+            </div>
+          </div>
+        </footer>
+      )}
+    </div>
   );
 };
 
@@ -138,71 +342,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="app-container">
-          {/* Navigation Header */}
-          <Navigation />
-
-          {/* Main Content Area */}
-          <main className="main-content">
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/trips" element={<TripsPage />} />
-              <Route path="/my-tickets" element={<ProtectedRoute><MyTicketsPage /></ProtectedRoute>} />
-              <Route path="/track-journey" element={<ProtectedRoute><TrackJourneyPage /></ProtectedRoute>} />
-              <Route path="/shipment" element={<ProtectedRoute><ShipmentPage /></ProtectedRoute>} />
-              <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistantPage /></ProtectedRoute>} />
-              <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-            </Routes>
-          </main>
-
-          {/* Floating AI Chatbot Widget */}
-          <AIChatbotWidget />
-
-          {/* Footer */}
-          <footer className="footer-futa">
-            <div className="footer-grid">
-              <div className="footer-col">
-                <h4>TỔNG ĐÀI & CSKH</h4>
-                <p style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--primary)', marginBottom: '10px' }}>
-                  1900 6067
-                </p>
-                <p><strong>CÔNG TY CỔ PHẦN XE KHÁCH AN BÌNH</strong></p>
-                <p>Địa chỉ: 486-486A Lê Văn Lương, Phường Tân Hưng, Quận 7, TP. Hồ Chí Minh.</p>
-                <p>Email: hotro@anbinhlines.vn</p>
-                <p>Điện thoại: 02838386852</p>
-              </div>
-
-              <div className="footer-col">
-                <h4>AN BÌNH LINES</h4>
-                <ul>
-                  <li><a href="#about">Về chúng tôi</a></li>
-                  <li><a href="#schedule">Lịch trình chuyến</a></li>
-                  <li><a href="#recruit">Tuyển dụng</a></li>
-                  <li><a href="#news">Tin tức & Sự kiện</a></li>
-                  <li><a href="#contact">Liên hệ</a></li>
-                </ul>
-              </div>
-
-              <div className="footer-col">
-                <h4>HỖ TRỢ</h4>
-                <ul>
-                  <li><a href="#lookup">Tra cứu thông tin đặt vé</a></li>
-                  <li><a href="#terms">Điều khoản sử dụng</a></li>
-                  <li><a href="#faq">Câu hỏi thường gặp</a></li>
-                  <li><a href="#policy">Chính sách bảo mật</a></li>
-                  <li><a href="#guide">Hướng dẫn đặt vé trên Web</a></li>
-                </ul>
-              </div>
-            </div>
-            
-            <div className="footer-bottom">
-              <p>© 2026 Bản quyền thuộc về Công ty Cổ phần Xe khách An Bình - An Bình Lines. Đăng ký kinh doanh số 0302741234.</p>
-            </div>
-          </footer>
-        </div>
+        <AppContent />
       </Router>
     </AuthProvider>
   );
