@@ -7,12 +7,11 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Passenger statistics
+  // Passenger statistics (Không tính hành lý)
   const [todayStats, setTodayStats] = useState({
     totalTrips: 0,
     totalBooked: 0,
-    totalBoarded: 0,
-    totalLuggage: 0
+    totalBoarded: 0
   });
 
   useEffect(() => {
@@ -45,9 +44,7 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
     
     let totalBooked = 0;
     let totalBoarded = 0;
-    let totalLuggage = 0;
 
-    // Fetch passenger bookings for each of today's trips to aggregate stats
     for (const trip of todayTripsList) {
       try {
         const res = await fetch(`http://localhost:8000/api/v1/users/attendant/trip-bookings/${trip._id}`, {
@@ -58,15 +55,6 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
           const bookings = data.bookings || [];
           totalBooked += bookings.length;
           totalBoarded += bookings.filter(b => b.boarded).length;
-          
-          bookings.forEach(b => {
-            if (b.luggageQuantity) {
-              totalLuggage += b.luggageQuantity;
-            } else if (b.seats && b.seats.length > 0) {
-              // Standard fallback
-              totalLuggage += Math.random() > 0.6 ? 1 : 0;
-            }
-          });
         }
       } catch (err) {
         console.warn("Failed to fetch passenger details for trip stats calculation", err);
@@ -76,212 +64,418 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
     setTodayStats({
       totalTrips: todayTripsList.length,
       totalBooked,
-      totalBoarded,
-      totalLuggage
+      totalBoarded
     });
   };
 
   const formatTime = (timeStr) => {
+    if (!timeStr) return '--:--';
     return new Date(timeStr).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
   const todayStr = new Date().toDateString();
   const todayTrips = trips.filter(trip => new Date(trip.departureTime).toDateString() === todayStr);
   const futureTrips = trips.filter(trip => new Date(trip.departureTime).toDateString() !== todayStr);
 
+  const currentDateLabel = new Date().toLocaleDateString('vi-VN', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
+
   return (
-    <div style={{ animation: 'fadeIn 0.4s ease', padding: '0.5rem' }}>
+    <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
       
-      {/* Welcome Banner */}
-      <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '1rem', marginBottom: '1.5rem' }}>
-        <h2>Dashboard Phụ Xe & Tổ Lái</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-          Chào mừng trở lại, {user?.name || 'Nhân viên An Bình'}. Dưới đây là thông số vận hành và các chuyến đi của bạn hôm nay.
-        </p>
+      {/* CSS Layout chuẩn Dashboard Vận Hành (Không icon, tập trung bố cục typography chuyên nghiệp) */}
+      <style>{`
+        .attendant-panel-box {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1.25rem 1.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+        }
+
+        .attendant-header-wrap {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 0.85rem;
+        }
+
+        .attendant-header-buttons {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .attendant-stat-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 1rem;
+        }
+
+        .attendant-stat-card {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 1.1rem 1.25rem;
+          display: flex;
+          flex-direction: column;
+          justifyContent: space-between;
+          transition: all 0.2s ease;
+        }
+
+        .attendant-stat-card:hover {
+          border-color: #cbd5e1;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+
+        .attendant-content-grid {
+          display: grid;
+          grid-template-columns: 1.4fr 1fr;
+          gap: 1.25rem;
+          align-items: start;
+        }
+
+        /* Tablet (<= 992px) */
+        @media (max-width: 992px) {
+          .attendant-stat-grid {
+            grid-template-columns: 1fr;
+          }
+          .attendant-content-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        /* Mobile (<= 768px) */
+        @media (max-width: 768px) {
+          .attendant-panel-box {
+            padding: 1rem 0.85rem;
+            border-radius: 12px;
+            gap: 1rem;
+          }
+          .attendant-header-wrap {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .attendant-header-buttons {
+            width: 100%;
+          }
+          .attendant-header-buttons button {
+            flex: 1;
+            justify-content: center;
+          }
+        }
+      `}</style>
+
+      {/* ========================================================= */}
+      {/* VÙNG 1: KHỐI TRẮNG TIÊU ĐỀ & 3 THẺ THỐNG KÊ (TOP BANNER)  */}
+      {/* ========================================================= */}
+      <div className="attendant-panel-box">
+        
+        {/* Tiêu đề được bao bởi khối trắng */}
+        <div className="attendant-header-wrap">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Dashboard Phụ Xe &amp; Tổ Lái
+              </h1>
+              <span style={{
+                background: '#eff6ff',
+                color: '#2563eb',
+                border: '1px solid #bfdbfe',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.68rem',
+                fontWeight: '700'
+              }}>
+                Nhân Viên Phụ Xe
+              </span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '4px', margin: 0 }}>
+              Chào mừng trở lại, <strong>{user?.name || 'Nhân viên Phụ xe'}</strong>. Dưới đây là thông số vận hành và các chuyến đi của bạn hôm nay.
+            </p>
+          </div>
+
+          {/* Quick Header Actions: Ngày tháng, Nút Làm mới, Nút Soát vé nhanh (Không icon) */}
+          <div className="attendant-header-buttons">
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              padding: '0.45rem 0.85rem',
+              borderRadius: '8px',
+              fontSize: '0.75rem',
+              color: '#475569',
+              fontWeight: '600',
+              textTransform: 'capitalize'
+            }}>
+              {currentDateLabel}
+            </div>
+
+            <button
+              onClick={fetchSchedule}
+              style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                color: '#1e293b',
+                fontWeight: '700',
+                padding: '0.45rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                whiteSpace: 'nowrap'
+              }}
+              title="Tải lại dữ liệu lịch trình"
+            >
+              Làm Mới
+            </button>
+
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('attendant-checkin')}
+                style={{
+                  backgroundColor: '#2563eb',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontWeight: '700',
+                  padding: '0.45rem 1rem',
+                  borderRadius: '8px',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Quét QR Soát Vé
+              </button>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div style={{
+            background: '#fff1f2',
+            border: '1px solid #fecdd3',
+            color: '#be123c',
+            padding: '0.65rem 1rem',
+            borderRadius: '8px',
+            fontSize: '0.75rem',
+            fontWeight: '600'
+          }}>
+            Lưu ý: {error}
+          </div>
+        )}
+
+        {/* 3 Thẻ Thống Kê Vận Hành (Đã loại bỏ hoàn toàn phần hành lý) */}
+        <div className="attendant-stat-grid">
+          
+          {/* Stat 1: Chuyến đi hôm nay */}
+          <div className="attendant-stat-card" style={{ borderLeft: '4px solid #2563eb' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Chuyến Đi Hôm Nay
+            </span>
+            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+              <span style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a' }}>
+                {todayStats.totalTrips}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>chuyến</span>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: '600', marginTop: '6px' }}>
+              Lịch trình được phân công trong ngày
+            </div>
+          </div>
+
+          {/* Stat 2: Hành khách lên xe */}
+          <div className="attendant-stat-card" style={{ borderLeft: '4px solid #10b981' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Hành Khách Lên Xe
+            </span>
+            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+              <span style={{ fontSize: '1.75rem', fontWeight: '900', color: '#10b981' }}>
+                {todayStats.totalBoarded}
+              </span>
+              <span style={{ fontSize: '1.15rem', color: '#94a3b8', fontWeight: '600' }}>/</span>
+              <span style={{ fontSize: '1.15rem', color: '#475569', fontWeight: '800' }}>
+                {todayStats.totalBooked}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600', marginLeft: '4px' }}>hành khách</span>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '600', marginTop: '6px' }}>
+              {todayStats.totalBooked > 0 
+                ? `Đã soát vé ${Math.round((todayStats.totalBoarded / todayStats.totalBooked) * 100)}% hành khách`
+                : 'Sẵn sàng soát vé khi khách lên'}
+            </div>
+          </div>
+
+          {/* Stat 3: Trạng thái ca trực */}
+          <div className="attendant-stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Trạng Thái Ca Trực
+            </span>
+            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+              <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#7c3aed' }}>
+                Đã Điểm Danh Ca
+              </span>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: '600', marginTop: '6px' }}>
+              Chấm công số hợp lệ
+            </div>
+          </div>
+
+        </div>
+
       </div>
 
-      {error && <div className="error-message" style={{ marginBottom: '1.5rem' }}>{error}</div>}
-
-      {/* Grid statistics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
+      {/* ========================================================= */}
+      {/* VÙNG 2: CHỨC NĂNG VẬN HÀNH CHÍNH (2 CỘT CHUẨN ĐIỀU HÀNH)   */}
+      {/* ========================================================= */}
+      <div className="attendant-content-grid">
         
-        {/* Stat Card 1 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--card-border)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Chuyến Đi Hôm Nay
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '0.5rem' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--text)' }}>
-              {todayStats.totalTrips}
-            </span>
-            <span style={{ marginLeft: '6px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>chuyến</span>
-          </div>
-        </div>
-
-        {/* Stat Card 2 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--card-border)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Hành Khách Lên Xe
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '0.5rem' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: '800', color: '#10b981' }}>
-              {todayStats.totalBoarded}
-            </span>
-            <span style={{ marginLeft: '4px', marginRight: '4px', fontSize: '1.1rem', color: 'var(--text-muted)' }}>/</span>
-            <span style={{ fontSize: '1.2rem', fontWeight: '700', color: 'var(--text-muted)' }}>
-              {todayStats.totalBooked}
-            </span>
-            <span style={{ marginLeft: '6px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>hành khách</span>
-          </div>
-        </div>
-
-        {/* Stat Card 3 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--card-border)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Hành Lý Ký Gửi
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '0.5rem' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: '800', color: 'var(--primary)' }}>
-              {todayStats.totalLuggage}
-            </span>
-            <span style={{ marginLeft: '6px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>kiện nhận</span>
-          </div>
-        </div>
-
-        {/* Stat Card 4 */}
-        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid var(--card-border)', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Trạng Trạng Thái Ca Làm Việc
-          </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', marginTop: '0.5rem' }}>
-            <span style={{ fontSize: '1.1rem', fontWeight: '800', color: '#3b82f6' }}>
-              Đã Điểm Danh Ca
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Main content grid */}
-      <div className="responsive-grid-layout">
-        
-        {/* Left: Today's Trip List */}
-        <div>
-          <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text)' }}>
-            Danh Sách Chuyến Đi Hôm Nay ({new Date().toLocaleDateString('vi-VN')})
-          </h3>
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '3rem 0', background: '#ffffff', borderRadius: '12px', border: '1px solid var(--card-border)' }}>
-              Đang tải danh sách chuyến đi...
+        {/* CỘT TRÁI: DANH SÁCH CHUYẾN XE HÔM NAY & TUẦN NÀY */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          
+          {/* Card 1: Chuyến xe hôm nay */}
+          <div className="attendant-panel-box">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Danh Sách Chuyến Đi Hôm Nay ({formatDate(new Date())})
+              </h2>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>
+                {todayTrips.length} chuyến xuất bến
+              </span>
             </div>
-          ) : todayTrips.length === 0 ? (
-            <div style={{ padding: '3rem 1.5rem', background: '#f8fafc', color: 'var(--text-muted)', borderRadius: '12px', textAlign: 'center', border: '1px dashed var(--card-border)' }}>
-              Hôm nay bạn không có lịch trình chạy xe nào được phân công.
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {todayTrips.map(trip => (
-                <div key={trip._id} style={{
-                  background: '#ffffff',
-                  padding: '1.25rem',
-                  borderRadius: '12px',
-                  border: '1px solid var(--card-border)',
-                  boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div>
-                    <span style={{
-                      display: 'inline-block',
-                      backgroundColor: 'var(--primary-bg)',
-                      color: 'var(--primary)',
-                      padding: '2px 10px',
-                      borderRadius: '12px',
-                      fontSize: '0.8rem',
-                      fontWeight: '700',
-                      marginBottom: '0.5rem'
-                    }}>
-                      Giờ khởi hành: {formatTime(trip.departureTime)}
-                    </span>
-                    
-                    <h4 style={{ margin: '0 0 0.4rem 0', fontSize: '1.1rem', fontWeight: '800', color: 'var(--text)' }}>
-                      {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
-                    </h4>
 
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                      <span>Biển số xe: <strong>{trip.busId?.plateNumber}</strong></span>
-                      <span style={{ margin: '0 8px' }}>|</span>
-                      <span>Dòng xe: {trip.busId?.type}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
-                    <button
-                      className="btn"
-                      onClick={() => setActiveTab('attendant-checkin')}
-                      style={{
-                        backgroundColor: 'var(--primary)',
-                        color: '#ffffff',
-                        fontWeight: '700',
-                        fontSize: '0.85rem',
-                        padding: '8px 16px',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Soát Vé
-                    </button>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setActiveTab('attendant-luggage')}
-                      style={{
-                        fontWeight: '700',
-                        fontSize: '0.85rem',
-                        padding: '8px 16px',
-                        borderRadius: '6px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Ký Gửi Hành Lý
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Future Trips Overview */}
-          {futureTrips.length > 0 && (
-            <div style={{ marginTop: '2.5rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text)' }}>
-                Các Chuyến Đi Tiếp Theo Trong Tuần
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {futureTrips.slice(0, 3).map(trip => (
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#64748b', fontSize: '0.8rem' }}>
+                Đang tải dữ liệu chuyến xe...
+              </div>
+            ) : todayTrips.length === 0 ? (
+              <div style={{ padding: '2.5rem 1rem', background: '#f8fafc', color: '#64748b', borderRadius: '10px', textAlign: 'center', border: '1px dashed #cbd5e1' }}>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#334155' }}>Hôm nay không có chuyến xe nào được phân công</div>
+                <div style={{ fontSize: '0.72rem', marginTop: '4px' }}>Bạn có thể xem trước lịch chạy của các ngày tiếp theo ở khung bên dưới.</div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                {todayTrips.map(trip => (
                   <div key={trip._id} style={{
                     background: '#f8fafc',
-                    padding: '0.85rem 1.25rem',
-                    borderRadius: '10px',
-                    border: '1px solid var(--card-border)',
+                    padding: '1.15rem',
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center'
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '12px'
                   }}>
                     <div>
-                      <span style={{ fontWeight: '700', fontSize: '0.9rem', color: 'var(--text)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.45rem' }}>
+                        <span style={{
+                          backgroundColor: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: '800'
+                        }}>
+                          Giờ xuất bến: {formatTime(trip.departureTime)}
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: '700' }}>
+                          Sẵn sàng đón khách
+                        </span>
+                      </div>
+                      
+                      <h3 style={{ margin: '0 0 0.4rem 0', fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>
                         {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
-                      </span>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Khởi hành: {formatTime(trip.departureTime)} - {new Date(trip.departureTime).toLocaleDateString('vi-VN')}
+                      </h3>
+
+                      <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <span>Biển số xe: <strong style={{ color: '#0f172a' }}>{trip.busId?.plateNumber}</strong></span>
+                        <span>•</span>
+                        <span>Dòng xe: <strong>{trip.busId?.type}</strong></span>
                       </div>
                     </div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-muted)' }}>
+
+                    <div>
+                      <button
+                        onClick={() => setActiveTab && setActiveTab('attendant-checkin')}
+                        style={{
+                          backgroundColor: '#2563eb',
+                          color: '#ffffff',
+                          fontWeight: '700',
+                          fontSize: '0.82rem',
+                          padding: '8px 18px',
+                          border: 'none',
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 6px rgba(37,99,235,0.2)'
+                        }}
+                      >
+                        Soát Vé &amp; Check-in
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Card 2: Các chuyến đi tiếp theo trong tuần */}
+          {futureTrips.length > 0 && (
+            <div className="attendant-panel-box">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+                <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Các Chuyến Đi Tiếp Theo Trong Tuần
+                </h2>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                  {futureTrips.length} chuyến sắp tới
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                {futureTrips.slice(0, 4).map(trip => (
+                  <div key={trip._id} style={{
+                    background: '#f8fafc',
+                    padding: '0.85rem 1rem',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '8px'
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: '800', fontSize: '0.88rem', color: '#0f172a' }}>
+                        {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '3px' }}>
+                        Khởi hành: <strong>{formatTime(trip.departureTime)}</strong> - {formatDate(trip.departureTime)} | Dòng xe: {trip.busId?.type}
+                      </div>
+                    </div>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      fontWeight: '800',
+                      color: '#1e40af',
+                      background: '#eff6ff',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      border: '1px solid #dbeafe'
+                    }}>
                       Xe: {trip.busId?.plateNumber}
                     </div>
                   </div>
@@ -289,92 +483,195 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
               </div>
             </div>
           )}
+
         </div>
 
-        {/* Right: Quick Actions & Help */}
-        <div>
-          <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text)' }}>
-            Thao Tác Nhanh Phụ Xe
-          </h3>
+        {/* CỘT PHẢI: TRUNG TÂM THAO TÁC NHANH & QUY TRÌNH VẬN HÀNH */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div
-              onClick={() => setActiveTab('attendant-checkin')}
-              style={{
-                background: 'linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%)',
-                color: '#ffffff',
-                padding: '1.25rem',
-                borderRadius: '12px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 10px rgba(99, 102, 241, 0.2)',
-                transition: 'transform 0.2s ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-            >
-              <h4 style={{ margin: '0 0 0.25rem 0', fontWeight: '800', fontSize: '1rem' }}>
-                Quét Mã QR Soát Vé
-              </h4>
-              <p style={{ margin: 0, fontSize: '0.8rem', opacity: 0.9 }}>
-                Bật nhanh camera để quét mã QR trên vé của hành khách trước khi lên xe.
-              </p>
+          {/* Card Thao Tác Nhanh Phụ Xe (Không icon) */}
+          <div className="attendant-panel-box">
+            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Thao Tác Nhanh Phụ Xe
+              </h2>
             </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              
+              {/* Action 1: QR Scanner (Card nổi bật nhất) */}
+              <div
+                onClick={() => setActiveTab && setActiveTab('attendant-checkin')}
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  color: '#ffffff',
+                  padding: '1.1rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+                  transition: 'transform 0.15s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+              >
+                <h3 style={{ margin: '0 0 4px 0', fontWeight: '800', fontSize: '0.95rem' }}>
+                  Quét Mã QR Soát Vé
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.78rem', opacity: 0.92, lineHeight: '1.4' }}>
+                  Bật nhanh camera để quét mã QR vé hành khách xếp chỗ lên xe trước giờ xuất bến.
+                </p>
+              </div>
 
-            <div
-              onClick={() => setActiveTab('attendant-luggage')}
-              style={{
-                background: '#ffffff',
-                padding: '1.25rem',
-                borderRadius: '12px',
-                border: '1px solid var(--card-border)',
-                cursor: 'pointer',
-                transition: 'transform 0.2s ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-            >
-              <h4 style={{ margin: '0 0 0.25rem 0', fontWeight: '800', fontSize: '1rem', color: 'var(--text)' }}>
-                Khai Báo Ký Gửi Hành Lý
-              </h4>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Gắn nhãn, khai báo khối lượng và gán thẻ hành lý ký gửi cho hành khách tại bến.
-              </p>
-            </div>
+              {/* Action 2: Chấm công */}
+              <div
+                onClick={() => setActiveTab && setActiveTab('attendant-attendance')}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+              >
+                <h3 style={{ margin: '0 0 4px 0', fontWeight: '800', fontSize: '0.9rem', color: '#0f172a' }}>
+                  Điểm Danh &amp; Chấm Công Ca
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', lineHeight: '1.4' }}>
+                  Khai báo bắt đầu hoặc kết thúc ca trực của phụ xe, điểm danh chấm công số.
+                </p>
+              </div>
 
-            <div
-              onClick={() => setActiveTab('attendant-attendance')}
-              style={{
-                background: '#ffffff',
-                padding: '1.25rem',
-                borderRadius: '12px',
-                border: '1px solid var(--card-border)',
-                cursor: 'pointer',
-                transition: 'transform 0.2s ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-            >
-              <h4 style={{ margin: '0 0 0.25rem 0', fontWeight: '800', fontSize: '1rem', color: 'var(--text)' }}>
-                Điểm Danh & Chấm Công
-              </h4>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Khai báo bắt đầu/kết thúc ca trực, điểm danh chấm công hàng ngày.
-              </p>
+              {/* Action 3: Lịch làm việc */}
+              <div
+                onClick={() => setActiveTab && setActiveTab('staff-schedule')}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.borderColor = '#cbd5e1';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+              >
+                <h3 style={{ margin: '0 0 4px 0', fontWeight: '800', fontSize: '0.9rem', color: '#0f172a' }}>
+                  Xem Lịch Chạy Xe Chi Tiết
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', lineHeight: '1.4' }}>
+                  Tra cứu ca trực và các tuyến xe được phân công trong tuần và tháng.
+                </p>
+              </div>
+
             </div>
           </div>
 
-          {/* Operational guidelines */}
-          <div style={{ marginTop: '2rem', padding: '1.25rem', background: '#f8fafc', borderRadius: '12px', border: '1px solid var(--card-border)' }}>
-            <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text)', fontSize: '0.95rem', fontWeight: '800' }}>
-              Quy Trình Vận Hành Phụ Xe:
-            </h4>
-            <ol style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-              <li>Có mặt trước giờ xe chạy 30 phút để chuẩn bị khoang khách.</li>
-              <li>Sử dụng camera quét mã QR của khách khi xếp khách lên xe.</li>
-              <li>Khai báo và gán thẻ hành lý ký gửi đối với đồ đạc cồng kềnh.</li>
-              <li>Báo cáo hoàn thành xếp khách lên hệ thống trước giờ xe chạy.</li>
-            </ol>
+          {/* Card Quy trình vận hành phụ xe (SOP - Không icon) */}
+          <div className="attendant-panel-box" style={{ background: '#f8fafc' }}>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <h2 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Quy Trình Vận Hành Tiêu Chuẩn Phụ Xe
+              </h2>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <span style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px'
+                }}>1</span>
+                <span style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.4' }}>
+                  Có mặt trước giờ xe chạy <strong>30 phút</strong> để kiểm tra vệ sinh khoang giường nằm và tiện ích trên xe.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <span style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px'
+                }}>2</span>
+                <span style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.4' }}>
+                  Sử dụng camera quét mã QR vé hành khách hoặc tra cứu số điện thoại để soát vé lên xe.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <span style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px'
+                }}>3</span>
+                <span style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.4' }}>
+                  Hướng dẫn hành khách đúng vị trí số ghế, số phòng nằm theo mã vé đã đăng ký.
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                <span style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: '#2563eb',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: '800',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  marginTop: '1px'
+                }}>4</span>
+                <span style={{ fontSize: '0.78rem', color: '#475569', lineHeight: '1.4' }}>
+                  Báo cáo hoàn thành danh sách hành khách cho bác tài trước khi xe lăn bánh rời bến.
+                </span>
+              </div>
+            </div>
           </div>
+
         </div>
 
       </div>

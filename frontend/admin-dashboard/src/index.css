@@ -869,32 +869,19 @@ body {
   box-shadow: 0 2px 6px rgba(63, 106, 216, 0.2);
 }
 
+/* Nút 3 gạch mở Menu: Mặc định ẨN HOÀN TOÀN trên Desktop (màn hình lớn) vì Sidebar đã cố định bên trái */
+.sidebar-toggle-btn {
+  display: none !important;
+}
+
 /* Responsive media queries for Mobile devices (Drivers & Attendants) */
 @media (max-width: 768px) {
   .top-header {
-    padding: 0 1rem !important;
-  }
-
-  .sidebar-toggle-btn {
-    display: block !important;
+    padding: 0 0.85rem !important;
   }
 
   .role-indicator-header {
     font-size: 0.85rem !important;
-  }
-
-  .sidebar {
-    position: fixed !important;
-    top: 70px;
-    left: -260px;
-    width: 260px;
-    height: calc(100vh - 70px);
-    z-index: 999;
-    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .sidebar.mobile-open {
-    left: 0 !important;
   }
 
   .main-content {
@@ -970,17 +957,27 @@ body {
     display: none !important;
   }
 
+  /* Nút 3 gạch mở Menu: Chỉ hiển thị trên Mobile & Tablet để Tài xế & Phụ xe mở menu điều hướng */
   .sidebar-toggle-btn {
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
     border-radius: 8px;
     background-color: #f1f5f9 !important;
     color: #1e293b !important;
-    font-size: 1.25rem !important;
     border: 1px solid #e2e8f0 !important;
+    cursor: pointer;
+    flex-shrink: 0;
+    padding: 0;
+    transition: all 0.2s ease;
+  }
+
+  .sidebar-toggle-btn:active {
+    background-color: #e2e8f0 !important;
+    transform: scale(0.95);
   }
 
   .sidebar {

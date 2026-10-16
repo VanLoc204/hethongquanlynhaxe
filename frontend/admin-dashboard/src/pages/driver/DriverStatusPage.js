@@ -481,16 +481,6 @@ const DriverStatusPage = ({ setActiveTab }) => {
               <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
                 Cập Nhật Lộ Trình &amp; Tiến Độ Xe Chạy
               </h1>
-              <span style={{
-                background: '#dbeafe',
-                color: '#1d4ed8',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Smart Geofencing GPS
-              </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
               Tuyến: <strong style={{ color: '#2563eb' }}>{routeName}</strong> | Giờ chạy: <strong>{formatTime(trip?.departureTime)}</strong> ({formatDate(trip?.departureTime)}) | Xe: <strong>{busPlate}</strong> | Phụ xe: <strong>{assistantName}</strong>
@@ -710,18 +700,8 @@ const DriverStatusPage = ({ setActiveTab }) => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Bảng Điều Khiển Điểm Dừng &amp; Hàng Rào Địa Lý (Geofencing)
+                Bảng Điều Khiển Điểm Dừng &amp; Lộ Trình
               </h2>
-              <span style={{
-                background: '#dcfce7',
-                color: '#15803d',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Smart Auto-Checkin
-              </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.72rem', marginTop: '2px', margin: 0 }}>
               Hệ thống tự động tính khoảng cách GPS thực tế từ xe đến trạm dừng để kiểm soát check-in chính xác
@@ -851,47 +831,6 @@ const DriverStatusPage = ({ setActiveTab }) => {
               </p>
             </div>
 
-            {/* Cảnh báo GPS: Nếu chưa bật GPS hoặc xe đang ngoài bán kính 500m */}
-            {!isCompleted && !isGpsActive && (
-              <div style={{
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                padding: '0.85rem 1rem',
-                borderRadius: '10px',
-                color: '#1e40af',
-                fontSize: '0.78rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: '10px',
-                flexWrap: 'wrap'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '1.1rem' }}>📡</span>
-                  <div>
-                    <strong>Chưa bật GPS:</strong> Hệ thống chưa có tọa độ để kiểm tra khoảng cách. Vui lòng vào trang <strong>Bản Đồ Di Chuyển</strong> và nhấn nút <strong>"Bắt Đầu &amp; Phát GPS"</strong> để kích hoạt.
-                  </div>
-                </div>
-                {setActiveTab && (
-                  <button
-                    onClick={() => setActiveTab('driver-map')}
-                    style={{
-                      backgroundColor: '#2563eb',
-                      color: '#ffffff',
-                      border: 'none',
-                      padding: '5px 12px',
-                      borderRadius: '6px',
-                      fontSize: '0.72rem',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    Vào Bản Đồ Bật GPS ➔
-                  </button>
-                )}
-              </div>
-            )}
 
             {!isCompleted && isGpsActive && !isWithinRadius && (
               <div style={{
@@ -1127,29 +1066,6 @@ const DriverStatusPage = ({ setActiveTab }) => {
                 <div>Tài xế: <strong>{trip?.driver?.name || user?.name || 'Trần Minh Tâm'}</strong></div>
                 <div>Phụ xe: <strong>{assistantName}</strong></div>
                 <div>Số điểm dừng: <strong>{stops.length} điểm</strong></div>
-              </div>
-            </div>
-
-            {/* Nhắc nhở an toàn vận hành & Geofence info */}
-            <div style={{
-              padding: '0.75rem 1rem',
-              background: '#f0fdf4',
-              borderRadius: '10px',
-              border: '1px solid #bbf7d0',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px'
-            }}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '50%',
-                background: '#16a34a', color: '#ffffff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: '800', fontSize: '0.75rem', flexShrink: 0
-              }}>
-                !
-              </div>
-              <div style={{ fontSize: '0.72rem', color: '#166534', lineHeight: '1.4' }}>
-                <strong>Cơ chế Geofencing:</strong> Khi bật <em>Tự Động Check-in</em>, hệ thống sẽ tự động ghi nhận trạm khi xe di chuyển vào bán kính &le; 500m của trạm dừng mà tài xế không cần bấm nút thủ công.
               </div>
             </div>
 
