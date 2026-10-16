@@ -106,58 +106,47 @@ const generateDefaultSeatLayout = (totalSeats, busType = '') => {
         upperFloor.push(['B13', 'B14', null, 'B15']);
         upperFloor.push(['B16', 'B17', 'B18', 'B19', 'B20']);
       } else if (totalSeats === 44) {
-        lowerFloor.push(['A1', null, null, null, 'A2']);
-        lowerFloor.push(['A3', null, 'A4', null, 'A5']);
-        lowerFloor.push(['A6', null, 'A7', null, 'A8']);
-        lowerFloor.push(['A9', null, 'A10', null, 'A11']);
-        lowerFloor.push(['A12', null, 'A13', null, 'A14']);
-        lowerFloor.push(['A15', null, 'A16', null, 'A17']);
-        lowerFloor.push(['A18', 'A19', 'A20', 'A21', 'A22']);
+        lowerFloor.push(['A1', null, 'A2', null, 'A3']);
+        lowerFloor.push(['A4', null, 'A5', null, 'A6']);
+        lowerFloor.push(['A7', null, 'A8', null, 'A9']);
+        lowerFloor.push(['A10', null, 'A11', null, 'A12']);
+        lowerFloor.push(['A13', null, 'A14', null, 'A15']);
+        lowerFloor.push(['A16', null, 'A17', null, 'A18']);
+        lowerFloor.push(['A19', 'A20', 'A21', 'A22']);
 
-        upperFloor.push(['B1', null, null, null, 'B2']);
-        upperFloor.push(['B3', null, 'B4', null, 'B5']);
-        upperFloor.push(['B6', null, 'B7', null, 'B8']);
-        upperFloor.push(['B9', null, 'B10', null, 'B11']);
-        upperFloor.push(['B12', null, 'B13', null, 'B14']);
-        upperFloor.push(['B15', null, 'B16', null, 'B17']);
-        upperFloor.push(['B18', 'B19', 'B20', 'B21', 'B22']);
+        upperFloor.push(['B1', null, 'B2', null, 'B3']);
+        upperFloor.push(['B4', null, 'B5', null, 'B6']);
+        upperFloor.push(['B7', null, 'B8', null, 'B9']);
+        upperFloor.push(['B10', null, 'B11', null, 'B12']);
+        upperFloor.push(['B13', null, 'B14', null, 'B15']);
+        upperFloor.push(['B16', null, 'B17', null, 'B18']);
+        upperFloor.push(['B19', 'B20', 'B21', 'B22']);
       }
       return { lowerFloor, upperFloor, columns: 5 };
     }
   }
 
-  // 1 Floor Vehicles
-  if (totalSeats === 9) {
-    lowerFloor.push(['A1', null, 'A2']);
+  // Single decker layout
+  if (totalSeats <= 9) {
+    lowerFloor.push([null, 'A1', 'A2']);
     lowerFloor.push(['A3', null, 'A4']);
     lowerFloor.push(['A5', null, 'A6']);
     lowerFloor.push(['A7', 'A8', 'A9']);
     return { lowerFloor, upperFloor: [], columns: 3 };
   }
 
-  if (totalSeats === 19) {
-    lowerFloor.push(['A1', null, 'A2']);
-    lowerFloor.push(['A3', null, 'A4']);
-    lowerFloor.push(['A5', null, 'A6']);
-    lowerFloor.push(['A7', null, 'A8']);
-    lowerFloor.push(['A9', null, 'A10']);
-    lowerFloor.push(['A11', null, 'A12']);
-    lowerFloor.push(['A13', null, 'A14']);
-    lowerFloor.push(['A15', null, 'A16']);
-    lowerFloor.push(['A17', 'A18', 'A19']);
+  if (totalSeats <= 16) {
+    lowerFloor.push([null, 'A1', null]);
+    lowerFloor.push(['A2', null, 'A3']);
+    lowerFloor.push(['A4', null, 'A5']);
+    lowerFloor.push(['A6', null, 'A7']);
+    lowerFloor.push(['A8', 'A9', 'A10']);
+    lowerFloor.push(['A11', 'A12', 'A13']);
+    lowerFloor.push(['A14', 'A15', 'A16']);
     return { lowerFloor, upperFloor: [], columns: 3 };
   }
 
-  if (totalSeats === 16) {
-    lowerFloor.push(['A1', 'A2', null, 'A3']);
-    lowerFloor.push(['A4', 'A5', null, 'A6']);
-    lowerFloor.push(['A7', 'A8', null, 'A9']);
-    lowerFloor.push(['A10', 'A11', null, 'A12']);
-    lowerFloor.push(['A13', 'A14', 'A15', 'A16']);
-    return { lowerFloor, upperFloor: [], columns: 4 };
-  }
-
-  if (totalSeats === 29) {
+  if (totalSeats <= 29) {
     lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
     lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
     lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
@@ -168,45 +157,11 @@ const generateDefaultSeatLayout = (totalSeats, busType = '') => {
     return { lowerFloor, upperFloor: [], columns: 5 };
   }
 
-  if (totalSeats === 35) {
-    lowerFloor.push([null, null, null, 'A1', 'A2']);
-    lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
-    lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
-    lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
-    lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
-    lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
-    lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
-    lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
-    lowerFloor.push(['A31', 'A32', 'A33', 'A34', 'A35']);
-    return { lowerFloor, upperFloor: [], columns: 5 };
+  // 45 / 47 seats
+  for (let i = 1; i <= 40; i += 4) {
+    lowerFloor.push([`A${i}`, `A${i+1}`, null, `A${i+2}`, `A${i+3}`]);
   }
-
-  if (totalSeats === 45) {
-    lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
-    lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
-    lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
-    lowerFloor.push(['A13', 'A14', null, 'A15', 'A16']);
-    lowerFloor.push(['A17', 'A18', null, 'A19', 'A20']);
-    lowerFloor.push(['A21', 'A22', null, 'A23', 'A24']);
-    lowerFloor.push(['A25', 'A26', null, 'A27', 'A28']);
-    lowerFloor.push(['A29', 'A30', null, 'A31', 'A32']);
-    lowerFloor.push(['A33', 'A34', null, 'A35', 'A36']);
-    lowerFloor.push(['A37', 'A38', null, 'A39', 'A40']);
-    lowerFloor.push(['A41', 'A42', 'A43', 'A44', 'A45']);
-    return { lowerFloor, upperFloor: [], columns: 5 };
-  }
-
-  // Generic fallback if no specific seat number matches
-  const rows = Math.ceil(totalSeats / 4);
-  for (let i = 0; i < rows; i++) {
-    const row = [];
-    row.push(`A${i * 4 + 1}`);
-    row.push(i * 4 + 2 <= totalSeats ? `A${i * 4 + 2}` : null);
-    row.push(null);
-    row.push(i * 4 + 3 <= totalSeats ? `A${i * 4 + 3}` : null);
-    row.push(i * 4 + 4 <= totalSeats ? `A${i * 4 + 4}` : null);
-    lowerFloor.push(row);
-  }
+  lowerFloor.push(['A41', 'A42', 'A43', 'A44', 'A45']);
   return { lowerFloor, upperFloor: [], columns: 5 };
 };
 
@@ -381,7 +336,7 @@ const ManagerApprovalsPage = () => {
       const data = await res.json();
       
       if (res.ok && data.success) {
-        setSuccess(`Đã ${statusText} yêu cầu thành công!`);
+        setSuccess(`Đã ${statusText} yêu cầu thành công.`);
         fetchApprovals();
       } else {
         setError(data.message || `Lỗi khi xử lý phê duyệt.`);
@@ -412,28 +367,6 @@ const ManagerApprovalsPage = () => {
     return roles[role] || role;
   };
 
-  const getInitials = (name) => {
-    if (!name) return 'NV';
-    const parts = name.trim().split(' ');
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
-  const getAvatarStyle = (role) => {
-    switch (role) {
-      case 'ticket_agent':
-        return { bg: '#e0e7ff', color: '#3730a3', border: '#c7d2fe' };
-      case 'driver':
-        return { bg: '#f3e8ff', color: '#6b21a8', border: '#e9d5ff' };
-      case 'fleet_manager':
-        return { bg: '#ccfbf1', color: '#0f766e', border: '#99f6e4' };
-      case 'ops_manager':
-        return { bg: '#e0e7ff', color: '#1e40af', border: '#bfdbfe' };
-      default:
-        return { bg: '#dbeafe', color: '#1e40af', border: '#bfdbfe' };
-    }
-  };
-
   const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     const d = new Date(dateStr);
@@ -446,10 +379,9 @@ const ManagerApprovalsPage = () => {
         return (
           <span style={{
             background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0',
-            padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700',
-            display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+            padding: '3px 9px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
+            whiteSpace: 'nowrap', display: 'inline-block'
           }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
             Đã duyệt
           </span>
         );
@@ -457,21 +389,19 @@ const ManagerApprovalsPage = () => {
         return (
           <span style={{
             background: '#fef2f2', color: '#b91c1c', border: '1px solid #fca5a5',
-            padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700',
-            display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+            padding: '3px 9px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
+            whiteSpace: 'nowrap', display: 'inline-block'
           }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             Từ chối
           </span>
         );
       default:
         return (
           <span style={{
-            background: '#fffbe6', color: '#d97706', border: '1px solid #fef3c7',
-            padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700',
-            display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap'
+            background: '#fffbe6', color: '#b45309', border: '1px solid #fef3c7',
+            padding: '3px 9px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
+            whiteSpace: 'nowrap', display: 'inline-block'
           }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
             Chờ duyệt
           </span>
         );
@@ -481,13 +411,13 @@ const ManagerApprovalsPage = () => {
   const getTypeBadge = (type) => {
     switch (type) {
       case 'leave':
-        return <span style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', padding: '3px 10px', borderRadius: '14px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Nghỉ phép</span>;
+        return <span style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Nghỉ phép</span>;
       case 'bus':
-        return <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '3px 10px', borderRadius: '14px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Thêm xe mới</span>;
+        return <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Thêm xe mới</span>;
       case 'route':
-        return <span style={{ background: '#f5f3ff', color: '#5b21b6', border: '1px solid #ddd6fe', padding: '3px 10px', borderRadius: '14px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Thêm tuyến mới</span>;
+        return <span style={{ background: '#f5f3ff', color: '#5b21b6', border: '1px solid #ddd6fe', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Thêm tuyến mới</span>;
       default:
-        return <span style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '3px 10px', borderRadius: '14px', fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Khác</span>;
+        return <span style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Khác</span>;
     }
   };
 
@@ -496,7 +426,7 @@ const ManagerApprovalsPage = () => {
   const pendingCount = approvals.filter(a => a.status === 'pending').length;
   const approvedCount = approvals.filter(a => a.status === 'approved').length;
   const rejectedCount = approvals.filter(a => a.status === 'rejected').length;
-  const approvalRate = totalCount > 0 ? ((approvedCount / totalCount) * 100).toFixed(1) : '95.4';
+  const approvalRate = totalCount > 0 ? ((approvedCount / totalCount) * 100).toFixed(1) : '100.0';
 
   const filteredApprovals = approvals.filter((item) => {
     const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
@@ -531,20 +461,20 @@ const ManagerApprovalsPage = () => {
     const hasUpper = upperFloor && upperFloor.length > 0;
 
     const renderFloor = (floorData, title) => (
-      <div style={{ flex: 1, minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <h4 style={{ fontSize: '0.85rem', fontWeight: '700', textAlign: 'center', margin: '5px 0', color: 'var(--text-main)' }}>{title}</h4>
+      <div style={{ flex: 1, minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <h4 style={{ fontSize: '0.8rem', fontWeight: '700', textAlign: 'center', margin: '4px 0', color: '#0f172a' }}>{title}</h4>
         <div style={{
-          border: '1px solid var(--card-border)',
+          border: '1px solid #e2e8f0',
           borderRadius: '8px',
-          padding: '12px',
-          background: 'rgba(0,0,0,0.03)',
-          maxHeight: '340px',
+          padding: '10px',
+          background: '#f8fafc',
+          maxHeight: '320px',
           overflowY: 'auto'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px dashed var(--card-border)', paddingBottom: '6px', marginBottom: '10px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span>PHÍA TRƯỚC - GHẾ TÀI XẾ</span>
+          <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: '4px', marginBottom: '8px', fontSize: '0.72rem', color: '#64748b', textAlign: 'center', fontWeight: '700' }}>
+            PHÍA TRƯỚC - GHẾ TÀI XẾ
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '6px' }}>
             {(floorData || []).map((row, rIdx) => 
               row.map((cell, cIdx) => {
                 const isSeat = cell !== null;
@@ -552,16 +482,16 @@ const ManagerApprovalsPage = () => {
                   <div 
                     key={`${rIdx}-${cIdx}`}
                     style={{
-                      height: '38px',
-                      borderRadius: '6px',
-                      border: isSeat ? '1.5px solid var(--primary)' : '1px dashed rgba(255,255,255,0.15)',
-                      backgroundColor: isSeat ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                      height: '32px',
+                      borderRadius: '5px',
+                      border: isSeat ? '1.5px solid #2563eb' : '1px dashed #cbd5e1',
+                      backgroundColor: isSeat ? '#eff6ff' : 'transparent',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '0.75rem',
+                      fontSize: '0.72rem',
                       fontWeight: isSeat ? '700' : 'normal',
-                      color: isSeat ? 'var(--primary)' : 'var(--text-muted)'
+                      color: isSeat ? '#1d4ed8' : '#94a3b8'
                     }}
                   >
                     {cell || ''}
@@ -575,7 +505,7 @@ const ManagerApprovalsPage = () => {
     );
 
     return (
-      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '10px' }}>
+      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '8px' }}>
         {renderFloor(lowerFloor, hasUpper ? 'Tầng 1 (Tầng dưới)' : 'Sơ đồ vị trí ghế')}
         {hasUpper && renderFloor(upperFloor, 'Tầng 2 (Tầng trên)')}
       </div>
@@ -583,161 +513,215 @@ const ManagerApprovalsPage = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.3s ease' }}>
-      
-      {/* 1. BREADCRUMBS & TOP HEADER */}
-      <div>
-        <div style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '4px', fontWeight: '500' }}>
-          Hệ thống / Điều hành / <span style={{ color: '#2563eb', fontWeight: '600' }}>Phê duyệt yêu cầu</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-              Trung Tâm Phê Duyệt Hồ Sơ &amp; Đơn Từ
-            </h1>
-            <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px', margin: 0 }}>
-              Phê duyệt đơn nghỉ phép của nhân sự, hồ sơ thêm phương tiện mới và yêu cầu mở tuyến của Quản lý xe.
-            </p>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeIn 0.35s ease', width: '100%' }}>
+      <style>{`
+        .plate-box-mini {
+          display: inline-block;
+          background: #ffffff;
+          border: 1.5px solid #0f172a;
+          border-radius: 5px;
+          padding: 1px 6px;
+          font-family: monospace;
+          font-weight: 800;
+          font-size: 0.74rem;
+          color: #0f172a;
+          letter-spacing: 0.5px;
+          white-space: nowrap;
+        }
 
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => alert('Đang xuất danh sách hồ sơ phê duyệt...')}
-              className="btn"
-              style={{
-                backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#334155',
-                fontSize: '0.825rem', fontWeight: '700', padding: '8px 16px', borderRadius: '8px',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Xuất danh sách
-            </button>
-            <button
-              onClick={fetchApprovals}
-              className="btn"
-              style={{
-                backgroundColor: '#2563eb', border: 'none', color: '#ffffff',
-                fontSize: '0.825rem', fontWeight: '700', padding: '8px 16px', borderRadius: '8px',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              Làm mới dữ liệu
-            </button>
-          </div>
-        </div>
-      </div>
+        .approval-kpi-card {
+          background: #ffffff;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          padding: 0.9rem 1.1rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
 
-      {/* 2. STAT CARDS ROW (4 KPI Cards) */}
+        .approval-table th {
+          background: #f8fafc;
+          padding: 8px 10px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #475569;
+          letter-spacing: 0.2px;
+          border-bottom: 1px solid #e2e8f0;
+          white-space: nowrap;
+        }
+
+        .approval-table td {
+          padding: 8px 10px;
+          font-size: 0.75rem;
+          color: #1e293b;
+          border-bottom: 1px solid #f1f5f9;
+          vertical-align: middle;
+        }
+
+        .approval-table tr:hover td {
+          background: #f8fafc;
+        }
+
+        .filter-chip {
+          padding: 5px 12px;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid #e2e8f0;
+          background: #ffffff;
+          color: #475569;
+          transition: all 0.15s ease;
+        }
+        .filter-chip.active {
+          background: #0f172a;
+          color: #ffffff;
+          border-color: #0f172a;
+        }
+
+        @media (max-width: 1024px) {
+          .approval-kpi-container {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .approval-kpi-container {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+
+      {/* Header bar */}
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem'
+        background: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e2e8f0',
+        padding: '1rem 1.25rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '12px'
       }}>
-        {/* Card 1: Tổng số */}
-        <div style={{
-          backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px',
-          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-        }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>TỔNG SỐ HỒ SƠ</span>
-            <div style={{ fontSize: '1.85rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 2px 0' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', color: '#0f172a' }}>
+            Trung Tâm Phê Duyệt Hồ Sơ & Đơn Từ
+          </h1>
+          <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
+            Phê duyệt đơn nghỉ phép của nhân sự, hồ sơ thêm phương tiện mới và yêu cầu mở tuyến của Quản lý xe.
+          </p>
+        </div>
+
+        <button
+          onClick={fetchApprovals}
+          style={{
+            padding: '6px 14px',
+            backgroundColor: '#ffffff',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
+            fontSize: '0.78rem',
+            fontWeight: '700',
+            color: '#334155',
+            cursor: 'pointer',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+          }}
+        >
+          Làm mới dữ liệu
+        </button>
+      </div>
+
+      {/* KPI Cards Row (Zero Icons, Executive Style) */}
+      <div
+        className="approval-kpi-container"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: '10px'
+        }}
+      >
+        <div className="approval-kpi-card">
+          <div style={{ fontSize: '0.74rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+            Tổng Số Hồ Sơ
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '2px' }}>
+            <span style={{ fontSize: '1.6rem', fontWeight: '800', color: '#0f172a' }}>
               {totalCount}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              Toàn bộ kỳ vận hành 09/2026
-            </div>
+            </span>
+            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600' }}>
+              yêu cầu
+            </span>
           </div>
-          <div style={{
-            width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#eff6ff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb'
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <div style={{ fontSize: '0.72rem', color: '#475569', fontWeight: '600' }}>
+            Toàn bộ hồ sơ trên hệ thống
           </div>
         </div>
 
-        {/* Card 2: Chờ xem xét (Highlight Warning) */}
-        <div style={{
-          backgroundColor: '#ffffff', border: '1.5px solid #fed7aa', borderRadius: '12px',
-          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          boxShadow: '0 2px 6px rgba(245, 158, 11, 0.06)'
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#b45309', letterSpacing: '0.5px' }}>CHỜ XEM XÉT</span>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }}></span>
-            </div>
-            <div style={{ fontSize: '1.85rem', fontWeight: '900', color: '#d97706', margin: '4px 0 2px 0', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-              {String(pendingCount).padStart(2, '0')}
-              <span style={{ fontSize: '0.85rem', color: '#d97706', fontWeight: '600' }}>yêu cầu</span>
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: '500' }}>
-              Cần phê duyệt trong ngày
-            </div>
+        <div className="approval-kpi-card">
+          <div style={{ fontSize: '0.74rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+            Chờ Xem Xét
           </div>
-          <div style={{
-            width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#fff7ed',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b'
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '2px' }}>
+            <span style={{ fontSize: '1.6rem', fontWeight: '800', color: pendingCount > 0 ? '#ea580c' : '#16a34a' }}>
+              {pendingCount}
+            </span>
+            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600' }}>
+              yêu cầu
+            </span>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: pendingCount > 0 ? '#c2410c' : '#166534', fontWeight: '600' }}>
+            {pendingCount > 0 ? 'Cần phản hồi phê duyệt' : 'Đã xử lý tất cả yêu cầu'}
           </div>
         </div>
 
-        {/* Card 3: Đã chấp thuận */}
-        <div style={{
-          backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px',
-          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-        }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>ĐÃ CHẤP THUẬN</span>
-            <div style={{ fontSize: '1.85rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 2px 0' }}>
+        <div className="approval-kpi-card">
+          <div style={{ fontSize: '0.74rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+            Đã Chấp Thuận
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '2px' }}>
+            <span style={{ fontSize: '1.6rem', fontWeight: '800', color: '#16a34a' }}>
               {approvedCount}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '600' }}>
-              {approvalRate}% tỷ lệ phản hồi
-            </div>
+            </span>
+            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600' }}>
+              hồ sơ
+            </span>
           </div>
-          <div style={{
-            width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#ecfdf5',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981'
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: '600' }}>
+            {approvalRate}% tỷ lệ chấp thuận
           </div>
         </div>
 
-        {/* Card 4: Đã từ chối */}
-        <div style={{
-          backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px',
-          padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-        }}>
-          <div>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>ĐÃ TỪ CHỐI</span>
-            <div style={{ fontSize: '1.85rem', fontWeight: '900', color: '#dc2626', margin: '4px 0 2px 0' }}>
-              {String(rejectedCount).padStart(2, '0')}
-            </div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-              Không đủ điều kiện tuyển
-            </div>
+        <div className="approval-kpi-card">
+          <div style={{ fontSize: '0.74rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+            Đã Từ Chối
           </div>
-          <div style={{
-            width: '42px', height: '42px', borderRadius: '10px', backgroundColor: '#fef2f2',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444'
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginTop: '2px' }}>
+            <span style={{ fontSize: '1.6rem', fontWeight: '800', color: rejectedCount > 0 ? '#dc2626' : '#64748b' }}>
+              {rejectedCount}
+            </span>
+            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: '600' }}>
+              hồ sơ
+            </span>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: rejectedCount > 0 ? '#991b1b' : '#64748b', fontWeight: '600' }}>
+            Hồ sơ không đạt điều kiện
           </div>
         </div>
       </div>
 
-      {/* 3. FILTER & TABLE MAIN PANEL */}
-      <section className="panel" style={{ padding: '1.5rem', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-        
-        {/* Filter Bar Row 1: Status Pills & Type Dropdown */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-          
-          {/* Status Filter Pills */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      {/* Main Table Container */}
+      <div style={{
+        background: '#ffffff',
+        borderRadius: '14px',
+        border: '1px solid #e2e8f0',
+        padding: '1.15rem 1.25rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+      }}>
+        {/* Filter Bar Row 1 */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '0.85rem' }}>
+          {/* Status Tabs */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {[
               { key: 'all', label: 'Tất cả trạng thái', count: totalCount },
               { key: 'pending', label: 'Chờ duyệt', count: pendingCount },
@@ -749,37 +733,24 @@ const ManagerApprovalsPage = () => {
                 <button
                   key={tab.key}
                   onClick={() => setStatusFilter(tab.key)}
-                  style={{
-                    padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700',
-                    border: isActive ? 'none' : '1px solid #cbd5e1',
-                    backgroundColor: isActive ? '#2563eb' : '#ffffff',
-                    color: isActive ? '#ffffff' : '#475569',
-                    cursor: 'pointer', transition: 'all 0.15s ease', display: 'flex', alignItems: 'center', gap: '6px'
-                  }}
+                  className={`filter-chip ${isActive ? 'active' : ''}`}
                 >
-                  <span>{tab.label}</span>
-                  <span style={{
-                    backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
-                    color: isActive ? '#ffffff' : '#64748b',
-                    padding: '1px 6px', borderRadius: '10px', fontSize: '0.7rem', fontWeight: '800'
-                  }}>
-                    {tab.count}
-                  </span>
+                  {tab.label} ({tab.count})
                 </button>
               );
             })}
           </div>
 
-          {/* Type Filter Dropdown */}
+          {/* Type Filter */}
           {user?.role !== 'fleet_manager' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap' }}>Loại hồ sơ:</span>
+              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap' }}>Loại hồ sơ:</span>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value)}
                 style={{
-                  padding: '7px 14px', fontSize: '0.8rem', border: '1px solid #cbd5e1',
-                  borderRadius: '8px', background: '#ffffff', color: '#0f172a',
+                  padding: '6px 12px', fontSize: '0.78rem', border: '1px solid #cbd5e1',
+                  borderRadius: '6px', background: '#ffffff', color: '#0f172a',
                   fontWeight: '600', outline: 'none', cursor: 'pointer'
                 }}
               >
@@ -792,58 +763,67 @@ const ManagerApprovalsPage = () => {
           )}
         </div>
 
-        {/* Filter Bar Row 2: Search Input & Date Picker Pill */}
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <div style={{ flex: 1, minWidth: '280px', position: 'relative' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}>
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="text"
-              placeholder="Tìm kiếm theo tên người gửi, chức vụ, số điện thoại, biển số xe..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%', padding: '8px 12px 8px 36px', fontSize: '0.825rem',
-                border: '1px solid #e2e8f0', borderRadius: '8px', background: '#f8fafc',
-                color: '#0f172a', outline: 'none'
-              }}
-            />
-          </div>
-
-          <div style={{
-            padding: '7px 14px', borderRadius: '8px', border: '1px solid #e2e8f0',
-            backgroundColor: '#ffffff', color: '#475569', fontSize: '0.8rem', fontWeight: '600',
-            display: 'flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap'
-          }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            22/09/2026 - Hôm nay
-          </div>
+        {/* Filter Bar Row 2: Search Input */}
+        <div style={{ marginBottom: '0.85rem' }}>
+          <input
+            type="text"
+            placeholder="Tìm kiếm theo tên người gửi, số điện thoại, biển số xe, nội dung..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '7px 12px',
+              fontSize: '0.8rem',
+              border: '1px solid #cbd5e1',
+              borderRadius: '6px',
+              outline: 'none',
+              boxSizing: 'border-box'
+            }}
+          />
         </div>
 
-        {error && <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '6px', fontSize: '0.85rem' }}>{error}</div>}
-        {success && <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ecfdf5', color: '#047857', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '500' }}>{success}</div>}
+        {error && (
+          <div style={{
+            marginBottom: '0.85rem', padding: '0.75rem 1rem', background: '#fef2f2',
+            border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b',
+            fontSize: '0.8rem', fontWeight: '600'
+          }}>
+            {error}
+          </div>
+        )}
+        {success && (
+          <div style={{
+            marginBottom: '0.85rem', padding: '0.75rem 1rem', background: '#f0fdf4',
+            border: '1px solid #bbf7d0', borderRadius: '8px', color: '#166534',
+            fontSize: '0.8rem', fontWeight: '600'
+          }}>
+            {success}
+          </div>
+        )}
 
-        {/* TABLE CONTENT */}
+        {/* Table Content */}
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-            <div style={{ color: '#2563eb', fontWeight: '600' }}>Đang tải danh sách hồ sơ...</div>
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.82rem' }}>
+            Đang tải danh sách hồ sơ...
           </div>
         ) : filteredApprovals.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '4rem 0', color: '#94a3b8' }}>
+          <div style={{
+            textAlign: 'center', padding: '3rem', backgroundColor: '#f8fafc',
+            border: '1px solid #e2e8f0', borderRadius: '8px', color: '#64748b', fontSize: '0.82rem'
+          }}>
             Không tìm thấy hồ sơ hoặc đơn từ nào ở trạng thái này.
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <div style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+            <table className="approval-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>NGƯỜI GỬI</th>
-                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>LOẠI HỒ SƠ</th>
-                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CHI TIẾT NỘI DUNG HỒ SƠ ĐỀ XUẤT</th>
-                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>THỜI GIAN GỬI</th>
-                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TRẠNG THÁI</th>
-                  <th style={{ padding: '0.85rem 1rem', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'center' }}>THAO TÁC</th>
+                <tr>
+                  <th>Người gửi</th>
+                  <th>Loại hồ sơ</th>
+                  <th>Chi tiết nội dung hồ sơ đề xuất</th>
+                  <th>Thời gian gửi</th>
+                  <th>Trạng thái</th>
+                  <th style={{ textAlign: 'center' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -852,112 +832,114 @@ const ManagerApprovalsPage = () => {
                   const senderRoleKey = item.sender?.role || 'staff';
                   const senderRole = getRoleLabel(senderRoleKey);
                   const senderPhone = item.sender?.phone || '0988888888';
-                  const initials = getInitials(senderName);
-                  const avatarStyle = getAvatarStyle(senderRoleKey);
 
                   return (
-                    <tr key={item.id} style={{ borderBottom: '1px solid #f1f5f9', transition: 'background 0.15s ease' }}>
-                      
+                    <tr key={item.id}>
                       {/* 1. NGƯỜI GỬI */}
-                      <td style={{ padding: '1rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{
-                            width: '36px', height: '36px', borderRadius: '50%',
-                            backgroundColor: avatarStyle.bg, color: avatarStyle.color,
-                            border: `1px solid ${avatarStyle.border}`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.825rem', fontWeight: '800', flexShrink: 0
-                          }}>
-                            {initials}
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontWeight: '700', fontSize: '0.875rem', color: '#0f172a', whiteSpace: 'nowrap' }}>{senderName}</span>
-                              <span style={{
-                                fontSize: '0.675rem', fontWeight: '700', backgroundColor: '#eff6ff',
-                                color: '#1e40af', padding: '1px 7px', borderRadius: '10px',
-                                border: '1px solid #bfdbfe', whiteSpace: 'nowrap'
-                              }}>
-                                {senderRole}
-                              </span>
-                            </div>
-                            <span style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-                              {senderPhone}
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontWeight: '700', fontSize: '0.82rem', color: '#0f172a' }}>{senderName}</span>
+                            <span style={{
+                              fontSize: '0.66rem', fontWeight: '700', backgroundColor: '#eff6ff',
+                              color: '#1e40af', padding: '1px 6px', borderRadius: '4px',
+                              border: '1px solid #bfdbfe'
+                            }}>
+                              {senderRole}
                             </span>
                           </div>
+                          <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {senderPhone}
+                          </span>
                         </div>
                       </td>
 
                       {/* 2. LOẠI HỒ SƠ */}
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {getTypeBadge(item.type)}
                       </td>
 
-                      {/* 3. CHI TIẾT NỘI DUNG HỒ SƠ ĐỀ XUẤT */}
-                      <td style={{ padding: '1rem', fontSize: '0.825rem', color: '#0f172a', maxWidth: '380px' }}>
-                        <div style={{ fontWeight: '600', lineHeight: '1.4' }}>{item.details}</div>
+                      {/* 3. CHI TIẾT NỘI DUNG */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {item.plateNumber && (
+                            <div className="plate-box-mini">{item.plateNumber}</div>
+                          )}
+                          <span style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.78rem' }}>
+                            {item.details}
+                          </span>
+                        </div>
                         {item.type === 'bus' && item.rawBus && (
                           <button
                             onClick={() => setSelectedBus(item.rawBus)}
                             style={{
                               background: 'none', border: 'none', color: '#2563eb',
-                              fontWeight: '700', padding: 0, textDecoration: 'none',
-                              cursor: 'pointer', marginTop: '4px', fontSize: '0.775rem',
-                              display: 'inline-flex', alignItems: 'center', gap: '4px'
+                              fontWeight: '700', padding: 0, textDecoration: 'underline',
+                              cursor: 'pointer', marginTop: '3px', fontSize: '0.72rem',
+                              display: 'block'
                             }}
                           >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                            Xem sơ đồ ghế &amp; thông tin chi tiết xe
+                            Xem sơ đồ ghế & thông tin chi tiết xe
                           </button>
                         )}
                       </td>
 
                       {/* 4. THỜI GIAN GỬI */}
-                      <td style={{ padding: '1rem', fontSize: '0.775rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                          {formatDate(item.createdAt)}
-                        </div>
+                      <td style={{ whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.74rem' }}>
+                        {formatDate(item.createdAt)}
                       </td>
 
                       {/* 5. TRẠNG THÁI */}
-                      <td style={{ padding: '1rem' }}>
+                      <td style={{ whiteSpace: 'nowrap' }}>
                         {getStatusBadge(item.status)}
                       </td>
 
                       {/* 6. THAO TÁC */}
-                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {user?.role === 'fleet_manager' ? (
-                          <span style={{ color: '#64748b', fontSize: '0.8rem', fontWeight: '600' }}>
-                            {item.status === 'pending' && 'Chờ QL nhà xe duyệt'}
-                            {item.status === 'approved' && 'Đã được duyệt'}
-                            {item.status === 'rejected' && 'Đã bị từ chối'}
-                          </span>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              color: item.status === 'approved' ? '#166534' : item.status === 'rejected' ? '#991b1b' : '#b45309',
+                              fontSize: '0.74rem',
+                              fontWeight: '700'
+                            }}>
+                              {item.status === 'pending' && 'Chờ duyệt'}
+                              {item.status === 'approved' && 'Đã duyệt'}
+                              {item.status === 'rejected' && 'Từ chối'}
+                            </span>
+                            {item.type === 'bus' && item.rawBus && (
+                              <button
+                                onClick={() => setSelectedBus(item.rawBus)}
+                                style={{
+                                  background: '#f1f5f9', border: '1px solid #cbd5e1',
+                                  borderRadius: '4px', padding: '3px 8px', fontSize: '0.7rem',
+                                  fontWeight: '700', color: '#334155', cursor: 'pointer'
+                                }}
+                              >
+                                Chi tiết
+                              </button>
+                            )}
+                          </div>
                         ) : item.status === 'pending' ? (
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
                             <button
                               onClick={() => handleStatusUpdate(item, 'approved')}
                               style={{
-                                border: 'none', backgroundColor: '#059669', color: '#ffffff',
-                                fontSize: '0.75rem', fontWeight: '700', padding: '6px 12px',
-                                borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
-                                display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                boxShadow: '0 1px 2px rgba(5,150,105,0.2)'
+                                border: 'none', backgroundColor: '#16a34a', color: '#ffffff',
+                                fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
+                                borderRadius: '4px', cursor: 'pointer'
                               }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
                               Duyệt
                             </button>
                             <button
                               onClick={() => handleStatusUpdate(item, 'rejected')}
                               style={{
-                                border: '1px solid #fca5a5', backgroundColor: '#ffffff', color: '#dc2626',
-                                fontSize: '0.75rem', fontWeight: '700', padding: '5px 11px',
-                                borderRadius: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
-                                display: 'inline-flex', alignItems: 'center', gap: '4px'
+                                border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#dc2626',
+                                fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
+                                borderRadius: '4px', cursor: 'pointer'
                               }}
                             >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                               Từ chối
                             </button>
                           </div>
@@ -968,11 +950,12 @@ const ManagerApprovalsPage = () => {
                               else alert(`Hồ sơ "${item.typeName}" đã được xử lý ở trạng thái: ${item.status === 'approved' ? 'Đã duyệt' : 'Từ chối'}`);
                             }}
                             style={{
-                              background: 'none', border: 'none', color: '#64748b', fontSize: '0.775rem',
-                              fontWeight: '600', cursor: 'pointer', textDecoration: 'underline'
+                              background: '#f1f5f9', border: '1px solid #cbd5e1',
+                              borderRadius: '4px', padding: '3px 8px', fontSize: '0.7rem',
+                              fontWeight: '700', color: '#475569', cursor: 'pointer'
                             }}
                           >
-                            {item.type === 'bus' ? 'Xem chi tiết' : 'Xem lại'}
+                            {item.type === 'bus' ? 'Chi tiết' : 'Xem lại'}
                           </button>
                         )}
                       </td>
@@ -983,72 +966,75 @@ const ManagerApprovalsPage = () => {
             </table>
           </div>
         )}
-      </section>
+      </div>
 
-      {/* DETAIL MODAL FOR VEHICLE INFO & SEAT LAYOUT */}
+      {/* Detail Modal for Vehicle Info & Seat Layout */}
       {selectedBus && (
         <div 
           style={{
             position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.65)', backdropFilter: 'blur(3px)',
+            backgroundColor: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)',
             display: 'flex', justifyContent: 'center', alignItems: 'center',
-            zIndex: 1050, transition: 'all 0.3s ease'
+            zIndex: 1200
           }}
         >
           <div 
             style={{
-              background: '#ffffff', borderRadius: '12px', width: '90%',
+              background: '#ffffff', borderRadius: '14px', width: '90%',
               maxWidth: '680px', maxHeight: '90vh', overflowY: 'auto',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15)', padding: '1.75rem',
-              display: 'flex', flexDirection: 'column', gap: '1.25rem', position: 'relative'
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15)', padding: '1.5rem',
+              display: 'flex', flexDirection: 'column', gap: '1rem',
+              border: '1px solid #e2e8f0'
             }}
           >
             {/* Modal Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--text-main)', margin: 0 }}>
-                Chi Tiết Xe Biển Số: <span style={{ color: 'var(--primary)' }}>{selectedBus.plateNumber}</span>
-              </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="plate-box-mini">{selectedBus.plateNumber}</div>
+                <h2 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  {selectedBus.type}
+                </h2>
+              </div>
               <button 
                 onClick={() => setSelectedBus(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}
+                style={{ background: 'none', border: 'none', fontSize: '1.35rem', cursor: 'pointer', color: '#64748b' }}
               >
                 &times;
               </button>
             </div>
 
             {/* Modal Body */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', flexWrap: 'wrap' }} className="modal-body-grid">
-              
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
               {/* Left Column: Vehicle Info & Image */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <img 
                   src={selectedBus.images?.[0] || DEFAULT_IMAGE} 
                   alt={selectedBus.plateNumber}
-                  style={{ width: '100%', height: '160px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--card-border)' }}
+                  style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e2e8f0' }}
                 />
                 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                  <div><strong>Loại phương tiện:</strong> {selectedBus.type}</div>
-                  <div><strong>Tổng số chỗ ngồi:</strong> {selectedBus.totalSeats} ghế</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.82rem' }}>
+                  <div><strong>Loại xe:</strong> {selectedBus.type}</div>
+                  <div><strong>Sức chứa:</strong> {selectedBus.totalSeats} ghế/chỗ</div>
                   <div>
-                    <strong>Tiện ích trên xe:</strong>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '6px' }}>
+                    <strong>Tiện ích:</strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                       {selectedBus.amenities && selectedBus.amenities.length > 0 ? (
                         selectedBus.amenities.map((am, i) => (
-                          <span key={i} style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.75rem', padding: '3px 8px', borderRadius: '4px', fontWeight: '600' }}>
+                          <span key={i} style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.7rem', padding: '2px 7px', borderRadius: '4px', fontWeight: '600' }}>
                             {am}
                           </span>
                         ))
                       ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Không có</span>
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Tiêu chuẩn</span>
                       )}
                     </div>
                   </div>
                   <div>
-                    <strong>Trạng thái hiện tại:</strong>{' '}
+                    <strong>Trạng thái:</strong>{' '}
                     <span style={{
                       fontWeight: '700',
-                      color: selectedBus.status === 'approved' ? 'var(--success)' : selectedBus.status === 'rejected' ? '#ef4444' : 'var(--warning)'
+                      color: selectedBus.status === 'approved' ? '#166534' : selectedBus.status === 'rejected' ? '#991b1b' : '#b45309'
                     }}>
                       {selectedBus.status === 'approved' && 'Đã phê duyệt'}
                       {selectedBus.status === 'rejected' && 'Đã từ chối'}
@@ -1059,36 +1045,43 @@ const ManagerApprovalsPage = () => {
               </div>
 
               {/* Right Column: Seat layout */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {renderReadOnlySeatMap(selectedBus)}
               </div>
-
             </div>
 
             {/* Modal Footer */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginTop: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '0.85rem' }}>
               <button 
                 onClick={() => setSelectedBus(null)} 
-                className="btn btn-secondary"
-                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                style={{
+                  padding: '7px 14px', fontSize: '0.78rem', fontWeight: '700',
+                  border: '1px solid #cbd5e1', borderRadius: '6px',
+                  backgroundColor: '#ffffff', color: '#475569', cursor: 'pointer'
+                }}
               >
                 Đóng
               </button>
               
-              {/* Only show decision buttons inside modal if GM is logged in and status is pending */}
               {user?.role !== 'fleet_manager' && selectedBus.status === 'pending' && (
                 <>
                   <button 
                     onClick={() => handleModalStatusUpdate(selectedBus._id, 'rejected')} 
-                    className="btn btn-danger"
-                    style={{ padding: '8px 16px', fontSize: '0.85rem', backgroundColor: '#ef4444' }}
+                    style={{
+                      padding: '7px 14px', fontSize: '0.78rem', fontWeight: '700',
+                      border: '1px solid #cbd5e1', borderRadius: '6px',
+                      backgroundColor: '#ffffff', color: '#dc2626', cursor: 'pointer'
+                    }}
                   >
                     Từ chối
                   </button>
                   <button 
                     onClick={() => handleModalStatusUpdate(selectedBus._id, 'approved')} 
-                    className="btn btn-primary"
-                    style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                    style={{
+                      padding: '7px 16px', fontSize: '0.78rem', fontWeight: '700',
+                      border: 'none', borderRadius: '6px',
+                      backgroundColor: '#16a34a', color: '#ffffff', cursor: 'pointer'
+                    }}
                   >
                     Duyệt xe này
                   </button>
