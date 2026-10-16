@@ -4,8 +4,10 @@ import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
 import {
   Ticket, Calendar, Clock, CreditCard, XCircle,
-  ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Timer, Info, Eye
+  ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Timer, Info, Eye,
+  Bus, ShieldCheck, Sparkles, MapPin, Receipt, ArrowRight, CheckCircle
 } from 'lucide-react';
+import './MyTicketsPage.css';
 
 const BOOKING_API = 'http://localhost:8000/api/v1/trips';
 const TRIP_API = 'http://localhost:8000/api/v1/trips';
@@ -106,7 +108,7 @@ const MyTicketsPage = () => {
       const id = ticket._id;
       await axios.patch(`${BOOKING_API}/book/${id}/cancel`);
       setTickets(prev => prev.map(t => t._id === id ? { ...t, status: 'cancelled' } : t));
-      alert('Vé đã được hủy. Tiền sẽ được hoàn trong vòng 3-5 ngày làm việc.');
+      alert('Vé đã được hủy thành công. Tiền sẽ được hoàn trả theo quy định.');
     } catch (err) {
       alert('Có lỗi xảy ra khi hủy vé. Vui lòng thử lại.');
     }
@@ -144,7 +146,7 @@ const MyTicketsPage = () => {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const formatDate = d => d ? new Date(d).toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
-  const formatTime = d => d ? new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '';
+  const formatTime = d => d ? new Date(d).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
   const formatDateTime = d => d ? `${formatTime(d)} ngày ${new Date(d).toLocaleDateString('vi-VN')}` : '';
   const formatCurrency = v => `${(v || 0).toLocaleString('vi-VN')}đ`;
 
@@ -158,15 +160,6 @@ const MyTicketsPage = () => {
     if (d > 0) return `${d} ngày ${h} giờ ${m} phút`;
     if (h > 0) return `${h} giờ ${m} phút ${s} giây`;
     return `${m} phút ${s} giây`;
-  };
-
-  const getStatusStyle = (t) => {
-    if (t.status === 'cancelled') return { border: '#ef4444', bg: 'rgba(239,68,68,0.1)', color: '#ef4444', label: 'Đã hủy' };
-    if (t.status === 'paid') return { border: '#10b981', bg: 'rgba(16,185,129,0.1)', color: '#10b981', label: 'Đã thanh toán' };
-    if (t.paymentType === 'later' && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now)
-      return { border: '#ef4444', bg: 'rgba(239,68,68,0.1)', color: '#ef4444', label: 'Hết hạn TT' };
-    if (t.paymentType === 'later') return { border: '#f59e0b', bg: 'rgba(245,158,11,0.1)', color: '#d97706', label: 'Chờ thanh toán' };
-    return { border: 'var(--primary)', bg: 'rgba(59,130,246,0.1)', color: 'var(--primary)', label: 'Đang chờ đi' };
   };
 
   // Filter logic
@@ -207,12 +200,30 @@ const MyTicketsPage = () => {
     return list;
   };
 
+  // Stats calculation
+  const stats = {
+    total: tickets.length,
+    upcoming: tickets.filter(t => {
+      const trip = tripDetails[t.tripId];
+      const isExpired = t.status === 'pending' && t.paymentType === 'later' && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now;
+      return t.status !== 'cancelled' && !isExpired && trip && new Date(trip.departureTime) >= now;
+    }).length,
+    pending: tickets.filter(t => t.status === 'pending' && !(t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now)).length,
+    completed: tickets.filter(t => {
+      const trip = tripDetails[t.tripId];
+      return t.status !== 'cancelled' && trip && new Date(trip.departureTime) < now;
+    }).length,
+    cancelled: tickets.filter(t => {
+      const isExpired = t.status === 'pending' && t.paymentType === 'later' && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now;
+      return t.status === 'cancelled' || isExpired;
+    }).length
+  };
+
   // ── Render one ticket card ──────────────────────────────────────────────
   const renderTicket = (t) => {
     const trip = tripDetails[t.tripId];
     const id = t._id;
     const isExpanded = expandedId === id;
-    const ss = getStatusStyle(t);
     const isPendingLater = t.status === 'pending' && t.paymentType === 'later';
     const isExpired = isPendingLater && t.paymentExpiresAt && new Date(t.paymentExpiresAt) < now;
     const countdown = (isPendingLater && !isExpired && t.paymentExpiresAt) ? getCountdown(t.paymentExpiresAt) : null;
@@ -220,254 +231,272 @@ const MyTicketsPage = () => {
     const hoursUntilDep = trip ? (new Date(trip.departureTime) - now) / 3600000 : 999;
     const canCancel = t.status !== 'cancelled' && !isExpired && hoursUntilDep >= CANCEL_HOURS_LIMIT;
 
+    // Status Styling
+    let statusClass = 'paid';
+    let statusLabel = 'Đã thanh toán';
+    if (t.status === 'cancelled' || isExpired) {
+      statusClass = 'cancelled';
+      statusLabel = isExpired ? 'Hết hạn TT' : 'Đã hủy';
+    } else if (isPendingLater || t.status === 'pending') {
+      statusClass = 'pending';
+      statusLabel = 'Chờ thanh toán';
+    }
+
+    // Departure & Arrival info
+    const depTime = trip?.departureTime ? new Date(trip.departureTime) : null;
+    const arrTime = trip?.arrivalTime 
+      ? new Date(trip.arrivalTime) 
+      : (depTime ? new Date(depTime.getTime() + 5.5 * 3600000) : null);
+    
+    const depStation = trip?.pickupPoints?.[0]?.location || trip?.routeId?.startPoint || 'Bến Xe Xuất Phát';
+    const arrStation = trip?.dropoffPoints?.[trip.dropoffPoints?.length - 1]?.location || trip?.routeId?.endPoint || 'Bến Xe Đến';
+    const busType = trip?.busId?.type || 'Xe Limousine VIP';
+
     return (
-      <div 
-        key={id} 
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderLeft: `5px solid ${ss.border}`,
-          borderRadius: '12px',
-          marginBottom: '1rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
-          overflow: 'hidden'
-        }}
-      >
-        {/* Main Card Header */}
-        <div style={{ padding: '1.5rem 2rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            
-            {/* Left side: status badge, order ID, route, date and time */}
-            <div style={{ flex: '1', minWidth: '300px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <span style={{
-                  fontSize: '0.75rem',
-                  fontWeight: '700',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  backgroundColor: ss.bg,
-                  color: ss.color
-                }}>
-                  {ss.label}
-                </span>
-                <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '600' }}>
-                  #{t.orderCode || id?.slice(-6)}
-                </span>
-              </div>
+      <div key={id} className="ticket-boarding-card animate-fade-in">
+        {/* Card Header Strip */}
+        <div className="ticket-card-header-strip">
+          <div className="ticket-header-left">
+            <span className={`ticket-status-pill ${statusClass}`}>
+              <span className="ticket-status-dot" />
+              <span>{statusLabel}</span>
+            </span>
+            <span className="ticket-order-code-badge">
+              #{t.orderCode || id?.slice(-6).toUpperCase()}
+            </span>
+          </div>
 
-              <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#1e293b', margin: '0 0 10px 0' }}>
-                {trip?.routeId?.startPoint || '...'} → {trip?.routeId?.endPoint || '...'}
-              </h3>
+          <div className="ticket-bus-type-tag">
+            <Bus size={13} />
+            <span>{busType}</span>
+          </div>
+        </div>
 
-              {trip?.departureTime && (
-                <div style={{ display: 'flex', gap: '20px', fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Calendar size={15} style={{ color: '#94a3b8' }} />
-                    {new Date(trip.departureTime).toLocaleDateString('vi-VN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Clock size={15} style={{ color: '#94a3b8' }} />
-                    {formatTime(trip.departureTime)}
-                  </span>
-                </div>
-              )}
-
-              {/* Countdown */}
-              {countdown && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '8px 12px', maxWidth: '380px' }}>
-                  <Timer size={16} style={{ color: '#d97706', flexShrink: 0 }} />
-                  <div>
-                    <span style={{ fontSize: '0.8rem', color: '#92400e', fontWeight: '600' }}>Hạn TT: {formatDateTime(t.paymentExpiresAt)}</span>
-                    <span style={{ display: 'block', fontSize: '0.75rem', color: '#b45309', fontFamily: 'monospace', fontWeight: '700' }}>Còn lại: {countdown}</span>
-                  </div>
-                </div>
-              )}
-
-              {isExpired && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', padding: '8px 12px', maxWidth: '380px' }}>
-                  <AlertTriangle size={16} style={{ color: '#ef4444' }} />
-                  <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: '600' }}>Đã hết hạn thanh toán – vé bị hủy tự động</span>
-                </div>
-              )}
-
-              {/* Cancel time warning */}
-              {t.status !== 'cancelled' && !isExpired && trip && hoursUntilDep < CANCEL_HOURS_LIMIT && hoursUntilDep > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '8px 12px', maxWidth: '420px' }}>
-                  <Info size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.8rem', color: '#ef4444', fontWeight: '600' }}>
-                    Đã quá thời hạn hủy vé (cần hủy trước {CANCEL_HOURS_LIMIT}h khởi hành)
-                  </span>
-                </div>
-              )}
+        {/* Card Main Body Grid: Journey on Left, Stub on Right */}
+        <div className="ticket-card-main-grid">
+          {/* Left: Journey Flow */}
+          <div className="ticket-journey-section">
+            <div className="ticket-route-title">
+              <span className="ticket-route-name">
+                {trip?.routeId?.startPoint || 'Đà Lạt'} → {trip?.routeId?.endPoint || 'Hồ Chí Minh'}
+              </span>
             </div>
 
-            {/* Middle side: Seats & Price */}
-            <div style={{ minWidth: '180px', textAlign: 'left' }}>
-              <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '500' }}>
-                Ghế: <strong style={{ color: '#1e293b' }}>{t.seats?.join(', ')}</strong>
+            <div className="ticket-timeline-flow">
+              {/* Departure */}
+              <div className="ticket-station-block">
+                <div className="ticket-station-time">
+                  {depTime ? formatTime(depTime) : '--:--'}
+                </div>
+                <span className="ticket-station-name" title={depStation}>{depStation}</span>
+                <span className="ticket-station-sub">
+                  <Calendar size={12} />
+                  <span>{depTime ? depTime.toLocaleDateString('vi-VN', { weekday: 'short', day: 'numeric', month: 'numeric' }) : ''}</span>
+                </span>
               </div>
-              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--primary)', marginTop: '6px' }}>
+
+              {/* Graphic in Middle */}
+              <div className="ticket-center-graphic">
+                <span className="ticket-direct-pill">Trực tiếp • Cao tốc</span>
+                <div className="ticket-track-line-wrapper">
+                  <div className="ticket-track-line" />
+                  <div className="ticket-bus-icon-circle">
+                    <Bus size={14} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Arrival */}
+              <div className="ticket-station-block arrival">
+                <div className="ticket-station-time">
+                  {arrTime ? formatTime(arrTime) : '--:--'}
+                </div>
+                <span className="ticket-station-name" title={arrStation}>{arrStation}</span>
+                <span className="ticket-station-sub arrival">
+                  <Calendar size={12} />
+                  <span>{arrTime ? arrTime.toLocaleDateString('vi-VN', { weekday: 'short', day: 'numeric', month: 'numeric' }) : ''}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Countdown / Alert Pill */}
+            {countdown && (
+              <div className="ticket-notice-pill countdown">
+                <Timer size={14} />
+                <span>Còn lại <strong>{countdown}</strong> để hoàn tất thanh toán vé</span>
+              </div>
+            )}
+
+            {isExpired && (
+              <div className="ticket-notice-pill warning">
+                <AlertTriangle size={14} />
+                <span>Đã quá hạn thanh toán – vé đã tự động hủy</span>
+              </div>
+            )}
+
+            {t.status !== 'cancelled' && !isExpired && trip && hoursUntilDep < CANCEL_HOURS_LIMIT && hoursUntilDep > 0 && (
+              <div className="ticket-notice-pill warning">
+                <Info size={14} />
+                <span>Đã quá thời hạn hủy vé (cần hủy trước {CANCEL_HOURS_LIMIT}h khởi hành)</span>
+              </div>
+            )}
+          </div>
+
+          {/* Right: Boarding Pass Stub */}
+          <div className="ticket-stub-section">
+            <span className="ticket-notch-top" />
+            <span className="ticket-notch-bottom" />
+
+            <div className="ticket-stub-info-box">
+              <div className="ticket-stub-seats-badge">
+                <span>Ghế:</span>
+                <strong>{t.seats?.join(', ') || 'N/A'}</strong>
+              </div>
+              <div className="ticket-stub-price-label">Tổng thanh toán</div>
+              <div className="ticket-stub-price-amount">
                 {formatCurrency(totalPrice)}
               </div>
             </div>
 
-            {/* Right side: Action Button & Dropdown arrow */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div className="ticket-stub-actions">
+              {isPendingLater && !isExpired && (
+                <button
+                  type="button"
+                  className="ticket-btn-pay-now"
+                  onClick={() => {
+                    if (!isExpanded) setExpandedId(id);
+                    setPayingTicketId(id);
+                  }}
+                >
+                  <CreditCard size={14} />
+                  <span>Thanh toán ngay</span>
+                </button>
+              )}
+
               <button
+                type="button"
+                className="ticket-btn-toggle-details"
                 onClick={() => setExpandedId(isExpanded ? null : id)}
-                style={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '8px',
-                  padding: '8px 16px',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  color: '#334155',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-                  transition: 'all 0.2s',
-                  outline: 'none'
-                }}
               >
-                <Eye size={16} style={{ color: '#64748b' }} />
-                Xem chi tiết
-              </button>
-              <button
-                onClick={() => setExpandedId(isExpanded ? null : id)}
-                style={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '8px',
-                  padding: '8px 10px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#64748b',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
-                  outline: 'none'
-                }}
-              >
-                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                <Eye size={14} />
+                <span>{isExpanded ? 'Đóng chi tiết' : 'Xem chi tiết'}</span>
+                {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
             </div>
-
           </div>
         </div>
 
-        {/* Expanded Details */}
+        {/* Expanded Details Drawer */}
         {isExpanded && (
-          <div style={{ borderTop: '1px dashed var(--border-color)', backgroundColor: '#f8fafc', padding: '2rem' }} className="ticket-detail-layout animate-fade-in">
-            <div>
-              <h4 style={{ fontWeight: '700', marginBottom: '1rem' }}>Thông tin chi tiết chuyến đi</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem' }}>
-                {trip && <div><span style={{ color: 'var(--text-secondary)' }}>Nhà xe & Dịch vụ:</span><strong style={{ marginLeft: '6px' }}>{trip.busId?.name} ({trip.busId?.type})</strong></div>}
-                <div><span style={{ color: 'var(--text-secondary)' }}>Điểm đón khách:</span><strong style={{ marginLeft: '6px' }}>{t.pickup}</strong></div>
-                <div><span style={{ color: 'var(--text-secondary)' }}>Điểm trả khách:</span><strong style={{ marginLeft: '6px' }}>{t.dropoff}</strong></div>
-                <div><span style={{ color: 'var(--text-secondary)' }}>Thời gian đặt vé:</span><span style={{ marginLeft: '6px', color: 'var(--text-muted)' }}>{formatDate(t.createdAt)} lúc {formatTime(t.createdAt)}</span></div>
-
-                {/* Payment status block */}
-                <div style={{ padding: '10px 14px', borderRadius: '8px', backgroundColor: t.status === 'paid' ? 'rgba(16,185,129,0.07)' : isExpired ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)', border: `1px solid ${t.status === 'paid' ? 'rgba(16,185,129,0.25)' : isExpired ? 'rgba(239,68,68,0.25)' : 'rgba(245,158,11,0.25)'}` }}>
-                  <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontSize: '0.85rem' }}>Trạng thái thanh toán:</span>
-                  {t.status === 'paid' ? (
-                    <>
-                      <strong style={{ color: '#10b981' }}>Đã thanh toán</strong>
-                      {t.updatedAt && <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>Thời gian thanh toán: {formatDate(t.updatedAt)} lúc {formatTime(t.updatedAt)}</span>}
-                    </>
-                  ) : isExpired ? (
-                    <strong style={{ color: '#ef4444' }}>Hết hạn – chưa thanh toán</strong>
-                  ) : (
-                    <>
-                      <strong style={{ color: '#d97706' }}>Chưa thanh toán</strong>
-                      {t.paymentExpiresAt && <span style={{ display: 'block', fontSize: '0.8rem', color: '#b45309', marginTop: '2px' }}>Hạn chót: {formatDate(t.paymentExpiresAt)} lúc {formatTime(t.paymentExpiresAt)}</span>}
-                    </>
-                  )}
+          <div className="ticket-expanded-drawer animate-fade-in">
+            {/* Left: Journey details & info */}
+            <div className="ticket-details-col-left">
+              <div>
+                <h4 className="ticket-drawer-section-title">
+                  <MapPin size={18} color="#2563eb" />
+                  <span>Lịch trình đón trả khách</span>
+                </h4>
+                <div className="ticket-points-timeline">
+                  <div className="ticket-point-node">
+                    <span className="ticket-point-dot pickup" />
+                    <div className="ticket-point-type">Điểm đón khách</div>
+                    <div className="ticket-point-address">{t.pickup}</div>
+                  </div>
+                  <div className="ticket-point-node">
+                    <span className="ticket-point-dot dropoff" />
+                    <div className="ticket-point-type">Điểm trả khách</div>
+                    <div className="ticket-point-address">{t.dropoff}</div>
+                  </div>
                 </div>
-
-                {/* Cancellation policy note */}
-                {t.status !== 'cancelled' && !isExpired && (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.8rem', color: 'var(--text-muted)', backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: '6px', padding: '8px 12px' }}>
-                    <Info size={13} style={{ flexShrink: 0, marginTop: '1px' }} />
-                    <span>Chính sách hủy vé: Hủy trước <strong>{CANCEL_HOURS_LIMIT} giờ</strong> khởi hành được hoàn 100% tiền vé. Hủy sau thời hạn không được hoàn tiền.</span>
-                  </div>
-                )}
               </div>
 
-              {/* Action buttons */}
-              <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {isPendingLater && !isExpired && (
+              <div>
+                <h4 className="ticket-drawer-section-title">
+                  <Receipt size={18} color="#2563eb" />
+                  <span>Thông tin đặt chỗ & Vé điện tử</span>
+                </h4>
+                <div className="ticket-meta-grid">
                   <div>
-                    <button onClick={() => handlePayNow(t)} className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', fontWeight: '700', background: 'linear-gradient(135deg, #f59e0b, #ef6c00)', border: 'none', boxShadow: '0 4px 14px rgba(245,158,11,0.4)' }}>
-                      <CreditCard size={18} /> {payingTicketId === id ? 'Ẩn QR thanh toán' : 'Thanh toán ngay'}
-                    </button>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>* Vé sẽ bị hủy tự động nếu hết hạn chưa thanh toán.</p>
-
-                    {/* Inline QR Payment Panel */}
-                    {payingTicketId === id && (() => {
-                      const trip = tripDetails[t.tripId];
-                      const amount = (trip?.price || 0) * (t.seats?.length || 1);
-                      return (
-                        <div style={{ marginTop: '1.5rem', padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px', textAlign: 'center', maxWidth: '380px' }}>
-                          <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px', fontSize: '0.9rem' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
-                          <img
-                            src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${amount}&addInfo=SmartBus%20${t.orderCode}&accountName=HO%20VAN%20LOC`}
-                            alt="VietQR" style={{ width: '100%', maxWidth: '200px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
-                          />
-                          <div style={{ textAlign: 'left', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '5px', maxWidth: '280px', margin: '0 auto 1rem auto' }}>
-                            <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
-                            <div>Số tài khoản: <strong>0919210046</strong></div>
-                            <div>Chủ tài khoản: <strong>HO VAN LOC</strong></div>
-                            <div>Số tiền: <strong style={{ color: 'var(--accent)' }}>{formatCurrency(amount)}</strong></div>
-                            <div>Nội dung CK: <strong style={{ color: 'var(--primary)' }}>SmartBus {t.orderCode}</strong></div>
-                          </div>
-                          <button
-                            className="btn btn-secondary"
-                            style={{ width: '100%', padding: '10px', fontWeight: '700' }}
-                            onClick={() => handleSimulatePayment(t)}
-                          >
-                            Giả lập chuyển khoản thành công (Webhook)
-                          </button>
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
-                            Hệ thống tự động kích hoạt PayOS Webhook cập nhật trạng thái sau khi chuyển khoản thành công.
-                          </span>
-                        </div>
-                      );
-                    })()}
+                    <div className="ticket-meta-item-label">Mã vé điện tử</div>
+                    <div className="ticket-meta-item-value">#{t.orderCode || id?.slice(-6).toUpperCase()}</div>
                   </div>
-                )}
-
-                {canCancel && (
                   <div>
-                    <button onClick={() => handleCancelTicket(t)} className="btn btn-secondary" style={{ borderColor: '#ef4444', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px' }}>
-                      <XCircle size={16} />
-                      {t.status === 'paid' ? 'Yêu cầu hủy & hoàn tiền' : 'Yêu cầu hủy vé'}
-                    </button>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-                      * Còn {Math.floor(hoursUntilDep)} giờ đến giờ khởi hành. {hoursUntilDep >= CANCEL_HOURS_LIMIT ? 'Đủ điều kiện hoàn tiền 100%.' : ''}
-                    </p>
+                    <div className="ticket-meta-item-label">Loại xe</div>
+                    <div className="ticket-meta-item-value">{busType}</div>
                   </div>
-                )}
+                  <div>
+                    <div className="ticket-meta-item-label">Thời gian đặt vé</div>
+                    <div className="ticket-meta-item-value">{formatDate(t.createdAt)} {formatTime(t.createdAt)}</div>
+                  </div>
+                  <div>
+                    <div className="ticket-meta-item-label">Hành khách / SĐT</div>
+                    <div className="ticket-meta-item-value">{t.customerName || user?.name || 'Hành khách'} ({t.phone || user?.phone || 'Chưa cập nhật'})</div>
+                  </div>
+                </div>
               </div>
+
+              {canCancel && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => handleCancelTicket(t)}
+                    className="ticket-drawer-cancel-btn"
+                  >
+                    <XCircle size={15} />
+                    <span>{t.status === 'paid' ? 'Yêu cầu hủy vé & hoàn tiền' : 'Hủy đặt chỗ này'}</span>
+                  </button>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>
+                    * Còn hơn {Math.floor(hoursUntilDep)}h đến giờ xuất bến. Hủy trước {CANCEL_HOURS_LIMIT}h được hoàn 100% tiền vé.
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* QR Code */}
-            <div className="ticket-qr-section">
+            {/* Right: E-Ticket QR Code or VietQR PayOS panel */}
+            <div className="ticket-details-col-right">
               {t.status === 'cancelled' || isExpired ? (
-                <div style={{ textAlign: 'center', color: '#ef4444' }}>
-                  <XCircle size={64} style={{ opacity: 0.8 }} />
-                  <p style={{ fontSize: '0.8rem', fontWeight: '700', marginTop: '10px' }}>VÉ ĐÃ BỊ HỦY</p>
+                <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#ef4444' }}>
+                  <XCircle size={56} style={{ margin: '0 auto 10px auto', opacity: 0.8 }} />
+                  <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>VÉ ĐÃ BỊ HỦY</div>
+                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px' }}>Vé này không còn giá trị sử dụng</p>
                 </div>
               ) : (
                 <>
-                  <div style={{ padding: '8px', backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: 'var(--card-shadow)', opacity: isPendingLater ? 0.5 : 1, filter: isPendingLater ? 'grayscale(60%)' : 'none' }}>
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`AnBinhLines-${t.orderCode || id}`)}`} alt="QR Code" style={{ display: 'block', width: '130px', height: '130px' }} />
+                  <div className="ticket-qr-container">
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(`AnBinhLines-${t.orderCode || id}`)}`}
+                      alt="E-Ticket QR Code"
+                      style={{ display: 'block', width: '140px', height: '140px', borderRadius: '4px' }}
+                    />
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: '700', marginTop: '10px', textAlign: 'center' }}>
-                    {isPendingLater ? 'QR KHẢ DỤNG SAU THANH TOÁN' : 'MÃ BẢN VÉ (QR)'}
-                  </span>
+                  <div className="ticket-qr-caption">MÃ VÉ ĐIỆN TỬ (QR)</div>
+                  <div className="ticket-qr-subtext">Xuất trình mã này cho nhân viên soát vé khi lên xe</div>
+
+                  {/* If Pending Later, show PayOS Payment Panel */}
+                  {isPendingLater && (
+                    <div className="ticket-payos-panel">
+                      <div className="ticket-payos-title">QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</div>
+                      <img
+                        src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${totalPrice}&addInfo=SmartBus%20${t.orderCode}&accountName=HO%20VAN%20LOC`}
+                        alt="VietQR"
+                        style={{ width: '100%', maxWidth: '180px', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.08)', margin: '0 auto 10px auto', display: 'block' }}
+                      />
+                      <div style={{ fontSize: '0.8rem', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: '10px' }}>
+                        <div>Ngân hàng: <strong>MBBank</strong></div>
+                        <div>STK: <strong>0919210046</strong></div>
+                        <div>Chủ TK: <strong>HO VAN LOC</strong></div>
+                        <div>Số tiền: <strong style={{ color: '#ea580c' }}>{formatCurrency(totalPrice)}</strong></div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ width: '100%', padding: '8px', fontSize: '0.82rem', fontWeight: '700' }}
+                        onClick={() => handleSimulatePayment(t)}
+                      >
+                        Giả lập chuyển khoản thành công
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -480,10 +509,36 @@ const MyTicketsPage = () => {
   // Not logged in
   if (!isAuthenticated) {
     return (
-      <div className="section-container animate-fade-in" style={{ maxWidth: '600px', textAlign: 'center', paddingTop: '4rem' }}>
-        <Ticket size={56} style={{ color: 'var(--text-muted)', marginBottom: '1rem' }} />
-        <h3>Đăng nhập để xem vé của bạn</h3>
-        <button className="btn btn-primary" style={{ padding: '12px 32px', marginTop: '1.5rem' }} onClick={() => navigate('/login')}>Đăng nhập ngay</button>
+      <div className="tickets-page-container">
+        <div className="tickets-hero-banner">
+          <div className="tickets-hero-badge">
+            <Sparkles size={14} />
+            <span>AN BÌNH LINES • HỆ THỐNG VÉ ĐIỆN TỬ</span>
+          </div>
+          <h1 className="tickets-hero-title">Quản Lý Vé & Lịch Sử Hành Trình</h1>
+          <p className="tickets-hero-subtitle">
+            Vui lòng đăng nhập để tra cứu vé, kiểm tra lịch trình và theo dõi thanh toán.
+          </p>
+        </div>
+
+        <div className="tickets-main-wrapper" style={{ marginTop: '-2rem' }}>
+          <div className="tickets-empty-card">
+            <div className="tickets-empty-icon-box">
+              <Ticket size={40} />
+            </div>
+            <h3 className="tickets-empty-title">Đăng nhập tài khoản</h3>
+            <p className="tickets-empty-desc">
+              Bạn cần đăng nhập tài khoản để xem danh sách vé đã đặt và thông tin lịch trình.
+            </p>
+            <button
+              className="btn btn-primary"
+              style={{ padding: '12px 32px', borderRadius: '12px', fontWeight: '700' }}
+              onClick={() => navigate('/login')}
+            >
+              Đăng nhập ngay
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -494,236 +549,215 @@ const MyTicketsPage = () => {
   const currentTickets = filtered.slice(indexOfFirstTicket, indexOfLastTicket);
   const totalPages = Math.ceil(filtered.length / 5) || 1;
 
-  const tabLabels = {
-    all: 'Vé hoạt động & lịch sử',
-    upcoming: 'Vé sắp tới',
-    completed: 'Vé đã đi',
-    cancelled: 'Vé đã hủy'
-  };
-
   return (
-    <div className="section-container animate-fade-in" style={{ maxWidth: '1200px', width: '95%', paddingBottom: '5rem' }}>
-      
-      {/* Visual Header - Just clean text without banner background */}
-      <div style={{ marginBottom: '2.5rem', marginTop: '1.5rem' }}>
-        <h2 style={{ fontSize: '1.8rem', fontWeight: '800', margin: 0, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Ticket size={28} /> Quản Lý Vé & Lịch Sử Hành Trình
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem', fontSize: '0.95rem', fontWeight: '500' }}>
-          Xem chi tiết, thanh toán và quản lý vé xe của bạn.
+    <div className="tickets-page-container">
+      {/* 1. Hero Header Banner */}
+      <div className="tickets-hero-banner">
+        <div className="tickets-hero-badge">
+          <Sparkles size={14} />
+          <span>AN BÌNH LINES • HỆ THỐNG VÉ ĐIỆN TỬ</span>
+        </div>
+        <h1 className="tickets-hero-title">Quản Lý Vé & Lịch Sử Hành Trình</h1>
+        <p className="tickets-hero-subtitle">
+          Theo dõi hành trình, tra cứu mã vé điện tử QR và quản lý thanh toán an toàn, tiện lợi.
         </p>
       </div>
 
-      {/* Tabs & Filters block */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottom: '1px solid #e2e8f0',
-        paddingBottom: '0.75rem',
-        marginBottom: '2rem',
-        flexWrap: 'wrap',
-        gap: '16px'
-      }}>
-        {/* Left Side Tabs */}
-        <div style={{ display: 'flex', gap: '24px' }}>
-          {[
-            { id: 'all', label: 'Tất cả vé' },
-            { id: 'upcoming', label: 'Vé sắp tới' },
-            { id: 'completed', label: 'Đã hoàn thành' },
-            { id: 'cancelled', label: 'Đã hủy' }
-          ].map(tab => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => { setActiveTab(tab.id); setCurrentPage(1); }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '8px 0',
-                  fontSize: '0.95rem',
-                  fontWeight: isActive ? '700' : '600',
-                  color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all 0.2s',
-                  outline: 'none'
-                }}
-              >
-                {tab.label}
-                {isActive && (
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '-13px',
-                    left: 0,
-                    right: 0,
-                    height: '3px',
-                    backgroundColor: 'var(--primary)',
-                    borderRadius: '2px'
-                  }} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Right Side Actions */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* Dropdown status */}
-          <div style={{ position: 'relative' }}>
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
-              style={{
-                appearance: 'none',
-                padding: '8px 36px 8px 16px',
-                fontSize: '0.88rem',
-                fontWeight: '600',
-                color: 'var(--text-main)',
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                outline: 'none',
-                minWidth: '160px'
-              }}
-            >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="paid">Đã thanh toán</option>
-              <option value="pending">Chờ thanh toán</option>
-              <option value="cancelled">Đã hủy</option>
-            </select>
-            <ChevronDown size={16} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none' }} />
-          </div>
-
-          {/* Book new ticket button */}
-          <button
-            onClick={() => navigate('/')}
-            className="btn btn-primary"
-            style={{
-              padding: '8px 16px',
-              fontSize: '0.88rem',
-              fontWeight: '700',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 12px rgba(37,99,235,0.15)'
-            }}
-          >
-            + Đặt vé mới
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-muted)' }}>
-          Đang tải danh sách vé...
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="glass-card" style={{ padding: '4rem 2rem', textAlign: 'center' }}>
-          <Ticket size={48} style={{ color: 'var(--text-muted)', marginBottom: '1.25rem' }} />
-          <h3 style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1e293b' }}>
-            Không tìm thấy vé nào phù hợp
-          </h3>
-          <button 
-            className="btn btn-primary" 
-            style={{ marginTop: '1.5rem', padding: '10px 24px', borderRadius: '8px' }} 
-            onClick={() => navigate('/')}
-          >
-            Tìm chuyến xe ngay
-          </button>
-        </div>
-      ) : (
-        <div>
-          {/* Section Count Title */}
-          <h3 style={{ fontWeight: '700', fontSize: '1.05rem', color: '#1e293b', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <CheckCircle2 size={18} style={{ color: '#10b981' }} />
-            {tabLabels[activeTab]} ({filtered.length})
-          </h3>
-
-          {/* Ticket items list */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-            {currentTickets.map(renderTicket)}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '2.5rem' }}>
-              <button
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => prev - 1)}
-                style={{
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#ffffff',
-                  borderRadius: '6px',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  color: currentPage === 1 ? '#cbd5e1' : '#334155',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  outline: 'none'
-                }}
-              >
-                &lt;
-              </button>
-              {Array.from({ length: totalPages }).map((_, idx) => {
-                const pageNum = idx + 1;
-                const isCurrent = pageNum === currentPage;
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    style={{
-                      border: isCurrent ? '1px solid var(--primary)' : '1px solid #cbd5e1',
-                      backgroundColor: isCurrent ? 'var(--primary)' : '#ffffff',
-                      color: isCurrent ? '#ffffff' : '#334155',
-                      borderRadius: '6px',
-                      width: '32px',
-                      height: '32px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                      fontWeight: '600',
-                      outline: 'none'
-                    }}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-              <button
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(prev => prev + 1)}
-                style={{
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#ffffff',
-                  borderRadius: '6px',
-                  width: '32px',
-                  height: '32px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  color: currentPage === totalPages ? '#cbd5e1' : '#334155',
-                  fontSize: '0.85rem',
-                  fontWeight: '600',
-                  outline: 'none'
-                }}
-              >
-                &gt;
-              </button>
+      <div className="tickets-main-wrapper">
+        {/* 2. Stats Overview Cards */}
+        <div className="tickets-stats-grid">
+          <div className="tickets-stat-card">
+            <div className="tickets-stat-icon-wrapper blue">
+              <Ticket size={24} />
             </div>
-          )}
+            <div>
+              <div className="tickets-stat-number">{stats.total}</div>
+              <div className="tickets-stat-label">Tổng vé đã đặt</div>
+            </div>
+          </div>
+
+          <div className="tickets-stat-card">
+            <div className="tickets-stat-icon-wrapper emerald">
+              <Calendar size={24} />
+            </div>
+            <div>
+              <div className="tickets-stat-number">{stats.upcoming}</div>
+              <div className="tickets-stat-label">Vé sắp khởi hành</div>
+            </div>
+          </div>
+
+          <div className="tickets-stat-card">
+            <div className="tickets-stat-icon-wrapper amber">
+              <Timer size={24} />
+            </div>
+            <div>
+              <div className="tickets-stat-number">{stats.pending}</div>
+              <div className="tickets-stat-label">Chờ thanh toán</div>
+            </div>
+          </div>
+
+          <div className="tickets-stat-card">
+            <div className="tickets-stat-icon-wrapper purple">
+              <CheckCircle size={24} />
+            </div>
+            <div>
+              <div className="tickets-stat-number">{stats.completed}</div>
+              <div className="tickets-stat-label">Hành trình đã đi</div>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* 3. Toolbar & Filters */}
+        <div className="tickets-toolbar-card">
+          <div className="tickets-tabs-nav">
+            {[
+              { id: 'all', label: 'Tất cả vé', count: stats.total },
+              { id: 'upcoming', label: 'Vé sắp tới', count: stats.upcoming },
+              { id: 'completed', label: 'Đã hoàn thành', count: stats.completed },
+              { id: 'cancelled', label: 'Đã hủy', count: stats.cancelled }
+            ].map(tab => {
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`tickets-tab-btn ${isActive ? 'active' : ''}`}
+                  onClick={() => { setActiveTab(tab.id); setCurrentPage(1); }}
+                >
+                  <span>{tab.label}</span>
+                  <span className="tickets-tab-badge">{tab.count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="tickets-toolbar-actions">
+            <div className="tickets-status-select-wrap">
+              <select
+                className="tickets-status-select"
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+              >
+                <option value="all">Tất cả trạng thái</option>
+                <option value="paid">Đã thanh toán</option>
+                <option value="pending">Chờ thanh toán</option>
+                <option value="cancelled">Đã hủy</option>
+              </select>
+              <ChevronDown size={14} className="tickets-status-icon" />
+            </div>
+
+            <button
+              type="button"
+              className="tickets-btn-new"
+              onClick={() => navigate('/')}
+            >
+              <span>+ Đặt vé mới</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Ticket Content List */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-muted)' }}>
+            <div style={{ fontSize: '1.2rem', fontWeight: '700', color: '#1e3a8a' }}>Đang tải danh sách vé...</div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="tickets-empty-card">
+            <div className="tickets-empty-icon-box">
+              <Ticket size={40} />
+            </div>
+            <h3 className="tickets-empty-title">Không tìm thấy vé xe nào</h3>
+            <p className="tickets-empty-desc">
+              Bạn chưa có vé xe nào trong mục này hoặc chưa có lịch trình đặt chỗ phù hợp.
+            </p>
+            <button
+              className="btn btn-primary"
+              style={{ padding: '12px 28px', borderRadius: '12px', fontWeight: '700' }}
+              onClick={() => navigate('/')}
+            >
+              Tìm chuyến xe ngay
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {currentTickets.map(renderTicket)}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '2.5rem' }}>
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => prev - 1)}
+                  style={{
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    borderRadius: '8px',
+                    width: '36px',
+                    height: '36px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                    color: currentPage === 1 ? '#cbd5e1' : '#334155',
+                    fontSize: '0.9rem',
+                    fontWeight: '700'
+                  }}
+                >
+                  &lt;
+                </button>
+                {Array.from({ length: totalPages }).map((_, idx) => {
+                  const pageNum = idx + 1;
+                  const isCurrent = pageNum === currentPage;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      style={{
+                        border: isCurrent ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                        backgroundColor: isCurrent ? '#2563eb' : '#ffffff',
+                        color: isCurrent ? '#ffffff' : '#334155',
+                        borderRadius: '8px',
+                        width: '36px',
+                        height: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                        fontWeight: '700'
+                      }}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                  style={{
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    borderRadius: '8px',
+                    width: '36px',
+                    height: '36px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                    color: currentPage === totalPages ? '#cbd5e1' : '#334155',
+                    fontSize: '0.9rem',
+                    fontWeight: '700'
+                  }}
+                >
+                  &gt;
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

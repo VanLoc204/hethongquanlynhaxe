@@ -1,0 +1,647 @@
+/* ==========================================================================
+   AN BÌNH LINES - ULTRA-COMPACT LUXURY AUTHENTICATION PAGE (NO SCROLL)
+   Fit 100% trong đúng 1 khung hình màn hình (100vh) - Tuyệt đối không cần cuộn
+   ========================================================================== */
+
+.auth-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background-color: #0f172a;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* 1. Compact Header (Cao khoảng 52px) */
+.auth-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 2.5rem;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  z-index: 20;
+  flex-shrink: 0;
+  height: 54px;
+}
+
+.auth-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.auth-brand-icon-box {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+.auth-brand-name {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #1e3a8a;
+  letter-spacing: -0.4px;
+}
+
+.auth-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.auth-header-link {
+  color: #475569;
+  text-decoration: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.auth-header-link:hover {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.auth-header-btn-login {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #2563eb;
+  background: transparent;
+  border: none;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auth-header-btn-login.active {
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+}
+
+.auth-header-btn-register {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+}
+
+.auth-header-btn-register:hover {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+/* 2. Hero Background (Tự động co giãn theo viewport, không bị tràn) */
+.auth-hero-container {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 15px 60px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  overflow: hidden;
+  min-height: 0; /* Cho phép flex item co lại */
+}
+
+.auth-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.15) 0%, rgba(15, 23, 42, 0.45) 45%, rgba(15, 23, 42, 0.72) 100%);
+  z-index: 1;
+}
+
+/* 3. The Auth Card (Gọn gàng, vừa vặn không bao giờ tràn màn hình) */
+.auth-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 430px;
+  border-radius: 20px;
+  padding: 20px 24px;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  /* COLOR TRANSITION & WIPE */
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.4s ease;
+}
+
+/* Shimmer Wipe Effect */
+.auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  transform: skewX(-20deg);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.auth-card.wipe-active::before {
+  animation: cardWipeSweep 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes cardWipeSweep {
+  0% { left: -150%; }
+  100% { left: 150%; }
+}
+
+/* Mode: LOGIN (Light Theme) */
+.auth-card.mode-login {
+  background-color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.4), 0 0 30px rgba(37, 99, 235, 0.15);
+  color: #0f172a;
+}
+
+/* Mode: REGISTER (Dark Neon Theme) */
+.auth-card.mode-register {
+  background-color: rgba(15, 23, 42, 0.94);
+  border: 1.5px solid rgba(14, 165, 233, 0.5);
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8), 0 0 35px rgba(14, 165, 233, 0.28);
+  color: #ffffff;
+}
+
+/* 4. Tab Switcher (Segmented Control) */
+.auth-tabs-pill {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.mode-login .auth-tabs-pill {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.mode-register .auth-tabs-pill {
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(51, 65, 85, 0.9);
+}
+
+.auth-tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mode-login .auth-tab-btn.active {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.mode-login .auth-tab-btn:not(.active) {
+  color: #64748b;
+}
+
+.mode-register .auth-tab-btn.active {
+  background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+  color: #ffffff;
+  box-shadow: 0 3px 12px rgba(14, 165, 233, 0.35);
+}
+
+.mode-register .auth-tab-btn:not(.active) {
+  color: #94a3b8;
+}
+
+/* 5. Center Badge Icon */
+.auth-badge-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  margin: 0 auto 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.mode-login .auth-badge-icon {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #dbeafe;
+}
+
+.mode-register .auth-badge-icon {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  box-shadow: 0 0 15px rgba(14, 165, 233, 0.2);
+}
+
+/* Header Text in Card */
+.auth-card-title {
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin-bottom: 3px;
+  letter-spacing: -0.3px;
+}
+
+.mode-login .auth-card-title {
+  color: #0f172a;
+}
+
+.mode-register .auth-card-title {
+  color: #ffffff;
+}
+
+.auth-card-subtitle {
+  text-align: center;
+  font-size: 0.8rem;
+  margin-bottom: 14px;
+  line-height: 1.35;
+}
+
+.mode-login .auth-card-subtitle {
+  color: #64748b;
+}
+
+.mode-register .auth-card-subtitle {
+  color: #94a3b8;
+}
+
+/* 6. Form Fields & Grid Layout */
+.auth-form-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.auth-form-group {
+  margin-bottom: 10px;
+}
+
+.auth-form-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.auth-form-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.mode-login .auth-form-label {
+  color: #334155;
+}
+
+.mode-register .auth-form-label {
+  color: #cbd5e1;
+}
+
+.auth-forgot-link {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.mode-register .auth-forgot-link {
+  color: #38bdf8;
+}
+
+.auth-forgot-link:hover {
+  text-decoration: underline;
+}
+
+.auth-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-input-icon {
+  position: absolute;
+  left: 11px;
+  pointer-events: none;
+}
+
+.mode-login .auth-input-icon {
+  color: #94a3b8;
+}
+
+.mode-register .auth-input-icon {
+  color: #64748b;
+}
+
+.auth-input {
+  width: 100%;
+  padding: 8px 34px 8px 36px;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  outline: none;
+  transition: all 0.25s ease;
+}
+
+.mode-login .auth-input {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+.mode-login .auth-input:focus {
+  background: #ffffff;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.mode-login .auth-input::placeholder {
+  color: #94a3b8;
+}
+
+.mode-register .auth-input {
+  background: rgba(30, 41, 59, 0.75);
+  border: 1px solid rgba(51, 65, 85, 0.85);
+  color: #ffffff;
+}
+
+.mode-register .auth-input:focus {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.25);
+}
+
+.mode-register .auth-input::placeholder {
+  color: #64748b;
+}
+
+.auth-password-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+}
+
+.mode-register .auth-password-toggle {
+  color: #64748b;
+}
+
+.auth-password-toggle:hover {
+  color: #2563eb;
+}
+
+.mode-register .auth-password-toggle:hover {
+  color: #38bdf8;
+}
+
+/* 7. Action Button */
+.auth-submit-btn {
+  width: 100%;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mode-login .auth-submit-btn {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.mode-login .auth-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%);
+  transform: translateY(-1px);
+}
+
+.mode-register .auth-submit-btn {
+  background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.4);
+}
+
+.mode-register .auth-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+  transform: translateY(-1px);
+}
+
+.auth-submit-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* 8. Bottom Toggle Link */
+.auth-card-footer {
+  text-align: center;
+  margin-top: 14px;
+  font-size: 0.82rem;
+}
+
+.mode-login .auth-card-footer {
+  color: #64748b;
+}
+
+.mode-register .auth-card-footer {
+  color: #94a3b8;
+}
+
+.auth-switch-text-btn {
+  background: none;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 5px;
+  font-size: 0.82rem;
+}
+
+.mode-login .auth-switch-text-btn {
+  color: #2563eb;
+}
+
+.mode-login .auth-switch-text-btn:hover {
+  text-decoration: underline;
+}
+
+.mode-register .auth-switch-text-btn {
+  color: #38bdf8;
+}
+
+.mode-register .auth-switch-text-btn:hover {
+  text-decoration: underline;
+}
+
+/* Error Banner */
+.auth-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 0.82rem;
+}
+
+.mode-login .auth-alert-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.mode-register .auth-alert-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+/* 9. Compact Footer (Cao khoảng 44px) */
+.auth-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 2.5rem;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.78rem;
+  color: #64748b;
+  z-index: 20;
+  flex-shrink: 0;
+  height: 44px;
+}
+
+.auth-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-footer-brand-title {
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.auth-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.auth-footer-link {
+  color: #64748b;
+  text-decoration: none;
+}
+
+.auth-footer-link:hover {
+  color: #2563eb;
+}
+
+.auth-footer-hotline {
+  color: #1d4ed8;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Modal Quên mật khẩu */
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.auth-modal-box {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .auth-wrapper {
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+  .auth-header {
+    padding: 0.6rem 1.25rem;
+  }
+  .auth-hero-container {
+    justify-content: center;
+    padding: 24px 14px;
+  }
+  .auth-footer {
+    flex-direction: column;
+    height: auto;
+    gap: 8px;
+    padding: 0.8rem 1.25rem;
+    text-align: center;
+  }
+  .auth-footer-left, .auth-footer-right {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}

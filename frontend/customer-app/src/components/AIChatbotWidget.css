@@ -67,19 +67,21 @@
 .trigger-tooltip {
   position: absolute;
   right: 75px;
-  top: 15px;
+  top: 12px;
   width: max-content;
-  background-color: #1e293b;
-  color: white;
-  padding: 6px 14px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-  opacity: 0;
-  transform: translateX(10px);
+  background-color: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12);
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  cursor: pointer;
   transition: all 0.25s ease;
-  pointer-events: none;
 }
 
 /* Tooltip arrow pointer */
@@ -88,15 +90,15 @@
   position: absolute;
   top: 50%;
   left: 100%;
-  margin-top: -5px;
-  border-width: 5px;
+  margin-top: -6px;
+  border-width: 6px;
   border-style: solid;
-  border-color: transparent transparent transparent #1e293b;
+  border-color: transparent transparent transparent #ffffff;
 }
 
 .chat-bubble-trigger:hover .trigger-tooltip {
-  opacity: 1;
-  transform: translateX(0);
+  transform: translateX(-4px);
+  box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.18);
 }
 
 /* Micro-animations */
@@ -457,6 +459,22 @@
 }
 
 /* Responsiveness for Mobile Devices */
+@media (max-width: 768px) {
+  .trigger-tooltip {
+    display: none !important;
+  }
+
+  .chatbot-widget-container {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  .chat-bubble-trigger {
+    width: 48px;
+    height: 48px;
+  }
+}
+
 @media (max-width: 480px) {
   .chatbot-widget-container {
     bottom: 12px;

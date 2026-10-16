@@ -16,7 +16,7 @@ const AIChatbotWidget = () => {
   // Quick prompt questions
   const quickPrompts = [
     'Giá vé đi Đà Lạt từ HCM?',
-    'Quy định hành lý dưới gầm xe?',
+    'Cách đặt vé và chọn chỗ ngồi online?',
     'Chính sách hoàn hủy vé thế nào?',
     'Tổng đài nhà xe An Bình?'
   ];
@@ -139,8 +139,8 @@ const AIChatbotWidget = () => {
     if (text.includes('đà lạt') || text.includes('giá vé') || text.includes('lịch trình')) {
       return 'Vé tuyến TP.HCM đi Đà Lạt: Xe giường nằm 400.000đ/vé; Xe Limousine 9 chỗ 350.000đ/vé. Quý khách vui lòng liên hệ tổng đài 1900 6067 để đặt trực tiếp.';
     }
-    if (text.includes('hành lý') || text.includes('20kg')) {
-      return 'Mỗi quý khách hàng được mang miễn phí hành lý tối đa 20kg ký gửi gầm xe khách An Bình Lines.';
+    if (text.includes('đặt vé') || text.includes('chọn ghế') || text.includes('chỗ ngồi')) {
+      return 'Quý khách có thể bấm vào mục "Tìm chuyến", chọn điểm đi, điểm đến và ngày khởi hành để chọn vị trí ghế ngồi yêu thích và tiến hành thanh toán trực tuyến an toàn.';
     }
     if (text.includes('hoàn') || text.includes('hủy') || text.includes('trả')) {
       return 'Quý khách được hoàn tiền vé 100% nếu thực hiện hủy vé tối thiểu 24 tiếng trước giờ chạy tại mục Quản lý vé.';
@@ -172,7 +172,7 @@ const AIChatbotWidget = () => {
         <button className="chat-bubble-trigger animate-bounce-subtle" onClick={() => setIsOpen(true)}>
           <div className="trigger-pulse"></div>
           <Bot size={28} className="chatbot-icon-pulse" />
-          <span className="trigger-tooltip">Bạn cần hỗ trợ gì?</span>
+          <span className="trigger-tooltip">Cần tìm chuyến xe nhanh? Hỏi tôi nhé!</span>
         </button>
       )}
 
