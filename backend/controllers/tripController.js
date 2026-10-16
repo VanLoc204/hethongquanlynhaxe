@@ -600,15 +600,56 @@ exports.updateJourneyStatus = async (req, res) => {
 
     const now = new Date();
 
+    if (action === 'reset') {
+      trip.journeyStatus = 'scheduled';
+      trip.currentStopIndex = -1;
+      trip.journeyLogs = [];
+      await trip.save();
+      await trip.populate('routeId');
+      await trip.populate('busId');
+      return res.status(200).json({
+        success: true,
+        message: 'Đã đặt lại trạng thái hành trình về ban đầu (Chưa khởi hành).',
+        trip
+      });
+    }
+
     if (action === 'start') {
-      const startTimeLimit = new Date(trip.departureTime.getTime() - 5 * 60 * 1000);
-      if (now < startTimeLimit) {
-        const diffMs = startTimeLimit - now;
-        const diffMins = Math.ceil(diffMs / (60 * 1000));
-        return res.status(400).json({
-          success: false,
-          message: `Chuyến xe chưa đến giờ khởi hành. Bạn chỉ được phép bắt đầu hành trình trước giờ xuất phát tối đa 5 phút (vui lòng chờ thêm ${diffMins} phút).`
-        });
+      if (!req.body.bypassTime) {
+        const startTimeLimit = new Date(trip.departureTime.getTime() - 5 * 60 * 1000);
+        if (now < startTimeLimit) {
+          const diffMs = startTimeLimit - now;
+          const diffMins = Math.ceil(diffMs / (60 * 1000));
+          return res.status(400).json({
+            success: false,
+            message: `Chuyến xe chưa đến giờ khởi hành. Bạn chỉ được phép bắt đầu hành trình trước giờ xuất phát tối đa 5 phút (vui lòng chờ thêm ${diffMins} phút).`
+          });
+        }
+      }
+
+      // Kiểm tra bán kính GPS nếu có yêu cầu ràng buộc (enforceDistance)
+      if (req.body.enforceDistance && req.body.userLat && req.body.userLng) {
+        const startStop = stops[0];
+        if (startStop.lat && startStop.lng) {
+          const toRad = (deg) => (deg * Math.PI) / 180;
+          const R = 6371e3; // metres
+          const dLat = toRad(startStop.lat - req.body.userLat);
+          const dLon = toRad(startStop.lng - req.body.userLng);
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(toRad(req.body.userLat)) * Math.cos(toRad(startStop.lat)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const dist = Math.round(R * c);
+
+          const maxRadius = req.body.maxRadius || 500;
+          if (dist > maxRadius) {
+            const formattedDist = dist < 1000 ? `${dist}m` : `${(dist / 1000).toFixed(1)}km`;
+            return res.status(400).json({
+              success: false,
+              message: `Xe hiện cách bến xuất phát ${formattedDist} (vượt quá bán kính cho phép ${maxRadius}m). Vui lòng đến gần bến xe để bắt đầu khởi hành.`
+            });
+          }
+        }
       }
 
       trip.journeyStatus = 'in_transit';
@@ -633,6 +674,32 @@ exports.updateJourneyStatus = async (req, res) => {
           message: 'Đây là điểm cuối, vui lòng chọn kết thúc hành trình.'
         });
       }
+
+      // Kiểm tra bán kính GPS nếu có yêu cầu ràng buộc (enforceDistance)
+      if (req.body.enforceDistance && req.body.userLat && req.body.userLng) {
+        const targetStop = stops[nextIndex];
+        if (targetStop.lat && targetStop.lng) {
+          const toRad = (deg) => (deg * Math.PI) / 180;
+          const R = 6371e3; // metres
+          const dLat = toRad(targetStop.lat - req.body.userLat);
+          const dLon = toRad(targetStop.lng - req.body.userLng);
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(toRad(req.body.userLat)) * Math.cos(toRad(targetStop.lat)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const dist = Math.round(R * c);
+
+          const maxRadius = req.body.maxRadius || 500;
+          if (dist > maxRadius) {
+            const formattedDist = dist < 1000 ? `${dist}m` : `${(dist / 1000).toFixed(1)}km`;
+            return res.status(400).json({
+              success: false,
+              message: `Xe hiện cách trạm ${formattedDist} (vượt quá bán kính cho phép ${maxRadius}m). Vui lòng đến gần trạm để xác nhận.`
+            });
+          }
+        }
+      }
+
       trip.currentStopIndex = nextIndex;
       trip.journeyLogs.push({
         time: now,
@@ -641,6 +708,31 @@ exports.updateJourneyStatus = async (req, res) => {
         desc: `Xe đã đến ${stops[nextIndex].location}.`
       });
     } else if (action === 'complete') {
+      // Kiểm tra bán kính GPS nếu có yêu cầu ràng buộc (enforceDistance)
+      if (req.body.enforceDistance && req.body.userLat && req.body.userLng) {
+        const endStop = stops[stops.length - 1];
+        if (endStop.lat && endStop.lng) {
+          const toRad = (deg) => (deg * Math.PI) / 180;
+          const R = 6371e3; // metres
+          const dLat = toRad(endStop.lat - req.body.userLat);
+          const dLon = toRad(endStop.lng - req.body.userLng);
+          const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(toRad(req.body.userLat)) * Math.cos(toRad(endStop.lat)) *
+                    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+          const dist = Math.round(R * c);
+
+          const maxRadius = req.body.maxRadius || 500;
+          if (dist > maxRadius) {
+            const formattedDist = dist < 1000 ? `${dist}m` : `${(dist / 1000).toFixed(1)}km`;
+            return res.status(400).json({
+              success: false,
+              message: `Xe hiện cách bến đích ${formattedDist} (vượt quá bán kính cho phép ${maxRadius}m). Vui lòng đến gần bến đích để hoàn thành chuyến.`
+            });
+          }
+        }
+      }
+
       trip.journeyStatus = 'completed';
       trip.currentStopIndex = stops.length - 1;
       trip.journeyLogs.push({
@@ -652,7 +744,7 @@ exports.updateJourneyStatus = async (req, res) => {
     } else {
       return res.status(400).json({
         success: false,
-        message: 'Hành động không hợp lệ. Hỗ trợ: start, update, complete'
+        message: 'Hành động không hợp lệ. Hỗ trợ: start, update, complete, reset'
       });
     }
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import { driverGpsService } from '../../services/driverGpsService';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -7,22 +8,37 @@ const OpsTrackingPage = () => {
   const { token } = useContext(AuthContext);
   const [allTrips, setAllTrips] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Date selector (default to current local date)
   const [selectedDate, setSelectedDate] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Selected Trip for focused tracking
   const [selectedTripId, setSelectedTripId] = useState(null);
-  
+
   // Map and OSRM state
   const [mapLoaded, setMapLoaded] = useState(false);
   const [osrmPaths, setOsrmPaths] = useState({});
   const [fetchingOsrm, setFetchingOsrm] = useState(false);
 
+  // Lắng nghe Driver GPS Service nội bộ (nếu tài xế đang bật GPS trên cùng hệ thống)
+  const [localGpsState, setLocalGpsState] = useState(() => driverGpsService.getState());
+
+  useEffect(() => {
+    const unsub = driverGpsService.addListener((state) => {
+      setLocalGpsState(state);
+    });
+    return () => unsub();
+  }, []);
+
+  // Refs for Map & Layers
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const layerGroupRef = useRef(null);
+  const stopsLayerRef = useRef(null);
+  const routePolylineRef = useRef(null);
+  const busMarkerRef = useRef(null);
+  const lastFittedTripIdRef = useRef(null);
+  const lastRenderedRouteTripIdRef = useRef(null);
 
   // 1. Dynamically load Leaflet library if not already present
   useEffect(() => {
@@ -42,7 +58,7 @@ const OpsTrackingPage = () => {
     document.head.appendChild(script);
   }, []);
 
-  // 2. Fetch real trips from database (with silent background polling)
+  // 2. Fetch real trips from database (with silent background polling every 3s)
   const fetchRealTrips = async (isBackground = false) => {
     try {
       if (!isBackground) setLoading(true);
@@ -61,10 +77,10 @@ const OpsTrackingPage = () => {
 
   useEffect(() => {
     fetchRealTrips(false);
-    // Real-time polling every 3.5s to listen to driver's GPS updates
+    // Real-time polling every 3s to listen to driver's real GPS updates from MongoDB
     const interval = setInterval(() => {
       fetchRealTrips(true);
-    }, 3500);
+    }, 3000);
     return () => clearInterval(interval);
   }, [token]);
 
@@ -113,12 +129,13 @@ const OpsTrackingPage = () => {
     return [...pickups, ...dropoffs].filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
   }, [activeTrip]);
 
-  // 4. Fetch OSRM real highway curve for active trip
+  // 4. TẢI ĐƯỜNG UỐN LƯỢN QUỐC LỘ THỰC TẾ (OSRM HIGHWAY ROUTE - TRIỆT TIÊU ĐƯỜNG CHIM BAY)
   useEffect(() => {
     if (!activeTrip || activeStops.length < 2) return;
     const tripKey = activeTrip._id;
-    if (osrmPaths[tripKey]) return; // Already cached
+    if (osrmPaths[tripKey]) return; // Đã lưu cache lộ trình
 
+    let isMounted = true;
     const fetchOSRM = async () => {
       try {
         setFetchingOsrm(true);
@@ -128,26 +145,26 @@ const OpsTrackingPage = () => {
         const data = await res.json();
         if (data.code === 'Ok' && data.routes && data.routes[0]) {
           const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          setOsrmPaths(prev => ({ ...prev, [tripKey]: coords }));
-        } else {
-          setOsrmPaths(prev => ({ ...prev, [tripKey]: activeStops.map(s => [s.lat, s.lng]) }));
+          if (isMounted) {
+            setOsrmPaths(prev => ({ ...prev, [tripKey]: coords }));
+          }
         }
-      } catch {
-        setOsrmPaths(prev => ({ ...prev, [tripKey]: activeStops.map(s => [s.lat, s.lng]) }));
+      } catch (err) {
+        console.warn('Lỗi lấy tọa độ OSRM:', err);
       } finally {
-        setFetchingOsrm(false);
+        if (isMounted) setFetchingOsrm(false);
       }
     };
 
     fetchOSRM();
+    return () => { isMounted = false; };
   }, [activeTrip, activeStops, osrmPaths]);
 
-  // 5. Initialize & Render Map with Single Selected Trip Focus
+  // 5. Initialize Map once
   useEffect(() => {
     if (!mapLoaded || !window.L || !mapContainerRef.current) return;
     const L = window.L;
 
-    // Create Map instance if not exists
     if (!mapInstanceRef.current) {
       const map = L.map(mapContainerRef.current, {
         center: [10.8, 106.7],
@@ -159,98 +176,207 @@ const OpsTrackingPage = () => {
         attribution: '&copy; OpenStreetMap'
       }).addTo(map);
 
+      // Layer group cho các trạm dừng và đường lộ trình
+      stopsLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
     }
+  }, [mapLoaded]);
 
+  // 6. Vẽ Trạm Dừng & Căn chỉnh khung nhìn (CHỈ khi đổi sang chuyến xe khác)
+  useEffect(() => {
+    if (!mapLoaded || !window.L || !mapInstanceRef.current || !activeTrip) return;
+    const L = window.L;
     const map = mapInstanceRef.current;
+    const stopsLayer = stopsLayerRef.current;
 
-    // Reset Layer Group
-    if (layerGroupRef.current) {
-      layerGroupRef.current.clearLayers();
-    } else {
-      layerGroupRef.current = L.layerGroup().addTo(map);
-    }
-    const layerGroup = layerGroupRef.current;
+    if (!stopsLayer) return;
 
-    if (!activeTrip || activeStops.length === 0) {
-      map.setView([10.8, 106.7], 7);
-      return;
-    }
+    const tripId = activeTrip._id;
+    const isNewTrip = lastRenderedRouteTripIdRef.current !== tripId;
 
-    const latLngs = [];
+    if (isNewTrip) {
+      stopsLayer.clearLayers();
+      routePolylineRef.current = null;
+      lastRenderedRouteTripIdRef.current = tripId;
 
-    // --- Render Pickup & Dropoff Stops exactly as setup in Route Management ---
-    activeStops.forEach((stop, idx) => {
-      const isPickup = stop.type === 'pickup';
-      const isFirst = idx === 0;
-      const isLast = idx === activeStops.length - 1;
-      const markerColor = isPickup ? '#10b981' : '#ef4444';
-      const badgeText = isFirst ? 'Khởi hành (Đón)' : isLast ? 'Điểm đích (Trả)' : isPickup ? 'Điểm đón' : 'Điểm trả';
+      const latLngs = [];
 
-      const stopIcon = L.divIcon({
-        className: 'custom-station-pin',
-        html: `
-          <div style="
-            background: ${markerColor};
-            color: #ffffff;
-            font-weight: 700;
-            font-size: 0.68rem;
-            padding: 3px 8px;
-            border-radius: 12px;
-            border: 2px solid #ffffff;
-            box-shadow: 0 3px 8px rgba(0,0,0,0.25);
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            font-family: system-ui, -apple-system, sans-serif;
-          ">
-            <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stop.location}</span>
+      // Render Trạm đón & trả
+      activeStops.forEach((stop, idx) => {
+        const isPickup = stop.type === 'pickup';
+        const isFirst = idx === 0;
+        const isLast = idx === activeStops.length - 1;
+        const markerColor = isPickup ? '#10b981' : '#ef4444';
+        const badgeText = isFirst ? 'Khởi hành (Đón)' : isLast ? 'Điểm đích (Trả)' : isPickup ? 'Điểm đón' : 'Điểm trả';
+
+        const stopIcon = L.divIcon({
+          className: 'custom-station-pin',
+          html: `
+            <div style="
+              background: ${markerColor};
+              color: #ffffff;
+              font-weight: 700;
+              font-size: 0.68rem;
+              padding: 3px 8px;
+              border-radius: 12px;
+              border: 2px solid #ffffff;
+              box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+              white-space: nowrap;
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              font-family: system-ui, -apple-system, sans-serif;
+            ">
+              <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stop.location}</span>
+            </div>
+          `,
+          iconSize: [110, 24],
+          iconAnchor: [55, 12]
+        });
+
+        const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(stopsLayer);
+        marker.bindPopup(`
+          <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
+            <div style="font-weight: 800; color: #0f172a; font-size: 0.88rem;">${stop.location}</div>
+            <div style="font-size: 0.72rem; color: ${isPickup ? '#047857' : '#b91c1c'}; font-weight: 700; margin: 4px 0;">
+              ${badgeText} (${stop.time || 'N/A'})
+            </div>
+            <div style="font-size: 0.74rem; color: #64748b; line-height: 1.35;">${stop.address || 'Đang cập nhật địa chỉ'}</div>
+            <div style="font-size: 0.68rem; color: #2563eb; margin-top: 4px;">Tọa độ GPS: ${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}</div>
           </div>
-        `,
-        iconSize: [110, 24],
-        iconAnchor: [55, 12]
+        `);
+
+        latLngs.push([stop.lat, stop.lng]);
       });
 
-      const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(layerGroup);
-      marker.bindPopup(`
-        <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
-          <div style="font-weight: 800; color: #0f172a; font-size: 0.88rem;">${stop.location}</div>
-          <div style="font-size: 0.72rem; color: ${isPickup ? '#047857' : '#b91c1c'}; font-weight: 700; margin: 4px 0;">
-            ${badgeText} (${stop.time || 'N/A'})
-          </div>
-          <div style="font-size: 0.74rem; color: #64748b; line-height: 1.35;">${stop.address || 'Đang cập nhật địa chỉ'}</div>
-          <div style="font-size: 0.68rem; color: #2563eb; margin-top: 4px;">Tọa độ GPS: ${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)}</div>
-        </div>
-      `);
+      // Fit bounds 1 LẦN DUY NHẤT khi chọn chuyến mới
+      if (latLngs.length > 0 && lastFittedTripIdRef.current !== tripId) {
+        lastFittedTripIdRef.current = tripId;
+        setTimeout(() => {
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.invalidateSize();
+            mapInstanceRef.current.fitBounds(latLngs, { padding: [50, 50], maxZoom: 12 });
+          }
+        }, 120);
+      }
+    }
+  }, [mapLoaded, activeTrip, activeStops]);
 
-      latLngs.push([stop.lat, stop.lng]);
-    });
+  // 7. CẬP NHẬT LỘ TRÌNH QUỐC LỘ THỰC TẾ (OSRM): LẬP TỨC THAY THẾ KHI CÓ DỮ LIỆU
+  useEffect(() => {
+    if (!mapLoaded || !window.L || !mapInstanceRef.current || !activeTrip) return;
+    const L = window.L;
+    const stopsLayer = stopsLayerRef.current;
+    if (!stopsLayer) return;
 
-    // --- Render Highway Polyline connecting all stops ---
-    const cachedPath = osrmPaths[activeTrip._id];
-    const polylineCoords = (cachedPath && cachedPath.length > 1) ? cachedPath : latLngs;
+    const tripId = activeTrip._id;
+    const cachedPath = osrmPaths[tripId];
 
-    if (polylineCoords.length > 1) {
-      L.polyline(polylineCoords, {
-        color: '#2563eb',
-        weight: 5,
-        opacity: 0.85,
-        lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(layerGroup);
+    if (cachedPath && cachedPath.length > 1) {
+      if (routePolylineRef.current) {
+        // Cập nhật tọa độ uốn lượn đường quốc lộ thực tế
+        routePolylineRef.current.setLatLngs(cachedPath);
+      } else {
+        // Tạo mới đường lộ trình cao tốc màu xanh đậm
+        routePolylineRef.current = L.polyline(cachedPath, {
+          color: '#2563eb',
+          weight: 5.5,
+          opacity: 0.88,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(stopsLayer);
+      }
+    }
+  }, [mapLoaded, activeTrip, osrmPaths]);
+
+  // 8. ĐỒNG BỘ GPS THỰC TẾ TỪ TÀI XẾ (MƯỢT MÀ, KHÔNG RESET ZOOM CỦA NGƯỜI DÙNG)
+  useEffect(() => {
+    if (!mapLoaded || !window.L || !mapInstanceRef.current || !activeTrip) return;
+    const L = window.L;
+    const map = mapInstanceRef.current;
+
+    // 1. Ưu tiên tọa độ GPS phát trực tiếp từ tài xế (MongoDB backend hoặc local service)
+    let busLat = activeTrip.liveGps?.lat;
+    let busLng = activeTrip.liveGps?.lng;
+    let busSpeed = activeTrip.liveGps?.speed || 0;
+    let busHeading = activeTrip.liveGps?.heading || 0;
+    let lastUpdated = activeTrip.liveGps?.lastUpdated;
+    let isLiveDevice = false;
+
+    // Kiểm tra đồng bộ từ driverGpsService chạy nền
+    if (localGpsState.isTracking && localGpsState.trip?._id === activeTrip._id && localGpsState.currentCoord) {
+      busLat = localGpsState.currentCoord.lat;
+      busLng = localGpsState.currentCoord.lng;
+      busSpeed = localGpsState.currentSpeed || 0;
+      busHeading = localGpsState.currentHeading || 0;
+      lastUpdated = new Date();
+      isLiveDevice = true;
+    } else if (typeof busLat === 'number' && typeof busLng === 'number') {
+      // Tọa độ từ MongoDB do thiết bị tài xế gửi lên qua PUT /api/v1/trips/:id/live-gps
+      const diffMs = lastUpdated ? Date.now() - new Date(lastUpdated).getTime() : 999999;
+      isLiveDevice = diffMs < 45000; // Tín hiệu trong vòng 45s xem như đang trực tiếp
+    } else {
+      // Chưa có GPS từ tài xế: định vị xe tại điểm xuất phát (Trạm đón đầu tiên)
+      busLat = activeStops[0]?.lat;
+      busLng = activeStops[0]?.lng;
+      busSpeed = 0;
     }
 
-    // --- Render Vehicle GPS Position (Ready for real GPS device coordinates) ---
-    // In real GPS mode, vehicle sits at real coordinates if available, or at first stop (origin)
-    const busLat = activeTrip.liveGps?.lat || activeStops[0]?.lat;
-    const busLng = activeTrip.liveGps?.lng || activeStops[0]?.lng;
+    if (typeof busLat !== 'number' || typeof busLng !== 'number') return;
 
-    if (typeof busLat === 'number' && typeof busLng === 'number') {
-      const busPlate = activeTrip.busId?.plateNumber || 'Xe khách';
-      const busIcon = L.divIcon({
-        className: 'custom-bus-pin',
-        html: `
+    const busPlate = activeTrip.busId?.plateNumber || 'Xe khách';
+    const popupHtml = `
+      <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
+          <strong style="color: #1e40af; font-size: 0.9rem;">Xe ${busPlate}</strong>
+          <span style="background:${isLiveDevice ? '#ecfdf5' : '#f1f5f9'}; color:${isLiveDevice ? '#059669' : '#64748b'}; font-size:0.62rem; font-weight:700; padding:1px 6px; borderRadius:6px;">
+            ${isLiveDevice ? '• GPS Trực tiếp' : '• Tại bến chờ'}
+          </span>
+        </div>
+        <div style="font-size: 0.74rem; color: #475569;">
+          Tuyến: <strong>${activeTrip.routeId?.startPoint || ''} ➔ ${activeTrip.routeId?.endPoint || ''}</strong>
+        </div>
+        <div style="font-size: 0.74rem; color: #475569; margin-top:2px;">
+          Tài xế: <strong style="color:#0f172a;">${activeTrip.driver?.name || 'Trần Minh Tâm'}</strong>
+        </div>
+        <div style="font-size: 0.74rem; color: #2563eb; font-weight: 700; margin-top: 4px;">
+          Vận tốc: <span style="font-size:0.85rem;">${Math.round(busSpeed)}</span> km/h ${busHeading ? `(${Math.round(busHeading)}°)` : ''}
+        </div>
+        <div style="font-size: 0.68rem; color: #64748b; margin-top: 4px;">
+          Tọa độ: ${busLat.toFixed(5)}, ${busLng.toFixed(5)}
+        </div>
+        ${lastUpdated ? `<div style="font-size: 0.65rem; color: #94a3b8; margin-top: 2px;">Cập nhật: ${new Date(lastUpdated).toLocaleTimeString('vi-VN')}</div>` : ''}
+      </div>
+    `;
+
+    // CẬP NHẬT MARKER XE: Di chuyển mượt mà, KHÔNG tạo lại, KHÔNG reset Zoom / Pan của người dùng
+    if (busMarkerRef.current) {
+      if (busMarkerRef.current._tripId === activeTrip._id) {
+        busMarkerRef.current.setLatLng([busLat, busLng]);
+        const popup = busMarkerRef.current.getPopup();
+        if (popup) popup.setContent(popupHtml);
+        return;
+      } else {
+        map.removeLayer(busMarkerRef.current);
+        busMarkerRef.current = null;
+      }
+    }
+
+    // Tạo Marker Xe với hiệu ứng Radar Pulse khi đang trực tiếp
+    const busIcon = L.divIcon({
+      className: 'custom-bus-pin',
+      html: `
+        <div style="position: relative; display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+          ${isLiveDevice ? `
+            <div style="
+              position: absolute;
+              width: 38px;
+              height: 38px;
+              border-radius: 50%;
+              background: rgba(37, 99, 235, 0.25);
+              animation: busRadarWave 1.8s ease-out infinite;
+            "></div>
+          ` : ''}
           <div style="
             background: #1e40af;
             color: #ffffff;
@@ -259,191 +385,297 @@ const OpsTrackingPage = () => {
             padding: 4px 10px;
             border-radius: 14px;
             border: 2px solid #ffffff;
-            box-shadow: 0 4px 12px rgba(30, 64, 175, 0.4);
+            box-shadow: 0 4px 12px rgba(30, 64, 175, 0.45);
             white-space: nowrap;
             display: flex;
             align-items: center;
-            gap: 4px;
-            font-family: system-ui;
+            gap: 5px;
+            font-family: system-ui, -apple-system, sans-serif;
+            position: relative;
+            z-index: 2;
           ">
+            <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:${isLiveDevice ? '#22c55e' : '#cbd5e1'};"></span>
             <span>Xe ${busPlate}</span>
-          </div>
-        `,
-        iconSize: [96, 28],
-        iconAnchor: [48, 14]
-      });
-
-      const busMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(layerGroup);
-      const isLive = activeTrip.liveGps?.lastUpdated && (Date.now() - new Date(activeTrip.liveGps.lastUpdated).getTime() < 30000);
-      const speedVal = activeTrip.liveGps?.speed || 0;
-
-      busMarker.bindPopup(`
-        <div style="font-family: system-ui; padding: 4px; min-width: 180px;">
-          <div style="font-weight: 800; font-size: 0.88rem; color: #1e40af;">Xe ${busPlate}</div>
-          <div style="font-size: 0.75rem; color: #475569; margin-top: 4px;">
-            Tuyến: <strong>${activeTrip.routeId?.startPoint} → ${activeTrip.routeId?.endPoint}</strong>
-          </div>
-          <div style="font-size: 0.75rem; color: #475569;">
-            Tài xế: <strong>${activeTrip.driver?.name || 'Chưa phân công'}</strong>
-          </div>
-          <div style="font-size: 0.75rem; color: #0284c7; font-weight: 700; margin-top: 4px;">
-            Vận tốc: <strong>${speedVal} km/h</strong>
-          </div>
-          <div style="font-size: 0.72rem; color: ${isLive ? '#16a34a' : '#64748b'}; font-weight: 700; margin-top: 2px;">
-            ${isLive ? '• Đang phát GPS trực tiếp' : '• Tọa độ điểm dừng khởi hành'}
+            ${busSpeed > 0 ? `
+              <span style="background:#2563eb; padding:1px 5px; border-radius:8px; font-size:0.62rem; font-weight:800;">${Math.round(busSpeed)} km/h</span>
+            ` : ''}
           </div>
         </div>
-      `);
-    }
+      `,
+      iconSize: [110, 30],
+      iconAnchor: [55, 15]
+    });
 
-    // Fit map bounds to view all stops of this trip
-    if (latLngs.length > 0) {
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.invalidateSize();
-          mapInstanceRef.current.fitBounds(latLngs, { padding: [50, 50], maxZoom: 12 });
-        }
-      }, 150);
+    const newBusMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(map);
+    newBusMarker._tripId = activeTrip._id;
+    newBusMarker.bindPopup(popupHtml);
+    busMarkerRef.current = newBusMarker;
+  }, [mapLoaded, activeTrip, activeStops, localGpsState]);
+
+  // Hành động người dùng: Căn chỉnh lại toàn lộ trình
+  const handleFitRouteBounds = () => {
+    if (!mapInstanceRef.current || activeStops.length === 0) return;
+    const latLngs = activeStops.map(s => [s.lat, s.lng]);
+    mapInstanceRef.current.fitBounds(latLngs, { padding: [50, 50], maxZoom: 13, animate: true });
+  };
+
+  // Hành động người dùng: Di chuyển camera đến đúng vị trí xe
+  const handleCenterBus = () => {
+    if (!mapInstanceRef.current || !activeTrip) return;
+    const busLat = localGpsState.isTracking && localGpsState.trip?._id === activeTrip._id && localGpsState.currentCoord
+      ? localGpsState.currentCoord.lat
+      : (activeTrip.liveGps?.lat || activeStops[0]?.lat);
+
+    const busLng = localGpsState.isTracking && localGpsState.trip?._id === activeTrip._id && localGpsState.currentCoord
+      ? localGpsState.currentCoord.lng
+      : (activeTrip.liveGps?.lng || activeStops[0]?.lng);
+
+    if (typeof busLat === 'number' && typeof busLng === 'number') {
+      mapInstanceRef.current.setView([busLat, busLng], 14, { animate: true });
+      if (busMarkerRef.current) {
+        busMarkerRef.current.openPopup();
+      }
     }
-  }, [mapLoaded, activeTrip, activeStops, osrmPaths]);
+  };
+
+  // Helper tính huy hiệu trạng thái chuyến
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'in_transit':
+        return { text: 'Đang di chuyển', bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' };
+      case 'completed':
+        return { text: 'Đã hoàn thành', bg: '#dcfce7', color: '#15803d', border: '#86efac' };
+      case 'cancelled':
+        return { text: 'Đã hủy', bg: '#fee2e2', color: '#b91c1c', border: '#fca5a5' };
+      case 'scheduled':
+      default:
+        return { text: 'Chờ xuất bến', bg: '#fef3c7', color: '#b45309', border: '#fde68a' };
+    }
+  };
+
+  // Kiểm tra trạng thái GPS trực tiếp của xe
+  const isVehicleLive = Boolean(
+    (localGpsState.isTracking && localGpsState.trip?._id === activeTrip?._id) ||
+    (activeTrip?.liveGps?.lastUpdated && (Date.now() - new Date(activeTrip.liveGps.lastUpdated).getTime() < 45000))
+  );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%', animation: 'fadeIn 0.3s ease' }}>
+      <style>{`
+        .ops-panel-box {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1.15rem 1.35rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .ops-stat-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 0.75rem;
+        }
+
+        .ops-main-layout {
+          display: grid;
+          grid-template-columns: 1fr 370px;
+          gap: 0.85rem;
+          min-height: 600px;
+        }
+
+        @media (max-width: 1024px) {
+          .ops-main-layout {
+            grid-template-columns: 1fr;
+          }
+          .ops-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 640px) {
+          .ops-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.5rem;
+          }
+          .ops-panel-box {
+            padding: 0.85rem;
+          }
+        }
+
+        @keyframes pulseDot {
+          0% { transform: scale(0.95); opacity: 0.8; }
+          50% { transform: scale(1.3); opacity: 1; }
+          100% { transform: scale(0.95); opacity: 0.8; }
+        }
+
+        @keyframes busRadarWave {
+          0% { transform: scale(0.7); opacity: 0.8; }
+          70% { transform: scale(1.6); opacity: 0.15; }
+          100% { transform: scale(1.9); opacity: 0; }
+        }
+      `}</style>
+
       {/* =========================================================================
-          KHỐI 1 (TRÊN): HEADER & THẺ TỔNG QUAN (DASHBOARD STYLE)
+          VÙNG 1: HEADER & 4 THẺ THỐNG KÊ NHANH
           ========================================================================= */}
-      <div style={{
-        background: '#ffffff',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        padding: '1.25rem 1.5rem',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '1.25rem'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div className="ops-panel-box" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-                Định Vị Giám Sát Lộ Trình Chuyến Xe
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.18rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Định Vị &amp; Giám Sát Lộ Trình Chuyến Xe
               </h1>
-              <span style={{ background: '#dcfce7', color: '#15803d', padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700', border: '1px solid #bbf7d0' }}>
-                • Dữ liệu chuyến xe thực tế MongoDB
+              <span style={{
+                background: isVehicleLive ? '#ecfdf5' : '#f1f5f9',
+                color: isVehicleLive ? '#059669' : '#475569',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.68rem',
+                fontWeight: '700',
+                border: `1px solid ${isVehicleLive ? '#a7f3d0' : '#cbd5e1'}`,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}>
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: isVehicleLive ? '#10b981' : '#94a3b8',
+                  animation: isVehicleLive ? 'pulseDot 1.6s infinite' : 'none'
+                }}></span>
+                {isVehicleLive ? 'GPS Trực Tiếp Từ Tài Xế' : 'Chế độ Chờ Tín Hiệu'}
               </span>
             </div>
-            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', margin: '4px 0 0 0' }}>
-              Giám sát chính xác từng chuyến xe, lộ trình quốc lộ và toàn bộ danh sách điểm đón/trả khách đã thiết lập
+            <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
+              Giám sát chính xác từng chuyến xe theo quốc lộ thực tế và đồng bộ vị trí GPS theo thời gian thực
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
             <button
-              onClick={fetchRealTrips}
-              className="btn btn-secondary"
-              style={{ padding: '0.45rem 0.9rem', fontSize: '0.78rem', fontWeight: '600', borderRadius: '8px' }}
+              onClick={() => fetchRealTrips(false)}
+              disabled={loading}
+              style={{
+                backgroundColor: '#2563eb',
+                border: 'none',
+                color: '#ffffff',
+                padding: '0.42rem 0.85rem',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
             >
-              Làm mới dữ liệu
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M23 4v6h-6"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              <span>{loading ? 'Đang tải...' : 'Làm mới dữ liệu'}</span>
             </button>
           </div>
         </div>
 
         {/* 4 Stats Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              CHUYẾN XE HÔM NAY ({selectedDate})
+        <div className="ops-stat-grid">
+          {/* Card 1: Chuyến xe hôm nay */}
+          <div style={{ background: '#f8fafc', padding: '0.75rem 0.95rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              CHUYẾN NGÀY ({selectedDate.split('-').reverse().slice(0, 2).join('/')})
             </div>
-            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginTop: '2px', lineHeight: '1.2' }}>
               {tripsForDate.length} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>chuyến</span>
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: '600', marginTop: '4px' }}>
-              • Sẵn sàng xuất bến và giám sát
+            <div style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: '600', marginTop: '2px' }}>
+              Sẵn sàng xuất bến &amp; giám sát
             </div>
           </div>
 
-          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              XE ĐANG CHỌN GIÁM SÁT
+          {/* Card 2: Xe đang chọn giám sát */}
+          <div style={{ background: '#f8fafc', padding: '0.75rem 0.95rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              XE ĐANG THEO DÕI
             </div>
-            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#1e40af', marginTop: '4px' }}>
-              {activeTrip?.busId?.plateNumber || 'Chưa chọn xe'}
+            <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#1e40af', marginTop: '2px', lineHeight: '1.2' }}>
+              {activeTrip?.busId?.plateNumber || 'Chưa chọn'}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600', marginTop: '4px' }}>
-              {activeTrip?.busId?.type || 'Chưa gán loại xe'}
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '600', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {activeTrip?.busId?.type || 'Xe khách'}
             </div>
           </div>
 
-          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {/* Card 3: Lộ trình đang xem */}
+          <div style={{ background: '#f8fafc', padding: '0.75rem 0.95rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               LỘ TRÌNH ĐANG XEM
             </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0f172a', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {activeTrip?.routeId ? `${activeTrip.routeId.startPoint} → ${activeTrip.routeId.endPoint}` : 'Chưa chọn'}
+            <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {activeTrip?.routeId ? `${activeTrip.routeId.startPoint} ➔ ${activeTrip.routeId.endPoint}` : 'Chưa chọn'}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: '600', marginTop: '4px' }}>
-              {activeStops.length} trạm dừng đón/trả cố định
+            <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '700', marginTop: '2px' }}>
+              {activeStops.length} trạm đón/trả cố định
             </div>
           </div>
 
-          <div style={{ background: '#f8fafc', padding: '0.9rem 1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {/* Card 4: Trạm đón & trả */}
+          <div style={{ background: '#f8fafc', padding: '0.75rem 0.95rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               TRẠM ĐÓN &amp; TRẢ
             </div>
-            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>
-              <span style={{ color: '#16a34a' }}>{activeTrip?.pickupPoints?.length || 0} Đón</span> / <span style={{ color: '#dc2626' }}>{activeTrip?.dropoffPoints?.length || 0} Trả</span>
+            <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginTop: '2px', lineHeight: '1.2' }}>
+              <span style={{ color: '#10b981' }}>{activeTrip?.pickupPoints?.length || 0} Đón</span> / <span style={{ color: '#ef4444' }}>{activeTrip?.dropoffPoints?.length || 0} Trả</span>
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600', marginTop: '4px' }}>
-              • Ghim chính xác theo GPS thực tế
+            <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>
+              Lộ trình QL thực tế
             </div>
           </div>
         </div>
       </div>
 
       {/* =========================================================================
-          KHỐI 2 (DƯỚI): BẢN ĐỒ LỘ TRÌNH 1 XE (BÊN TRÁI) + DANH SÁCH CHUYẾN XE (BÊN PHẢI)
+          VÙNG 2: BẢN ĐỒ LỘ TRÌNH XE (TRÁI) & DANH SÁCH CHUYẾN XE (PHẢI)
           ========================================================================= */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '1rem', minHeight: '620px' }}>
+      <div className="ops-main-layout">
         
-        {/* --- CỘT TRÁI: BẢN ĐỒ LEAFLET CHỈ HIỂN THỊ 1 TUYẾN ĐƯỜNG CỦA 1 CHUYẾN XE --- */}
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative'
-        }}>
+        {/* --- CỘT TRÁI: BẢN ĐỒ LEAFLET --- */}
+        <div className="ops-panel-box" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
           {/* Header thanh trạng thái bản đồ */}
           <div style={{
-            padding: '12px 18px',
+            padding: '10px 16px',
             background: '#f8fafc',
             borderBottom: '1px solid #e2e8f0',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: '0.8rem',
+            fontSize: '0.78rem',
             flexWrap: 'wrap',
             gap: '8px'
           }}>
-            <div style={{ fontWeight: '800', color: '#0f172a' }}>
-              Lộ trình chuyến: <span style={{ color: '#2563eb' }}>{activeTrip?.routeId ? `${activeTrip.routeId.startPoint} → ${activeTrip.routeId.endPoint}` : 'Chưa chọn'}</span>
+            <div style={{ fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>Lộ trình:</span>
+              <span style={{ color: '#1e40af' }}>{activeTrip?.routeId ? `${activeTrip.routeId.startPoint} ➔ ${activeTrip.routeId.endPoint}` : 'Chưa chọn'}</span>
               {activeTrip?.busId?.plateNumber && (
-                <span style={{ marginLeft: '8px', padding: '2px 8px', borderRadius: '6px', background: '#e2e8f0', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                <span style={{ padding: '2px 7px', borderRadius: '4px', background: '#e2e8f0', color: '#1e293b', fontSize: '0.72rem', fontWeight: '800' }}>
                   {activeTrip.busId.plateNumber}
+                </span>
+              )}
+              {fetchingOsrm && (
+                <span style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: '600' }}>
+                  (Đang vẽ lộ trình QL...)
                 </span>
               )}
             </div>
 
             {/* Chú thích màu điểm dừng */}
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', fontSize: '0.72rem', fontWeight: '600' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '0.7rem', fontWeight: '700' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#047857' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span> Điểm đón khách
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span> Điểm đón
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#b91c1c' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span> Điểm trả khách
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span> Điểm trả
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#1d4ed8' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span> Vị trí xe
@@ -451,11 +683,64 @@ const OpsTrackingPage = () => {
             </div>
           </div>
 
-          {/* Khung bản đồ Leaflet */}
-          <div ref={mapContainerRef} style={{ width: '100%', flex: 1, minHeight: '520px', background: '#e2e8f0' }}>
-            {!mapLoaded && (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b', fontWeight: '600' }}>
-                Đang nạp dữ liệu Bản đồ Vệ tinh GPS...
+          {/* Wrapper bản đồ có nút nổi Floating Controls */}
+          <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: '480px' }}>
+            {/* Map Container */}
+            <div ref={mapContainerRef} style={{ width: '100%', height: '100%', minHeight: '480px', background: '#e2e8f0' }}>
+              {!mapLoaded && (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#64748b', fontWeight: '600', fontSize: '0.82rem' }}>
+                  Đang nạp dữ liệu Bản đồ GPS...
+                </div>
+              )}
+            </div>
+
+            {/* Floating Quick Action Buttons on Map */}
+            {activeTrip && (
+              <div style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                zIndex: 1000,
+                display: 'flex',
+                gap: '6px'
+              }}>
+                <button
+                  type="button"
+                  onClick={handleFitRouteBounds}
+                  style={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    color: '#1e293b',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.12)',
+                    cursor: 'pointer'
+                  }}
+                  title="Căn chỉnh toàn bộ lộ trình chuyến xe"
+                >
+                  Toàn lộ trình
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCenterBus}
+                  style={{
+                    backgroundColor: '#2563eb',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    color: '#ffffff',
+                    boxShadow: '0 2px 6px rgba(37,99,235,0.3)',
+                    cursor: 'pointer'
+                  }}
+                  title="Di chuyển bản đồ đến vị trí xe"
+                >
+                  Đến vị trí xe
+                </button>
               </div>
             )}
           </div>
@@ -463,43 +748,43 @@ const OpsTrackingPage = () => {
           {/* Footer thông tin chuyến xe & trạm đang chọn */}
           {activeTrip && (
             <div style={{
-              padding: '14px 20px',
+              padding: '10px 16px',
               background: '#ffffff',
               borderTop: '1px solid #e2e8f0',
               display: 'grid',
               gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: '12px',
-              fontSize: '0.8rem'
+              gap: '10px',
+              fontSize: '0.78rem'
             }}>
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>PHƯƠNG TIỆN</div>
-                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>{activeTrip.busId?.plateNumber || 'Chưa gán xe'}</div>
-                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{activeTrip.busId?.type || 'N/A'}</div>
+                <div style={{ color: '#64748b', fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase' }}>PHƯƠNG TIỆN</div>
+                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '1px' }}>{activeTrip.busId?.plateNumber || 'Chưa gán xe'}</div>
+                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{activeTrip.busId?.type || 'N/A'}</div>
               </div>
 
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>TÀI XẾ PHỤ TRÁCH</div>
-                <div style={{ fontWeight: '700', color: '#2563eb', marginTop: '2px' }}>{activeTrip.driver?.name || 'Chưa phân công'}</div>
-                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{activeTrip.driver?.phone || 'Chưa có SĐT'}</div>
+                <div style={{ color: '#64748b', fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase' }}>TÀI XẾ PHỤ TRÁCH</div>
+                <div style={{ fontWeight: '700', color: '#2563eb', marginTop: '1px' }}>{activeTrip.driver?.name || 'Trần Minh Tâm'}</div>
+                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>{activeTrip.driver?.phone || '0987654321'}</div>
               </div>
 
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>GIỜ CHẠY &amp; ĐẾN</div>
-                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '2px' }}>
+                <div style={{ color: '#64748b', fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase' }}>GIỜ CHẠY &amp; ĐẾN</div>
+                <div style={{ fontWeight: '800', color: '#0f172a', marginTop: '1px' }}>
                   {new Date(activeTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} → {new Date(activeTrip.arrivalTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: '#16a34a', fontWeight: '600' }}>
+                <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '600' }}>
                   Ngày: {new Date(activeTrip.departureTime).toLocaleDateString('vi-VN')}
                 </div>
               </div>
 
               <div>
-                <div style={{ color: '#64748b', fontSize: '0.68rem', fontWeight: '700', textTransform: 'uppercase' }}>TRẠM ĐÓN / TRẢ DỌC TUYẾN</div>
-                <div style={{ fontWeight: '800', color: '#2563eb', marginTop: '2px' }}>
-                  {activeStops.length} trạm dừng
+                <div style={{ color: '#64748b', fontSize: '0.65rem', fontWeight: '700', textTransform: 'uppercase' }}>TRẠNG THÁI GPS</div>
+                <div style={{ fontWeight: '800', color: isVehicleLive ? '#059669' : '#2563eb', marginTop: '1px' }}>
+                  {isVehicleLive ? 'Đang phát trực tiếp' : 'Tại bến chờ xuất phát'}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                  Ghim chi tiết trên bản đồ
+                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                  {activeStops.length} trạm đón/trả
                 </div>
               </div>
             </div>
@@ -507,27 +792,24 @@ const OpsTrackingPage = () => {
         </div>
 
         {/* --- CỘT PHẢI: DANH SÁCH CÁC CHUYẾN XE HÔM NAY --- */}
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-          padding: '1.25rem',
+        <div className="ops-panel-box" style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem'
+          gap: '0.75rem',
+          maxHeight: '620px',
+          overflow: 'hidden'
         }}>
           {/* Bộ lọc ngày & Tìm kiếm */}
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
                 CHỌN NGÀY CHẠY:
               </label>
               <button
                 type="button"
                 onClick={() => setSelectedDate(new Date().toLocaleDateString('en-CA'))}
                 style={{
-                  background: 'none', border: 'none', color: '#2563eb', fontSize: '0.72rem',
+                  background: 'none', border: 'none', color: '#2563eb', fontSize: '0.7rem',
                   fontWeight: '700', cursor: 'pointer', padding: 0
                 }}
               >
@@ -538,13 +820,19 @@ const OpsTrackingPage = () => {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="form-control"
-              style={{ width: '100%', padding: '7px 10px', fontSize: '0.8rem', borderRadius: '8px', boxSizing: 'border-box' }}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: '0.78rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                boxSizing: 'border-box'
+              }}
             />
           </div>
 
           <div>
-            <label style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+            <label style={{ fontSize: '0.7rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
               TÌM BIỂN SỐ / TUYẾN / TÀI XẾ:
             </label>
             <input
@@ -554,29 +842,36 @@ const OpsTrackingPage = () => {
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
                 width: '100%',
-                padding: '8px 12px',
+                padding: '7px 10px',
                 borderRadius: '8px',
                 border: '1px solid #cbd5e1',
                 fontSize: '0.78rem',
-                marginTop: '4px',
+                marginTop: '3px',
                 boxSizing: 'border-box'
               }}
             />
           </div>
 
-          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             DANH SÁCH CHUYẾN XE ({filteredTrips.length})
           </div>
 
           {/* Danh sách các chuyến xe trong ngày */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', overflowY: 'auto', maxHeight: '460px', paddingRight: '4px' }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            overflowY: 'auto',
+            flex: 1,
+            paddingRight: '3px'
+          }}>
             {loading ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.78rem' }}>
                 Đang tải danh sách chuyến xe...
               </div>
             ) : filteredTrips.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.78rem', background: '#f8fafc', borderRadius: '10px' }}>
-                Không có chuyến xe nào chạy vào ngày {selectedDate}.
+              <div style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontSize: '0.75rem', background: '#f8fafc', borderRadius: '8px' }}>
+                Không có chuyến xe nào vào ngày {selectedDate}.
               </div>
             ) : (
               filteredTrips.map(trip => {
@@ -586,44 +881,51 @@ const OpsTrackingPage = () => {
                 const depTime = dep.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                 const arrTime = arr.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                 const stopsCount = (trip.pickupPoints?.length || 0) + (trip.dropoffPoints?.length || 0);
+                const statusBadge = getStatusBadge(trip.journeyStatus);
 
                 return (
                   <div
                     key={trip._id}
                     onClick={() => setSelectedTripId(trip._id)}
                     style={{
-                      padding: '12px 14px',
-                      borderRadius: '12px',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
                       border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                      borderLeft: isSelected ? '4px solid #2563eb' : '1px solid #e2e8f0',
                       backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
-                      boxShadow: isSelected ? '0 4px 12px rgba(37,99,235,0.08)' : '0 1px 2px rgba(0,0,0,0.02)',
+                      boxShadow: isSelected ? '0 3px 8px rgba(37,99,235,0.08)' : '0 1px 2px rgba(0,0,0,0.02)',
                       cursor: 'pointer',
                       transition: 'all 0.15s ease'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '800', color: isSelected ? '#1e40af' : '#0f172a', fontSize: '0.85rem' }}>
+                      <div style={{ fontWeight: '800', color: isSelected ? '#1e40af' : '#0f172a', fontSize: '0.82rem' }}>
                         Xe {trip.busId?.plateNumber || 'Chưa gán'}
                       </div>
                       <span style={{
-                        fontSize: '0.65rem',
+                        fontSize: '0.62rem',
                         fontWeight: '700',
-                        padding: '2px 8px',
-                        borderRadius: '6px',
-                        backgroundColor: isSelected ? '#dbeafe' : '#f1f5f9',
-                        color: isSelected ? '#1d4ed8' : '#475569'
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        backgroundColor: statusBadge.bg,
+                        color: statusBadge.color,
+                        border: `1px solid ${statusBadge.border}`
                       }}>
-                        {depTime} → {arrTime}
+                        {statusBadge.text}
                       </span>
                     </div>
 
-                    <div style={{ fontSize: '0.78rem', color: '#1e293b', marginTop: '4px', fontWeight: '700' }}>
-                      {trip.routeId ? `${trip.routeId.startPoint} → ${trip.routeId.endPoint}` : 'N/A'}
+                    <div style={{ fontSize: '0.76rem', color: '#1e293b', marginTop: '3px', fontWeight: '700' }}>
+                      {trip.routeId ? `${trip.routeId.startPoint} ➔ ${trip.routeId.endPoint}` : 'N/A'}
                     </div>
 
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', fontSize: '0.72rem', color: '#64748b' }}>
-                      <span>Tài xế: <strong style={{ color: '#334155' }}>{trip.driver?.name || 'Chưa phân công'}</strong></span>
-                      <span style={{ fontWeight: '600', color: '#2563eb' }}>{stopsCount} điểm đón/trả</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', fontSize: '0.7rem', color: '#64748b' }}>
+                      <span>{depTime} → {arrTime}</span>
+                      <span style={{ fontWeight: '600', color: '#2563eb' }}>{stopsCount} trạm</span>
+                    </div>
+
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>
+                      Tài xế: <strong style={{ color: '#334155' }}>{trip.driver?.name || 'Trần Minh Tâm'}</strong>
                     </div>
                   </div>
                 );

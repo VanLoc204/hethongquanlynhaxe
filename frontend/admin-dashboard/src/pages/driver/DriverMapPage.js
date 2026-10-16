@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import { driverGpsService } from '../../services/driverGpsService';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
 const DriverMapPage = () => {
   const { token, user } = useContext(AuthContext);
+
+  // Lấy trạng thái GPS nền toàn cục (chạy ngầm xuyên suốt các tab)
+  const initialGpsState = driverGpsService.getState();
 
   // Chuyến xe được gán cho tài xế
   const [assignedTrips, setAssignedTrips] = useState([]);
@@ -12,22 +16,22 @@ const DriverMapPage = () => {
   const [loadingTrip, setLoadingTrip] = useState(true);
 
   // Trạng thái GPS & Truyền dữ liệu
-  const [isTracking, setIsTracking] = useState(false);
-  const [trackingMode, setTrackingMode] = useState('simulation'); // 'real' (GPS thiết bị) hoặc 'simulation' (Mô phỏng chạy thử)
-  const [currentCoord, setCurrentCoord] = useState(null); // { lat, lng }
-  const [currentSpeed, setCurrentSpeed] = useState(0); // km/h
-  const [currentHeading, setCurrentHeading] = useState(0);
+  const [isTracking, setIsTracking] = useState(initialGpsState.isTracking);
+  const [trackingMode, setTrackingMode] = useState(initialGpsState.trackingMode || 'simulation');
+  const [currentCoord, setCurrentCoord] = useState(initialGpsState.currentCoord);
+  const [currentSpeed, setCurrentSpeed] = useState(initialGpsState.currentSpeed || 0);
+  const [currentHeading, setCurrentHeading] = useState(initialGpsState.currentHeading || 0);
   const [isFollowMode, setIsFollowMode] = useState(true); // Tự động bám theo xe (Re-center / Follow Mode)
   const [isHeadingUp, setIsHeadingUp] = useState(false); // Chế độ xoay bản đồ theo hướng xe chạy (Heading-Up / North-Up)
-  const [lastPingTime, setLastPingTime] = useState(null);
-  const [pingStatus, setPingStatus] = useState('Sẵn sàng');
+  const [lastPingTime, setLastPingTime] = useState(initialGpsState.lastPingTime);
+  const [pingStatus, setPingStatus] = useState(initialGpsState.pingStatus || 'Sẵn sàng');
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [showStopsList, setShowStopsList] = useState(false);
 
   // Bản đồ & Tuyến đường OSRM
   const [mapLoaded, setMapLoaded] = useState(false);
   const [routeCoordinates, setRouteCoordinates] = useState([]);
-  const [simIndex, setSimIndex] = useState(0);
+  const [simIndex, setSimIndex] = useState(initialGpsState.simIndex || 0);
 
   // Chế độ Toàn màn hình (Web Fullscreen)
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -490,30 +494,30 @@ const DriverMapPage = () => {
     }
   };
 
-  // 8. Bật / Tắt Phát GPS (Tracking Core)
+  // Lắng nghe trạng thái từ dịch vụ GPS chạy nền toàn cục (chạy ngầm xuyên suốt các tab)
+  useEffect(() => {
+    const unsubscribe = driverGpsService.addListener((state) => {
+      setIsTracking(state.isTracking);
+      if (state.trackingMode) setTrackingMode(state.trackingMode);
+      if (state.currentCoord) setCurrentCoord(state.currentCoord);
+      if (state.currentSpeed !== undefined) setCurrentSpeed(state.currentSpeed);
+      if (state.currentHeading !== undefined) setCurrentHeading(state.currentHeading);
+      if (state.lastPingTime) setLastPingTime(state.lastPingTime);
+      if (state.pingStatus) setPingStatus(state.pingStatus);
+      if (state.simIndex !== undefined) setSimIndex(state.simIndex);
+    });
+    return unsubscribe;
+  }, []);
+
+  // 8. Bật / Tắt Phát GPS (Tracking Core kết nối với background service)
   const toggleTracking = () => {
     if (isTracking) {
-      // Dừng phát
-      setIsTracking(false);
-      setCurrentSpeed(0);
-      setPingStatus('Đã tạm dừng phát');
-
-      if (geoWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(geoWatchIdRef.current);
-        geoWatchIdRef.current = null;
-      }
-      if (simTimerRef.current) {
-        clearInterval(simTimerRef.current);
-        simTimerRef.current = null;
-      }
+      driverGpsService.stopTracking();
     } else {
-      // Bắt đầu phát: Tự động đưa về chế độ bám theo xe và phóng to buồng lái
-      setIsTracking(true);
       setIsFollowMode(true);
       if (mapInstanceRef.current && currentCoord) {
         mapInstanceRef.current.flyTo([currentCoord.lat, currentCoord.lng], 15, { animate: true, duration: 0.8 });
       }
-      setPingStatus('Đang kích hoạt GPS...');
 
       // Cố gắng giữ sáng màn hình
       if ('wakeLock' in navigator && !wakeLockActive) {
@@ -523,81 +527,23 @@ const DriverMapPage = () => {
         }).catch(() => {});
       }
 
-      if (trackingMode === 'real') {
-        // --- CHẾ ĐỘ 1: GPS PHẦN CỨNG THẬT CỦA THIẾT BỊ ---
-        if ('geolocation' in navigator) {
-          geoWatchIdRef.current = navigator.geolocation.watchPosition(
-            (pos) => {
-              const lat = pos.coords.latitude;
-              const lng = pos.coords.longitude;
-              const spd = pos.coords.speed ? pos.coords.speed * 3.6 : 55; // m/s -> km/h
-              let hdg = pos.coords.heading;
-              if (hdg === null || isNaN(hdg) || hdg === undefined) {
-                if (currentCoord) {
-                  hdg = calculateBearing(currentCoord.lat, currentCoord.lng, lat, lng);
-                } else {
-                  hdg = 0;
-                }
-              }
-
-              setCurrentCoord({ lat, lng });
-              setCurrentSpeed(spd);
-              setCurrentHeading(hdg);
-
-              sendGpsToBackend(lat, lng, spd, hdg);
-            },
-            (err) => {
-              console.warn('Lỗi định vị Geolocation:', err.message);
-              setPingStatus(`Lỗi GPS: ${err.message}`);
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 0
-            }
-          );
-        } else {
-          alert('Thiết bị của bạn không hỗ trợ cảm biến GPS!');
-          setIsTracking(false);
-        }
-      } else {
-        // --- CHẾ ĐỘ 2: CHẠY THỬ NGHIỆM DỌC TUYẾN (DÀNH CHO TEST / DEMO) ---
-        const coords = routeCoordinates.length > 0 ? routeCoordinates : allStops.map(s => [s.lat, s.lng]);
-        if (coords.length === 0) {
-          alert('Chuyến xe này chưa có dữ liệu tọa độ lộ trình.');
-          setIsTracking(false);
-          return;
-        }
-
-        let currIdx = simIndex >= coords.length - 1 ? 0 : simIndex;
-
-        simTimerRef.current = setInterval(() => {
-          currIdx = (currIdx + 1) % coords.length;
-          setSimIndex(currIdx);
-
-          const target = coords[currIdx];
-          const nextTarget = coords[(currIdx + 1) % coords.length];
-          const lat = target[0];
-          const lng = target[1];
-          const simulatedSpeed = 58 + Math.floor(Math.random() * 12); // 58-70 km/h
-          const heading = calculateBearing(lat, lng, nextTarget[0], nextTarget[1]);
-
-          setCurrentCoord({ lat, lng });
-          setCurrentSpeed(simulatedSpeed);
-          setCurrentHeading(heading);
-
-          sendGpsToBackend(lat, lng, simulatedSpeed, heading);
-        }, 3000); // 3 giây ping 1 lần
-      }
+      driverGpsService.startTracking({
+        trip: activeTrip,
+        trackingMode,
+        routeCoordinates,
+        allStops,
+        token
+      });
     }
   };
 
-  // Cleanup khi rời trang
+  // Cleanup khi rời trang: GIỮ NGUYÊN GPS chạy ngầm xuyên suốt các tab (chỉ dọn wakeLock màn hình)
   useEffect(() => {
     return () => {
-      if (geoWatchIdRef.current !== null) navigator.geolocation.clearWatch(geoWatchIdRef.current);
-      if (simTimerRef.current) clearInterval(simTimerRef.current);
-      if (wakeLockRef.current) wakeLockRef.current.release();
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
     };
   }, []);
 
@@ -765,8 +711,9 @@ const DriverMapPage = () => {
             <select
               value={trackingMode}
               onChange={(e) => {
-                if (isTracking) toggleTracking();
-                setTrackingMode(e.target.value);
+                const nextMode = e.target.value;
+                setTrackingMode(nextMode);
+                driverGpsService.setTrackingMode(nextMode);
               }}
               disabled={isTracking}
               style={{
