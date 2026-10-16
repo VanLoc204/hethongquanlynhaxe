@@ -4,7 +4,7 @@ import { AuthContext } from '../../context/AuthContext';
 const API_BASE = 'http://localhost:8000/api/v1';
 
 const FleetStatusPage = () => {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
   const [buses, setBuses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -18,7 +18,7 @@ const FleetStatusPage = () => {
   const [estimatedCost, setEstimatedCost] = useState('');
   const [estimatedCompletion, setEstimatedCompletion] = useState('');
 
-  // Status History Logs (saved in localStorage for demonstration persistence)
+  // Status History Logs
   const [logs, setLogs] = useState([]);
 
   const fetchBuses = async () => {
@@ -31,8 +31,17 @@ const FleetStatusPage = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         // Only show approved buses for operational status updates
-        const approvedBuses = (data.buses || []).filter(b => b.status === 'approved');
+        const approvedBuses = (data.buses || []).filter(b => b.status === 'approved' || !b.status);
         setBuses(approvedBuses);
+        
+        // Auto-select the first bus if none is selected currently
+        if (approvedBuses.length > 0) {
+          setEditingBus(prev => {
+            if (!prev) return approvedBuses[0];
+            const found = approvedBuses.find(b => b._id === prev._id);
+            return found || approvedBuses[0];
+          });
+        }
       } else {
         setError(data.message || 'Không thể tải danh sách phương tiện.');
       }
@@ -49,25 +58,29 @@ const FleetStatusPage = () => {
       // Load history logs from localStorage
       const savedLogs = localStorage.getItem('fleet_status_logs');
       if (savedLogs) {
-        setLogs(JSON.parse(savedLogs));
+        try {
+          setLogs(JSON.parse(savedLogs));
+        } catch (e) {
+          console.error(e);
+        }
       } else {
-        // Seed some initial logs for display
+        // Initial clean enterprise logs
         const initialLogs = [
           {
             id: 'log-1',
             plateNumber: '51B-016.16',
             fromStatus: 'ready',
-            toStatus: 'maintenance',
-            time: new Date(Date.now() - 3600000 * 24).toISOString(),
-            details: 'Thay nhớt định kỳ tại Garage Auto An Bình. Chi phí: 650.000đ'
+            toStatus: 'ready',
+            time: new Date(Date.now() - 3600000 * 4).toISOString(),
+            details: 'Kiểm tra kỹ thuật đầu ca xuất bến. Xe hoạt động ổn định.'
           },
           {
             id: 'log-2',
-            plateNumber: '51B-029.29',
-            fromStatus: 'repairing',
+            plateNumber: '51B-044.44',
+            fromStatus: 'maintenance',
             toStatus: 'ready',
-            time: new Date(Date.now() - 3600000 * 6).toISOString(),
-            details: 'Hoàn tất sửa chữa máy phát điện. Đưa xe trở lại hoạt động.'
+            time: new Date(Date.now() - 3600000 * 28).toISOString(),
+            details: 'Hoàn tất bảo dưỡng định kỳ thay dầu động cơ tại Garage Thiên Phúc. Đưa xe trở lại kíp chạy.'
           }
         ];
         setLogs(initialLogs);
@@ -76,21 +89,27 @@ const FleetStatusPage = () => {
     }
   }, [token]);
 
-  const handleOpenUpdate = (bus) => {
-    setEditingBus(bus);
-    setNewStatus(bus.activeStatus || 'ready');
-    setDescription(bus.maintenanceInfo?.description || '');
-    setGarage(bus.maintenanceInfo?.garage || '');
-    setEstimatedCost(bus.maintenanceInfo?.estimatedCost || '');
-    
-    // Format date for input: YYYY-MM-DD
-    if (bus.maintenanceInfo?.estimatedCompletion) {
-      const d = new Date(bus.maintenanceInfo.estimatedCompletion);
-      const formatted = d.toISOString().substring(0, 10);
-      setEstimatedCompletion(formatted);
-    } else {
-      setEstimatedCompletion('');
+  // Synchronize editing fields when editingBus changes
+  useEffect(() => {
+    if (editingBus) {
+      setNewStatus(editingBus.activeStatus || 'ready');
+      setDescription(editingBus.maintenanceInfo?.description || '');
+      setGarage(editingBus.maintenanceInfo?.garage || '');
+      setEstimatedCost(editingBus.maintenanceInfo?.estimatedCost || '');
+      
+      if (editingBus.maintenanceInfo?.estimatedCompletion) {
+        const d = new Date(editingBus.maintenanceInfo.estimatedCompletion);
+        setEstimatedCompletion(d.toISOString().substring(0, 10));
+      } else {
+        setEstimatedCompletion('');
+      }
     }
+  }, [editingBus]);
+
+  const handleSelectBus = (bus) => {
+    setEditingBus(bus);
+    setError('');
+    setSuccess('');
   };
 
   const handleSaveStatus = async (e) => {
@@ -125,18 +144,18 @@ const FleetStatusPage = () => {
       if (res.ok && data.success) {
         setSuccess(`Cập nhật trạng thái xe ${editingBus.plateNumber} thành công!`);
         
-        // Add log entry
         const statusLabels = {
           ready: 'Sẵn sàng hoạt động',
           maintenance: 'Đang bảo dưỡng',
           repairing: 'Đang sửa chữa',
           inactive: 'Tạm ngưng hoạt động'
         };
+
         let logDetails = `Chuyển trạng thái sang: ${statusLabels[newStatus]}.`;
         if (isMaintenance) {
-          logDetails += ` Nơi thực hiện: ${garage.trim() || 'Chưa ghi nhận'}. Nội dung: ${description.trim() || 'Nội dung trống'}.`;
+          logDetails += ` Nơi thực hiện: ${garage.trim() || 'Chưa ghi nhận'}. Nội dung: ${description.trim() || 'Kiểm tra kỹ thuật'}.`;
           if (estimatedCost) {
-            logDetails += ` Chi phí dự kiến: ${Number(estimatedCost).toLocaleString('vi-VN')}đ.`;
+            logDetails += ` Chi phí dự kiến: ${Number(estimatedCost).toLocaleString('vi-VN')} VNĐ.`;
           }
         }
 
@@ -149,295 +168,628 @@ const FleetStatusPage = () => {
           details: logDetails
         };
 
-        const updatedLogs = [newLog, ...logs];
+        const updatedLogs = [newLog, ...logs.slice(0, 19)];
         setLogs(updatedLogs);
         localStorage.setItem('fleet_status_logs', JSON.stringify(updatedLogs));
 
-        setEditingBus(null);
+        // Refetch to synchronize UI
         fetchBuses();
       } else {
-        setError(data.message || 'Lỗi khi cập nhật trạng thái.');
+        setError(data.message || 'Lỗi khi cập nhật trạng thái phương tiện.');
       }
     } catch (err) {
       setError('Lỗi kết nối máy chủ khi cập nhật trạng thái.');
     }
   };
 
-  const getActiveStatusBadge = (status) => {
+  const getStatusChip = (status) => {
     switch (status) {
       case 'maintenance':
-        return <span style={{ background: '#fef3c7', color: '#d97706', padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700' }}>Bảo dưỡng</span>;
+        return (
+          <span style={{
+            background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '800'
+          }}>
+            Đang bảo dưỡng
+          </span>
+        );
       case 'repairing':
-        return <span style={{ background: '#fee2e2', color: '#dc2626', padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700' }}>Sửa chữa</span>;
+        return (
+          <span style={{
+            background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '800'
+          }}>
+            Đang sửa chữa
+          </span>
+        );
       case 'inactive':
-        return <span style={{ background: '#f1f5f9', color: '#64748b', padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700' }}>Tạm ngưng</span>;
+        return (
+          <span style={{
+            background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '800'
+          }}>
+            Tạm ngưng hoạt động
+          </span>
+        );
       default:
-        return <span style={{ background: '#dcfce7', color: '#16a34a', padding: '4px 10px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '700' }}>Sẵn sàng</span>;
+        return (
+          <span style={{
+            background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0',
+            padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '800'
+          }}>
+            Sẵn sàng hoạt động
+          </span>
+        );
     }
   };
 
-  const getStatusLabel = (status) => {
+  const getStatusLabelText = (status) => {
     const labels = {
       ready: 'Sẵn sàng hoạt động',
       maintenance: 'Đang bảo dưỡng',
       repairing: 'Đang sửa chữa',
       inactive: 'Tạm ngưng hoạt động'
     };
-    return labels[status] || status;
+    return labels[status] || 'Sẵn sàng hoạt động';
   };
 
-  const formatCurrency = (val) => {
-    if (!val) return '0đ';
-    return Number(val).toLocaleString('vi-VN') + 'đ';
-  };
+  const readyCount = buses.filter(b => b.activeStatus === 'ready' || b.activeStatus === 'active' || !b.activeStatus).length;
+  const maintCount = buses.filter(b => b.activeStatus === 'maintenance').length;
+  const repairCount = buses.filter(b => b.activeStatus === 'repairing').length;
+  const inactiveCount = buses.filter(b => b.activeStatus === 'inactive').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeIn 0.3s ease' }}>
-      
-      {/* Overview Status Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-        <div className="stat-card" style={{ background: '#ffffff', borderLeft: '5px solid #16a34a', padding: '1.25rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>XE SẴN SÀNG</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '800', margin: '5px 0', color: '#16a34a' }}>
-            {buses.filter(b => b.activeStatus === 'ready' || !b.activeStatus).length} Xe
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Đang hoạt động tốt trên tuyến</span>
-        </div>
+    <div style={{ animation: 'fadeIn 0.35s ease', display: 'flex', flexDirection: 'column', gap: '0.85rem', width: '100%' }}>
+      <style>{`
+        .fleet-box {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1.15rem 1.25rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
 
-        <div className="stat-card" style={{ background: '#ffffff', borderLeft: '5px solid #d97706', padding: '1.25rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>XE ĐANG BẢO DƯỠNG</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '800', margin: '5px 0', color: '#d97706' }}>
-            {buses.filter(b => b.activeStatus === 'maintenance').length} Xe
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Bảo trì và thay dầu định kỳ</span>
-        </div>
+        .fleet-kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
 
-        <div className="stat-card" style={{ background: '#ffffff', borderLeft: '5px solid #dc2626', padding: '1.25rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>XE ĐANG SỬA CHỮA</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '800', margin: '5px 0', color: '#dc2626' }}>
-            {buses.filter(b => b.activeStatus === 'repairing').length} Xe
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ghi nhận sự cố nằm xưởng</span>
-        </div>
+        .fleet-kpi-card {
+          background: #ffffff;
+          padding: 0.85rem 1.1rem;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
 
-        <div className="stat-card" style={{ background: '#ffffff', borderLeft: '5px solid #64748b', padding: '1.25rem', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600' }}>TẠM NGƯNG HOẠT ĐỘNG</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: '800', margin: '5px 0', color: '#64748b' }}>
-            {buses.filter(b => b.activeStatus === 'inactive').length} Xe
-          </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Đang đỗ bãi dự phòng</span>
-        </div>
-      </div>
+        .plate-box {
+          display: inline-block;
+          background: #ffffff;
+          border: 2px solid #0f172a;
+          border-radius: 6px;
+          padding: 2px 8px;
+          font-family: monospace;
+          font-weight: 800;
+          font-size: 0.88rem;
+          color: #0f172a;
+          letter-spacing: 0.5px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        }
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '2rem', alignItems: 'start' }} className="status-container-grid">
-        
-        {/* Main List Section */}
-        <section className="panel" style={{ margin: 0 }}>
-          <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '1rem', marginBottom: '1.25rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Tình trạng hoạt động đội xe</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>
-              Danh sách các phương tiện đã được duyệt hoạt động. Nhấp vào xe để cập nhật lại tình trạng vận hành thực tế.
+        .bus-select-card {
+          display: flex;
+          justifyContent: space-between;
+          align-items: center;
+          padding: 0.85rem 1rem;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          background-color: #ffffff;
+        }
+        .bus-select-card:hover {
+          background-color: #f8fafc;
+          border-color: #cbd5e1;
+        }
+        .bus-select-card.active {
+          background-color: #eff6ff;
+          border-color: #3b82f6;
+          box-shadow: 0 2px 6px rgba(37,99,235,0.08);
+        }
+
+        .status-layout-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+          gap: 12px;
+        }
+
+        @media (max-width: 1024px) {
+          .fleet-kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+          .status-layout-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .fleet-kpi-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      {/* ========================================================= */}
+      {/* VÙNG 1: HEADER QUẢN TRỊ ĐỘI XE                            */}
+      {/* ========================================================= */}
+      <div className="fleet-box">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Cập Nhật &amp; Điều Phối Tình Trạng Phương Tiện
+              </h1>
+              <span style={{
+                background: '#eff6ff',
+                color: '#2563eb',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.65rem',
+                fontWeight: '700'
+              }}>
+                An Bình Fleet 2.0
+              </span>
+              <span style={{
+                background: '#ecfdf5',
+                color: '#059669',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.65rem',
+                fontWeight: '700'
+              }}>
+                Sẵn Sàng {readyCount}/{buses.length} Xe
+              </span>
+              <span style={{
+                background: '#f1f5f9',
+                color: '#475569',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.65rem',
+                fontWeight: '700'
+              }}>
+                {user?.name || 'Quản Lý Đội Xe'}
+              </span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
+              Hệ thống giám sát và điều chuyển trạng thái kỹ thuật phương tiện giữa phục vụ tuyến, bảo dưỡng định kỳ và sửa chữa xưởng.
             </p>
           </div>
 
-          {error && <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '6px', fontSize: '0.85rem' }}>{error}</div>}
-          {success && <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ecfdf5', color: '#047857', borderRadius: '6px', fontSize: '0.85rem', fontWeight: '500' }}>{success}</div>}
+          <div>
+            <button
+              type="button"
+              onClick={fetchBuses}
+              style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                color: '#334155',
+                padding: '0.45rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+            >
+              Tải lại danh sách
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* VÙNG 2: 4 THẺ THỐNG KÊ KPI ĐỘI XE                         */}
+      {/* ========================================================= */}
+      <div className="fleet-kpi-grid">
+        <div className="fleet-kpi-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
+              XE SẴN SÀNG HOẠT ĐỘNG
+            </span>
+            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#ecfdf5', color: '#059669', borderRadius: '4px', fontWeight: '700' }}>
+              Chạy tuyến
+            </span>
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#059669', marginBottom: '2px' }}>
+            {readyCount} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>xe sẵn sàng</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: '600' }}>
+            Đang hoạt động tốt trên các biểu đồ chạy
+          </div>
+        </div>
+
+        <div className="fleet-kpi-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
+              XE ĐANG BẢO DƯỠNG
+            </span>
+            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#fff7ed', color: '#c2410c', borderRadius: '4px', fontWeight: '700' }}>
+              Định kỳ
+            </span>
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#c2410c', marginBottom: '2px' }}>
+            {maintCount} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>xe nằm xưởng</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+            {maintCount > 0 ? 'Đang thực hiện bảo dưỡng kỹ thuật' : 'Bảo trì và thay dầu máy theo chu kỳ'}
+          </div>
+        </div>
+
+        <div className="fleet-kpi-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
+              XE ĐANG SỬA CHỮA
+            </span>
+            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#fee2e2', color: '#dc2626', borderRadius: '4px', fontWeight: '700' }}>
+              Sự cố
+            </span>
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#dc2626', marginBottom: '2px' }}>
+            {repairCount} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>xe</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+            {repairCount > 0 ? 'Khắc phục hư hỏng tại garage' : 'Không có sự cố đột xuất nằm xưởng'}
+          </div>
+        </div>
+
+        <div className="fleet-kpi-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
+              TẠM NGƯNG HOẠT ĐỘNG
+            </span>
+            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#f1f5f9', color: '#475569', borderRadius: '4px', fontWeight: '700' }}>
+              Dự phòng
+            </span>
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
+            {inactiveCount} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>xe</span>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+            Đỗ bãi dự phòng thay thế khi cần thiết
+          </div>
+        </div>
+      </div>
+
+      {/* Thông báo cập nhật */}
+      {error && (
+        <div style={{ padding: '0.75rem 1rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700', border: '1px solid #fecaca' }}>
+          {error}
+        </div>
+      )}
+      {success && (
+        <div style={{ padding: '0.75rem 1rem', background: '#ecfdf5', color: '#047857', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700', border: '1px solid #a7f3d0' }}>
+          {success}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VÙNG 3: BỐ CỤC CHÍNH (DANH SÁCH BÊN TRÁI & FORM/LOG PHẢI) */}
+      {/* ========================================================= */}
+      <div className="status-layout-grid">
+        
+        {/* CỘT TRÁI: DANH SÁCH PHƯƠNG TIỆN TRONG ĐỘI XE */}
+        <div className="fleet-box" style={{ margin: 0, padding: '1rem 1.15rem' }}>
+          <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.65rem', marginBottom: '0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Tình Trạng Hoạt Động Đội Xe
+              </h2>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                Bấm vào phương tiện để thiết lập trạng thái hoặc ghi nhận bảo dưỡng
+              </div>
+            </div>
+            <span style={{ fontSize: '0.68rem', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: '6px', fontWeight: '700' }}>
+              {buses.length} phương tiện
+            </span>
+          </div>
 
           {loading ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Đang tải danh sách xe...</div>
+            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#2563eb', fontWeight: '700', fontSize: '0.82rem' }}>
+              Đang tải danh sách phương tiện...
+            </div>
           ) : buses.length === 0 ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Không tìm thấy phương tiện nào được duyệt hoạt động trên hệ thống.</div>
+            <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.8rem' }}>
+              Không có phương tiện nào trong cơ sở dữ liệu.
+            </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {buses.map((bus) => (
-                <div 
-                  key={bus._id}
-                  onClick={() => handleOpenUpdate(bus)}
-                  style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '1rem', border: editingBus?._id === bus._id ? '2px solid var(--primary)' : '1px solid var(--card-border)',
-                    borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s',
-                    backgroundColor: editingBus?._id === bus._id ? 'rgba(59, 130, 246, 0.04)' : '#ffffff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-                  }}
-                  className="status-bus-item"
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <div style={{
-                      width: '45px', height: '45px', borderRadius: '6px',
-                      backgroundColor: 'rgba(59, 130, 246, 0.08)', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', fontWeight: '700',
-                      color: 'var(--primary)', fontSize: '1.3rem'
-                    }}>
-                      🚌
-                    </div>
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '700' }}>{bus.plateNumber}</h3>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{bus.type} ({bus.totalSeats} chỗ)</span>
-                    </div>
-                  </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {buses.map((bus) => {
+                const isSelected = editingBus?._id === bus._id;
+                const isMaint = bus.activeStatus === 'maintenance' || bus.activeStatus === 'repairing';
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      {getActiveStatusBadge(bus.activeStatus || 'ready')}
-                      {bus.activeStatus === 'maintenance' && bus.maintenanceInfo?.estimatedCost && (
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          Dự kiến: {formatCurrency(bus.maintenanceInfo.estimatedCost)}
+                return (
+                  <div
+                    key={bus._id}
+                    onClick={() => handleSelectBus(bus)}
+                    className={`bus-select-card ${isSelected ? 'active' : ''}`}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div className="plate-box">
+                        {bus.plateNumber}
+                      </div>
+
+                      <div>
+                        <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '0.82rem' }}>
+                          {bus.type}
                         </div>
-                      )}
+                        <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '1px' }}>
+                          Sức chứa: {bus.totalSeats} chỗ ngồi/nằm
+                        </div>
+                        {isMaint && bus.maintenanceInfo?.garage && (
+                          <div style={{ fontSize: '0.65rem', color: '#c2410c', fontWeight: '600', marginTop: '2px' }}>
+                            Garage: {bus.maintenanceInfo.garage} • {bus.maintenanceInfo.description || 'Đang bảo dưỡng'}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>›</span>
+
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                      {getStatusChip(bus.activeStatus || 'ready')}
+                      <span style={{
+                        fontSize: '0.65rem',
+                        color: isSelected ? '#1d4ed8' : '#64748b',
+                        fontWeight: '700'
+                      }}>
+                        {isSelected ? 'Đang chọn' : 'Chỉnh sửa'}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </section>
+        </div>
 
-        {/* Update Form & History Logs */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        {/* CỘT PHẢI: FORM CẬP NHẬT TRẠNG THÁI & NHẬT KÝ ĐIỀU PHỐI */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           
-          {/* Status Update Card */}
-          <section className="panel" style={{ margin: 0, border: '1px solid var(--card-border)' }}>
-            <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '0.75rem', marginBottom: '1rem' }}>
-              <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--primary)' }}>Cập nhật nhanh tình trạng</h2>
+          {/* PANEL 1: FORM CẬP NHẬT TRẠNG THÁI */}
+          <div className="fleet-box" style={{ margin: 0, padding: '1rem 1.15rem' }}>
+            <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.65rem', marginBottom: '0.85rem' }}>
+              <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Thiết Lập Trạng Thái Phương Tiện
+              </h2>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                Thay đổi trạng thái vận hành và lưu vào hồ sơ kỹ thuật
+              </div>
             </div>
 
             {editingBus ? (
-              <form onSubmit={handleSaveStatus} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', fontSize: '0.85rem', border: '1px solid #e2e8f0', marginBottom: '5px' }}>
-                  Đang chọn xe: <strong style={{ color: 'var(--primary)' }}>{editingBus.plateNumber}</strong>
-                  <br />
-                  Loại xe: <span style={{ color: '#475569' }}>{editingBus.type}</span>
+              <form onSubmit={handleSaveStatus} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {/* Banner xe đang chọn */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.65rem', color: '#64748b', textTransform: 'uppercase', fontWeight: '700' }}>
+                      PHƯƠNG TIỆN ĐANG CHỌN
+                    </div>
+                    <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.88rem' }}>
+                      Xe {editingBus.plateNumber}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+                      {editingBus.type} ({editingBus.totalSeats} chỗ)
+                    </div>
+                  </div>
+                  <div>
+                    {getStatusChip(editingBus.activeStatus || 'ready')}
+                  </div>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={{ fontSize: '0.8rem', fontWeight: '600' }}>Trạng thái vận hành mới</label>
-                  <select 
-                    className="form-control"
+                {/* Chọn trạng thái mới */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                    Trạng thái vận hành mới
+                  </label>
+                  <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
-                    style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.75rem',
+                      fontSize: '0.78rem',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      fontWeight: '600',
+                      outline: 'none'
+                    }}
                   >
-                    <option value="ready">Sẵn sàng hoạt động (Hoạt động tốt)</option>
+                    <option value="ready">Sẵn sàng hoạt động (Phục vụ tuyến đường)</option>
                     <option value="maintenance">Đang bảo dưỡng (Thay dầu, kiểm tra định kỳ)</option>
-                    <option value="repairing">Đang sửa chữa (Gặp sự cố máy móc, nằm xưởng)</option>
+                    <option value="repairing">Đang sửa chữa (Gặp sự cố, khắc phục tại xưởng)</option>
                     <option value="inactive">Tạm ngưng hoạt động (Lưu bãi dự phòng)</option>
                   </select>
                 </div>
 
-                {/* Form fields for maintenance / repairing details */}
+                {/* Các trường bổ sung khi đưa xe vào Bảo dưỡng hoặc Sửa chữa */}
                 {(newStatus === 'maintenance' || newStatus === 'repairing') && (
                   <div style={{
-                    display: 'flex', flexDirection: 'column', gap: '10px',
-                    border: '1px dashed #cbd5e1', borderRadius: '8px', padding: '12px',
-                    backgroundColor: '#fafafa', marginTop: '5px'
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    border: '1px solid #fed7aa',
+                    borderRadius: '8px',
+                    padding: '10px',
+                    backgroundColor: '#fff7ed'
                   }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)' }}>CHI TIẾT ĐỀ XUẤT PHÁT SINH</div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: '800', color: '#c2410c', textTransform: 'uppercase' }}>
+                      THÔNG TIN XƯỞNG BẢO DƯỠNG &amp; SỬA CHỮA
+                    </div>
 
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: '0.75rem' }}>Garage / Nơi thực hiện</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '600', color: '#431407', marginBottom: '2px' }}>
+                        Garage / Nơi thực hiện
+                      </label>
+                      <input
+                        type="text"
                         value={garage}
                         onChange={(e) => setGarage(e.target.value)}
-                        placeholder="Ví dụ: Garage Auto An Bình, Hyundai Service..."
-                        style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }}
+                        placeholder="Ví dụ: Garage Thiên Phúc, Hyundai Service..."
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem 0.65rem',
+                          fontSize: '0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid #fdba74',
+                          background: '#ffffff',
+                          color: '#0f172a',
+                          outline: 'none'
+                        }}
                         required
                       />
                     </div>
 
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: '0.75rem' }}>Nội dung sửa chữa / bảo dưỡng</label>
-                      <input 
-                        type="text" 
-                        className="form-control" 
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '600', color: '#431407', marginBottom: '2px' }}>
+                        Nội dung thực hiện
+                      </label>
+                      <input
+                        type="text"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Ví dụ: Thay dầu động cơ, má phanh..."
-                        style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }}
+                        placeholder="Ví dụ: Thay dầu động cơ, lọc gió, kiểm tra phanh..."
+                        style={{
+                          width: '100%',
+                          padding: '0.4rem 0.65rem',
+                          fontSize: '0.75rem',
+                          borderRadius: '6px',
+                          border: '1px solid #fdba74',
+                          background: '#ffffff',
+                          color: '#0f172a',
+                          outline: 'none'
+                        }}
                         required
                       />
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label style={{ fontSize: '0.75rem' }}>Chi phí dự kiến (đ)</label>
-                        <input 
-                          type="number" 
-                          className="form-control" 
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '600', color: '#431407', marginBottom: '2px' }}>
+                          Chi phí dự kiến (VNĐ)
+                        </label>
+                        <input
+                          type="number"
                           value={estimatedCost}
                           onChange={(e) => setEstimatedCost(e.target.value)}
                           placeholder="Ví dụ: 800000"
-                          style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }}
+                          style={{
+                            width: '100%',
+                            padding: '0.4rem 0.65rem',
+                            fontSize: '0.75rem',
+                            borderRadius: '6px',
+                            border: '1px solid #fdba74',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            outline: 'none'
+                          }}
                         />
                       </div>
 
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label style={{ fontSize: '0.75rem' }}>Ngày hoàn thành dự kiến</label>
-                        <input 
-                          type="date" 
-                          className="form-control" 
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '600', color: '#431407', marginBottom: '2px' }}>
+                          Ngày dự kiến hoàn tất
+                        </label>
+                        <input
+                          type="date"
                           value={estimatedCompletion}
                           onChange={(e) => setEstimatedCompletion(e.target.value)}
-                          style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }}
+                          style={{
+                            width: '100%',
+                            padding: '0.4rem 0.65rem',
+                            fontSize: '0.75rem',
+                            borderRadius: '6px',
+                            border: '1px solid #fdba74',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            outline: 'none'
+                          }}
                         />
                       </div>
                     </div>
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => setEditingBus(null)}
-                    style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    type="submit"
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#2563eb',
+                      border: 'none',
+                      color: '#ffffff',
+                      padding: '0.45rem 1rem',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+                    }}
                   >
-                    Hủy bỏ
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary"
-                    style={{ flex: 1.5, padding: '0.5rem', fontSize: '0.85rem' }}
-                  >
-                    Lưu cập nhật
+                    Lưu cập nhật trạng thái
                   </button>
                 </div>
               </form>
             ) : (
-              <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              <div style={{ textAlign: 'center', padding: '1.5rem 1rem', color: '#64748b', fontSize: '0.78rem' }}>
                 Vui lòng chọn một phương tiện ở danh sách bên trái để chỉnh sửa trạng thái vận hành.
               </div>
             )}
-          </section>
+          </div>
 
-          {/* Operational Log Section */}
-          <section className="panel" style={{ margin: 0, maxHeight: '280px', overflowY: 'auto' }}>
-            <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
-              <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '700' }}>Nhật ký thay đổi trạng thái</h2>
+          {/* PANEL 2: NHẬT KÝ ĐIỀU PHỐI TRẠNG THÁI */}
+          <div className="fleet-box" style={{ margin: 0, padding: '1rem 1.15rem' }}>
+            <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Nhật Ký Thay Đổi Trạng Thái Gần Nhất
+              </h2>
+              <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
+                Live Audit Logs
+              </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
               {logs.length === 0 ? (
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>Chưa có nhật ký nào ghi nhận.</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
+                  Chưa ghi nhận nhật ký điều chuyển nào.
+                </div>
               ) : (
-                logs.map((log) => (
-                  <div key={log.id} style={{ padding: '8px', borderBottom: '1px solid #f1f5f9', fontSize: '0.75rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                      <strong style={{ color: 'var(--primary)' }}>{log.plateNumber}</strong>
-                      <span style={{ color: 'var(--text-muted)' }}>{new Date(log.time).toLocaleTimeString('vi-VN')} {new Date(log.time).toLocaleDateString('vi-VN')}</span>
+                logs.slice(0, 5).map((log) => (
+                  <div key={log.id} style={{ padding: '7px 9px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <strong style={{ color: '#1d4ed8' }}>Xe {log.plateNumber}</strong>
+                      <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>
+                        {new Date(log.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} • {new Date(log.time).toLocaleDateString('vi-VN')}
+                      </span>
                     </div>
-                    <div style={{ color: 'var(--text-main)', lineHeight: '1.3' }}>
-                      <strong>{getStatusLabel(log.fromStatus)}</strong> ➔ <strong>{getStatusLabel(log.toStatus)}</strong>
-                      <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>{log.details}</div>
+                    <div style={{ color: '#334155', lineHeight: '1.3' }}>
+                      <span>{getStatusLabelText(log.fromStatus)}</span> chuyển sang <strong>{getStatusLabelText(log.toStatus)}</strong>
+                      <div style={{ color: '#64748b', fontSize: '0.68rem', marginTop: '2px' }}>
+                        {log.details}
+                      </div>
                     </div>
                   </div>
                 ))
               )}
             </div>
-          </section>
+          </div>
 
         </div>
 
