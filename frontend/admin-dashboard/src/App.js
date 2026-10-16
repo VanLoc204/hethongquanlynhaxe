@@ -46,7 +46,6 @@ import AgentDashboardPage from './pages/agent/AgentDashboardPage';
 // Attendant Pages
 import AttendantAttendancePage from './pages/attendant/AttendantAttendancePage';
 import AttendantCheckinPage from './pages/attendant/AttendantCheckinPage';
-import AttendantLuggagePage from './pages/attendant/AttendantLuggagePage';
 import AttendantDashboardPage from './pages/attendant/AttendantDashboardPage';
 
 // Driver Pages
@@ -156,8 +155,6 @@ function DashboardLayout() {
         return <AttendantAttendancePage />;
       case 'attendant-checkin':
         return <AttendantCheckinPage />;
-      case 'attendant-luggage':
-        return <AttendantLuggagePage />;
 
       // Driver views
       case 'driver-attendance':
@@ -259,8 +256,6 @@ function DashboardLayout() {
         return 'Chấm công số (Phụ xe)';
       case 'attendant-checkin':
         return 'Soát vé & Check-in hành khách';
-      case 'attendant-luggage':
-        return 'Ghi nhận thẻ hành lý ký gửi';
 
       // Driver views
       case 'driver-attendance':
@@ -309,13 +304,19 @@ function DashboardLayout() {
       <div className="dashboard-main-area">
         {/* Top Header - Chỉ chứa Breadcrumb & Profile (Không trùng logo An Bình Lines) */}
         <header className="top-header">
-          <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            {/* Nút 3 gạch mở Menu cho Mobile & Tablet (Tài xế & Phụ xe thao tác trên điện thoại) */}
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="sidebar-toggle-btn"
               title="Đóng / Mở Menu"
+              aria-label="Toggle Navigation Menu"
             >
-              ☰
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+              </svg>
             </button>
 
             {/* Breadcrumb Navigation - Tự co gọn trên mobile */}
