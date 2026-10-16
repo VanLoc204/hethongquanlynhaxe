@@ -283,7 +283,7 @@ const FleetStatusPage = () => {
 
         .bus-select-card {
           display: flex;
-          justifyContent: space-between;
+          justify-content: space-between;
           align-items: center;
           padding: 0.85rem 1rem;
           border: 1px solid #e2e8f0;
@@ -291,6 +291,8 @@ const FleetStatusPage = () => {
           cursor: pointer;
           transition: all 0.15s ease;
           background-color: #ffffff;
+          width: 100%;
+          box-sizing: border-box;
         }
         .bus-select-card:hover {
           background-color: #f8fafc;
@@ -537,17 +539,20 @@ const FleetStatusPage = () => {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 'auto' }}>
                       {getStatusChip(bus.activeStatus || 'ready')}
                       <span style={{
                         fontSize: '0.7rem',
                         color: isSelected ? '#1d4ed8' : '#475569',
                         fontWeight: '700',
                         backgroundColor: isSelected ? '#dbeafe' : '#f1f5f9',
-                        padding: '3px 9px',
+                        padding: '3px 10px',
                         borderRadius: '6px',
                         border: `1px solid ${isSelected ? '#bfdbfe' : '#cbd5e1'}`,
-                        whiteSpace: 'nowrap'
+                        whiteSpace: 'nowrap',
+                        minWidth: '66px',
+                        textAlign: 'center',
+                        display: 'inline-block'
                       }}>
                         {isSelected ? 'Đang chọn' : 'Chỉnh sửa'}
                       </span>
