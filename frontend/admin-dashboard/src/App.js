@@ -139,6 +139,7 @@ function DashboardLayout() {
       // Ticket Agent views
       case 'agent-attendance':
         return <AgentAttendancePage />;
+      case 'counter-booking':
       case 'agent-booking':
         return <AgentBookingPage />;
       case 'agent-tickets':
@@ -146,7 +147,7 @@ function DashboardLayout() {
       case 'agent-shift':
         return <AgentShiftSummaryPage />;
       case 'agent-trips':
-        return <AgentTripsPage />;
+        return <AgentTripsPage setActiveTab={setActiveTab} />;
       case 'agent-ai':
         return <AgentAIPage />;
 

@@ -4,6 +4,8 @@ const LeaveRequest = require('../models/LeaveRequest');
 const Notification = require('../models/Notification');
 const ShiftSession = require('../models/ShiftSession');
 const Booking = require('../models/Booking');
+const Route = require('../models/Route');
+const Bus = require('../models/Bus');
 const Payroll = require('../models/Payroll');
 const WorkSchedule = require('../models/WorkSchedule');
 const bcrypt = require('bcryptjs');
@@ -56,12 +58,11 @@ exports.getMySchedule = async (req, res) => {
 
     if (isFixedSchedule) {
       const schedules = await WorkSchedule.find({ userId: req.user.id }).sort({ date: 1 }).lean();
-      const tripService = require('../services/tripService');
-      const trips = await tripService.getTrips();
       return res.status(200).json({
         success: true,
         fixedSchedule: true,
-        trips,
+        role: user.role,
+        trips: [],
         schedules
       });
     }
@@ -457,37 +458,72 @@ exports.getShiftHistory = async (req, res) => {
 };
 
 // @desc    Find tickets/bookings by orderCode or customer phone number
+// @desc    Find tickets/bookings by orderCode, phone, customer name, date, status
 // @route   GET /api/v1/users/agent/tickets
 // @access  Private (Ticket Agent)
 exports.lookupTickets = async (req, res) => {
   try {
-    const { query } = req.query; // can be orderCode or phone number
-    if (!query) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp SĐT hoặc Mã Vé để tìm kiếm.' });
-    }
+    const { query, date, dateType = 'departure', status } = req.query;
 
     let filter = {};
-    if (/^\d+$/.test(query)) {
-      // numeric query: can be orderCode (6-digits) or phone number
-      if (query.length === 6) {
-        filter = { orderCode: Number(query) };
+
+    if (query && query.trim()) {
+      const q = query.trim();
+      if (/^\d+$/.test(q)) {
+        // numeric query: can be orderCode (6-digits) or phone number
+        if (q.length === 6) {
+          filter.orderCode = Number(q);
+        } else {
+          filter.customerPhone = new RegExp(q, 'i');
+        }
       } else {
-        filter = { customerPhone: query };
+        filter.customerName = new RegExp(q, 'i');
       }
-    } else {
-      filter = { customerName: new RegExp(query, 'i') };
     }
 
-    const bookings = await Booking.find(filter)
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    let bookings = await Booking.find(filter)
       .populate({
         path: 'tripId',
         populate: [
-          { path: 'routeId', select: 'startPoint endPoint' },
-          { path: 'busId', select: 'plateNumber type' }
+          { path: 'routeId', select: 'startPoint endPoint distance duration estimatedHours' },
+          { path: 'busId', select: 'plateNumber type totalSeats' }
         ]
       })
       .sort({ createdAt: -1 })
       .lean();
+
+    // Helper format date sang YYYY-MM-DD theo local time
+    const toYMD = (dInput) => {
+      if (!dInput) return '';
+      const d = new Date(dInput);
+      if (isNaN(d.getTime())) return '';
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    // Filter theo ngày nếu có tham số date
+    if (date && date.trim()) {
+      const targetDate = date.trim();
+      bookings = bookings.filter(b => {
+        const depDate = b.tripId?.departureTime ? toYMD(b.tripId.departureTime) : '';
+        const bookDate = toYMD(b.createdAt);
+
+        if (dateType === 'departure') {
+          return depDate === targetDate;
+        } else if (dateType === 'booking') {
+          return bookDate === targetDate;
+        } else {
+          // 'both': hoặc ngày khởi hành hôm nay hoặc ngày đặt hôm nay
+          return depDate === targetDate || bookDate === targetDate;
+        }
+      });
+    }
 
     const bookingsWithQr = bookings.map(b => ({
       ...b,
@@ -496,7 +532,7 @@ exports.lookupTickets = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      count: bookings.length,
+      count: bookingsWithQr.length,
       bookings: bookingsWithQr
     });
   } catch (error) {

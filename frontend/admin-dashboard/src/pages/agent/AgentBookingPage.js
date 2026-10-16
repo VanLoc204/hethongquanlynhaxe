@@ -2,22 +2,38 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentBookingPage = () => {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
   const [trips, setTrips] = useState([]);
+  const [publicLocations, setPublicLocations] = useState({ origins: [], destinations: [], routes: [] });
   const [activeShift, setActiveShift] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Search parameters
+  // Helper chuyển đổi ngày sang YYYY-MM-DD chuẩn local
+  const formatDateToYMD = (dateObj) => {
+    if (!dateObj) return '';
+    const d = new Date(dateObj);
+    if (isNaN(d.getTime())) return '';
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const todayStr = formatDateToYMD(new Date());
+  const tomorrowStr = formatDateToYMD(new Date(Date.now() + 86400000));
+  const dayAfterTomorrowStr = formatDateToYMD(new Date(Date.now() + 86400000 * 2));
+
+  // Search parameters - Mặc định ngày nào thì hiển thị ngày đó (Hôm nay)
   const [startPoint, setStartPoint] = useState('');
   const [endPoint, setEndPoint] = useState('');
-  const [departureDate, setDepartureDate] = useState('');
+  const [departureDate, setDepartureDate] = useState(() => todayStr);
   const [plateSearch, setPlateSearch] = useState('');
   const [showStartSuggestions, setShowStartSuggestions] = useState(false);
   const [showEndSuggestions, setShowEndSuggestions] = useState(false);
 
-  // Filter & View states matching exact screenshot
+  // Filter & View states
   const [timeRange, setTimeRange] = useState('all'); // 'all', 'morning', 'afternoon', 'evening'
   const [busType, setBusType] = useState('all'); // 'all', 'Xe Giường Nằm', 'Xe Ghế Ngồi', 'Limousine'
   const [onlyAvailableSeats, setOnlyAvailableSeats] = useState(false);
@@ -25,8 +41,8 @@ const AgentBookingPage = () => {
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
 
   // Calendar view state
-  const [currentYearMonth, setCurrentYearMonth] = useState({ year: 2026, month: 11 }); // Default to Dec 2026 where trips exist
-  const [selectedCalDateStr, setSelectedCalDateStr] = useState('2026-12-21');
+  const [currentYearMonth, setCurrentYearMonth] = useState({ year: 2026, month: 9 }); // Month 9 is October (0-indexed)
+  const [selectedCalDateStr, setSelectedCalDateStr] = useState('2026-10-16');
 
   // Booking session states
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -46,7 +62,7 @@ const AgentBookingPage = () => {
     setLoading(true);
     setError('');
     try {
-      // 1. Verify shift session status
+      // 1. Kiểm tra thông tin ca trực tại quầy của nhân viên
       const shiftRes = await fetch('http://localhost:8000/api/v1/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -55,16 +71,40 @@ const AgentBookingPage = () => {
         setActiveShift(shiftData.session);
       }
 
-      // 2. Fetch all trips to lookup from schedule
-      const tripsRes = await fetch('http://localhost:8000/api/v1/users/my-schedule', {
+      // 2. Lấy danh sách điểm đi / điểm đến thực tế từ CSDL
+      try {
+        const locRes = await fetch('http://localhost:8000/api/v1/trips/routes');
+        const locData = await locRes.json();
+        if (locRes.ok && locData.success) {
+          setPublicLocations({
+            origins: locData.origins || [],
+            destinations: locData.destinations || [],
+            routes: locData.routes || []
+          });
+        }
+      } catch (locErr) {
+        console.warn('Lỗi lấy danh sách địa điểm:', locErr);
+      }
+
+      // 3. Lấy toàn bộ chuyến xe thực tế từ CSDL hệ thống
+      const tripsRes = await fetch('http://localhost:8000/api/v1/trips/ops/trips', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const tripsData = await tripsRes.json();
       if (tripsRes.ok && tripsData.success) {
-        setTrips(tripsData.trips);
+        setTrips(tripsData.trips || []);
+      } else {
+        // Phương án dự phòng nếu không phải ops_manager: dùng my-schedule
+        const backupRes = await fetch('http://localhost:8000/api/v1/users/my-schedule', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const backupData = await backupRes.json();
+        if (backupRes.ok && backupData.success) {
+          setTrips(backupData.trips || []);
+        }
       }
     } catch (err) {
-      setError('Lỗi kết nối tới máy chủ khi tải dữ liệu.');
+      setError('Lỗi kết nối tới máy chủ khi tải dữ liệu chuyến xe từ CSDL.');
     } finally {
       setLoading(false);
     }
@@ -123,130 +163,57 @@ const AgentBookingPage = () => {
     return normalized;
   };
 
-  const parseDateStr = (str) => {
-    if (!str) return null;
-    const cleanStr = str.trim();
-
-    const digitsOnly = cleanStr.replace(/\s+/g, '').replace(/[-\/]/g, '');
-    if (/^\d{8}$/.test(digitsOnly)) {
-      const day = parseInt(digitsOnly.substring(0, 2), 10);
-      const month = parseInt(digitsOnly.substring(2, 4), 10) - 1;
-      const year = parseInt(digitsOnly.substring(4, 8), 10);
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) return date;
+  const matchesStart = (trip, query) => {
+    if (!query) return true;
+    const qCanon = canonicalizeLocation(query);
+    const qNorm = normalizeText(query);
+    const startPoint = trip.routeId?.startPoint || '';
+    if (canonicalizeLocation(startPoint).includes(qCanon) || normalizeText(startPoint).includes(qNorm)) {
+      return true;
     }
-
-    let parts = cleanStr.split('/');
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const year = parseInt(parts[2], 10);
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) return date;
-    }
-    parts = cleanStr.split('-');
-    if (parts.length === 3) {
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const day = parseInt(parts[2], 10);
-      const date = new Date(year, month, day);
-      if (!isNaN(date.getTime())) return date;
-    }
-    return null;
-  };
-
-  const matchesStart = (trip, input) => {
-    if (!input) return true;
-    const cleanInput = canonicalizeLocation(input);
-    const tripStart = canonicalizeLocation(trip.routeId?.startPoint || '');
-    const hasMatchingPickup = (trip.pickupPoints || []).some(pt => 
-      canonicalizeLocation(pt.location).includes(cleanInput)
+    return (trip.pickupPoints || []).some(p => 
+      normalizeText(p.location).includes(qNorm) || normalizeText(p.address || '').includes(qNorm)
     );
-    return tripStart.includes(cleanInput) || hasMatchingPickup;
   };
 
-  const matchesEnd = (trip, input) => {
-    if (!input) return true;
-    const cleanInput = canonicalizeLocation(input);
-    const tripEnd = canonicalizeLocation(trip.routeId?.endPoint || '');
-    const hasMatchingDropoff = (trip.dropoffPoints || []).some(pt => 
-      canonicalizeLocation(pt.location).includes(cleanInput)
+  const matchesEnd = (trip, query) => {
+    if (!query) return true;
+    const qCanon = canonicalizeLocation(query);
+    const qNorm = normalizeText(query);
+    const endPoint = trip.routeId?.endPoint || '';
+    if (canonicalizeLocation(endPoint).includes(qCanon) || normalizeText(endPoint).includes(qNorm)) {
+      return true;
+    }
+    return (trip.dropoffPoints || []).some(d => 
+      normalizeText(d.location).includes(qNorm) || normalizeText(d.address || '').includes(qNorm)
     );
-    return tripEnd.includes(cleanInput) || hasMatchingDropoff;
   };
 
+  // Hoán đổi điểm đi và điểm đến
   const handleSwapLocations = () => {
     const temp = startPoint;
     setStartPoint(endPoint);
     setEndPoint(temp);
   };
 
-  // Compute Calendar Grid Days
-  const getCalendarDays = () => {
-    const { year, month } = currentYearMonth;
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-
-    let startDayOfWeek = firstDay.getDay() - 1;
-    if (startDayOfWeek === -1) startDayOfWeek = 6; // Monday = 0, Sunday = 6
-
-    const totalDays = lastDay.getDate();
-    const daysArr = [];
-
-    for (let i = 0; i < startDayOfWeek; i++) {
-      daysArr.push(null);
-    }
-
-    for (let d = 1; d <= totalDays; d++) {
-      const yearStr = year;
-      const monthStr = String(month + 1).padStart(2, '0');
-      const dayStr = String(d).padStart(2, '0');
-      const dateISO = `${yearStr}-${monthStr}-${dayStr}`;
-
-      const tripsOnDate = trips.filter(t => {
-        const tDate = new Date(t.departureTime);
-        return tDate.getFullYear() === year &&
-               tDate.getMonth() === month &&
-               tDate.getDate() === d &&
-               matchesStart(t, startPoint) &&
-               matchesEnd(t, endPoint);
-      });
-
-      const totalAvailSeats = tripsOnDate.reduce((acc, t) => {
-        const total = t.busId?.totalSeats || 36;
-        const booked = t.bookedSeats?.length || 0;
-        return acc + Math.max(0, total - booked);
-      }, 0);
-
-      daysArr.push({
-        dayNumber: d,
-        dateISO,
-        tripsCount: tripsOnDate.length,
-        availableSeats: totalAvailSeats
-      });
-    }
-
-    return daysArr;
+  // Format tiền tệ
+  const formatCurrency = (number) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(number || 0);
   };
 
-  // Filter & sort trips based on inputs & filter controls
+  // Lọc chuyến xe
   const filteredTrips = trips.filter(trip => {
     const startMatch = matchesStart(trip, startPoint);
     const endMatch = matchesEnd(trip, endPoint);
 
+    // Khớp ngày khởi hành theo chuẩn YYYY-MM-DD
     let dateMatch = true;
     if (departureDate) {
-      const parsedSearchDate = parseDateStr(departureDate);
-      if (parsedSearchDate) {
-        const tripDate = new Date(trip.departureTime).toDateString();
-        dateMatch = tripDate === parsedSearchDate.toDateString();
-      } else {
-        dateMatch = false;
-      }
+      dateMatch = (formatDateToYMD(trip.departureTime) === departureDate);
     }
 
     let plateMatch = true;
-    if (plateSearch && plateSearch.trim()) {
+    if (plateSearch.trim()) {
       const q = normalizeText(plateSearch);
       const plate = normalizeText(trip.busId?.plateNumber || '');
       const type = normalizeText(trip.busId?.type || '');
@@ -290,51 +257,12 @@ const AgentBookingPage = () => {
     return new Date(a.departureTime) - new Date(b.departureTime);
   });
 
-  const matchesWordBoundary = (locationName, query) => {
-    if (!query) return true;
-    const cleanLocation = normalizeText(locationName);
-    const cleanQuery = normalizeText(query).trim();
-    const regex = new RegExp('(^|\\s)' + cleanQuery.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&'), 'i');
-    return regex.test(cleanLocation);
-  };
+  // Gợi ý địa điểm tìm kiếm
+  const startSuggestions = (publicLocations.origins || [])
+    .filter(loc => normalizeText(loc.name).includes(normalizeText(startPoint)));
 
-  const availableTripsForStart = trips.filter(t => matchesEnd(t, endPoint));
-  const startLocationsGroup = [];
-  availableTripsForStart.forEach(t => {
-    const city = t.routeId?.startPoint;
-    if (!city) return;
-    if (!startLocationsGroup.some(item => item.name === city)) {
-      startLocationsGroup.push({ name: city, type: 'city', parentCity: city });
-    }
-    (t.pickupPoints || []).forEach(p => {
-      if (!startLocationsGroup.some(item => item.name === p.location)) {
-        startLocationsGroup.push({ name: p.location, type: 'pickup', parentCity: city });
-      }
-    });
-  });
-
-  const availableTripsForEnd = trips.filter(t => matchesStart(t, startPoint));
-  const endLocationsGroup = [];
-  availableTripsForEnd.forEach(t => {
-    const city = t.routeId?.endPoint;
-    if (!city) return;
-    if (!endLocationsGroup.some(item => item.name === city)) {
-      endLocationsGroup.push({ name: city, type: 'city', parentCity: city });
-    }
-    (t.dropoffPoints || []).forEach(d => {
-      if (!endLocationsGroup.some(item => item.name === d.location)) {
-        endLocationsGroup.push({ name: d.location, type: 'dropoff', parentCity: city });
-      }
-    });
-  });
-
-  const startSuggestions = startLocationsGroup.filter(item => 
-    matchesWordBoundary(item.name, startPoint) || matchesWordBoundary(item.parentCity, startPoint)
-  );
-
-  const endSuggestions = endLocationsGroup.filter(item => 
-    matchesWordBoundary(item.name, endPoint) || matchesWordBoundary(item.parentCity, endPoint)
-  );
+  const endSuggestions = (publicLocations.destinations || [])
+    .filter(loc => normalizeText(loc.name).includes(normalizeText(endPoint)));
 
   const handleSeatClick = (seatCode) => {
     if (selectedSeats.includes(seatCode)) {
@@ -350,12 +278,12 @@ const AgentBookingPage = () => {
     setSuccess('');
 
     if (!activeShift) {
-      setError('Bạn phải mở ca tại quầy vé trước khi thực hiện đặt vé.');
+      setError('Bạn phải mở ca tại quầy vé trước khi thực hiện xuất vé.');
       return;
     }
 
     if (selectedSeats.length === 0) {
-      setError('Vui lòng chọn ít nhất một ghế.');
+      setError('Vui lòng chọn ít nhất một vị trí ghế.');
       return;
     }
 
@@ -379,7 +307,7 @@ const AgentBookingPage = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccess(paymentMethod === 'cashless' ? 'Đang chờ khách quét mã VietQR thanh toán...' : 'Nhận tiền tại quầy và xuất vé thành công! Mã Code: ' + data.booking.orderCode);
+        setSuccess(paymentMethod === 'cashless' ? 'Đang chờ khách quét mã VietQR thanh toán...' : 'Nhận tiền tại quầy và xuất vé thành công! Mã vé: ' + data.booking.orderCode);
         const printedBooking = {
           ...data.booking,
           tripId: selectedTrip
@@ -398,907 +326,691 @@ const AgentBookingPage = () => {
         setSelectedDropoff('');
         fetchInitialData();
       } else {
-        setError(data.message || 'Đặt vé thất bại.');
+        setError(data.message || 'Xuất vé tại quầy thất bại.');
       }
     } catch (err) {
-      setError('Lỗi kết nối máy chủ khi thanh toán vé.');
+      setError('Mất kết nối với máy chủ khi xử lý xuất vé.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const formatCurrency = (number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(number || 0);
+  // Helper đặt ngày nhanh
+  const setQuickDate = (daysFromToday) => {
+    if (daysFromToday === null) {
+      setDepartureDate('');
+      return;
+    }
+    const d = new Date(Date.now() + daysFromToday * 86400000);
+    setDepartureDate(formatDateToYMD(d));
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '4rem' }}>
-        <div style={{ color: '#2563eb', fontWeight: '600', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <circle cx="12" cy="12" r="10" strokeDasharray="32" strokeDashoffset="12" />
-          </svg>
-          Đang tải lịch xe & ca làm việc...
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <section style={{ animation: 'fadeIn 0.3s ease', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+      
+      {/* CSS Cục Bộ Chuẩn Giao Diện Bán Vé - Responsive Toàn Diện & Tuyệt Đối Không Dùng Icon */}
       <style>{`
-        .agent-card-panel {
+        .agent-panel-box {
           background: #ffffff;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          padding: 1.25rem 1.5rem;
-          margin-bottom: 1.25rem;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-        }
-        .filter-pill-btn {
-          border: 1px solid #e2e8f0;
-          background: #ffffff;
-          color: #475569;
-          font-size: 0.82rem;
-          font-weight: 500;
-          padding: 6px 14px;
-          border-radius: 20px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          white-space: nowrap;
-        }
-        .filter-pill-btn:hover {
-          border-color: #cbd5e1;
-          background: #f8fafc;
-          color: #1e293b;
-        }
-        .filter-pill-btn.active {
-          background: #2563eb;
-          color: #ffffff;
-          border-color: #2563eb;
-          font-weight: 600;
-          box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
-        }
-        .text-link-filter {
-          font-size: 0.85rem;
-          color: #64748b;
-          font-weight: 500;
-          cursor: pointer;
-          transition: color 0.2s;
-          padding: 4px 8px;
-          border-radius: 6px;
-        }
-        .text-link-filter:hover {
-          color: #1e293b;
-          background: #f1f5f9;
-        }
-        .text-link-filter.active {
-          color: #2563eb;
-          font-weight: 700;
-        }
-        .trip-item-row {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
           border-radius: 14px;
-          padding: 1.15rem 1.5rem;
-          margin-bottom: 0.85rem;
+          border: 1px solid #e2e8f0;
+          padding: 1.25rem 1.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
           display: flex;
-          align-items: center;
+          flex-direction: column;
+          gap: 1.25rem;
+        }
+
+        .agent-header-wrap {
+          display: flex;
           justify-content: space-between;
-          transition: all 0.2s ease;
-          gap: 1.5rem;
-        }
-        .trip-item-row:hover {
-          border-color: #cbd5e1;
-          box-shadow: 0 6px 16px -4px rgba(0,0,0,0.06);
-          transform: translateY(-1px);
-        }
-        .trip-item-row.sold-out {
-          background: #fafafa;
-          border-color: #f1f5f9;
-        }
-        .form-input-with-icon {
-          position: relative;
-          display: flex;
           align-items: center;
+          flex-wrap: wrap;
+          gap: 1rem;
         }
-        .form-input-with-icon input {
+
+        .agent-header-actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .agent-filter-grid {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr 180px 1.2fr;
+          gap: 0.75rem;
+          align-items: end;
+        }
+
+        .agent-form-control {
           width: 100%;
-          height: 42px;
-          padding: 0.5rem 0.85rem 0.5rem 2.4rem;
+          height: 40px;
+          padding: 0 0.85rem;
           border: 1px solid #cbd5e1;
-          border-radius: 10px;
-          font-size: 0.88rem;
+          border-radius: 8px;
+          font-size: 0.82rem;
           color: #0f172a;
           outline: none;
           background: #ffffff;
-          transition: all 0.2s;
+          transition: border-color 0.15s;
         }
-        .form-input-with-icon input:focus {
+
+        .agent-form-control:focus {
           border-color: #2563eb;
-          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
-        .form-input-with-icon .input-icon {
-          position: absolute;
-          left: 0.8rem;
-          color: #64748b;
-          pointer-events: none;
+
+        .agent-trip-row {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 1rem 1.25rem;
+          display: grid;
+          grid-template-columns: 2fr 1fr 1.2fr 1fr 140px;
+          gap: 1rem;
+          align-items: center;
+          transition: all 0.15s ease;
         }
-        .suggestion-item {
-          padding: 0.6rem 1rem;
-          cursor: pointer;
-          font-size: 0.85rem;
-          color: #334155;
-          border-bottom: 1px solid #f1f5f9;
-          transition: background 0.15s;
+
+        .agent-trip-row:hover {
+          border-color: #cbd5e1;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
-        .suggestion-item:hover {
-          background: #eff6ff;
-          color: #2563eb;
+
+        .agent-trip-row.departed {
+          background: #f8fafc;
+          border-color: #e2e8f0;
         }
-        .swap-btn {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
+
+        .agent-pill-btn {
           border: 1px solid #cbd5e1;
           background: #ffffff;
           color: #475569;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.2s;
-          margin-top: 1.35rem;
-          flex-shrink: 0;
-        }
-        .swap-btn:hover {
-          border-color: #2563eb;
-          color: #2563eb;
-          background: #eff6ff;
-          transform: rotate(180deg);
-        }
-        .bus-badge-type {
-          background: #eff6ff;
-          color: #2563eb;
-          padding: 3px 9px;
+          padding: 4px 10px;
           border-radius: 6px;
-          font-size: 0.78rem;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-        .bus-badge-plate {
-          background: #f8fafc;
-          border: 1px solid #e2e8f0;
-          color: #475569;
-          padding: 3px 8px;
-          border-radius: 6px;
-          font-family: monospace;
-          font-size: 0.8rem;
+          font-size: 0.75rem;
           font-weight: 700;
-          white-space: nowrap;
+          cursor: pointer;
+          transition: all 0.15s;
         }
-        .btn-buy-ticket {
+
+        .agent-pill-btn.active {
           background: #2563eb;
           color: #ffffff;
-          border: none;
-          padding: 0.55rem 1.25rem;
-          border-radius: 10px;
-          font-weight: 600;
-          font-size: 0.85rem;
+          border-color: #2563eb;
+        }
+
+        .agent-suggestion-box {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          margin-top: 4px;
+          max-height: 200px;
+          overflow-y: auto;
+          z-index: 50;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .agent-suggestion-item {
+          padding: 8px 12px;
+          font-size: 0.8rem;
+          color: #334155;
           cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          transition: all 0.2s;
-          white-space: nowrap;
-          box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.18);
+          border-bottom: 1px solid #f1f5f9;
         }
-        .btn-buy-ticket:hover {
-          background: #1d4ed8;
-          box-shadow: 0 6px 10px -1px rgba(37, 99, 235, 0.25);
+
+        .agent-suggestion-item:hover {
+          background: #eff6ff;
+          color: #2563eb;
+          font-weight: 700;
         }
-        .btn-sold-out {
-          background: #f1f5f9;
-          color: #94a3b8;
-          border: 1px solid #e2e8f0;
-          padding: 0.55rem 1.25rem;
-          border-radius: 10px;
-          font-weight: 600;
-          font-size: 0.85rem;
-          cursor: not-allowed;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          white-space: nowrap;
+
+        /* Responsive Tablet (<= 992px) */
+        @media (max-width: 992px) {
+          .agent-filter-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+          .agent-trip-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+          }
+        }
+
+        /* Responsive Mobile (<= 640px) */
+        @media (max-width: 640px) {
+          .agent-panel-box {
+            padding: 1rem 0.85rem;
+            border-radius: 12px;
+            gap: 1rem;
+          }
+          .agent-filter-grid {
+            grid-template-columns: 1fr;
+          }
+          .agent-trip-row {
+            grid-template-columns: 1fr;
+            gap: 0.65rem;
+          }
         }
       `}</style>
 
-      {/* HEADER SECTION MATCHING SCREENSHOT */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700', color: '#0f172a' }}>
-              Đặt Vé Xe Tại Quầy
-            </h2>
-            <span style={{ 
-              backgroundColor: '#ecfdf5', 
-              color: '#059669', 
-              border: '1px solid #a7f3d0',
-              padding: '0.25rem 0.75rem', 
-              borderRadius: '20px', 
-              fontSize: '0.8rem', 
-              fontWeight: '600',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-              Đang mở: {activeShift?.counterNumber ? `Văn phòng Sài Gòn (BXMĐ) - ${activeShift.counterNumber}` : 'Văn phòng Sài Gòn (BXMĐ) - Quầy số 1'}
-            </span>
+      {/* ========================================================= */}
+      {/* VÙNG 1: KHỐI TRẮNG TIÊU ĐỀ & TRẠNG THÁI QUẦY VÉ            */}
+      {/* ========================================================= */}
+      <div className="agent-panel-box">
+        <div className="agent-header-wrap">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Đặt Vé Xe Tại Quầy
+              </h1>
+              <span style={{
+                background: '#eff6ff',
+                color: '#2563eb',
+                border: '1px solid #bfdbfe',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.68rem',
+                fontWeight: '700'
+              }}>
+                Nhân Viên Bán Vé
+              </span>
+            </div>
+
+            <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '6px' }}>
+              {activeShift ? (
+                <span>
+                  Đang mở ca tại: <strong style={{ color: '#0f172a' }}>{activeShift.counterNumber}</strong>
+                  <span style={{ margin: '0 8px', color: '#cbd5e1' }}>•</span>
+                  Bắt đầu: <strong style={{ color: '#0f172a' }}>{new Date(activeShift.startTime).toLocaleTimeString('vi-VN')}</strong> ({new Date(activeShift.startTime).toLocaleDateString('vi-VN')})
+                </span>
+              ) : (
+                <span style={{ color: '#b45309' }}>
+                  Chưa ghi nhận ca trực quầy hôm nay. Vui lòng mở ca để liên kết doanh thu và lịch sử bán vé.
+                </span>
+              )}
+            </div>
           </div>
-          <p style={{ margin: '0.35rem 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
-            Bán vé nhanh tại quầy, kiểm soát tuyến & điều phối ca trực
-          </p>
-        </div>
 
-        {/* View mode switcher */}
-        <div style={{ display: 'flex', gap: '6px', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-          <button
-            type="button"
-            className={`filter-pill-btn ${viewMode === 'list' ? 'active' : ''}`}
-            style={{ borderRadius: '8px', padding: '6px 12px' }}
-            onClick={() => setViewMode('list')}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-              <circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>
-            </svg>
-            Danh sách
-          </button>
-          <button
-            type="button"
-            className={`filter-pill-btn ${viewMode === 'calendar' ? 'active' : ''}`}
-            style={{ borderRadius: '8px', padding: '6px 12px' }}
-            onClick={() => setViewMode('calendar')}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            Dạng lịch
-          </button>
-        </div>
-      </div>
-
-      {error && <div className="error-message" style={{ marginBottom: '1.25rem' }}>{error}</div>}
-      {success && (
-        <div className="success-message" style={{ marginBottom: '1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.8rem 1rem', borderRadius: '8px', fontWeight: '500' }}>
-          <span>{success}</span>
-          {lastBooking && (
+          <div className="agent-header-actions">
             <button
-              type="button"
-              className="btn"
+              onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
               style={{
-                marginLeft: '1.5rem',
-                padding: '0.4rem 1rem',
-                fontSize: '0.85rem',
-                backgroundColor: '#059669',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                whiteSpace: 'nowrap'
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                color: '#334155',
+                fontWeight: '700',
+                padding: '0.5rem 1rem',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                cursor: 'pointer'
               }}
-              onClick={() => setPrintTarget(lastBooking)}
             >
-              In Vé Ngay
+              {viewMode === 'list' ? 'Chuyển Sang Dạng Lịch' : 'Chuyển Sang Danh Sách'}
             </button>
-          )}
+
+            <button
+              onClick={fetchInitialData}
+              style={{
+                backgroundColor: '#2563eb',
+                border: 'none',
+                color: '#ffffff',
+                fontWeight: '700',
+                padding: '0.5rem 1.15rem',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                cursor: 'pointer'
+              }}
+              title="Tải lại dữ liệu chuyến xe từ CSDL"
+            >
+              Làm Mới Dữ Liệu
+            </button>
+          </div>
         </div>
-      )}
+
+        {error && (
+          <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#be123c', padding: '0.65rem 1rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '600' }}>
+            Lưu ý: {error}
+          </div>
+        )}
+
+        {success && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '0.65rem 1rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '600' }}>
+            Thành công: {success}
+          </div>
+        )}
+      </div>
 
       {!selectedTrip && (
         <>
-          {/* SEARCH & FILTER CONTROLLER PANEL */}
-          <div className="agent-card-panel">
+          {/* ========================================================= */}
+          {/* VÙNG 2: BỘ LỌC TÌM KIẾM CHUYẾN XE (KHÔNG DÙNG ICON)       */}
+          {/* ========================================================= */}
+          <div className="agent-panel-box">
             
-            {/* ROW 1: SEARCH INPUTS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr 1fr 1fr', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
+            {/* Dòng 1: Điểm đi, Nút đảo chiều, Điểm đến, Ngày đi, Biển số */}
+            <div className="agent-filter-grid">
               
               {/* Điểm xuất phát */}
               <div style={{ position: 'relative' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                  Điểm xuất phát
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Điểm Xuất Phát
                 </label>
-                <div className="form-input-with-icon">
-                  <span className="input-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Ví dụ: Hồ Chí Minh, Đà Lạt..."
-                    value={startPoint}
-                    onChange={(e) => {
-                      setStartPoint(e.target.value);
-                      setShowStartSuggestions(true);
-                    }}
-                    onFocus={() => setShowStartSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowStartSuggestions(false), 250)}
-                  />
-                </div>
+                <input
+                  type="text"
+                  className="agent-form-control"
+                  placeholder="Ví dụ: Hồ Chí Minh, Đà Lạt..."
+                  value={startPoint}
+                  onChange={(e) => {
+                    setStartPoint(e.target.value);
+                    setShowStartSuggestions(true);
+                  }}
+                  onFocus={() => setShowStartSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowStartSuggestions(false), 250)}
+                />
                 {showStartSuggestions && startSuggestions.length > 0 && (
-                  <ul style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    zIndex: 99,
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '10px',
-                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                    maxHeight: '180px',
-                    overflowY: 'auto',
-                    listStyle: 'none',
-                    margin: '0.25rem 0 0 0',
-                    padding: '0.25rem 0'
-                  }}>
-                    {startSuggestions.map(item => (
-                      <li
-                        key={item.name}
-                        onMouseDown={() => {
-                          setStartPoint(item.name);
+                  <div className="agent-suggestion-box">
+                    {startSuggestions.map((loc, idx) => (
+                      <div
+                        key={idx}
+                        className="agent-suggestion-item"
+                        onClick={() => {
+                          setStartPoint(loc.name);
                           setShowStartSuggestions(false);
                         }}
-                        className="suggestion-item"
                       >
-                        <div style={{ fontWeight: '600', color: '#0f172a' }}>{item.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          {item.type === 'city' ? 'Tỉnh / Thành phố' : `Điểm đón tại ${item.parentCity}`}
-                        </div>
-                      </li>
+                        {loc.name}
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
 
-              {/* Swap Button */}
-              <button
-                type="button"
-                className="swap-btn"
-                title="Đổi điểm đi và điểm đến"
-                onClick={handleSwapLocations}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>
-                </svg>
-              </button>
+              {/* Nút đổi chiều */}
+              <div>
+                <button
+                  type="button"
+                  onClick={handleSwapLocations}
+                  style={{
+                    height: '40px',
+                    padding: '0 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f8fafc',
+                    color: '#2563eb',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                  title="Đổi chiều điểm đi và điểm đến"
+                >
+                  Đổi Chiều
+                </button>
+              </div>
 
               {/* Điểm đến */}
               <div style={{ position: 'relative' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                  Điểm đến
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Điểm Đến
                 </label>
-                <div className="form-input-with-icon">
-                  <span className="input-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Ví dụ: Đà Lạt, Cần Thơ..."
-                    value={endPoint}
-                    onChange={(e) => {
-                      setEndPoint(e.target.value);
-                      setShowEndSuggestions(true);
-                    }}
-                    onFocus={() => setShowEndSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowEndSuggestions(false), 250)}
-                  />
-                </div>
+                <input
+                  type="text"
+                  className="agent-form-control"
+                  placeholder="Ví dụ: Đà Lạt, Cần Thơ..."
+                  value={endPoint}
+                  onChange={(e) => {
+                    setEndPoint(e.target.value);
+                    setShowEndSuggestions(true);
+                  }}
+                  onFocus={() => setShowEndSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowEndSuggestions(false), 250)}
+                />
                 {showEndSuggestions && endSuggestions.length > 0 && (
-                  <ul style={{
-                    position: 'absolute',
-                    top: '100%',
-                    left: 0,
-                    right: 0,
-                    zIndex: 99,
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '10px',
-                    boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)',
-                    maxHeight: '180px',
-                    overflowY: 'auto',
-                    listStyle: 'none',
-                    margin: '0.25rem 0 0 0',
-                    padding: '0.25rem 0'
-                  }}>
-                    {endSuggestions.map(item => (
-                      <li
-                        key={item.name}
-                        onMouseDown={() => {
-                          setEndPoint(item.name);
+                  <div className="agent-suggestion-box">
+                    {endSuggestions.map((loc, idx) => (
+                      <div
+                        key={idx}
+                        className="agent-suggestion-item"
+                        onClick={() => {
+                          setEndPoint(loc.name);
                           setShowEndSuggestions(false);
                         }}
-                        className="suggestion-item"
                       >
-                        <div style={{ fontWeight: '600', color: '#0f172a' }}>{item.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                          {item.type === 'city' ? 'Tỉnh / Thành phố' : `Điểm trả tại ${item.parentCity}`}
-                        </div>
-                      </li>
+                        {loc.name}
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
 
               {/* Ngày khởi hành */}
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                  Ngày khởi hành
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Ngày Khởi Hành
                 </label>
-                <div className="form-input-with-icon">
-                  <span className="input-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>
-                    </svg>
-                  </span>
-                  <input
-                    type="date"
-                    value={departureDate}
-                    onChange={(e) => {
-                      setDepartureDate(e.target.value);
-                      setSelectedCalDateStr(e.target.value);
-                    }}
-                  />
-                </div>
+                <input
+                  type="date"
+                  className="agent-form-control"
+                  value={departureDate}
+                  onChange={(e) => setDepartureDate(e.target.value)}
+                />
               </div>
 
-              {/* Tìm nhanh xe / Biển số */}
+              {/* Tìm nhanh theo xe / biển số */}
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                  Tìm nhanh xe / Biển số
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                  Biển Số / Dòng Xe
                 </label>
-                <div className="form-input-with-icon">
-                  <span className="input-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Biển số (vd: 51B-044.44) ..."
-                    value={plateSearch}
-                    onChange={(e) => setPlateSearch(e.target.value)}
-                  />
-                </div>
+                <input
+                  type="text"
+                  className="agent-form-control"
+                  placeholder="Tìm biển số (vd: 51B-044.44)..."
+                  value={plateSearch}
+                  onChange={(e) => setPlateSearch(e.target.value)}
+                />
               </div>
 
             </div>
 
-            {/* ROW 2: FILTERS (Khung giờ & Loại xe) */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', flexWrap: 'wrap', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', marginBottom: '0.85rem' }}>
+            {/* Dòng 2: Nút chọn ngày nhanh & Khung giờ & Loại xe & Sắp xếp */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.85rem' }}>
               
-              {/* Khung giờ */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '4px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  Khung giờ:
-                </span>
+              {/* Chọn ngày nhanh */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700', marginRight: '4px' }}>Chọn ngày:</span>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${timeRange === 'all' ? 'active' : ''}`}
-                  onClick={() => setTimeRange('all')}
+                  className={`agent-pill-btn ${departureDate === '' ? 'active' : ''}`}
+                  onClick={() => setQuickDate(null)}
                 >
-                  Tất cả
+                  Tất Cả Ngày
                 </button>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${timeRange === 'morning' ? 'active' : ''}`}
-                  onClick={() => setTimeRange('morning')}
+                  className={`agent-pill-btn ${departureDate === todayStr ? 'active' : ''}`}
+                  onClick={() => setQuickDate(0)}
                 >
-                  🌅 Sáng (06:00 - 12:00)
+                  Hôm Nay
                 </button>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${timeRange === 'afternoon' ? 'active' : ''}`}
-                  onClick={() => setTimeRange('afternoon')}
+                  className={`agent-pill-btn ${departureDate === tomorrowStr ? 'active' : ''}`}
+                  onClick={() => setQuickDate(1)}
                 >
-                  🌄 Chiều (12:00 - 18:00)
+                  Ngày Mai
                 </button>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${timeRange === 'evening' ? 'active' : ''}`}
-                  onClick={() => setTimeRange('evening')}
+                  className={`agent-pill-btn ${departureDate === dayAfterTomorrowStr ? 'active' : ''}`}
+                  onClick={() => setQuickDate(2)}
                 >
-                  🌙 Tối (18:00 - 24:00)
+                  Ngày Kia
                 </button>
               </div>
 
-              {/* Loại xe */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '4px', marginRight: '4px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 11h18"/>
-                  </svg>
-                  Loại xe:
-                </span>
+              {/* Lọc khung giờ */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700', marginRight: '4px' }}>Khung giờ:</span>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${busType === 'all' ? 'active' : ''}`}
-                  onClick={() => setBusType('all')}
+                  className={`agent-pill-btn ${timeRange === 'all' ? 'active' : ''}`}
+                  onClick={() => setTimeRange('all')}
                 >
-                  Mọi loại xe
+                  Tất Cả
                 </button>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${busType === 'Xe Giường Nằm' ? 'active' : ''}`}
+                  className={`agent-pill-btn ${timeRange === 'morning' ? 'active' : ''}`}
+                  onClick={() => setTimeRange('morning')}
+                >
+                  Sáng (06:00 - 12:00)
+                </button>
+                <button
+                  type="button"
+                  className={`agent-pill-btn ${timeRange === 'afternoon' ? 'active' : ''}`}
+                  onClick={() => setTimeRange('afternoon')}
+                >
+                  Chiều (12:00 - 18:00)
+                </button>
+                <button
+                  type="button"
+                  className={`agent-pill-btn ${timeRange === 'evening' ? 'active' : ''}`}
+                  onClick={() => setTimeRange('evening')}
+                >
+                  Tối (18:00 - 24:00)
+                </button>
+              </div>
+
+            </div>
+
+            {/* Dòng 3: Loại xe & Tùy chọn còn chỗ & Sắp xếp */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+              
+              {/* Loại xe */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700', marginRight: '4px' }}>Loại xe:</span>
+                <button
+                  type="button"
+                  className={`agent-pill-btn ${busType === 'all' ? 'active' : ''}`}
+                  onClick={() => setBusType('all')}
+                >
+                  Mọi Loại Xe
+                </button>
+                <button
+                  type="button"
+                  className={`agent-pill-btn ${busType === 'Xe Giường Nằm' ? 'active' : ''}`}
                   onClick={() => setBusType('Xe Giường Nằm')}
                 >
                   Xe Giường Nằm
                 </button>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${busType === 'Xe Ghế Ngồi' ? 'active' : ''}`}
+                  className={`agent-pill-btn ${busType === 'Xe Ghế Ngồi' ? 'active' : ''}`}
                   onClick={() => setBusType('Xe Ghế Ngồi')}
                 >
                   Xe Ghế Ngồi
                 </button>
                 <button
                   type="button"
-                  className={`filter-pill-btn ${busType === 'Limousine' ? 'active' : ''}`}
+                  className={`agent-pill-btn ${busType === 'Limousine' ? 'active' : ''}`}
                   onClick={() => setBusType('Limousine')}
                 >
                   Limousine
                 </button>
               </div>
 
-            </div>
+              {/* Tùy chọn & Sắp xếp */}
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: '700', color: '#334155', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={onlyAvailableSeats}
+                    onChange={(e) => setOnlyAvailableSeats(e.target.checked)}
+                    style={{ accentColor: '#2563eb' }}
+                  />
+                  Chỉ chuyến còn chỗ
+                </label>
 
-            {/* ROW 3: EXTRA FILTERS & SORTING */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
-              
-              {/* Checkbox Chỉ chuyến còn ghế */}
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', color: '#334155', fontWeight: '500' }}>
-                <input
-                  type="checkbox"
-                  checked={onlyAvailableSeats}
-                  onChange={(e) => setOnlyAvailableSeats(e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#2563eb', cursor: 'pointer' }}
-                />
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                  Chỉ chuyến còn ghế
-                </span>
-              </label>
-
-              {/* Sắp xếp */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/>
-                  </svg>
-                  Sắp xếp:
-                </span>
-                <span
-                  className={`text-link-filter ${sortBy === 'early' ? 'active' : ''}`}
-                  onClick={() => setSortBy('early')}
-                >
-                  Khởi hành sớm
-                </span>
-                <span style={{ color: '#cbd5e1' }}>|</span>
-                <span
-                  className={`text-link-filter ${sortBy === 'price_low' ? 'active' : ''}`}
-                  onClick={() => setSortBy('price_low')}
-                >
-                  Giá vé thấp
-                </span>
-                <span style={{ color: '#cbd5e1' }}>|</span>
-                <span
-                  className={`text-link-filter ${sortBy === 'most_seats' ? 'active' : ''}`}
-                  onClick={() => setSortBy('most_seats')}
-                >
-                  Ghế trống nhiều
-                </span>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700' }}>Sắp xếp:</span>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    style={{ padding: '3px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.75rem', background: '#fff' }}
+                  >
+                    <option value="early">Khởi hành sớm</option>
+                    <option value="price_low">Giá vé thấp</option>
+                    <option value="most_seats">Ghế trống nhiều</option>
+                  </select>
+                </div>
               </div>
 
             </div>
 
           </div>
 
-          {/* CALENDAR VIEW MODE PANEL */}
-          {viewMode === 'calendar' && (
-            <div className="agent-card-panel" style={{ padding: '1.5rem', marginBottom: '1.5rem' }}>
-              {/* Month Navigation */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '700', color: '#0f172a' }}>
-                    📅 Lịch Trình Xe Chạy - Tháng {currentYearMonth.month + 1}/{currentYearMonth.year}
-                  </h3>
-                  <span className="bus-badge-type">
-                    {trips.filter(t => new Date(t.departureTime).getMonth() === currentYearMonth.month && new Date(t.departureTime).getFullYear() === currentYearMonth.year).length} chuyến xe trong tháng
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    className="filter-pill-btn"
-                    onClick={() => {
-                      let m = currentYearMonth.month - 1;
-                      let y = currentYearMonth.year;
-                      if (m < 0) { m = 11; y--; }
-                      setCurrentYearMonth({ year: y, month: m });
-                    }}
-                  >
-                    &larr; Tháng trước
-                  </button>
-                  <button
-                    type="button"
-                    className="filter-pill-btn"
-                    onClick={() => {
-                      const today = new Date();
-                      setCurrentYearMonth({ year: today.getFullYear(), month: today.getMonth() });
-                      const yStr = today.getFullYear();
-                      const mStr = String(today.getMonth() + 1).padStart(2, '0');
-                      const dStr = String(today.getDate()).padStart(2, '0');
-                      setSelectedCalDateStr(`${yStr}-${mStr}-${dStr}`);
-                      setDepartureDate(`${yStr}-${mStr}-${dStr}`);
-                    }}
-                  >
-                    Hôm nay
-                  </button>
-                  <button
-                    type="button"
-                    className="filter-pill-btn"
-                    onClick={() => {
-                      let m = currentYearMonth.month + 1;
-                      let y = currentYearMonth.year;
-                      if (m > 11) { m = 0; y++; }
-                      setCurrentYearMonth({ year: y, month: m });
-                    }}
-                  >
-                    Tháng sau &rarr;
-                  </button>
-                </div>
-              </div>
-
-              {/* Weekday Headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', marginBottom: '8px', textAlign: 'center', fontWeight: '700', fontSize: '0.85rem', color: '#64748b' }}>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px' }}>Thứ 2</div>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px' }}>Thứ 3</div>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px' }}>Thứ 4</div>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px' }}>Thứ 5</div>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px' }}>Thứ 6</div>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px', color: '#2563eb' }}>Thứ 7</div>
-                <div style={{ background: '#f8fafc', padding: '8px', borderRadius: '6px', color: '#ef4444' }}>Chủ Nhật</div>
-              </div>
-
-              {/* Days Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px' }}>
-                {getCalendarDays().map((cell, idx) => {
-                  if (!cell) {
-                    return <div key={`empty-${idx}`} style={{ minHeight: '90px', background: '#fafafa', borderRadius: '10px', border: '1px dashed #f1f5f9' }}></div>;
-                  }
-
-                  const isSelected = selectedCalDateStr === cell.dateISO || departureDate === cell.dateISO;
-                  const hasTrips = cell.tripsCount > 0;
-
-                  return (
-                    <div
-                      key={cell.dateISO}
-                      onClick={() => {
-                        setSelectedCalDateStr(cell.dateISO);
-                        setDepartureDate(cell.dateISO);
-                      }}
-                      style={{
-                        minHeight: '95px',
-                        padding: '10px',
-                        borderRadius: '12px',
-                        border: isSelected ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        backgroundColor: isSelected ? '#eff6ff' : hasTrips ? '#ffffff' : '#f8fafc',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        boxShadow: isSelected ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{
-                          fontWeight: '700',
-                          fontSize: '0.95rem',
-                          width: '26px',
-                          height: '26px',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: isSelected ? '#2563eb' : 'transparent',
-                          color: isSelected ? '#ffffff' : '#0f172a'
-                        }}>
-                          {cell.dayNumber}
-                        </span>
-                        {hasTrips && (
-                          <span style={{ fontSize: '0.72rem', backgroundColor: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '10px', fontWeight: '600' }}>
-                            {cell.tripsCount} chuyến
-                          </span>
-                        )}
-                      </div>
-
-                      {hasTrips ? (
-                        <div style={{ marginTop: '6px' }}>
-                          <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                            {cell.availableSeats} chỗ trống
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 'auto' }}>
-                          Không có chuyến
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* TRIP LIST MATCHING SCREENSHOT */}
-          <div style={{ marginBottom: '1rem', fontWeight: '700', fontSize: '1rem', color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>
-              {departureDate ? `Danh sách chuyến xe khởi hành ngày ${departureDate}` : 'Tất cả chuyến xe khả dụng'} ({filteredTrips.length} chuyến)
-            </span>
+          {/* ========================================================= */}
+          {/* VÙNG 3: DANH SÁCH CHUYẾN XE KHẢ DỤNG                       */}
+          {/* ========================================================= */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <h2 style={{ fontSize: '0.98rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Danh Sách Chuyến Xe Khả Dụng {departureDate ? `- ${departureDate === todayStr ? 'Hôm Nay' : departureDate === tomorrowStr ? 'Ngày Mai' : 'Ngày'} (${new Date(departureDate + 'T00:00:00').toLocaleDateString('vi-VN')})` : '(Tất Cả Các Ngày)'} ({filteredTrips.length} chuyến)
+            </h2>
             {departureDate && (
               <button
                 type="button"
-                className="text-link-filter"
-                style={{ fontSize: '0.8rem', color: '#ef4444' }}
-                onClick={() => {
-                  setDepartureDate('');
-                  setSelectedCalDateStr('');
+                onClick={() => setDepartureDate('')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#2563eb',
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
                 }}
               >
-                &times; Xóa lọc ngày
+                Xem tất cả các ngày
               </button>
             )}
           </div>
 
-          {filteredTrips.length === 0 ? (
-            <div className="agent-card-panel" style={{ textAlign: 'center', padding: '3.5rem 1.5rem', color: '#64748b' }}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5" style={{ margin: '0 auto 1rem auto', display: 'block' }}>
-                <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
-              </svg>
-              <div style={{ fontWeight: '600', fontSize: '1rem', color: '#334155', marginBottom: '0.25rem' }}>
+          {loading ? (
+            <div className="agent-panel-box" style={{ textAlign: 'center', padding: '3rem 1rem', color: '#64748b' }}>
+              <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Đang nạp dữ liệu chuyến xe từ CSDL...</div>
+            </div>
+          ) : filteredTrips.length === 0 ? (
+            <div className="agent-panel-box" style={{ textAlign: 'center', padding: '3.5rem 1rem', color: '#64748b' }}>
+              <div style={{ fontWeight: '800', fontSize: '0.95rem', color: '#334155', marginBottom: '4px' }}>
                 Không tìm thấy chuyến xe nào phù hợp
               </div>
-              <div style={{ fontSize: '0.85rem' }}>Vui lòng chọn ngày khác hoặc thay đổi điểm xuất phát, điểm đến để xem kết quả khác.</div>
+              <div style={{ fontSize: '0.78rem' }}>
+                Vui lòng thử chọn ngày khác hoặc thay đổi điểm xuất phát / điểm đến để tìm chuyến.
+              </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
               {filteredTrips.map(trip => {
                 const totalSeats = trip.busId?.totalSeats || 36;
                 const bookedCount = trip.bookedSeats?.length || 0;
                 const availableSeats = Math.max(0, totalSeats - bookedCount);
                 const isSoldOut = availableSeats === 0;
-                const isExpired = new Date(trip.departureTime) < new Date();
-
+                
                 const depDateObj = new Date(trip.departureTime);
+                const isDeparted = depDateObj < new Date();
                 const timeStr = depDateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false });
                 const dateStr = depDateObj.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
                 return (
-                  <div key={trip._id} className={`trip-item-row ${isSoldOut ? 'sold-out' : ''}`}>
-                    
-                    {/* COLUMN 1: ROUTE & VEHICLE INFO */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: '1.4' }}>
-                      {/* Bus Icon Container */}
-                      <div style={{
-                        width: '46px',
-                        height: '46px',
-                        borderRadius: '12px',
-                        backgroundColor: isSoldOut ? '#f1f5f9' : '#eff6ff',
-                        color: isSoldOut ? '#94a3b8' : '#2563eb',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M19 17h2l.64-2.54c.24-.96.36-1.95.36-2.94V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v4.52c0 .99.12 1.98.36 2.94L3 17h2"/>
-                          <path d="M14 17H10"/><path d="M5 21v-4"/><path d="M19 21v-4"/><rect x="4" y="7" width="16" height="5" rx="1"/>
-                        </svg>
+                  <div
+                    key={trip._id}
+                    className={`agent-trip-row ${isDeparted ? 'departed' : ''}`}
+                    style={{
+                      borderLeft: isDeparted ? '4px solid #cbd5e1' : isSoldOut ? '4px solid #ef4444' : '4px solid #2563eb'
+                    }}
+                  >
+                    {/* Cột 1: Tuyến đường & Dòng xe */}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: '800', fontSize: '0.98rem', color: isDeparted ? '#64748b' : '#0f172a' }}>
+                          {trip.routeId?.startPoint || 'N/A'} ➔ {trip.routeId?.endPoint || 'N/A'}
+                        </span>
+                        {isDeparted && (
+                          <span style={{ background: '#f1f5f9', color: '#64748b', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: '800' }}>
+                            Đã xuất bến
+                          </span>
+                        )}
                       </div>
-
-                      {/* Route Title & Badges */}
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.3rem' }}>
-                          <span style={{ fontWeight: '700', fontSize: '1.1rem', color: isSoldOut ? '#64748b' : '#0f172a' }}>
-                            {trip.routeId ? `${trip.routeId.startPoint} ⇄ ${trip.routeId.endPoint}` : 'N/A'}
-                          </span>
-                          {isSoldOut && (
-                            <span style={{ backgroundColor: '#fee2e2', color: '#ef4444', fontSize: '0.7rem', fontWeight: '700', padding: '2px 8px', borderRadius: '4px' }}>
-                              Hết vé
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span className="bus-badge-type">
-                            {trip.busId?.type || 'Xe Giường Nằm 44 Chỗ'}
-                          </span>
-                          <span className="bus-badge-plate">
-                            {trip.busId?.plateNumber || '51B-000.00'}
-                          </span>
-                        </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', fontSize: '0.75rem', color: '#64748b' }}>
+                        <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '2px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                          {trip.busId?.type || 'Xe Khách'}
+                        </span>
+                        <span>Biển số: <strong style={{ color: '#0f172a' }}>{trip.busId?.plateNumber || 'N/A'}</strong></span>
                       </div>
                     </div>
 
-                    {/* COLUMN 2: DEPARTURE TIME & DATE */}
-                    <div style={{ flex: '0.9', textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.45rem', fontWeight: '800', color: isSoldOut ? '#64748b' : '#0f172a', letterSpacing: '-0.02em' }}>
+                    {/* Cột 2: Thời gian xuất phát */}
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.25rem', fontWeight: '900', color: isDeparted ? '#64748b' : '#0f172a' }}>
                         {timeStr}
                       </div>
-                      <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
                         {dateStr}
                       </div>
                     </div>
 
-                    {/* COLUMN 3: SEAT STATUS */}
-                    <div style={{ flex: '1.2' }}>
-                      <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: '2px' }}>
-                        Tình trạng chỗ:
-                      </div>
-                      {!isSoldOut ? (
+                    {/* Cột 3: Tình trạng chỗ */}
+                    <div>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginBottom: '2px' }}>Tình trạng chỗ:</div>
+                      {isSoldOut ? (
                         <div>
-                          <div style={{ color: '#059669', fontWeight: '700', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                            Còn {availableSeats}/{totalSeats} chỗ trống
-                          </div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                            Đã đặt: {bookedCount}/{totalSeats} ghế
-                          </div>
+                          <span style={{ color: '#dc2626', fontWeight: '800', fontSize: '0.85rem' }}>
+                            Đã hết vé (0/{totalSeats})
+                          </span>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Toàn bộ ghế đã được đặt</div>
                         </div>
                       ) : (
                         <div>
-                          <div style={{ color: '#dc2626', fontWeight: '700', fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }}></span>
-                            Đã hết vé (0/{totalSeats} chỗ)
-                          </div>
-                          <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                            Đã đặt: {totalSeats}/{totalSeats} ghế
-                          </div>
+                          <span style={{ color: isDeparted ? '#64748b' : '#15803d', fontWeight: '800', fontSize: '0.85rem' }}>
+                            Còn {availableSeats}/{totalSeats} chỗ trống
+                          </span>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Đã bán: {bookedCount} ghế</div>
                         </div>
                       )}
                     </div>
 
-                    {/* COLUMN 4: PRICE & ACTION */}
-                    <div style={{ flex: '1', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '1px' }}>
-                        Giá vé
-                      </div>
-                      <div style={{ fontSize: '1.35rem', fontWeight: '800', color: isSoldOut ? '#94a3b8' : '#0f172a', marginBottom: '0.4rem' }}>
+                    {/* Cột 4: Giá vé */}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>Giá vé</div>
+                      <div style={{ fontSize: '1.15rem', fontWeight: '900', color: isDeparted ? '#64748b' : '#0f172a' }}>
                         {formatCurrency(trip.price)}
                       </div>
                     </div>
 
-                    <div style={{ minWidth: '135px', display: 'flex', justifyContent: 'flex-end' }}>
-                      {!isSoldOut && !isExpired ? (
+                    {/* Cột 5: Nút thao tác */}
+                    <div style={{ textAlign: 'right' }}>
+                      {isDeparted ? (
                         <button
                           type="button"
-                          className="btn-buy-ticket"
+                          disabled
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            background: '#f1f5f9',
+                            color: '#94a3b8',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            cursor: 'not-allowed'
+                          }}
+                        >
+                          Đã Xuất Bến
+                        </button>
+                      ) : isSoldOut ? (
+                        <button
+                          type="button"
+                          disabled
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            background: '#fee2e2',
+                            color: '#ef4444',
+                            border: '1px solid #fecaca',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: '700',
+                            cursor: 'not-allowed'
+                          }}
+                        >
+                          Hết Vé
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
                           onClick={() => {
                             setSelectedTrip(trip);
                             setSelectedSeats([]);
@@ -1306,18 +1018,20 @@ const AgentBookingPage = () => {
                             setSelectedPickup(trip.pickupPoints?.[0]?.location || '');
                             setSelectedDropoff(trip.dropoffPoints?.[0]?.location || '');
                           }}
+                          style={{
+                            width: '100%',
+                            padding: '8px 14px',
+                            background: '#2563eb',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '0.78rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+                          }}
                         >
-                          Chọn mua vé
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <polyline points="9 18 15 12 9 6"/>
-                          </svg>
-                        </button>
-                      ) : (
-                        <button type="button" className="btn-sold-out" disabled>
-                          Hết chỗ
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                          </svg>
+                          Chọn Mua Vé
                         </button>
                       )}
                     </div>
@@ -1330,37 +1044,53 @@ const AgentBookingPage = () => {
         </>
       )}
 
-      {/* BOOKING FORM & SEAT MAP SELECTION LAYOUT */}
+      {/* ========================================================= */}
+      {/* VÙNG 4: SƠ ĐỒ CHỌN GHẾ & FORM XUẤT VÉ TRỰC TIẾP TẠI QUẦY  */}
+      {/* ========================================================= */}
       {selectedTrip && (
-        <div style={{ border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.75rem', background: '#ffffff', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', animation: 'fadeIn 0.3s ease' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '1rem' }}>
+        <div className="agent-panel-box" style={{ animation: 'fadeIn 0.25s ease' }}>
+          
+          {/* Header chọn vé */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
             <div>
-              <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.25rem', fontWeight: '700', color: '#0f172a' }}>
-                Đặt Vé Xe: {selectedTrip.routeId ? `${selectedTrip.routeId.startPoint} ⇄ ${selectedTrip.routeId.endPoint}` : 'N/A'}
-              </h3>
-              <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                Khởi hành: {new Date(selectedTrip.departureTime).toLocaleTimeString('vi-VN')} ({new Date(selectedTrip.departureTime).toLocaleDateString('vi-VN')}) - Xe {selectedTrip.busId?.plateNumber} ({selectedTrip.busId?.type})
-              </span>
+              <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Tiến Hành Xuất Vé Cho Chuyến
+              </div>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: '900', color: '#0f172a', margin: '2px 0 4px 0' }}>
+                {selectedTrip.routeId?.startPoint} ➔ {selectedTrip.routeId?.endPoint}
+              </h2>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                Khởi hành: <strong style={{ color: '#0f172a' }}>{new Date(selectedTrip.departureTime).toLocaleTimeString('vi-VN')}</strong> ({new Date(selectedTrip.departureTime).toLocaleDateString('vi-VN')}) • Xe: {selectedTrip.busId?.plateNumber} ({selectedTrip.busId?.type})
+              </div>
             </div>
+
             <button
               type="button"
-              className="filter-pill-btn"
-              style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', fontWeight: '600' }}
               onClick={() => setSelectedTrip(null)}
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                color: '#334155',
+                cursor: 'pointer'
+              }}
             >
-              &larr; Quay lại danh sách
+              Quay Lại Danh Sách
             </button>
           </div>
 
           <form onSubmit={handleCreateBooking}>
-            <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '2.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '2rem', alignItems: 'start' }}>
 
-              {/* Left Column: Seat Map Grid */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: '#f8fafc', padding: '1.25rem', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
-                <h4 style={{ margin: '0 0 1rem 0', color: '#0f172a', fontWeight: '700', textAlign: 'center', fontSize: '1rem' }}>
+              {/* CỘT TRÁI: SƠ ĐỒ GHẾ XE */}
+              <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#0f172a', fontWeight: '800', fontSize: '0.9rem' }}>
                   Sơ Đồ Ghế Xe ({selectedTrip.busId?.type || 'Xe khách'})
-                </h4>
-                
+                </h3>
+
                 {(() => {
                   const { lowerFloor, upperFloor, columns } = (selectedTrip.busId?.seatLayout && selectedTrip.busId.seatLayout.lowerFloor)
                     ? selectedTrip.busId.seatLayout
@@ -1388,19 +1118,19 @@ const AgentBookingPage = () => {
                   const currentFloorRows = activeFloor === 'lower' ? lowerFloor : upperFloor;
 
                   return (
-                    <div style={{ width: '100%', maxWidth: '320px', margin: '0 auto' }}>
+                    <div style={{ width: '100%', maxWidth: '300px' }}>
                       {hasUpperFloor && (
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '1.25rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '1rem' }}>
                           <button
                             type="button"
                             style={{
-                              padding: '6px 14px',
+                              padding: '5px 12px',
                               borderRadius: '20px',
-                              fontSize: '0.8rem',
+                              fontSize: '0.75rem',
                               backgroundColor: activeFloor === 'lower' ? '#2563eb' : '#e2e8f0',
                               color: activeFloor === 'lower' ? '#ffffff' : '#334155',
                               border: 'none',
-                              fontWeight: '600',
+                              fontWeight: '700',
                               cursor: 'pointer'
                             }}
                             onClick={() => setSelectedFloor('lower')}
@@ -1410,13 +1140,13 @@ const AgentBookingPage = () => {
                           <button
                             type="button"
                             style={{
-                              padding: '6px 14px',
+                              padding: '5px 12px',
                               borderRadius: '20px',
-                              fontSize: '0.8rem',
+                              fontSize: '0.75rem',
                               backgroundColor: activeFloor === 'upper' ? '#2563eb' : '#e2e8f0',
                               color: activeFloor === 'upper' ? '#ffffff' : '#334155',
                               border: 'none',
-                              fontWeight: '600',
+                              fontWeight: '700',
                               cursor: 'pointer'
                             }}
                             onClick={() => setSelectedFloor('upper')}
@@ -1426,46 +1156,44 @@ const AgentBookingPage = () => {
                         </div>
                       )}
 
-                      {/* Header Driver Windshield */}
+                      {/* Đầu xe */}
                       <div style={{
-                        display: 'flex',
-                        justify: 'space-between',
-                        alignItems: 'center',
-                        padding: '10px 18px',
+                        padding: '8px 12px',
                         background: '#0f172a',
-                        borderRadius: '14px 14px 0 0',
-                        color: '#ffffff'
+                        borderRadius: '10px 10px 0 0',
+                        color: '#94a3b8',
+                        fontSize: '0.72rem',
+                        fontWeight: '800',
+                        textAlign: 'center',
+                        letterSpacing: '1px'
                       }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>ĐẦU XE</span>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5">
-                          <circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="3" fill="#94a3b8"/>
-                        </svg>
+                        KHU VỰC TÀI XẾ &amp; CỬA LÊN
                       </div>
 
-                      {/* Grid Box */}
+                      {/* Lưới ghế */}
                       <div style={{
                         display: 'grid',
-                        gridTemplateColumns: `repeat(${columns}, 1fr)`,
-                        gap: '10px',
-                        padding: '1.25rem 1rem',
+                        gridTemplateColumns: `repeat(${columns || 3}, 1fr)`,
+                        gap: '8px',
+                        padding: '1rem',
                         border: '2px solid #e2e8f0',
-                        borderRadius: '0 0 14px 14px',
+                        borderRadius: '0 0 10px 10px',
                         backgroundColor: '#ffffff'
                       }}>
                         {currentFloorRows.flat().map((seat, index) => {
                           if (seat === null) {
-                            return <div key={`spacer-${index}`} style={{ height: '44px' }}></div>;
+                            return <div key={`spacer-${index}`} style={{ height: '40px' }}></div>;
                           }
 
                           const isBooked = (selectedTrip.bookedSeats || []).includes(seat);
                           const isSelected = selectedSeats.includes(seat);
 
-                          let seatBg = 'rgba(37, 99, 235, 0.08)';
-                          let seatBorder = '#2563eb';
+                          let seatBg = 'rgba(37, 99, 235, 0.06)';
+                          let seatBorder = '#bfdbfe';
                           let seatColor = '#2563eb';
 
                           if (isBooked) {
-                            seatBg = '#e2e8f0';
+                            seatBg = '#f1f5f9';
                             seatBorder = '#cbd5e1';
                             seatColor = '#94a3b8';
                           } else if (isSelected) {
@@ -1480,18 +1208,18 @@ const AgentBookingPage = () => {
                               type="button"
                               disabled={isBooked}
                               style={{
-                                height: '44px',
-                                borderRadius: '8px',
+                                height: '40px',
+                                borderRadius: '6px',
                                 border: `2px solid ${seatBorder}`,
                                 backgroundColor: seatBg,
                                 color: seatColor,
-                                fontWeight: '700',
-                                fontSize: '0.85rem',
+                                fontWeight: '800',
+                                fontSize: '0.8rem',
                                 cursor: isBooked ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                transition: 'all 0.15s'
+                                transition: 'all 0.12s'
                               }}
                               onClick={() => handleSeatClick(seat)}
                             >
@@ -1501,105 +1229,107 @@ const AgentBookingPage = () => {
                         })}
                       </div>
 
-                      {/* Legend */}
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '1rem', fontSize: '0.78rem', color: '#64748b' }}>
+                      {/* Chú thích màu ghế */}
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '0.85rem', fontSize: '0.72rem', color: '#64748b' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <div style={{ width: '12px', height: '12px', border: '2px solid #2563eb', backgroundColor: 'rgba(37, 99, 235, 0.08)', borderRadius: '3px' }}></div>
+                          <span style={{ width: '10px', height: '10px', border: '2px solid #bfdbfe', backgroundColor: 'rgba(37, 99, 235, 0.08)', borderRadius: '2px' }}></span>
                           <span>Trống</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <div style={{ width: '12px', height: '12px', backgroundColor: '#2563eb', borderRadius: '3px' }}></div>
+                          <span style={{ width: '10px', height: '10px', backgroundColor: '#2563eb', borderRadius: '2px' }}></span>
                           <span>Đang chọn</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <div style={{ width: '12px', height: '12px', backgroundColor: '#e2e8f0', borderRadius: '3px' }}></div>
-                          <span>Đã mua</span>
+                          <span style={{ width: '10px', height: '10px', backgroundColor: '#cbd5e1', borderRadius: '2px' }}></span>
+                          <span>Đã bán</span>
                         </div>
                       </div>
+
                     </div>
                   );
                 })()}
               </div>
 
-              {/* Right Column: Customer Info & Payments */}
+              {/* CỘT PHẢI: THÔNG TIN XUẤT VÉ & THANH TOÁN */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <h4 style={{ margin: 0, color: '#0f172a', fontWeight: '700', fontSize: '1.05rem' }}>
-                  Thông tin xuất vé trực tiếp tại quầy:
-                </h4>
+                <h3 style={{ margin: 0, color: '#0f172a', fontWeight: '800', fontSize: '0.95rem' }}>
+                  Thông Tin Hành Khách &amp; Thanh Toán Tại Quầy
+                </h3>
 
-                <div>
-                  <label style={{ fontWeight: '600', fontSize: '0.85rem', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                    Chọn điểm đón *
-                  </label>
-                  <select
-                    style={{ width: '100%', height: '42px', padding: '0 0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.88rem' }}
-                    value={selectedPickup}
-                    onChange={(e) => setSelectedPickup(e.target.value)}
-                    required
-                  >
-                    {(selectedTrip.pickupPoints || []).map((p, idx) => (
-                      <option key={idx} value={p.location}>
-                        {p.time} - {p.location} ({p.address})
-                      </option>
-                    ))}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Điểm Đón Của Khách *
+                    </label>
+                    <select
+                      className="agent-form-control"
+                      value={selectedPickup}
+                      onChange={(e) => setSelectedPickup(e.target.value)}
+                      required
+                    >
+                      {(selectedTrip.pickupPoints || []).map((p, idx) => (
+                        <option key={idx} value={p.location}>
+                          {p.time} - {p.location} ({p.address})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Điểm Xuống Của Khách *
+                    </label>
+                    <select
+                      className="agent-form-control"
+                      value={selectedDropoff}
+                      onChange={(e) => setSelectedDropoff(e.target.value)}
+                      required
+                    >
+                      {(selectedTrip.dropoffPoints || []).map((d, idx) => (
+                        <option key={idx} value={d.location}>
+                          {d.time} - {d.location} ({d.address})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Họ Và Tên Khách Hàng *
+                    </label>
+                    <input
+                      type="text"
+                      className="agent-form-control"
+                      placeholder="Nhập họ tên người đi xe..."
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Số Điện Thoại Khách Hàng *
+                    </label>
+                    <input
+                      type="tel"
+                      className="agent-form-control"
+                      placeholder="Nhập SĐT nhận vé SMS..."
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label style={{ fontWeight: '600', fontSize: '0.85rem', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                    Chọn điểm trả *
+                  <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '6px' }}>
+                    Hình Thức Thu Tiền Tại Quầy *
                   </label>
-                  <select
-                    style={{ width: '100%', height: '42px', padding: '0 0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.88rem' }}
-                    value={selectedDropoff}
-                    onChange={(e) => setSelectedDropoff(e.target.value)}
-                    required
-                  >
-                    {(selectedTrip.dropoffPoints || []).map((d, idx) => (
-                      <option key={idx} value={d.location}>
-                        {d.time} - {d.location} ({d.address})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontWeight: '600', fontSize: '0.85rem', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                    Số điện thoại khách hàng *
-                  </label>
-                  <input
-                    type="tel"
-                    style={{ width: '100%', height: '42px', padding: '0 0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.88rem' }}
-                    placeholder="Nhập SĐT để tự động kết nối kiểm tra thành viên..."
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    required
-                  />
-                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.2rem', display: 'block' }}>
-                    Hệ thống tự động liên kết tài khoản và tích điểm thành viên (Membership points) theo số điện thoại này.
-                  </span>
-                </div>
-
-                <div>
-                  <label style={{ fontWeight: '600', fontSize: '0.85rem', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                    Họ và tên khách hàng *
-                  </label>
-                  <input
-                    type="text"
-                    style={{ width: '100%', height: '42px', padding: '0 0.85rem', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.88rem' }}
-                    placeholder="Nhập tên người đi xe..."
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontWeight: '600', fontSize: '0.85rem', color: '#475569', display: 'block', marginBottom: '0.35rem' }}>
-                    Phương thức thanh toán trực tiếp tại quầy *
-                  </label>
-                  <div style={{ display: 'flex', gap: '1.5rem', marginTop: '0.4rem' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.88rem', color: '#1e293b', fontWeight: '500' }}>
+                  <div style={{ display: 'flex', gap: '1.5rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem', color: '#1e293b', fontWeight: '700' }}>
                       <input
                         type="radio"
                         name="paymentMethod"
@@ -1608,9 +1338,9 @@ const AgentBookingPage = () => {
                         onChange={() => setPaymentMethod('cash')}
                         style={{ accentColor: '#2563eb' }}
                       />
-                      Tiền mặt (Cash)
+                      Tiền Mặt (Thu trực tiếp tại quầy)
                     </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.88rem', color: '#1e293b', fontWeight: '500' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.82rem', color: '#1e293b', fontWeight: '700' }}>
                       <input
                         type="radio"
                         name="paymentMethod"
@@ -1619,117 +1349,120 @@ const AgentBookingPage = () => {
                         onChange={() => setPaymentMethod('cashless')}
                         style={{ accentColor: '#2563eb' }}
                       />
-                      Thẻ POS / Chuyển khoản VietQR
+                      Quét Mã VietQR / Thẻ POS
                     </label>
                   </div>
                 </div>
 
-                {/* Summary Calculator Box */}
-                <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '0.5rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.88rem', color: '#475569' }}>
-                    <span>Số ghế lựa chọn:</span>
-                    <strong style={{ color: '#0f172a' }}>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn'}</strong>
+                {/* Hộp tóm tắt tổng tiền */}
+                <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
+                    <span>Vị trí ghế đã chọn:</span>
+                    <strong style={{ color: '#0f172a' }}>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế'}</strong>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontSize: '0.88rem', color: '#475569' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
                     <span>Đơn giá vé:</span>
-                    <span style={{ fontWeight: '600' }}>{formatCurrency(selectedTrip.price)}</span>
+                    <strong style={{ color: '#0f172a' }}>{formatCurrency(selectedTrip.price)}</strong>
                   </div>
-                  <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0.75rem 0' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '1.15rem', color: '#2563eb' }}>
-                    <span>Tổng tiền thu:</span>
+                  <div style={{ borderTop: '1px dashed #cbd5e1', margin: '0.6rem 0' }}></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '1.15rem', color: '#2563eb' }}>
+                    <span>Tổng Tiền Thu Khách:</span>
                     <span>{formatCurrency(selectedTrip.price * selectedSeats.length)}</span>
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  className="btn-buy-ticket"
-                  style={{ width: '100%', height: '46px', justifyContent: 'center', marginTop: '0.5rem', fontSize: '0.95rem' }}
                   disabled={submitting}
+                  style={{
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '0.85rem',
+                    borderRadius: '8px',
+                    fontSize: '0.9rem',
+                    fontWeight: '800',
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 6px -1px rgba(37,99,235,0.2)'
+                  }}
                 >
-                  {submitting ? 'Đang xuất vé...' : 'Xác nhận thu tiền & Xuất vé'}
+                  {submitting ? 'Đang Xử Lý Xuất Vé...' : 'Xác Nhận Thu Tiền & Xuất Vé'}
                 </button>
+
               </div>
 
             </div>
           </form>
+
         </div>
       )}
 
-      {/* POS Receipt Printing Mock Modal */}
+      {/* ========================================================= */}
+      {/* MODAL BIÊN LAI IN VÉ TẠI QUẦY (KHÔNG DÙNG ICON)            */}
+      {/* ========================================================= */}
       {printTarget && (
-        <div className="modal-backdrop" onClick={() => setPrintTarget(null)} style={{
+        <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 9999,
-          display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(4px)'
+          backgroundColor: 'rgba(15, 23, 42, 0.7)', zIndex: 9999,
+          display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem'
         }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '380px', fontFamily: 'Courier New, monospace', color: '#000000', backgroundColor: '#ffffff', border: '2px solid #000000', padding: '1.5rem', margin: '0 auto', borderRadius: '4px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: '0 0 0.25rem 0', fontWeight: 'bold' }}>NHÀ XE AN BÌNH LINES</h3>
-              <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.8rem' }}>MANG NIỀM TIN TRÊN MỌI NẺO ĐƯỜNG</p>
-              <p style={{ margin: '0', fontSize: '0.75rem' }}>Hotline: 1900 8888</p>
-              <div style={{ margin: '0.5rem 0', borderTop: '1px dashed #000000' }}></div>
-              <h4 style={{ margin: '0.25rem 0', fontSize: '1rem', fontWeight: 'bold' }}>HÓA ĐƠN VÉ XE KIÊM BIÊN LAI</h4>
+          <div style={{ maxWidth: '380px', width: '100%', fontFamily: 'Courier New, monospace', backgroundColor: '#ffffff', border: '2px solid #000000', padding: '1.25rem', borderRadius: '6px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '0.85rem' }}>
+              <h3 style={{ margin: '0 0 2px 0', fontWeight: '800' }}>NHÀ XE AN BÌNH LINES</h3>
+              <p style={{ margin: '0 0 4px 0', fontSize: '0.75rem' }}>HỆ THỐNG VẬN TẢI HÀNH KHÁCH CAO CẤP</p>
+              <div style={{ margin: '0.4rem 0', borderTop: '1px dashed #000000' }}></div>
+              <h4 style={{ margin: '4px 0', fontSize: '0.95rem', fontWeight: '800' }}>VÉ XE KHÁCH KIÊM BIÊN LAI THU TIỀN</h4>
             </div>
 
-            <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div><strong>Mã vé (Code): </strong> {printTarget.orderCode}</div>
-              <div><strong>Hành khách: </strong> {printTarget.customerName}</div>
-              <div><strong>SĐT: </strong> {printTarget.customerPhone}</div>
-              <div style={{ margin: '0.25rem 0', borderTop: '1px dashed #000000' }}></div>
-              {printTarget.tripId ? (
-                <>
-                  <div><strong>Tuyến đường: </strong> {printTarget.tripId.routeId?.startPoint} - {printTarget.tripId.routeId?.endPoint}</div>
-                  <div><strong>Xuất phát: </strong> {new Date(printTarget.tripId.departureTime).toLocaleTimeString('vi-VN')} ({new Date(printTarget.tripId.departureTime).toLocaleDateString('vi-VN')})</div>
-                  <div><strong>Xe khách: </strong> {printTarget.tripId.busId?.plateNumber} ({printTarget.tripId.busId?.type})</div>
-                </>
-              ) : null}
-              <div><strong>Số ghế: </strong> {printTarget.seats?.join(', ')}</div>
-              <div><strong>Số lượng: </strong> {printTarget.seats?.length}</div>
-              <div style={{ margin: '0.25rem 0', borderTop: '1px dashed #000000' }}></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', fontWeight: 'bold' }}>
+            <div style={{ fontSize: '0.82rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div><strong>Mã đơn (Order Code):</strong> #{printTarget.orderCode}</div>
+              <div><strong>Hành khách:</strong> {printTarget.customerName}</div>
+              <div><strong>SĐT liên hệ:</strong> {printTarget.customerPhone}</div>
+              <div style={{ margin: '4px 0', borderTop: '1px dashed #000000' }}></div>
+              <div><strong>Tuyến:</strong> {printTarget.tripId?.routeId?.startPoint} ➔ {printTarget.tripId?.routeId?.endPoint}</div>
+              <div><strong>Xuất bến:</strong> {new Date(printTarget.tripId?.departureTime).toLocaleTimeString('vi-VN')} ({new Date(printTarget.tripId?.departureTime).toLocaleDateString('vi-VN')})</div>
+              <div><strong>Xe:</strong> {printTarget.tripId?.busId?.plateNumber} ({printTarget.tripId?.busId?.type})</div>
+              <div><strong>Ghế đã đặt:</strong> {printTarget.seats?.join(', ')}</div>
+              <div><strong>Số lượng vé:</strong> {printTarget.seats?.length} vé</div>
+              <div style={{ margin: '4px 0', borderTop: '1px dashed #000000' }}></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: '800' }}>
                 <span>TỔNG TIỀN:</span>
-                <span>{formatCurrency((printTarget.tripId?.price || 0) * printTarget.seats?.length)}</span>
+                <span>{formatCurrency((printTarget.tripId?.price || 0) * (printTarget.seats?.length || 1))}</span>
               </div>
-              <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>Trạng thái: {printTarget.status === 'cancelled' ? 'ĐÃ HỦY (CANCELLED)' : 'ĐÃ THANH TOÁN (COUNTER CLEAR)'}</div>
+              <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>
+                Trạng thái: ĐÃ THANH TOÁN TẠI QUẦY
+              </div>
             </div>
 
-            {printTarget.qrSignature && printTarget.status !== 'cancelled' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '1rem', marginBottom: '0.5rem', textAlign: 'center' }}>
+            {printTarget.qrSignature && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '0.85rem', textAlign: 'center' }}>
                 <div style={{ border: '1px solid #000', padding: '4px', backgroundColor: '#fff', display: 'inline-block' }}>
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=110x110&data=${encodeURIComponent(
                       JSON.stringify({ ticketId: printTarget._id, signature: printTarget.qrSignature })
                     )}`}
-                    alt="Vé QR Soát Vé"
-                    style={{ width: '120px', height: '120px', display: 'block' }}
+                    alt="Mã QR Soát Vé"
+                    style={{ width: '110px', height: '110px', display: 'block' }}
                   />
                 </div>
-                <div style={{ fontSize: '0.65rem', marginTop: '0.25rem', color: '#000', fontWeight: 'bold' }}>
-                  MÃ QR SOÁT VÉ LÊN XE (HMAC SECURE)
+                <div style={{ fontSize: '0.62rem', marginTop: '2px', color: '#000', fontWeight: '800' }}>
+                  MÃ QR XÁC THỰC LÊN XE
                 </div>
               </div>
             )}
 
-            <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.75rem' }}>
-              <p style={{ margin: '0 0 0.25rem 0' }}>Cảm ơn quý khách đã tin tưởng An Bình Lines!</p>
-              <p style={{ margin: '0' }}>Chúc quý khách thượng lộ bình an!</p>
-            </div>
-
-            <div style={{ borderTop: '1px dashed #000', marginTop: '1rem', paddingTop: '0.75rem', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+            <div style={{ borderTop: '1px dashed #000', marginTop: '0.85rem', paddingTop: '0.65rem', display: 'flex', justifyContent: 'center', gap: '8px' }}>
               <button
                 type="button"
-                className="filter-pill-btn"
-                style={{ padding: '0.3rem 1rem', fontSize: '0.8rem' }}
                 onClick={() => window.print()}
+                style={{ padding: '6px 14px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '4px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer' }}
               >
-                In hóa đơn trực tiếp
+                In Hóa Đơn Ra Giấy
               </button>
               <button
                 type="button"
-                className="filter-pill-btn"
-                style={{ padding: '0.3rem 1rem', fontSize: '0.8rem', backgroundColor: '#e2e8f0' }}
                 onClick={() => setPrintTarget(null)}
+                style={{ padding: '6px 14px', background: '#e2e8f0', color: '#1e293b', border: 'none', borderRadius: '4px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer' }}
               >
                 Đóng
               </button>
@@ -1738,99 +1471,82 @@ const AgentBookingPage = () => {
         </div>
       )}
 
-      {/* Cashless QR Payment Modal */}
+      {/* ========================================================= */}
+      {/* MODAL THANH TOÁN VIETQR KHÔNG DÙNG TIỀN MẶT               */}
+      {/* ========================================================= */}
       {showQRModal && (
-        <div className="modal-backdrop" style={{
+        <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(15, 23, 42, 0.6)', zIndex: 9999,
-          display: 'flex', justifyContent: 'center', alignItems: 'center', backdropFilter: 'blur(4px)'
+          backgroundColor: 'rgba(15, 23, 42, 0.7)', zIndex: 9999,
+          display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem'
         }}>
-          <div className="modal-content" style={{
-            maxWidth: '380px', backgroundColor: '#ffffff', borderRadius: '16px',
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', overflow: 'hidden'
-          }} onClick={(e) => e.stopPropagation()}>
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '1rem 1.5rem', background: '#0f172a', color: '#ffffff'
-            }}>
-              <span style={{ fontSize: '0.9rem', fontWeight: '700', letterSpacing: '0.05em' }}>THANH TOÁN CHUYỂN KHOẢN QR</span>
-              <button 
-                type="button" 
-                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}
-                onClick={() => setShowQRModal(null)}
-              >
-                &times;
-              </button>
+          <div style={{ maxWidth: '380px', width: '100%', backgroundColor: '#ffffff', borderRadius: '14px', padding: '1.25rem', textAlign: 'center' }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>
+              Quét Mã VietQR Thanh Toán
+            </h3>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Hướng màn hình cho khách hàng quét mã bằng ứng dụng Ngân Hàng bất kỳ.
+            </p>
+
+            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'inline-block' }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                  `https://pay.anbinhlines.vn/checkout/${showQRModal._id}`
+                )}`}
+                alt="VietQR Code"
+                style={{ width: '180px', height: '180px', display: 'block' }}
+              />
             </div>
 
-            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-              <div style={{ fontWeight: '700', fontSize: '1rem', color: '#0f172a', marginBottom: '1rem' }}>
-                QUÉT MÃ THANH TOÁN VIETQR (PAYOS)
-              </div>
-              
-              <img
-                src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${(showQRModal.tripId?.price || 0) * showQRModal.seats?.length}&addInfo=SmartBus%20${showQRModal.orderCode}&accountName=HO%20VAN%20LOC`}
-                alt="VietQR PayOS"
-                style={{ width: '100%', maxWidth: '200px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
-              />
+            <div style={{ marginTop: '0.85rem', fontSize: '0.85rem', fontWeight: '800', color: '#2563eb' }}>
+              Số tiền: {formatCurrency((showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1))}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+              Nội dung CK: ANBINH {showQRModal.orderCode}
+            </div>
 
-              <div style={{ textAlign: 'left', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', padding: '0.75rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
-                <div>Số tài khoản: <strong>0919210046</strong></div>
-                <div>Chủ tài khoản: <strong>HO VAN LOC</strong></div>
-                <div>Số tiền: <strong style={{ color: '#2563eb' }}>{formatCurrency((showQRModal.tripId?.price || 0) * showQRModal.seats?.length)}</strong></div>
-                <div>Nội dung: <strong style={{ color: '#ef4444' }}>SmartBus {showQRModal.orderCode}</strong></div>
-              </div>
-
-              <div style={{ width: '100%', marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  className="btn-buy-ticket"
-                  style={{ width: '100%', justifyContent: 'center', backgroundColor: '#10b981' }}
-                  onClick={async () => {
-                    try {
-                      await fetch('http://localhost:8000/api/v1/payment/webhook', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          code: '00',
-                          desc: 'success',
-                          data: {
-                            orderCode: showQRModal.orderCode,
-                            amount: (showQRModal.tripId?.price || 0) * showQRModal.seats?.length,
-                            description: `Thanh toan ve xe cho ma dat cho ${showQRModal._id}`
-                          }
-                        })
-                      });
-                    } catch (err) {
-                      console.error(err);
-                    }
-                    setPrintTarget(showQRModal);
-                    setShowQRModal(null);
-                  }}
-                >
-                  Giả lập chuyển khoản thành công
-                </button>
-
-                <button
-                  type="button"
-                  className="btn-buy-ticket"
-                  style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={() => {
-                    setPrintTarget(showQRModal);
-                    setShowQRModal(null);
-                  }}
-                >
-                  Xác nhận đã thanh toán xong
-                </button>
-              </div>
-
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '1.25rem' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPrintTarget(showQRModal);
+                  setShowQRModal(null);
+                }}
+                style={{
+                  padding: '7px 16px',
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Khách Đã Thanh Toán &amp; In Vé
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowQRModal(null)}
+                style={{
+                  padding: '7px 14px',
+                  backgroundColor: '#f1f5f9',
+                  color: '#475569',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>
       )}
 
-    </section>
+    </div>
   );
 };
 
