@@ -537,12 +537,17 @@ const FleetStatusPage = () => {
                       </div>
                     </div>
 
-                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       {getStatusChip(bus.activeStatus || 'ready')}
                       <span style={{
-                        fontSize: '0.65rem',
-                        color: isSelected ? '#1d4ed8' : '#64748b',
-                        fontWeight: '700'
+                        fontSize: '0.7rem',
+                        color: isSelected ? '#1d4ed8' : '#475569',
+                        fontWeight: '700',
+                        backgroundColor: isSelected ? '#dbeafe' : '#f1f5f9',
+                        padding: '3px 9px',
+                        borderRadius: '6px',
+                        border: `1px solid ${isSelected ? '#bfdbfe' : '#cbd5e1'}`,
+                        whiteSpace: 'nowrap'
                       }}>
                         {isSelected ? 'Đang chọn' : 'Chỉnh sửa'}
                       </span>
