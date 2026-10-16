@@ -52,39 +52,43 @@ const FleetStatusPage = () => {
     }
   };
 
+  const [maintenanceRecords, setMaintenanceRecords] = useState([]);
+
+  const fetchMaintenanceRecords = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/trips/fleet/maintenance-records`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMaintenanceRecords(data.records || []);
+      }
+    } catch (err) {
+      console.error('Lỗi tải hồ sơ bảo trì:', err);
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchBuses();
-      // Load history logs from localStorage
+      fetchMaintenanceRecords();
+
+      // Load history logs from localStorage, filtering out old mock entries
       const savedLogs = localStorage.getItem('fleet_status_logs');
       if (savedLogs) {
         try {
-          setLogs(JSON.parse(savedLogs));
+          const parsed = JSON.parse(savedLogs);
+          // Filter out legacy mock logs with 'Auto An Bình' or 26/9/2026
+          const realLogsOnly = (parsed || []).filter(l =>
+            !l.details?.includes('Auto An Bình') &&
+            !l.time?.includes('2026-09-26') &&
+            l.id !== 'log-1' && l.id !== 'log-2'
+          );
+          setLogs(realLogsOnly);
+          localStorage.setItem('fleet_status_logs', JSON.stringify(realLogsOnly));
         } catch (e) {
           console.error(e);
         }
-      } else {
-        // Initial clean enterprise logs
-        const initialLogs = [
-          {
-            id: 'log-1',
-            plateNumber: '51B-016.16',
-            fromStatus: 'ready',
-            toStatus: 'ready',
-            time: new Date(Date.now() - 3600000 * 4).toISOString(),
-            details: 'Kiểm tra kỹ thuật đầu ca xuất bến. Xe hoạt động ổn định.'
-          },
-          {
-            id: 'log-2',
-            plateNumber: '51B-044.44',
-            fromStatus: 'maintenance',
-            toStatus: 'ready',
-            time: new Date(Date.now() - 3600000 * 28).toISOString(),
-            details: 'Hoàn tất bảo dưỡng định kỳ thay dầu động cơ tại Garage Thiên Phúc. Đưa xe trở lại kíp chạy.'
-          }
-        ];
-        setLogs(initialLogs);
-        localStorage.setItem('fleet_status_logs', JSON.stringify(initialLogs));
       }
     }
   }, [token]);
@@ -758,19 +762,15 @@ const FleetStatusPage = () => {
           <div className="fleet-box" style={{ margin: 0, padding: '1rem 1.15rem' }}>
             <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem', marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Nhật Ký Thay Đổi Trạng Thái Gần Nhất
+                Nhật Ký Thay Đổi Trạng Thái
               </h2>
-              <span style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                Live Audit Logs
+              <span style={{ fontSize: '0.65rem', background: '#eff6ff', color: '#1d4ed8', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                {logs.length > 0 ? 'Nhật ký phiên' : 'Dữ liệu MongoDB'}
               </span>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
-              {logs.length === 0 ? (
-                <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
-                  Chưa ghi nhận nhật ký điều chuyển nào.
-                </div>
-              ) : (
+              {logs.length > 0 ? (
                 logs.slice(0, 5).map((log) => (
                   <div key={log.id} style={{ padding: '7px 9px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.72rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
@@ -787,6 +787,27 @@ const FleetStatusPage = () => {
                     </div>
                   </div>
                 ))
+              ) : maintenanceRecords.length > 0 ? (
+                maintenanceRecords.slice(0, 3).map((rec, idx) => (
+                  <div key={rec._id || idx} style={{ padding: '7px 9px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.72rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                      <strong style={{ color: '#1d4ed8' }}>Xe {rec.plateNumber || 'Phương tiện'}</strong>
+                      <span style={{ color: '#94a3b8', fontSize: '0.65rem' }}>
+                        {new Date(rec.endDate || rec.createdAt).toLocaleDateString('vi-VN')}
+                      </span>
+                    </div>
+                    <div style={{ color: '#334155', lineHeight: '1.3' }}>
+                      <span style={{ color: '#047857', fontWeight: '700' }}>Hồ sơ bảo trì hoàn tất:</span> {rec.description} • Garage: {rec.garage}
+                      <div style={{ color: '#64748b', fontSize: '0.68rem', marginTop: '2px' }}>
+                        Chi phí: <strong>{(rec.cost || 0).toLocaleString('vi-VN')} VNĐ</strong> (Lưu trữ CSDL MongoDB)
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
+                  Chưa ghi nhận lần điều chuyển trạng thái nào. Khi bạn thực hiện đổi trạng thái ở form phía trên, nhật ký thời gian thực sẽ hiển thị tại đây.
+                </div>
               )}
             </div>
           </div>
