@@ -129,7 +129,7 @@ function DashboardLayout() {
 
       // Shared Employee views
       case 'staff-schedule':
-        return <StaffSchedulePage />;
+        return <StaffSchedulePage setActiveTab={setActiveTab} />;
       case 'staff-leave':
         return <StaffLeavePage />;
       case 'staff-salary':
@@ -161,11 +161,11 @@ function DashboardLayout() {
 
       // Driver views
       case 'driver-attendance':
-        return <DriverAttendancePage />;
+        return <DriverAttendancePage setActiveTab={setActiveTab} />;
       case 'driver-status':
-        return <DriverStatusPage />;
+        return <DriverStatusPage setActiveTab={setActiveTab} />;
       case 'driver-map':
-        return <DriverMapPage />;
+        return <DriverMapPage setActiveTab={setActiveTab} />;
 
 
       default:

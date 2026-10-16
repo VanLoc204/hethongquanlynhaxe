@@ -1124,6 +1124,16 @@ const OpsRoutesPage = () => {
     setStops(stops.filter((_, i) => i !== index));
   };
 
+  const handleStopChange = (index, field, value) => {
+    setStops(prevStops => {
+      const updated = [...prevStops];
+      if (updated[index]) {
+        updated[index] = { ...updated[index], [field]: value };
+      }
+      return updated;
+    });
+  };
+
   const handleOptimizeStops = () => {
     if (stops.length <= 2) {
       showToast('Cần ít nhất 3 trạm để tối ưu lộ trình.');
