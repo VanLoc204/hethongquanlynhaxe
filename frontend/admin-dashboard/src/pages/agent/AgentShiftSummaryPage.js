@@ -11,29 +11,32 @@ const AgentShiftSummaryPage = () => {
   const [notes, setNotes] = useState('');
   const [closing, setClosing] = useState(false);
 
+  // Lấy dữ liệu ca trực và lịch sử
   const fetchShiftData = async () => {
     setLoading(true);
     setError('');
     try {
-      // 1. Get current active shift
+      // 1. Ca trực đang mở hiện tại
       const activeRes = await fetch('http://localhost:8000/api/v1/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const activeData = await activeRes.json();
       if (activeRes.ok && activeData.success) {
         setActiveShift(activeData.session);
+      } else {
+        setActiveShift(null);
       }
 
-      // 2. Get shift history list
+      // 2. Lịch sử các ca trực đã chốt
       const historyRes = await fetch('http://localhost:8000/api/v1/users/shift/history', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const historyData = await historyRes.json();
       if (historyRes.ok && historyData.success) {
-        setHistory(historyData.history);
+        setHistory(historyData.history || []);
       }
     } catch (err) {
-      setError('Lỗi kết nối máy chủ khi lấy dữ liệu ca trực.');
+      setError('Lỗi kết nối máy chủ khi nạp dữ liệu ca trực.');
     } finally {
       setLoading(false);
     }
@@ -43,8 +46,9 @@ const AgentShiftSummaryPage = () => {
     fetchShiftData();
   }, [token]);
 
+  // Xử lý đóng ca & bàn giao doanh thu
   const handleCloseShift = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!activeShift) return;
 
     setClosing(true);
@@ -61,251 +65,601 @@ const AgentShiftSummaryPage = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccess('Đóng ca làm việc và nộp báo cáo doanh thu thành công!');
+        setSuccess('Đóng ca làm việc và nộp báo cáo kết chuyển doanh thu thành công!');
         setActiveShift(null);
         setNotes('');
-        fetchShiftData(); // re-fetch history
+        fetchShiftData();
       } else {
         setError(data.message || 'Không thể đóng ca trực.');
       }
     } catch (err) {
-      setError('Lỗi máy chủ khi kết ca trực.');
+      setError('Lỗi máy chủ khi chốt đóng ca.');
     } finally {
       setClosing(false);
     }
   };
 
   const formatCurrency = (number) => {
-    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(number);
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(number || 0);
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-        <div style={{ color: 'var(--primary)', fontWeight: '600' }}>Đang tải lịch sử ca trực...</div>
-      </div>
-    );
-  }
+  // Tính thời gian đã trực
+  const calculateShiftDuration = (startTime) => {
+    if (!startTime) return '';
+    const diffMs = Date.now() - new Date(startTime).getTime();
+    if (diffMs < 0) return 'Vừa bắt đầu';
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours} giờ ${minutes} phút`;
+  };
 
   return (
-    <section className="panel" style={{ animation: 'fadeIn 0.4s ease' }}>
-      <div style={{ borderBottom: '1px solid var(--card-border)', paddingBottom: '0.75rem', marginBottom: '1.5rem' }}>
-        <h2>Tổng Kết Doanh Thu Ca Trực</h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nhân viên đóng ca làm việc bến xe để đối soát tổng lượng tiền mặt thối nhận và kết chuyển các giao dịch không tiền mặt.</p>
+    <div style={{ animation: 'fadeIn 0.25s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', boxSizing: 'border-box' }}>
+      
+      {/* CSS Cục Bộ Chuẩn Giao Diện Bán Vé & Quản Lý - Đồng Bộ Kích Thước & Tuyệt Đối Không Dùng Icon */}
+      <style>{`
+        .shift-panel-box {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1.25rem 1.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          display: flex;
+          flex-direction: column;
+          gap: 1.15rem;
+          box-sizing: border-box;
+        }
+
+        .shift-header-wrap {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+
+        .shift-two-col {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: 1.5rem;
+          align-items: stretch;
+        }
+
+        @media (max-width: 992px) {
+          .shift-two-col {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .shift-info-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.45rem 0;
+          font-size: 0.82rem;
+          border-bottom: 1px dashed #f1f5f9;
+        }
+
+        .shift-info-row:last-child {
+          border-bottom: none;
+        }
+
+        .shift-textarea {
+          width: 100%;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 0.75rem 0.85rem;
+          font-size: 0.82rem;
+          color: #0f172a;
+          outline: none;
+          resize: none;
+          box-sizing: border-box;
+          font-family: inherit;
+          background: #ffffff;
+          transition: border-color 0.15s;
+        }
+
+        .shift-textarea:focus {
+          border-color: #2563eb;
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Bảng danh sách chi tiết vé và lịch sử */
+        .shift-table-wrap {
+          width: 100%;
+          overflow: hidden;
+          background: #ffffff;
+        }
+
+        .shift-table {
+          width: 100%;
+          table-layout: fixed;
+          border-collapse: collapse;
+          font-size: 0.8rem;
+        }
+
+        .shift-table th {
+          background: #f8fafc;
+          color: #475569;
+          font-weight: 700;
+          padding: 0.75rem 0.85rem;
+          border-bottom: 2px solid #e2e8f0;
+          text-align: left;
+          white-space: nowrap;
+          box-sizing: border-box;
+          font-size: 0.78rem;
+        }
+
+        .shift-table td {
+          padding: 0.7rem 0.85rem;
+          border-bottom: 1px solid #f1f5f9;
+          color: #1e293b;
+          vertical-align: middle;
+          box-sizing: border-box;
+          word-break: break-word;
+          line-height: 1.35;
+        }
+
+        .shift-table tbody tr:hover {
+          background-color: #f8fafc;
+        }
+
+        .badge-shift {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 4px;
+          font-size: 0.7rem;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
+        .badge-active {
+          background: #ecfdf5;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .badge-closed {
+          background: #f1f5f9;
+          color: #475569;
+          border: 1px solid #cbd5e1;
+        }
+
+        .badge-cash {
+          background: #ecfdf5;
+          color: #047857;
+          border: 1px solid #a7f3d0;
+        }
+
+        .badge-cashless {
+          background: #eff6ff;
+          color: #2563eb;
+          border: 1px solid #bfdbfe;
+        }
+      `}</style>
+
+      {/* ========================================================= */}
+      {/* KHỐI 1: TIÊU ĐỀ TRANG & TRẠNG THÁI CA TRỰC QUẦY           */}
+      {/* ========================================================= */}
+      <div className="shift-panel-box">
+        <div className="shift-header-wrap">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Tổng Kết Doanh Thu Ca Trực
+              </h1>
+              <span style={{
+                background: '#eff6ff',
+                color: '#2563eb',
+                border: '1px solid #bfdbfe',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontSize: '0.68rem',
+                fontWeight: '700'
+              }}>
+                Nhân Viên Bán Vé
+              </span>
+            </div>
+
+            <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '6px' }}>
+              Nhân viên đóng ca làm việc bến xe để đối soát tổng lượng tiền mặt thối nhận và kết chuyển các giao dịch không tiền mặt.
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {activeShift ? (
+              <span className="badge-shift badge-active" style={{ padding: '6px 12px', fontSize: '0.76rem' }}>
+                Đang Mở Ca: {activeShift.counterNumber}
+              </span>
+            ) : (
+              <span className="badge-shift badge-closed" style={{ padding: '6px 12px', fontSize: '0.76rem' }}>
+                Chưa Mở Ca Trực
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={fetchShiftData}
+              style={{
+                backgroundColor: '#2563eb',
+                border: 'none',
+                color: '#ffffff',
+                fontWeight: '700',
+                padding: '0.5rem 1.15rem',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                cursor: 'pointer'
+              }}
+              title="Tải lại dữ liệu ca trực từ CSDL"
+            >
+              Làm Mới Dữ Liệu
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#be123c', padding: '0.65rem 1rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '600' }}>
+            Lưu ý: {error}
+          </div>
+        )}
+
+        {success && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', padding: '0.65rem 1rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '600' }}>
+            Thành công: {success}
+          </div>
+        )}
       </div>
 
-      {error && <div className="error-message" style={{ marginBottom: '1.25rem' }}>{error}</div>}
-      {success && <div className="success-message" style={{ marginBottom: '1.25rem' }}>{success}</div>}
-
-      {/* Active Shift Closure Portal */}
+      {/* ========================================================= */}
+      {/* KHỐI 2: CHI TIẾT CA ĐANG CHỐT BÀN GIAO & FORM ĐÓNG CA     */}
+      {/* ========================================================= */}
       {activeShift ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginBottom: '2.5rem' }}>
+        <div className="shift-two-col">
           
-          {/* Top Panel: Split info and report form */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1.05fr 0.95fr',
-            gap: '2.5rem',
-            background: '#f8fafc',
-            padding: '1.75rem',
-            borderRadius: '16px',
-            border: '1px solid var(--card-border)',
-            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)'
-          }}>
-            
-            {/* Left: Shift Info & Financial summary */}
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <h3 style={{ marginTop: 0, color: 'var(--text)', fontWeight: '800', fontSize: '1.25rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                  Ca trực đang chốt bàn giao
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.95rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Địa chỉ quầy trực:</span>
-                    <strong style={{ color: 'var(--text)' }}>{activeShift.counterNumber}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Thời gian bắt đầu:</span>
-                    <strong style={{ color: 'var(--text)' }}>{new Date(activeShift.startTime).toLocaleTimeString('vi-VN')} ({new Date(activeShift.startTime).toLocaleDateString('vi-VN')})</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Vốn lẻ đầu ca:</span>
-                    <strong style={{ color: 'var(--text)' }}>{formatCurrency(activeShift.initialCash)}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Số vé đã bán:</span>
-                    <strong style={{ color: 'var(--text)' }}>{activeShift.ticketsSold?.length || 0} vé</strong>
-                  </div>
-                </div>
+          {/* CỘT TRÁI: ĐỐI SOÁT TÀI CHÍNH VÀ TIỀN MẶT BÀN GIAO */}
+          <div className="shift-panel-box" style={{ justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.65rem', marginBottom: '0.85rem' }}>
+                <h2 style={{ fontSize: '0.98rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Thông Tin & Đối Soát Doanh Thu Ca
+                </h2>
+                <span style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: '700' }}>
+                  Thời gian trực: {calculateShiftDuration(activeShift.startTime)}
+                </span>
               </div>
 
-              <div style={{ marginTop: '1.25rem', background: '#ffffff', padding: '1.25rem', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', fontSize: '0.9rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Doanh thu tiền mặt (Quầy bán vé):</span>
-                  <strong style={{ color: 'var(--text)' }}>{formatCurrency(activeShift.cashRevenue || 0)}</strong>
+              {/* Thông tin ca trực */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '1rem' }}>
+                <div className="shift-info-row">
+                  <span style={{ color: '#64748b' }}>Địa chỉ quầy trực:</span>
+                  <strong style={{ color: '#0f172a' }}>{activeShift.counterNumber}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', fontSize: '0.9rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Doanh thu chuyển khoản / POS:</span>
-                  <strong style={{ color: 'var(--text)' }}>{formatCurrency(activeShift.cashlessRevenue || 0)}</strong>
+                <div className="shift-info-row">
+                  <span style={{ color: '#64748b' }}>Thời gian bắt đầu ca:</span>
+                  <strong style={{ color: '#0f172a' }}>
+                    {new Date(activeShift.startTime).toLocaleTimeString('vi-VN')} ({new Date(activeShift.startTime).toLocaleDateString('vi-VN')})
+                  </strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                  <span>Tiền mặt nhận đầu ca:</span>
-                  <span>{formatCurrency(activeShift.initialCash)}</span>
+                <div className="shift-info-row">
+                  <span style={{ color: '#64748b' }}>Vốn lẻ nhận đầu ca:</span>
+                  <strong style={{ color: '#0f172a' }}>{formatCurrency(activeShift.initialCash)}</strong>
                 </div>
-                
-                <hr style={{ border: 'none', borderTop: '1px solid #cbd5e1', margin: '0.75rem 0' }} />
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontWeight: '700', fontSize: '1.05rem', color: 'var(--text)' }}>
-                  <span>Tổng doanh số bán vé:</span>
-                  <span style={{ color: 'var(--primary)', fontSize: '1.15rem' }}>{formatCurrency((activeShift.cashRevenue || 0) + (activeShift.cashlessRevenue || 0))}</span>
-                </div>
-                
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '1.2rem', color: '#10b981' }}>
-                  <span>Thực tế két tiền mặt bàn giao:</span>
-                  <span style={{ fontSize: '1.25rem' }}>{formatCurrency(activeShift.initialCash + (activeShift.cashRevenue || 0))}</span>
+                <div className="shift-info-row">
+                  <span style={{ color: '#64748b' }}>Số lượng vé đã xuất:</span>
+                  <strong style={{ color: '#2563eb' }}>{activeShift.ticketsSold?.length || 0} vé</strong>
                 </div>
               </div>
             </div>
 
-            {/* Right: Handover report form */}
-            <form onSubmit={handleCloseShift} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <div>
-                <h3 style={{ marginTop: 0, color: 'var(--text)', fontWeight: '800', fontSize: '1.25rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
-                  Báo cáo bàn giao kết ca
-                </h3>
-                <div className="form-group">
-                  <label style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--text)' }}>Ghi chú bàn giao (Ví dụ: Thừa/thiếu tiền lẻ, bàn giao ca sau...)</label>
-                  <textarea
-                    className="form-control-custom"
-                    rows="6"
-                    style={{ marginTop: '0.5rem', height: '170px', resize: 'none', fontSize: '0.95rem' }}
-                    placeholder="Nhập ghi chú hoặc biên bản đối chiếu tiền mặt lẻ bàn giao..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  ></textarea>
+            {/* Bảng tính toán dòng tiền kết ca */}
+            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.45rem' }}>
+                <span style={{ color: '#64748b' }}>Doanh thu tiền mặt (Quầy bán vé):</span>
+                <strong style={{ color: '#0f172a' }}>{formatCurrency(activeShift.cashRevenue || 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.45rem' }}>
+                <span style={{ color: '#64748b' }}>Doanh thu chuyển khoản / POS:</span>
+                <strong style={{ color: '#0f172a' }}>{formatCurrency(activeShift.cashlessRevenue || 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.45rem' }}>
+                <span style={{ color: '#64748b' }}>Tiền mặt vốn lẻ nhận đầu ca:</span>
+                <strong style={{ color: '#64748b' }}>{formatCurrency(activeShift.initialCash)}</strong>
+              </div>
+
+              <div style={{ borderTop: '1px solid #cbd5e1', margin: '0.65rem 0' }}></div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                <span style={{ fontSize: '0.88rem', fontWeight: '700', color: '#0f172a' }}>Tổng doanh số bán vé trong ca:</span>
+                <span style={{ fontSize: '1.05rem', fontWeight: '800', color: '#2563eb' }}>
+                  {formatCurrency((activeShift.cashRevenue || 0) + (activeShift.cashlessRevenue || 0))}
+                </span>
+              </div>
+
+              {/* Thực tế tiền mặt nộp kết ca */}
+              <div style={{
+                background: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                borderRadius: '8px',
+                padding: '0.75rem 1rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#047857', textTransform: 'uppercase' }}>
+                    Thực Tế Két Tiền Mặt Bàn Giao
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#065f46', marginTop: '2px' }}>
+                    (Bao gồm: Vốn lẻ nhận đầu ca + Doanh thu tiền mặt)
+                  </div>
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#047857' }}>
+                  {formatCurrency(activeShift.initialCash + (activeShift.cashRevenue || 0))}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* CỘT PHẢI: BÁO CÁO GHI CHÚ BÀN GIAO & NÚT XÁC NHẬN ĐÓNG CA */}
+          <form onSubmit={handleCloseShift} className="shift-panel-box" style={{ justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '0.65rem', marginBottom: '0.85rem' }}>
+                <h2 style={{ fontSize: '0.98rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Báo Cáo Bàn Giao & Đóng Ca
+                </h2>
+                <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '2px' }}>
+                  Ghi chú kiểm đếm tiền mặt, vé xuất và tình trạng thiết bị trước khi chốt nộp
                 </div>
               </div>
 
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '6px' }}>
+                  Ghi chú bàn giao ca (Ví dụ: Thừa/thiếu tiền lẻ, bàn giao ca kế tiếp, sự cố quầy...)
+                </label>
+                <textarea
+                  className="shift-textarea"
+                  rows="7"
+                  placeholder="Nhập ghi chú hoặc biên bản đối chiếu tiền mặt lẻ bàn giao, thông tin nhân viên nhận bàn giao ca tiếp theo..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                ></textarea>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '0.75rem 0.95rem', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.75rem', color: '#64748b' }}>
+                <strong style={{ color: '#0f172a' }}>Lưu ý kết ca:</strong> Sau khi xác nhận đóng ca, quầy bán vé sẽ tạm khóa. Doanh thu tiền mặt và chuyển khoản sẽ được chốt lưu vào sổ sách kế toán ca trực.
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1.25rem' }}>
               <button
                 type="submit"
-                className="btn"
+                disabled={closing}
                 style={{
                   width: '100%',
-                  padding: '12px',
-                  backgroundColor: 'var(--primary)',
+                  height: '46px',
+                  backgroundColor: '#2563eb',
                   color: '#ffffff',
                   fontWeight: '700',
                   borderRadius: '8px',
                   border: 'none',
+                  fontSize: '0.88rem',
                   cursor: 'pointer',
-                  fontSize: '0.95rem',
-                  boxShadow: '0 4px 6px -1px rgba(63, 106, 216, 0.2)',
-                  marginTop: '1.5rem',
-                  height: '48px'
+                  boxShadow: '0 2px 4px rgba(37, 99, 235, 0.2)',
+                  transition: 'background-color 0.15s ease'
                 }}
-                disabled={closing}
               >
-                {closing ? 'Đang đóng ca...' : 'Xác nhận Đóng ca & Bàn giao doanh thu'}
+                {closing ? 'Đang Xử Lý Đóng Ca...' : 'Xác Nhận Đóng Ca & Bàn Giao Doanh Thu'}
               </button>
-            </form>
+            </div>
+          </form>
+
+        </div>
+      ) : (
+        <div className="shift-panel-box" style={{ textAlign: 'center', padding: '2.5rem 1.5rem', color: '#64748b' }}>
+          <div style={{ fontSize: '1rem', fontWeight: '700', color: '#0f172a', marginBottom: '6px' }}>
+            Hiện tại bạn chưa mở ca làm việc nào
+          </div>
+          <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0 0 1.25rem 0' }}>
+            Để thực hiện nghiệp vụ bán vé, in biên lai và chốt doanh thu ca, vui lòng chuyển sang mục Chấm Công Ca để mở ca trực quầy.
+          </p>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* KHỐI 3: CHI TIẾT CÁC VÉ ĐÃ XUẤT TRONG CA HIỆN TẠI          */}
+      {/* ========================================================= */}
+      {activeShift && (
+        <div className="shift-panel-box" style={{ padding: '0', overflow: 'hidden' }}>
+          <div style={{ padding: '0.95rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Chi Tiết Vé Xuất Trong Ca Hiện Tại
+              </h2>
+              <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+                Tổng cộng {activeShift.ticketsSold?.length || 0} vé đã phát hành trong ca này
+              </div>
+            </div>
+
+            <span style={{ fontSize: '0.74rem', color: '#2563eb', fontWeight: '700' }}>
+              Quầy: {activeShift.counterNumber}
+            </span>
           </div>
 
-          {/* Bottom Panel: Full width ticket sales details */}
-          <div className="panel" style={{ padding: '1.5rem', borderRadius: '16px', border: '1px solid var(--card-border)', background: '#ffffff', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.02)' }}>
-            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.15rem', fontWeight: '800', color: 'var(--text)' }}>
-              Chi tiết vé xuất trong ca trực hiện tại
-            </h3>
-            <div style={{
-              maxHeight: '300px',
-              overflowY: 'auto',
-              border: '1px solid #cbd5e1',
-              borderRadius: '10px',
-              backgroundColor: '#ffffff'
-            }}>
-              {(!activeShift.ticketsSold || activeShift.ticketsSold.length === 0) ? (
-                <div style={{ fontSize: '0.9rem', color: 'var(--text-muted)', textAlign: 'center', padding: '2.5rem 0' }}>
-                  Chưa xuất vé nào trong ca trực hiện tại.
-                </div>
-              ) : (
-                activeShift.ticketsSold.map((ticket, idx) => {
-                  const price = ticket.tripId?.price || 0;
-                  return (
-                    <div key={ticket._id || idx} style={{
-                      padding: '12px 16px',
-                      borderBottom: idx === activeShift.ticketsSold.length - 1 ? 'none' : '1px solid #f1f5f9',
-                      fontSize: '0.9rem',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}>
-                      <div>
-                        <strong style={{ color: 'var(--text)' }}>SmartBus #{ticket.orderCode}</strong>
-                        <span style={{ marginLeft: '10px', fontSize: '0.8rem', padding: '2px 8px', borderRadius: '12px', fontWeight: '600', backgroundColor: '#e2e8f0', color: '#334155' }}>
-                          Ghế: {ticket.seats?.join(', ')}
-                        </span>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '4px' }}>
-                          Khách hàng: {ticket.customerName} ({ticket.customerPhone})
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <span style={{ fontWeight: '700', color: 'var(--text)' }}>
-                          {formatCurrency(price * (ticket.seats?.length || 0))}
-                        </span>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)', fontWeight: '600', marginTop: '2px' }}>
-                          {ticket.paymentMethod === 'cashless' ? 'Chuyển khoản / POS' : 'Tiền mặt'}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+          {(!activeShift.ticketsSold || activeShift.ticketsSold.length === 0) ? (
+            <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b', fontSize: '0.82rem' }}>
+              Chưa có vé nào được xuất bán trong ca trực hiện tại.
+            </div>
+          ) : (
+            <div className="shift-table-wrap">
+              <table className="shift-table">
+                <colgroup>
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '22%' }} />
+                  <col style={{ width: '28%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Mã Vé</th>
+                    <th>Hành Khách</th>
+                    <th>Tuyến Đường</th>
+                    <th>Ghế Ngồi</th>
+                    <th>Hình Thức</th>
+                    <th style={{ textAlign: 'right' }}>Thành Tiền</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeShift.ticketsSold.map((ticket, idx) => {
+                    const price = ticket.tripId?.price || 0;
+                    const totalCost = (ticket.totalAmount || (price * (ticket.seats?.length || 0)));
+                    return (
+                      <tr key={ticket._id || idx}>
+                        <td>
+                          <strong style={{ color: '#2563eb', fontWeight: '800' }}>
+                            #{ticket.orderCode || (ticket._id ? ticket._id.slice(-6).toUpperCase() : idx + 1)}
+                          </strong>
+                        </td>
+                        <td>
+                          <div style={{ fontWeight: '700', color: '#0f172a' }}>{ticket.customerName}</div>
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{ticket.customerPhone}</div>
+                        </td>
+                        <td>
+                          {ticket.tripId?.routeId ? (
+                            <div>
+                              <strong style={{ color: '#0f172a' }}>
+                                {ticket.tripId.routeId.startPoint} ⇄ {ticket.tripId.routeId.endPoint}
+                              </strong>
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                Xe: {ticket.tripId.busId?.plateNumber || 'Tiêu chuẩn'}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>Chưa có thông tin tuyến</span>
+                          )}
+                        </td>
+                        <td>
+                          <strong style={{ color: '#0f172a' }}>{ticket.seats?.join(', ')}</strong>
+                          <div style={{ fontSize: '0.7rem', color: '#64748b' }}>({ticket.seats?.length || 0} ghế)</div>
+                        </td>
+                        <td>
+                          {ticket.paymentMethod === 'cashless' ? (
+                            <span className="badge-shift badge-cashless">Chuyển Khoản / POS</span>
+                          ) : (
+                            <span className="badge-shift badge-cash">Tiền Mặt</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: '800', color: '#047857' }}>
+                          {formatCurrency(totalCost)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* KHỐI 4: LỊCH SỬ CÁC CA ĐÃ CHỐT BÀN GIAO TRƯỚC ĐÂY         */}
+      {/* ========================================================= */}
+      <div className="shift-panel-box" style={{ padding: '0', overflow: 'hidden' }}>
+        <div style={{ padding: '0.95rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Lịch Sử Các Ca Làm Việc Đã Chốt Bàn Giao
+            </h2>
+            <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+              Ghi nhận {history.length} ca làm việc đã đối soát và kết sổ
             </div>
           </div>
         </div>
-      ) : (
-        <div style={{ backgroundColor: '#f7fafc', color: 'var(--text-muted)', padding: '1.5rem', borderRadius: '6px', textAlign: 'center', marginBottom: '2.5rem', border: '1px dashed var(--card-border)' }}>
-          Hiện bạn không có ca bán vé nào đang ở trạng thái hoạt động. Để chốt doanh thu ca bán vé, vui lòng sang tab <strong>Chấm công ca</strong> để mở ca trực trước.
-        </div>
-      )}
 
-      {/* History table list */}
-      <h3 style={{ marginBottom: '1rem' }}>Lịch Sử Các Ca Đã Chốt</h3>
-      {history.length === 0 ? (
-        <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Không có lịch sử ca trực nào được ghi nhận trước đây.</div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--card-border)' }}>
-                <th style={{ padding: '0.75rem' }}>Thời gian ca trực</th>
-                <th style={{ padding: '0.75rem' }}>Quầy trực</th>
-                <th style={{ padding: '0.75rem' }}>Vốn lẻ ban đầu</th>
-                <th style={{ padding: '0.75rem' }}>Tổng doanh thu</th>
-                <th style={{ padding: '0.75rem' }}>Số vé bán</th>
-                <th style={{ padding: '0.75rem' }}>Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map(item => (
-                <tr key={item._id} style={{ borderBottom: '1px solid var(--card-border)' }}>
-                  <td style={{ padding: '0.75rem' }}>
-                    <div style={{ fontWeight: '500' }}> {new Date(item.startTime).toLocaleTimeString('vi-VN')} - {item.endTime ? new Date(item.endTime).toLocaleTimeString('vi-VN') : 'Đang trực'}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(item.startTime).toLocaleDateString('vi-VN')}</div>
-                  </td>
-                  <td style={{ padding: '0.75rem' }}>{item.counterNumber}</td>
-                  <td style={{ padding: '0.75rem' }}>{formatCurrency(item.initialCash)}</td>
-                  <td style={{ padding: '0.75rem', fontWeight: '500', color: 'var(--primary)' }}>
-                    {formatCurrency((item.cashRevenue || 0) + (item.cashlessRevenue || 0))}
-                  </td>
-                  <td style={{ padding: '0.75rem' }}>{item.ticketsSold?.length || 0} vé</td>
-                  <td style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.notes || 'Không có ghi chú'}</td>
+        {history.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b', fontSize: '0.82rem' }}>
+            Chưa có lịch sử ca trực nào được ghi nhận trước đây.
+          </div>
+        ) : (
+          <div className="shift-table-wrap">
+            <table className="shift-table">
+              <colgroup>
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '16%' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Thời Gian Ca</th>
+                  <th>Quầy Trực</th>
+                  <th>Vốn Lẻ Ban Đầu</th>
+                  <th>Doanh Thu Bán Vé</th>
+                  <th>Tiền Mặt Kết Két</th>
+                  <th>Số Vé Bán</th>
+                  <th>Ghi Chú Bàn Giao</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+              </thead>
+              <tbody>
+                {history.map((item) => {
+                  const startTime = new Date(item.startTime);
+                  const endTime = item.endTime ? new Date(item.endTime) : null;
+                  const totalRevenue = (item.cashRevenue || 0) + (item.cashlessRevenue || 0);
+                  const totalCashToHandover = item.initialCash + (item.cashRevenue || 0);
+
+                  return (
+                    <tr key={item._id}>
+                      <td>
+                        <div style={{ fontWeight: '700', color: '#0f172a' }}>
+                          {startTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - {endTime ? endTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Đang trực'}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                          Ngày {startTime.toLocaleDateString('vi-VN')}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: '600', color: '#0f172a' }}>{item.counterNumber}</div>
+                        <span className={`badge-shift ${item.status === 'active' ? 'badge-active' : 'badge-closed'}`} style={{ marginTop: '3px' }}>
+                          {item.status === 'active' ? 'Đang Mở Ca' : 'Đã Đóng Ca'}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ color: '#64748b' }}>{formatCurrency(item.initialCash)}</div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: '800', color: '#2563eb' }}>{formatCurrency(totalRevenue)}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                          Mặt: {formatCurrency(item.cashRevenue || 0)}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: '800', color: '#047857' }}>
+                          {formatCurrency(totalCashToHandover)}
+                        </div>
+                      </td>
+                      <td>
+                        <strong style={{ color: '#0f172a' }}>{item.ticketsSold?.length || 0}</strong> vé
+                      </td>
+                      <td>
+                        <div style={{ fontSize: '0.75rem', color: '#475569', fontStyle: item.notes ? 'normal' : 'italic' }}>
+                          {item.notes || 'Không có ghi chú'}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+    </div>
   );
 };
 
