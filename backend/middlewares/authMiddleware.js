@@ -18,7 +18,8 @@ const protect = async (req, res, next) => {
     // Verify token
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026');
-      req.user = decoded; // Contains id, name, role
+      const userId = decoded.id || decoded._id;
+      req.user = { ...decoded, id: userId, _id: userId }; // Ensure both id and _id exist
       next();
     } catch (err) {
       return res.status(401).json({

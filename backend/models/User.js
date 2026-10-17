@@ -52,6 +52,18 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ['Bronze', 'Silver', 'Gold', 'Platinum'],
       default: 'Bronze'
+    },
+    // ─── Face Recognition Attendance ─────────────────────────────────────────
+    // Mảng các face descriptor (mỗi phần tử là Float32Array 128D lưu dạng [Number])
+    // 1 user có thể có nhiều mẫu để tăng độ chính xác nhận diện
+    faceDescriptors: {
+      type: [[Number]],
+      default: []
+    },
+    // Cờ xác nhận nhân viên đã được đăng ký khuôn mặt hay chưa
+    faceRegistered: {
+      type: Boolean,
+      default: false
     }
   },
   {
