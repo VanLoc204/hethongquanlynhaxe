@@ -25,6 +25,7 @@ import GmReportsPage from './pages/gm/GmReportsPage';
 import GmTargetsPage from './pages/gm/GmTargetsPage';
 import GmPromotionsPage from './pages/gm/GmPromotionsPage';
 import GmAnalysisPage from './pages/gm/GmAnalysisPage';
+import GmAttendancePage from './pages/gm/GmAttendancePage';
 
 // Shared Employee Pages
 import StaffSchedulePage from './pages/common/StaffSchedulePage';
@@ -107,6 +108,8 @@ function DashboardLayout() {
       // GM views
       case 'gm-reports':
         return <GmReportsPage />;
+      case 'gm-attendance':
+        return <GmAttendancePage />;
       case 'gm-staff':
         return <GmStaffPage />;
       case 'gm-pricing':

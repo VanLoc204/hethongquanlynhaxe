@@ -1,0 +1,35 @@
+{
+  "cleanUrls": false,
+  "rewrites": [
+    { "source": "/face-models/**", "destination": "/face-models/$1" },
+    { "source": "!face-models/**", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/face-models/**.bin",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/octet-stream"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/face-models/**.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ]
+}

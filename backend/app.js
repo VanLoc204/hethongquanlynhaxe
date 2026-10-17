@@ -13,6 +13,9 @@ const { systemLogger } = require('./middlewares/systemLogger');
 
 const targetRoutes = require('./routes/targetRoutes');
 const promotionRoutes = require('./routes/promotionRoutes');
+const attendanceRoutes = require('./routes/attendanceRoutes');
+
+const path = require('path');
 
 const app = express();
 
@@ -22,6 +25,7 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(systemLogger);
+app.use('/face-models', express.static(path.join(__dirname, 'public/face-models')));
 
 // Routes
 app.use('/api/v1/auth', authRoutes);
@@ -33,6 +37,8 @@ app.use('/api/v1/reviews', chatRoutes);
 app.use('/api/v1/system', systemRoutes);
 app.use('/api/v1/targets', targetRoutes);
 app.use('/api/v1/promotions', promotionRoutes);
+app.use('/api/v1/attendance', attendanceRoutes);
+
 
 // Health check endpoint
 app.get('/health', (req, res) => {
