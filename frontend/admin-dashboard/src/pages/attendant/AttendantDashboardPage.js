@@ -14,6 +14,10 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
     totalBoarded: 0
   });
 
+  // Dữ liệu chấm công thực tế từ Database
+  const [attendanceDuties, setAttendanceDuties] = useState([]);
+  const [attendanceStatus, setAttendanceStatus] = useState('not_checked');
+
   useEffect(() => {
     fetchSchedule();
   }, [token]);
@@ -30,6 +34,20 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
         calculateStats(data.trips);
       } else {
         setError(data.message || 'Không thể tải lịch trình phân công.');
+      }
+
+      // Tải dữ liệu chấm công thực tế từ Database
+      try {
+        const attRes = await fetch('http://localhost:8000/api/v1/attendance/mine', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const attData = await attRes.json();
+        if (attRes.ok && attData.success) {
+          setAttendanceDuties(attData.todayDuties || []);
+          setAttendanceStatus(attData.todayStatus || 'not_checked');
+        }
+      } catch (attErr) {
+        console.warn('Lỗi lấy dữ liệu chấm công phụ xe:', attErr);
       }
     } catch (err) {
       setError('Lỗi kết nối máy chủ khi tải lịch trình.');
@@ -320,20 +338,60 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
             </div>
           </div>
 
-          {/* Stat 3: Trạng thái ca trực */}
-          <div className="attendant-stat-card" style={{ borderLeft: '4px solid #8b5cf6' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Trạng Thái Ca Trực
-            </span>
-            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-              <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#7c3aed' }}>
-                Đã Điểm Danh Ca
-              </span>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: '600', marginTop: '6px' }}>
-              Chấm công số hợp lệ
-            </div>
-          </div>
+          {/* Stat 3: Trạng thái ca trực (Dữ liệu thật từ Database) */}
+          {(() => {
+            const hasActive = attendanceDuties.some((d) => d.status === 'active');
+            const allClosed = todayTrips.length > 0 && attendanceDuties.length >= todayTrips.length && attendanceDuties.every((d) => d.status === 'closed');
+            const hasAbsent = attendanceDuties.some((d) => d.status === 'absent') || todayTrips.some((t) => new Date() > new Date(t.departureTime) && !attendanceDuties.find((d) => d.tripId?.toString() === t._id?.toString() && (d.status === 'active' || d.status === 'closed')));
+
+            let title = 'Chưa Vào Ca';
+            let subtitle = 'Cần check-in trước giờ chạy';
+            let color = '#d97706';
+            let border = '4px solid #f59e0b';
+
+            if (todayTrips.length === 0) {
+              title = 'Nghỉ Theo Lịch';
+              subtitle = 'Không có ca chạy hôm nay';
+              color = '#64748b';
+              border = '4px solid #cbd5e1';
+            } else if (hasActive) {
+              title = 'Đang Trong Ca';
+              subtitle = 'Đã check-in Face ID • Đang làm việc';
+              color = '#059669';
+              border = '4px solid #10b981';
+            } else if (allClosed) {
+              title = 'Đã Hoàn Thành';
+              subtitle = '✓ Đã check-out chốt ca hôm nay';
+              color = '#2563eb';
+              border = '4px solid #2563eb';
+            } else if (hasAbsent) {
+              title = 'Vắng Không Phép';
+              subtitle = '⚠ Quá giờ chưa check-in';
+              color = '#dc2626';
+              border = '4px solid #ef4444';
+            }
+
+            return (
+              <div
+                onClick={() => setActiveTab && setActiveTab('attendant-attendance')}
+                className="attendant-stat-card"
+                style={{ borderLeft: border, cursor: 'pointer' }}
+                title="Bấm để đến trang Chấm công phụ xe"
+              >
+                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Trạng Thái Ca Trực
+                </span>
+                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <span style={{ fontSize: '1.2rem', fontWeight: '900', color: color }}>
+                    {title}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: color, fontWeight: '600', marginTop: '6px' }}>
+                  {subtitle}
+                </div>
+              </div>
+            );
+          })()}
 
         </div>
 
@@ -394,9 +452,35 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
                         }}>
                           Giờ xuất bến: {formatTime(trip.departureTime)}
                         </span>
-                        <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: '700' }}>
-                          Sẵn sàng đón khách
-                        </span>
+                        {(() => {
+                          const duty = attendanceDuties.find((d) => d.tripId?.toString() === trip._id?.toString());
+                          const isPast = new Date() > new Date(trip.departureTime);
+                          let text = 'Chưa check-in';
+                          let color = '#b45309';
+
+                          if (trip.journeyStatus === 'in_transit') {
+                            text = 'Đang trên tuyến';
+                            color = '#2563eb';
+                          } else if (trip.journeyStatus === 'completed') {
+                            text = 'Đã hoàn thành';
+                            color = '#475569';
+                          } else if (duty?.status === 'active') {
+                            text = 'Đã check-in (Sẵn sàng)';
+                            color = '#15803d';
+                          } else if (duty?.status === 'closed') {
+                            text = 'Đã hoàn thành ca';
+                            color = '#2563eb';
+                          } else if (duty?.status === 'absent' || isPast) {
+                            text = 'Vắng không phép';
+                            color = '#dc2626';
+                          }
+
+                          return (
+                            <span style={{ fontSize: '0.72rem', color: color, fontWeight: '700' }}>
+                              ● {text}
+                            </span>
+                          );
+                        })()}
                       </div>
                       
                       <h3 style={{ margin: '0 0 0.4rem 0', fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>

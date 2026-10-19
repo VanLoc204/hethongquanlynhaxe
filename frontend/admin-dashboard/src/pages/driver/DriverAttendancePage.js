@@ -9,8 +9,11 @@ import {
   clearCanvas,
   formatRoleDisplayName,
   captureSnapshot,
-  verifyFaceMatch
+  verifyFaceMatch,
+  computeFaceConfidence
 } from '../../utils/faceApiHelper';
+
+import AttendanceGpsCard from '../../components/AttendanceGpsCard';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -27,6 +30,8 @@ const DriverAttendancePage = () => {
   const [registeredDescriptors, setRegisteredDescriptors] = useState([]);
   const [faceMatchResult, setFaceMatchResult] = useState({ isMatch: true, similarity: 100, bestDistance: 0 });
   const [actionLoading, setActionLoading] = useState(false);
+  const [faceRegistered, setFaceRegistered] = useState(false);
+  const [isRegisteringFace, setIsRegisteringFace] = useState(false);
   const blinkRef = useRef({ state: 'open', lastTime: Date.now() });
 
   // Trạng thái chấm công từ Backend
@@ -35,8 +40,15 @@ const DriverAttendancePage = () => {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
-  // GPS & Thông báo
-  const [gpsLocation, setGpsLocation] = useState({ lat: null, lng: null, address: 'Đang xác định GPS...' });
+  // GPS & Định vị
+  const [gpsLocation, setGpsLocation] = useState({
+    lat: null,
+    lng: null,
+    address: 'Đang xác định GPS...',
+    gpsMode: 'device',
+    isWithinGeofence: false,
+    distance: Infinity
+  });
   const [notification, setNotification] = useState(null);
 
   const videoRef = useRef(null);
@@ -46,39 +58,26 @@ const DriverAttendancePage = () => {
 
   const showToast = (message, type = 'success') => {
     setNotification({ message, type });
-    setTimeout(() => setNotification(null), 4500);
+    setTimeout(() => setNotification(null), 5000);
   };
 
-  // 1. Tự động lấy tọa độ GPS của thiết bị
-  useEffect(() => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = parseFloat(pos.coords.latitude.toFixed(6));
-          const lng = parseFloat(pos.coords.longitude.toFixed(6));
-          setGpsLocation({
-            lat,
-            lng,
-            address: `${lat}° N, ${lng}° E (Tọa độ thiết bị)`
-          });
-        },
-        (err) => {
-          console.warn('[GPS Geolocation Error]:', err.message);
-          setGpsLocation({
-            lat: 10.7904,
-            lng: 106.7078,
-            address: '10.7904° N, 106.7078° E (Bến xe Miền Đông)'
-          });
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    } else {
-      setGpsLocation({
-        lat: 10.7904,
-        lng: 106.7078,
-        address: '10.7904° N, 106.7078° E (Mặc định Bến xe)'
-      });
-    }
+  // 1. Đồng bộ tọa độ GPS & Bến xe thông minh từ AttendanceGpsCard
+  const handleGpsLocationChange = useCallback((loc) => {
+    setGpsLocation({
+      lat: loc.lat,
+      lng: loc.lng,
+      address: loc.address,
+      stationName: loc.stationName,
+      distance: loc.distance,
+      isWithinGeofence: loc.isWithinGeofence,
+      gpsMode: loc.gpsMode || 'device',
+      isTimeValid: loc.isTimeValid,
+      departureTime: loc.departureTime,
+      deadlineTime: loc.deadlineTime,
+      tripId: loc.tripId || null,
+      tripRoute: loc.tripRoute || '',
+      plateNumber: loc.plateNumber || ''
+    });
   }, []);
 
   // 2. Tải lịch sử và trạng thái chấm công hôm nay của tài xế
@@ -93,8 +92,12 @@ const DriverAttendancePage = () => {
         setTodayStatus(data.todayStatus || 'not_checked');
         setTodayRecord(data.todayRecord || null);
         setHistory(data.history || []);
-        if (Array.isArray(data.faceDescriptors)) {
+        if (Array.isArray(data.faceDescriptors) && data.faceDescriptors.length > 0) {
           setRegisteredDescriptors(data.faceDescriptors);
+          setFaceRegistered(true);
+        } else {
+          setRegisteredDescriptors([]);
+          setFaceRegistered(Boolean(data.faceRegistered));
         }
       }
     } catch (err) {
@@ -126,7 +129,7 @@ const DriverAttendancePage = () => {
     };
   }, []);
 
-  // 4. Bật Webcam
+  // 4. Bật / Tắt Webcam
   const handleStartCamera = async () => {
     setCameraError('');
     try {
@@ -139,156 +142,172 @@ const DriverAttendancePage = () => {
     }
   };
 
-  // 5. Tắt Webcam
-  const handleStopCamera = useCallback(() => {
+  const handleStopCamera = () => {
     if (scanLoopRef.current) {
       cancelAnimationFrame(scanLoopRef.current);
       scanLoopRef.current = null;
     }
-    if (streamRef.current) {
-      stopWebcam(streamRef.current);
-      streamRef.current = null;
-    }
-    clearCanvas(canvasRef.current);
+    stopWebcam(streamRef.current);
+    streamRef.current = null;
     setCameraActive(false);
     setFaceDetected(false);
+    setLivenessVerified(false);
+    setFaceStatusHint('');
+    if (canvasRef.current) clearCanvas(canvasRef.current);
+  };
+
+  // Dọn dẹp luồng camera khi unmount
+  useEffect(() => {
+    return () => {
+      if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
+      stopWebcam(streamRef.current);
+    };
   }, []);
 
-  // 6. Quét khuôn mặt liên tục khi camera hoạt động
-  useEffect(() => {
-    let isScanning = true;
+  // 5. Vòng quét AI thời gian thực
+  const runFaceDetectionLoop = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current || !cameraActive) return;
 
-    const runDetectionLoop = async () => {
-      if (!isScanning || !cameraActive || !videoRef.current || !canvasRef.current) return;
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
 
-      if (videoRef.current.readyState === 4) {
-        try {
-          const { detection, descriptor, eyeAspectRatio } = await detectFaceAndExtractDescriptor(videoRef.current, 320);
-          if (isScanning && canvasRef.current && videoRef.current) {
-            if (detection) {
-              const faceWidth = detection.box.width;
-              const isTooFar = faceWidth < 105;
+      if (video.readyState >= 2) {
+        const { detection, descriptor, eyeAspectRatio } = await detectFaceAndExtractDescriptor(video, 320);
 
-              // Xác thực thời gian thực với các mẫu khuôn mặt đã đăng ký của tài xế
-              let matchInfo = { isMatch: true, similarity: 100, bestDistance: 0 };
-              if (registeredDescriptors.length > 0 && descriptor) {
-                matchInfo = verifyFaceMatch(descriptor, registeredDescriptors, 0.38);
+        if (detection && descriptor) {
+          setFaceDetected(true);
+
+          if (eyeAspectRatio !== null) {
+            const now = Date.now();
+            const EAR_THRESHOLD = 0.23;
+            if (eyeAspectRatio < EAR_THRESHOLD) {
+              if (blinkRef.current.state === 'open') {
+                blinkRef.current.state = 'closing';
               }
-              setFaceMatchResult(matchInfo);
-
-              // Kiểm tra cử động sống: nháy mắt (Eye Blink Liveness Detection)
-              if (eyeAspectRatio !== null && !isTooFar) {
-                const now = Date.now();
-                const b = blinkRef.current;
-                if (eyeAspectRatio < 0.22 && b.state === 'open' && (now - b.lastTime > 150)) {
-                  b.state = 'closed';
-                  b.lastTime = now;
-                } else if (eyeAspectRatio > 0.26 && b.state === 'closed' && (now - b.lastTime > 80)) {
-                  b.state = 'open';
-                  b.lastTime = now;
-                  setLivenessVerified(true);
-                }
-              }
-
-              const roleName = formatRoleDisplayName('Tài xế', user?.name);
-              let label = roleName;
-              let boxColor = '#10b981';
-
-              if (isTooFar) {
-                setFaceDetected(false);
-                setFaceStatusHint('Vui lòng lại gần camera hơn');
-                label = 'Hãy lại gần camera hơn';
-                boxColor = '#f59e0b';
-              } else if (registeredDescriptors.length > 0 && !matchInfo.isMatch) {
-                // Phát hiện không phải người đăng ký! Khung đỏ, vô hiệu hóa nút
-                setFaceDetected(false);
-                setFaceStatusHint('✕ Khuôn mặt không khớp');
-                label = `✕ Không phải ${roleName} (${matchInfo.bestDistance.toFixed(2)})`;
-                boxColor = '#ef4444';
-              } else {
-                setFaceDetected(true);
-                setFaceStatusHint('');
-                if (registeredDescriptors.length > 0) {
-                  label = `✓ ${roleName} (${matchInfo.similarity}% khớp)`;
-                }
-              }
-
-              drawDetectionBox(
-                canvasRef.current,
-                videoRef.current,
-                detection,
-                label,
-                boxColor,
-                true
-              );
             } else {
-              setFaceDetected(false);
-              setFaceStatusHint('');
-              clearCanvas(canvasRef.current);
+              if (blinkRef.current.state === 'closing') {
+                if (now - blinkRef.current.lastTime > 150) {
+                  setLivenessVerified(true);
+                  blinkRef.current.lastTime = now;
+                }
+                blinkRef.current.state = 'open';
+              }
             }
           }
-        } catch (e) {
-          // Bỏ qua frame lỗi khi render
+
+          let boxColor = '#10b981';
+          let boxLabel = formatRoleDisplayName('Tài xế', user?.name || '');
+
+          if (registeredDescriptors.length > 0) {
+            const match = verifyFaceMatch(descriptor, registeredDescriptors, 0.38);
+            setFaceMatchResult(match);
+
+            if (match.isMatch) {
+              boxColor = '#10b981';
+              boxLabel = `${formatRoleDisplayName('Tài xế', user?.name || '')} (${match.similarity}% khớp)`;
+              setFaceStatusHint('Nhận diện chính xác tài xế');
+            } else {
+              boxColor = '#ef4444';
+              boxLabel = `CẢNH BÁO: Không khớp (${match.similarity}%)`;
+              setFaceStatusHint('Khuôn mặt không khớp mẫu đăng ký!');
+            }
+          } else {
+            boxColor = '#3b82f6';
+            boxLabel = `${formatRoleDisplayName('Tài xế', user?.name || '')} (Chưa đăng ký mẫu)`;
+            setFaceStatusHint('Chưa có mẫu đăng ký trước');
+          }
+
+          drawDetectionBox(canvas, video, detection, boxLabel, boxColor, true);
+        } else {
+          setFaceDetected(false);
+          setFaceStatusHint('');
+          clearCanvas(canvas);
         }
       }
-
-      if (isScanning && cameraActive) {
-        scanLoopRef.current = requestAnimationFrame(runDetectionLoop);
-      }
-    };
-
-    if (cameraActive && modelsReady) {
-      runDetectionLoop();
+    } catch {
+      // Bỏ qua lỗi khung hình tạm thời
     }
 
+    if (cameraActive) {
+      scanLoopRef.current = requestAnimationFrame(runFaceDetectionLoop);
+    }
+  }, [cameraActive, registeredDescriptors, user]);
+
+  useEffect(() => {
+    if (cameraActive) {
+      scanLoopRef.current = requestAnimationFrame(runFaceDetectionLoop);
+    } else {
+      if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
+    }
     return () => {
-      isScanning = false;
       if (scanLoopRef.current) cancelAnimationFrame(scanLoopRef.current);
     };
-  }, [cameraActive, modelsReady, user?.name, registeredDescriptors]);
+  }, [cameraActive, runFaceDetectionLoop]);
 
-  // Giải phóng camera khi unmount component
-  useEffect(() => {
-    return () => {
-      handleStopCamera();
-    };
-  }, [handleStopCamera]);
-
-  // 7. Thực hiện Chấm công (Check-in hoặc Check-out)
+  // 6. Xử lý Chấm công Vào ca / Tan ca
   const handleAttendanceAction = async (actionType) => {
-    if (!cameraActive || !videoRef.current) {
-      showToast('Vui lòng bật Camera trước khi chấm công!', 'error');
+    if (actionLoading) return;
+    if (!cameraActive) {
+      showToast('Vui lòng bật Camera để quét khuôn mặt trước khi bấm chấm công!', 'error');
+      return;
+    }
+    if (!faceDetected) {
+      showToast('Không tìm thấy khuôn mặt trong khung hình. Vui lòng nhìn thẳng vào ống kính!', 'error');
       return;
     }
 
     setActionLoading(true);
+
     try {
-      // Trích xuất vector khuôn mặt 128D ở độ phân giải 416px cho độ chuẩn xác tối đa
-      const { detection, descriptor } = await detectFaceAndExtractDescriptor(videoRef.current, 416);
+      const { descriptor } = await detectFaceAndExtractDescriptor(videoRef.current, 416);
 
-      if (!descriptor || !detection) {
-        showToast('Chưa nhìn rõ khuôn mặt. Vui lòng căn chỉnh mặt vào giữa khung hình!', 'warning');
+      if (!descriptor || descriptor.length !== 128) {
+        showToast('Chất lượng nhận diện chưa đạt chuẩn. Vui lòng giữ yên khuôn mặt và thử lại.', 'error');
         setActionLoading(false);
         return;
       }
 
-      if (detection.box.width < 105) {
-        showToast('Khuôn mặt còn quá xa camera. Vui lòng tiến lại gần hơn để bảo đảm độ nét!', 'warning');
-        setActionLoading(false);
-        return;
-      }
-
-      // Xác thực nghiêm ngặt chống điểm danh hộ
       if (registeredDescriptors.length > 0) {
         const matchCheck = verifyFaceMatch(descriptor, registeredDescriptors, 0.38);
         if (!matchCheck.isMatch) {
-          showToast(`Từ chối: Khuôn mặt không khớp với tài xế ${user?.name || ''} (sai số: ${matchCheck.bestDistance.toFixed(4)}, ngưỡng tối đa: 0.38). Vui lòng không điểm danh hộ!`, 'error');
+          showToast(
+            `Từ chối: Khuôn mặt không khớp với tài xế ${user?.name || ''} (sai số: ${matchCheck.bestDistance.toFixed(4)}, ngưỡng tối đa: 0.38). Vui lòng không điểm danh hộ!`,
+            'error'
+          );
           setActionLoading(false);
           return;
         }
       }
 
-      // Chụp ảnh snapshot lúc chấm công làm bằng chứng đối soát
+      // Kiểm tra quy định thời gian: Phải sớm hơn giờ xe lăn bánh tối thiểu 5 phút
+      if (actionType === 'check-in') {
+        if (gpsLocation.isTimeValid === false) {
+          const proceed = window.confirm(
+            'CẢNH BÁO QUY ĐỊNH: Thời gian chấm công phải sớm hơn giờ xe lăn bánh tối thiểu 5 phút. Bạn đang chấm công muộn hơn quy định. Bạn có chắc chắn muốn tiếp tục?'
+          );
+          if (!proceed) {
+            setActionLoading(false);
+            return;
+          }
+        }
+
+        // Chặn nghiêm ngặt nếu đang dùng GPS Thiết Bị mà ở ngoài bán kính bến xe (1.5km)
+        if (gpsLocation.gpsMode === 'device' && gpsLocation.isWithinGeofence === false) {
+          const distKm = gpsLocation.distance
+            ? (gpsLocation.distance >= 1000
+                ? `${(gpsLocation.distance / 1000).toFixed(1)}km`
+                : `${Math.round(gpsLocation.distance)}m`)
+            : 'quá xa';
+          showToast(
+            `Không thể chấm công: Bạn đang cách bến xuất phát ${distKm} (vượt quá bán kính cho phép 1.5km). Vui lòng di chuyển đến bến xuất phát hoặc chuyển sang chế độ "Tại Bến Xuất Bến (Demo)" để thử nghiệm!`,
+            'error'
+          );
+          setActionLoading(false);
+          return;
+        }
+      }
+
       const photoSnapshot = captureSnapshot(videoRef.current, 0.75, 480);
 
       const endpoint = actionType === 'check-in' ? '/attendance/check-in' : '/attendance/check-out';
@@ -300,11 +319,16 @@ const DriverAttendancePage = () => {
               isLiveVerified: livenessVerified,
               location: gpsLocation.address,
               gpsLat: gpsLocation.lat,
-              gpsLng: gpsLocation.lng
+              gpsLng: gpsLocation.lng,
+              tripId: gpsLocation.tripId || null
             }
           : {
               faceDescriptor: descriptor,
-              checkOutPhoto: photoSnapshot
+              checkOutPhoto: photoSnapshot,
+              location: gpsLocation.address,
+              gpsLat: gpsLocation.lat,
+              gpsLng: gpsLocation.lng,
+              tripId: gpsLocation.tripId || null
             };
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -332,516 +356,734 @@ const DriverAttendancePage = () => {
     }
   };
 
-  return (
-    <div style={{ animation: 'fadeIn 0.25s ease', maxWidth: '1280px', margin: '0 auto', paddingBottom: '2rem' }}>
-      {/* Header bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ display: 'inline-flex', padding: '6px', background: '#eff6ff', borderRadius: '8px', color: '#2563eb' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            </span>
-            Chấm Công Số Bằng Nhận Diện Khuôn Mặt (Face ID)
-          </h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px', margin: 0 }}>
-            Tài xế: <strong style={{ color: 'var(--text)' }}>{user?.name}</strong> • SĐT: {user?.phone} • Định vị GPS xác thực điểm xuất bến
-          </p>
-        </div>
+  // 6b. Tự chụp ảnh & kích hoạt Face ID cho tài xế chưa có dữ liệu mẫu
+  const handleSelfEnrollFace = async () => {
+    if (!videoRef.current || !faceDetected) {
+      showToast('Vui lòng nhìn thẳng vào ống kính camera và giữ yên khuôn mặt!', 'error');
+      return;
+    }
 
-        {/* Trạng thái ca trực hôm nay Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              padding: '8px 16px',
-              borderRadius: '24px',
-              fontWeight: '700',
-              fontSize: '0.85rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              backgroundColor:
-                todayStatus === 'active'
-                  ? '#ecfdf5'
-                  : todayStatus === 'closed'
-                  ? '#eff6ff'
-                  : '#fffbeb',
-              color:
-                todayStatus === 'active'
-                  ? '#047857'
-                  : todayStatus === 'closed'
-                  ? '#1d4ed8'
-                  : '#b45309',
-              border: `1px solid ${
-                todayStatus === 'active'
-                  ? '#a7f3d0'
-                  : todayStatus === 'closed'
-                  ? '#bfdbfe'
-                  : '#fde68a'
-              }`
-            }}
-          >
-            <span
+    setIsRegisteringFace(true);
+    try {
+      const { descriptor } = await detectFaceAndExtractDescriptor(videoRef.current, 416);
+      if (!descriptor || descriptor.length !== 128) {
+        showToast('Chất lượng nhận diện chưa đạt chuẩn. Vui lòng nhìn rõ vào camera và thử lại!', 'error');
+        setIsRegisteringFace(false);
+        return;
+      }
+
+      const photoSnapshot = captureSnapshot(videoRef.current, 0.85, 480);
+
+      const res = await fetch(`${API_BASE}/attendance/register-face`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          faceDescriptors: [descriptor],
+          facePhoto: photoSnapshot
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRegisteredDescriptors([descriptor]);
+        setFaceRegistered(true);
+        showToast('Kích hoạt khuôn mặt Face ID thành công! Bây giờ bạn đã có thể bắt đầu ca trực.', 'success');
+        fetchMyAttendance();
+      } else {
+        showToast(data.message || 'Lỗi lưu dữ liệu khuôn mặt.', 'error');
+      }
+    } catch (err) {
+      console.error('[Self Enroll Error]:', err);
+      showToast('Lỗi kết nối máy chủ khi lưu khuôn mặt.', 'error');
+    } finally {
+      setIsRegisteringFace(false);
+    }
+  };
+
+  // 7. Đặt lại (Reset) dữ liệu ca trực hôm nay để phục vụ test/demo
+  const handleResetTodayAttendance = async () => {
+    const confirmReset = window.confirm(
+      'Bạn có chắc chắn muốn đặt lại (xóa) dữ liệu ca trực hôm nay để kiểm thử check-in lại từ đầu không?'
+    );
+    if (!confirmReset) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/attendance/reset-today`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message, 'success');
+        setTodayStatus('not_checked');
+        setTodayRecord(null);
+        fetchMyAttendance();
+      } else {
+        showToast(data.message || 'Không thể đặt lại dữ liệu.', 'error');
+      }
+    } catch (err) {
+      console.error('[Reset Today Error]:', err);
+      showToast('Lỗi kết nối máy chủ khi đặt lại dữ liệu ca trực.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Trạng thái cấm chấm công do ở ngoài bán kính bến xe ở chế độ GPS thiết bị thật
+  const isGpsBlocked =
+    todayStatus !== 'active' &&
+    gpsLocation.gpsMode === 'device' &&
+    gpsLocation.isWithinGeofence === false;
+
+  const distText =
+    gpsLocation.distance && isFinite(gpsLocation.distance)
+      ? gpsLocation.distance >= 1000
+        ? `${(gpsLocation.distance / 1000).toFixed(1)}km`
+        : `${Math.round(gpsLocation.distance)}m`
+      : 'quá xa';
+
+  return (
+    <div style={{ animation: 'fadeIn 0.25s ease', maxWidth: '1280px', margin: '0 auto', paddingBottom: '2.5rem' }}>
+      <style>{`
+        .attendance-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+          gap: 16px;
+        }
+        @media (max-width: 1024px) {
+          .attendance-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .executive-box {
+          background-color: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 6px;
+          padding: 1.15rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+      `}</style>
+
+
+      {/* ── HEADER QUẢN TRỊ CA TRỰC ── */}
+      <div className="executive-box" style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+                Chấm Công Số Bằng Nhận Diện Khuôn Mặt (Face ID)
+              </h1>
+              <span style={{ background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: '800' }}>
+                Tài Xế: {user?.name || 'An Bình'}
+              </span>
+              <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: '800' }}>
+                SĐT: {user?.phone || '0933333333'}
+              </span>
+              <span
+                style={{
+                  background:
+                    todayStatus === 'closed'
+                      ? '#ecfdf5'
+                      : todayStatus === 'active'
+                      ? '#eff6ff'
+                      : todayStatus === 'absent'
+                      ? '#fef2f2'
+                      : '#fef3c7',
+                  color:
+                    todayStatus === 'closed'
+                      ? '#059669'
+                      : todayStatus === 'active'
+                      ? '#1d4ed8'
+                      : todayStatus === 'absent'
+                      ? '#b91c1c'
+                      : '#b45309',
+                  border: `1px solid ${
+                    todayStatus === 'closed'
+                      ? '#a7f3d0'
+                      : todayStatus === 'active'
+                      ? '#bfdbfe'
+                      : todayStatus === 'absent'
+                      ? '#fecaca'
+                      : '#fde68a'
+                  }`,
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.68rem',
+                  fontWeight: '800'
+                }}
+              >
+                {todayStatus === 'closed'
+                  ? 'ĐÃ HOÀN THÀNH CA HÔM NAY'
+                  : todayStatus === 'active'
+                  ? 'ĐANG TRỰC CA'
+                  : todayStatus === 'absent'
+                  ? 'VẮNG KHÔNG PHÉP'
+                  : 'CHƯA CHECK-IN'}
+              </span>
+              <span
+                style={{
+                  background: faceRegistered ? '#ecfdf5' : '#fef3c7',
+                  color: faceRegistered ? '#059669' : '#b45309',
+                  border: `1px solid ${faceRegistered ? '#a7f3d0' : '#fde68a'}`,
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.68rem',
+                  fontWeight: '800'
+                }}
+              >
+                {faceRegistered ? '✓ ĐÃ CÓ FACE ID' : '⚠ CHƯA CÓ FACE ID'}
+              </span>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '4px', margin: 0 }}>
+              Hệ thống xác thực khuôn mặt sinh trắc học và đối soát cự ly tới bến xuất phát của chuyến xe được phân công.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleResetTodayAttendance}
+              disabled={actionLoading}
               style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                backgroundColor:
-                  todayStatus === 'active'
-                    ? '#10b981'
-                    : todayStatus === 'closed'
-                    ? '#2563eb'
-                    : '#f59e0b'
+                backgroundColor: '#ffffff',
+                border: '1px solid #fca5a5',
+                color: '#b91c1c',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                fontSize: '0.72rem',
+                fontWeight: '700',
+                cursor: actionLoading ? 'not-allowed' : 'pointer'
               }}
-            ></span>
-            {todayStatus === 'active'
-              ? `Đang Trong Ca (Vào ca: ${todayRecord?.checkInTime ? new Date(todayRecord.checkInTime).toLocaleTimeString('vi-VN') : '--'})`
-              : todayStatus === 'closed'
-              ? 'Đã Hoàn Thành Ca Hôm Nay'
-              : 'Chưa Vào Ca Hôm Nay'}
+              title="Xóa dữ liệu ca trực hôm nay để bạn có thể test lại từ đầu"
+            >
+              Đặt Lại Ca Trực (Reset Test)
+            </button>
+            <button
+              type="button"
+              onClick={fetchMyAttendance}
+              style={{
+                backgroundColor: '#f8fafc',
+                border: '1px solid #cbd5e1',
+                color: '#334155',
+                padding: '6px 12px',
+                borderRadius: '4px',
+                fontSize: '0.72rem',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+            >
+              Làm Mới
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Thông báo thông điệp */}
-      {notification && (
-        <div
-          style={{
-            padding: '12px 18px',
-            marginBottom: '1.25rem',
-            borderRadius: '10px',
-            fontWeight: '600',
-            fontSize: '0.9rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor:
-              notification.type === 'success'
-                ? '#ecfdf5'
-                : notification.type === 'warning'
-                ? '#fffbeb'
-                : '#fef2f2',
-            color:
-              notification.type === 'success'
-                ? '#065f46'
-                : notification.type === 'warning'
-                ? '#92400e'
-                : '#991b1b',
-            border: `1px solid ${
-              notification.type === 'success'
-                ? '#6ee7b7'
-                : notification.type === 'warning'
-                ? '#fcd34d'
-                : '#fca5a5'
-            }`
-          }}
-        >
-          <span>{notification.message}</span>
-          <button
-            onClick={() => setNotification(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: 'inherit' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Grid 2 cột: Bảng Camera Chấm Công & Nhật ký */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: '1.5rem', alignItems: 'start' }}>
-        
-        {/* CỘT TRÁI: Khung Camera Nhận Diện & Thao Tác Chấm Công */}
-        <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid var(--card-border)', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: 'var(--text)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              Camera AI Quét Khuôn Mặt
-            </h3>
-
-            {/* Trạng thái tải AI */}
-            <span
-              style={{
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                padding: '3px 10px',
-                borderRadius: '12px',
-                backgroundColor: modelsReady ? '#ecfdf5' : '#fef3c7',
-                color: modelsReady ? '#047857' : '#b45309'
-              }}
-            >
-              {modelsReady ? '● AI Models Sẵn Sàng' : '○ Đang tải mô hình AI...'}
-            </span>
-          </div>
-
-          {cameraError && (
-            <div style={{ padding: '10px 14px', background: '#fee2e2', color: '#991b1b', borderRadius: '8px', fontSize: '0.825rem', marginBottom: '1rem' }}>
-              {cameraError}
-            </div>
-          )}
-
-          {/* Viewport Camera với Canvas Overlay */}
-          <div
-            style={{
-              position: 'relative',
-              width: '100%',
-              aspectRatio: '4/3',
-              background: '#0f172a',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)'
-            }}
-          >
-            {/* Thẻ video */}
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                transform: 'scaleX(-1)', // Hiệu ứng gương tự nhiên
-                display: cameraActive ? 'block' : 'none'
-              }}
-            />
-
-            {/* Canvas vẽ bounding box */}
-            <canvas
-              ref={canvasRef}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none'
-              }}
-            />
-
-            {/* Khung ngắm ảo hỗ trợ tài xế căn mặt */}
-            {cameraActive && (
-              <div
+      {/* ── BỐ CỤC 2 CỘT RESPONSIVE ── */}
+      <div className="attendance-grid">
+        {/* CỘT TRÁI: CAMERA AI VÀ ĐỊNH VỊ XUẤT BẾN */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Card Camera AI */}
+          <div className="executive-box">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase' }}>
+                Camera AI Quét Khuôn Mặt
+              </div>
+              <span
                 style={{
-                  position: 'absolute',
-                  width: '52%',
-                  height: '62%',
-                  border: `2px dashed ${faceDetected ? '#10b981' : 'rgba(255,255,255,0.4)'}`,
-                  borderRadius: '50% 50% 45% 45%',
-                  pointerEvents: 'none',
-                  boxShadow: faceDetected ? '0 0 25px rgba(16,185,129,0.3)' : 'none',
-                  transition: 'border-color 0.2s, box-shadow 0.2s'
+                  fontSize: '0.65rem',
+                  fontWeight: '800',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  background: modelsReady ? '#ecfdf5' : '#fffbeb',
+                  color: modelsReady ? '#059669' : '#d97706',
+                  border: `1px solid ${modelsReady ? '#a7f3d0' : '#fed7aa'}`
                 }}
               >
+                {modelsReady ? 'AI MODELS SẴN SÀNG' : 'ĐANG TẢI MÔ HÌNH...'}
+              </span>
+            </div>
+
+            {/* Khung hình Webcam */}
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                aspectRatio: '16/10',
+                maxHeight: '380px',
+                backgroundColor: '#0f172a',
+                borderRadius: '6px',
+                overflow: 'hidden',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)',
+                  display: cameraActive ? 'block' : 'none'
+                }}
+              />
+              <canvas
+                ref={canvasRef}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  pointerEvents: 'none'
+                }}
+              />
+
+              {/* THÔNG BÁO KẾT QUẢ CHECK-IN / CHECK-OUT */}
+              {notification && (
                 <div
                   style={{
                     position: 'absolute',
-                    bottom: '-32px',
+                    top: '12px',
                     left: '50%',
                     transform: 'translateX(-50%)',
+                    zIndex: 10,
+                    padding: '7px 18px',
+                    borderRadius: '20px',
                     background:
-                      registeredDescriptors.length > 0 && !faceMatchResult.isMatch && faceDetected === false && faceStatusHint.includes('không khớp')
-                        ? 'rgba(239,68,68,0.95)'
-                        : faceDetected
-                        ? (livenessVerified ? 'rgba(16,185,129,0.95)' : 'rgba(245,158,11,0.95)')
-                        : 'rgba(0,0,0,0.7)',
+                      notification.type === 'error'
+                        ? 'rgba(30, 41, 59, 0.92)'
+                        : 'rgba(5, 150, 105, 0.92)',
                     color: '#ffffff',
-                    padding: '3px 12px',
-                    borderRadius: '12px',
-                    fontSize: '0.725rem',
+                    fontSize: '0.8rem',
                     fontWeight: '700',
+                    textAlign: 'center',
+                    border: `1px solid ${notification.type === 'error' ? '#ef4444' : '#10b981'}`,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                    backdropFilter: 'blur(6px)',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {notification.message}
+                </div>
+              )}
+
+              {!cameraActive && (
+                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '1rem' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: '700', marginBottom: '0.85rem' }}>
+                    Camera chưa được kích hoạt
+                  </div>
+                  <button
+                    onClick={handleStartCamera}
+                    disabled={!modelsReady}
+                    style={{
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '8px 18px',
+                      borderRadius: '4px',
+                      fontWeight: '800',
+                      fontSize: '0.85rem',
+                      cursor: modelsReady ? 'pointer' : 'not-allowed'
+                    }}
+                  >
+                    Bật Camera Quét Mặt
+                  </button>
+                </div>
+              )}
+
+              {/* LỜI NHẮC TRẠNG THÁI CAMERA (TRÊN MÀN HÌNH QUÉT MẶT) */}
+              {cameraActive && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '14px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 6,
+                    background: !faceDetected
+                      ? 'rgba(15, 23, 42, 0.88)'
+                      : registeredDescriptors.length > 0 && !faceMatchResult.isMatch
+                      ? 'rgba(153, 27, 27, 0.9)'
+                      : 'rgba(5, 150, 105, 0.9)',
+                    color: '#ffffff',
+                    padding: '6px 16px',
+                    borderRadius: '20px',
+                    fontSize: '0.78rem',
+                    fontWeight: '700',
+                    border: `1px solid ${
+                      !faceDetected
+                        ? 'rgba(255, 255, 255, 0.22)'
+                        : registeredDescriptors.length > 0 && !faceMatchResult.isMatch
+                        ? 'rgba(248, 113, 113, 0.45)'
+                        : 'rgba(52, 211, 153, 0.45)'
+                    }`,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
                     whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
+                    backdropFilter: 'blur(6px)',
+                    letterSpacing: '0.2px',
+                    pointerEvents: 'none'
                   }}
                 >
                   {registeredDescriptors.length > 0 && !faceMatchResult.isMatch && faceStatusHint.includes('không khớp')
-                    ? `✕ Không đúng tài xế (${user?.name})`
-                    : faceDetected
-                    ? (livenessVerified ? '✓ Người thật (Đã nháy mắt)' : '👁 Nháy mắt nhẹ để xác thực người thật')
-                    : (faceStatusHint || 'Đặt khuôn mặt vào vòng quét')}
+                    ? 'Khuôn mặt không khớp'
+                    : !faceDetected
+                    ? 'Nhìn thẳng vào ống kính'
+                    : 'Giữ yên khuôn mặt'}
                 </div>
+              )}
+            </div>
+
+            {cameraError && (
+              <div style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: '700', marginTop: '0.5rem' }}>
+                {cameraError}
               </div>
             )}
 
-            {/* Khi camera chưa bật */}
-            {!cameraActive && (
-              <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: '0 auto 12px auto', display: 'block', opacity: 0.7 }}>
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
-                </svg>
-                <p style={{ margin: '0 0 1rem 0', fontSize: '0.9rem' }}>Camera chưa được kích hoạt</p>
+            {cameraActive && (
+              <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
                 <button
-                  onClick={handleStartCamera}
-                  disabled={!modelsReady}
+                  type="button"
+                  onClick={handleStopCamera}
                   style={{
-                    backgroundColor: '#2563eb',
-                    color: '#ffffff',
+                    background: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    color: '#475569',
+                    padding: '4px 10px',
+                    borderRadius: '4px',
+                    fontSize: '0.72rem',
                     fontWeight: '700',
-                    border: 'none',
-                    padding: '10px 20px',
-                    borderRadius: '8px',
-                    cursor: modelsReady ? 'pointer' : 'not-allowed',
-                    fontSize: '0.85rem',
-                    boxShadow: '0 2px 6px rgba(37,99,235,0.3)'
+                    cursor: 'pointer'
                   }}
                 >
-                  {modelsReady ? 'Bật Camera Quét Mặt' : 'Đang tải AI Model...'}
+                  Tắt Camera
                 </button>
               </div>
             )}
-          </div>
 
-          {/* Điều khiển Camera: Nút tắt/bật */}
-          {cameraActive && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
-              <button
-                onClick={handleStopCamera}
-                style={{
-                  background: '#f1f5f9',
-                  border: '1px solid #cbd5e1',
-                  color: '#475569',
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  fontSize: '0.775rem',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                Tắt Camera
-              </button>
-            </div>
-          )}
+            {/* Thẻ Giám Sát Vị Trí Xuất Bến & Giờ Lăn Bánh */}
+            <AttendanceGpsCard onLocationChange={handleGpsLocationChange} token={token} user={user} />
 
-          {/* Định vị GPS Card */}
-          <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid var(--card-border)', marginTop: '1.25rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: '800', color: 'var(--text-muted)' }}>ĐỊNH VỊ GPS XUẤT BẾN:</span>
-              <span style={{ fontSize: '0.725rem', color: '#10b981', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                GPS Khả dụng
-              </span>
-            </div>
-            <div style={{ fontWeight: '700', color: 'var(--text)', fontSize: '0.85rem' }}>
-              {gpsLocation.address}
-            </div>
-          </div>
+            {/* Cụm Nút Hành Động Chấm Công hoặc Kích Hoạt Face ID */}
+            <div style={{ marginTop: '1.25rem' }}>
+              {!faceRegistered ? (
+                // ── TRƯỜNG HỢP CHƯA CÓ FACE ID: BẮT BUỘC CHỤP ẢNH KÍCH HOẠT TRƯỚC ──
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div
+                    style={{
+                      background: '#fffbeb',
+                      border: '1.5px solid #fde68a',
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      color: '#92400e',
+                      lineHeight: '1.4'
+                    }}
+                  >
+                    <strong>📸 Tài khoản chưa có dữ liệu khuôn mặt:</strong> Vui lòng bật camera, nhìn thẳng vào ống kính và bấm nút bên dưới để <strong>chụp ảnh kích hoạt Face ID lần đầu</strong> trước khi điểm danh ca trực.
+                  </div>
 
-          {/* Cụm Nút Hành Động Chấm Công */}
-          <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
-            {todayStatus !== 'closed' ? (
-              <button
-                onClick={() => handleAttendanceAction(todayStatus === 'active' ? 'check-out' : 'check-in')}
-                disabled={actionLoading || !cameraActive || !faceDetected}
-                style={{
-                  width: '100%',
-                  padding: '1rem 1.5rem',
-                  borderRadius: '12px',
-                  border: 'none',
-                  background:
-                    todayStatus === 'active'
-                      ? 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)'
-                      : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#ffffff',
-                  fontSize: '1.05rem',
-                  fontWeight: '800',
-                  cursor: actionLoading || !cameraActive || !faceDetected ? 'not-allowed' : 'pointer',
-                  opacity: actionLoading || !cameraActive || !faceDetected ? 0.6 : 1,
-                  boxShadow:
-                    todayStatus === 'active'
-                      ? '0 6px 16px rgba(239, 68, 68, 0.3)'
-                      : '0 6px 16px rgba(16, 185, 129, 0.3)',
-                  transition: 'all 0.2s ease',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '10px'
-                }}
-              >
-                {actionLoading ? (
-                  <span>Đang phân tích khuôn mặt qua mạng nơ-ron...</span>
-                ) : todayStatus === 'active' ? (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    Xác Nhận Kết Thúc Ca (Check-Out)
-                  </>
+                  <button
+                    type="button"
+                    onClick={handleSelfEnrollFace}
+                    disabled={isRegisteringFace || !cameraActive || !faceDetected}
+                    style={{
+                      width: '100%',
+                      padding: '0.85rem 1.25rem',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      fontSize: '0.95rem',
+                      fontWeight: '800',
+                      cursor: isRegisteringFace || !cameraActive || !faceDetected ? 'not-allowed' : 'pointer',
+                      opacity: isRegisteringFace || !cameraActive || !faceDetected ? 0.6 : 1,
+                      boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    {isRegisteringFace ? 'Đang phân tích & lưu khuôn mặt...' : '📸 Chụp Ảnh & Kích Hoạt Face ID Ngay'}
+                  </button>
+                </div>
+              ) : todayStatus !== 'closed' ? (
+                isGpsBlocked ? (
+                  // NÚT BỊ KHÓA KHI NGOÀI BÁN KÍNH (NGẮN GỌN, KHÔNG DÒNG ĐỎ GIẢI THÍCH)
+                  <button
+                    type="button"
+                    disabled={true}
+                    style={{
+                      width: '100%',
+                      padding: '0.85rem 1.25rem',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#94a3b8',
+                      color: '#ffffff',
+                      fontSize: '0.92rem',
+                      fontWeight: '800',
+                      cursor: 'not-allowed',
+                      opacity: 0.95
+                    }}
+                  >
+                    Chưa Đến Bến Xe (Cách {distText})
+                  </button>
                 ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
-                    Xác Nhận Bắt Đầu Ca (Check-In)
-                  </>
-                )}
-              </button>
-            ) : (
-              <div
-                style={{
-                  padding: '1rem',
-                  borderRadius: '10px',
-                  backgroundColor: '#eff6ff',
-                  border: '1.5px solid #bfdbfe',
-                  color: '#1d4ed8',
-                  fontWeight: '700',
-                  fontSize: '0.9rem'
-                }}
-              >
-                🎉 Bạn đã hoàn tất đầy đủ lượt chấm công ca hôm nay. Chúc bạn nghỉ ngơi lấy sức cho chuyến tiếp theo!
-              </div>
-            )}
+                  // NÚT BẮT ĐẦU / KẾT THÚC CA (NGẮN GỌN)
+                  <div>
+                    <button
+                      onClick={() => handleAttendanceAction(todayStatus === 'active' ? 'check-out' : 'check-in')}
+                      disabled={actionLoading || !cameraActive || !faceDetected}
+                      style={{
+                        width: '100%',
+                        padding: '0.85rem 1.25rem',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: todayStatus === 'active' ? '#dc2626' : '#059669',
+                        color: '#ffffff',
+                        fontSize: '0.95rem',
+                        fontWeight: '800',
+                        cursor: actionLoading || !cameraActive || !faceDetected ? 'not-allowed' : 'pointer',
+                        opacity: actionLoading || !cameraActive || !faceDetected ? 0.6 : 1,
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {actionLoading
+                        ? 'Đang phân tích...'
+                        : todayStatus === 'active'
+                        ? 'Kết Thúc Ca Trực'
+                        : 'Bắt Đầu Ca Trực'}
+                    </button>
 
-            {!faceDetected && cameraActive && todayStatus !== 'closed' && (
-              <p style={{ fontSize: '0.75rem', color: '#dc2626', marginTop: '0.5rem', fontWeight: '700' }}>
-                {registeredDescriptors.length > 0 && !faceMatchResult.isMatch && faceStatusHint.includes('không khớp')
-                  ? `⚠️ CẢNH BÁO: Khuôn mặt trước camera không khớp với tài xế ${user?.name}. Hệ thống từ chối điểm danh hộ!`
-                  : '* Vui lòng nhìn thẳng vào camera và nháy mắt để hệ thống xác thực trước khi bấm nút.'}
-              </p>
-            )}
+                    <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Bạn có muốn chụp ảnh mới để cập nhật lại khuôn mặt Face ID không?')) {
+                            setFaceRegistered(false);
+                          }
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#64748b',
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        Chụp lại ảnh khuôn mặt Face ID mới
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div
+                  style={{
+                    padding: '0.85rem',
+                    borderRadius: '6px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1d4ed8',
+                    fontWeight: '700',
+                    fontSize: '0.85rem',
+                    textAlign: 'center'
+                  }}
+                >
+                  Đã hoàn tất ca hôm nay
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* CỘT PHẢI: Chi Tiết Hôm Nay & Lịch Sử Chấm Công Thực Tế */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          
+        {/* CỘT PHẢI: THÔNG TIN CA TRỰC HÔM NAY & NHẬT KÝ */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {/* Card: Chi tiết ca trực hôm nay */}
-          <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid var(--card-border)', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text)', marginBottom: '1rem' }}>
-              Thông Tin Ca Trực Hôm Nay
-            </h3>
+          <div className="executive-box">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase' }}>
+                Thông Tin Ca Trực Hôm Nay
+              </div>
+              {todayRecord && (
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: '800',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    background: todayRecord.checkOutTime ? '#f1f5f9' : '#ecfdf5',
+                    color: todayRecord.checkOutTime ? '#475569' : '#059669',
+                    border: `1px solid ${todayRecord.checkOutTime ? '#cbd5e1' : '#a7f3d0'}`
+                  }}
+                >
+                  {todayRecord.checkOutTime ? 'ĐÃ HOÀN TẤT CA' : 'ĐANG TRỰC CA'}
+                </span>
+              )}
+            </div>
 
             {todayRecord ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Thời gian vào ca:</span>
-                  <span style={{ fontWeight: '800', color: '#059669', fontFamily: 'monospace' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.82rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '7px', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#64748b' }}>Thời gian vào ca:</span>
+                  <span style={{ fontWeight: '800', color: '#059669', fontFamily: 'monospace', fontSize: '0.9rem' }}>
                     {todayRecord.checkInTime ? new Date(todayRecord.checkInTime).toLocaleTimeString('vi-VN') : '--:--:--'}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Thời gian tan ca:</span>
-                  <span style={{ fontWeight: '800', color: '#0f172a', fontFamily: 'monospace' }}>
-                    {todayRecord.checkOutTime ? new Date(todayRecord.checkOutTime).toLocaleTimeString('vi-VN') : 'Đang trực...'}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '7px', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#64748b' }}>Thời gian tan ca:</span>
+                  {todayRecord.checkOutTime ? (
+                    <span style={{ fontWeight: '800', color: '#0f172a', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                      {new Date(todayRecord.checkOutTime).toLocaleTimeString('vi-VN')}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: '4px' }}>
+                      Đang trong ca trực
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '7px', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#64748b' }}>Xác thực sinh trắc học:</span>
+                  <span
+                    style={{
+                      fontWeight: '700',
+                      fontSize: '0.72rem',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: todayRecord.faceVerified ? '#ecfdf5' : '#fef2f2',
+                      color: todayRecord.faceVerified ? '#059669' : '#dc2626',
+                      border: `1px solid ${todayRecord.faceVerified ? '#a7f3d0' : '#fecaca'}`
+                    }}
+                  >
+                    {todayRecord.faceVerified ? 'Đạt chuẩn Face ID' : 'Chưa xác thực'}
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Xác thực khuôn mặt:</span>
-                  <span style={{ fontWeight: '700', color: todayRecord.faceVerified ? '#059669' : '#dc2626' }}>
-                    {todayRecord.faceVerified ? '✓ Đạt chuẩn Face ID' : 'Chưa xác thực'}
-                  </span>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Khoảng cách nhận diện:</span>
-                  <span style={{ fontWeight: '700', color: '#475569' }}>
-                    {todayRecord.faceDistance !== null ? `${todayRecord.faceDistance} (Ngưỡng: 0.48)` : '--'}
-                  </span>
-                </div>
-
-                {todayRecord.isLiveVerified && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Xác thực người thật:</span>
-                    <span style={{ fontWeight: '700', color: '#059669' }}>✓ Liveness Đạt</span>
+                {todayRecord.faceDistance !== null && todayRecord.faceDistance !== undefined && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '7px', borderBottom: '1px solid #f1f5f9' }}>
+                    <span style={{ color: '#64748b' }}>Độ tin cậy nhận diện:</span>
+                    <span style={{ fontWeight: '800', color: '#059669', fontSize: '0.82rem' }}>
+                      {computeFaceConfidence(todayRecord.faceDistance)}% (Chính xác cao)
+                    </span>
                   </div>
                 )}
 
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingBottom: '7px', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ color: '#64748b', minWidth: '100px' }}>Vị trí xuất bến:</span>
+                  <span style={{ fontWeight: '700', color: '#1e293b', textAlign: 'right', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    {todayRecord.location || '--'}
+                  </span>
+                </div>
+
                 {todayRecord.checkInPhoto && (
-                  <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #f1f5f9' }}>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block', marginBottom: '6px' }}>
-                      Ảnh chụp đối soát lúc Check-in:
-                    </span>
-                    <img
-                      src={todayRecord.checkInPhoto}
-                      alt="Ảnh Check-in"
+                  <div style={{ marginTop: '0.25rem', paddingTop: '0.5rem' }}>
+                    <div style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: '6px', fontWeight: '700' }}>
+                      Ảnh đối soát lúc bắt đầu ca:
+                    </div>
+                    <div
                       style={{
-                        width: '100%',
-                        maxHeight: '130px',
-                        objectFit: 'cover',
-                        borderRadius: '8px',
-                        border: '1px solid #e2e8f0'
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        border: '1px solid #e2e8f0',
+                        background: '#0f172a',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        maxHeight: '140px'
                       }}
-                    />
+                    >
+                      <img
+                        src={todayRecord.checkInPhoto}
+                        alt="Ảnh đối soát"
+                        style={{
+                          width: '100%',
+                          height: 'auto',
+                          maxHeight: '140px',
+                          objectFit: 'cover'
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '1rem 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.82rem' }}>
                 Chưa có bản ghi chấm công nào hôm nay.
               </div>
             )}
           </div>
 
           {/* Card: Lịch sử chấm công gần đây */}
-          <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid var(--card-border)', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text)', margin: 0 }}>
+          <div className="executive-box">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase' }}>
                 Nhật Ký Chấm Công Gần Đây
-              </h3>
+              </div>
               <button
                 onClick={fetchMyAttendance}
-                style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.75rem', fontWeight: '700' }}
+                style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700' }}
               >
                 Làm mới
               </button>
             </div>
 
             {loadingHistory ? (
-              <div style={{ textAlign: 'center', padding: '2rem 0', color: '#64748b' }}>Đang nạp dữ liệu...</div>
+              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#64748b', fontSize: '0.8rem' }}>Đang nạp dữ liệu...</div>
             ) : history.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.8rem' }}>
                 Chưa có lịch sử chấm công.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '340px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
                 {history.map((item, idx) => (
                   <div
                     key={idx}
                     style={{
-                      padding: '0.75rem',
-                      borderRadius: '8px',
-                      border: '1px solid #f1f5f9',
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '4px',
+                      border: '1px solid #e2e8f0',
                       background: '#f8fafc',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      fontSize: '0.8rem'
+                      fontSize: '0.78rem'
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: '800', color: 'var(--text)' }}>
-                        {item.date}
+                      <div style={{ fontWeight: '800', color: '#0f172a' }}>{item.date}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                        Vào: <strong style={{ color: '#059669' }}>{item.checkInTime}</strong> • Tan:{' '}
+                        <strong style={{ color: '#0f172a' }}>{item.checkOutTime}</strong>
                       </div>
-                      <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        Vào: <strong style={{ color: '#059669' }}>{item.checkInTime}</strong> • Tan: <strong style={{ color: '#0f172a' }}>{item.checkOutTime}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
-                        📍 {item.location}
-                      </div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>{item.location}</div>
                     </div>
 
                     <div style={{ textAlign: 'right' }}>
                       <span
                         style={{
-                          fontSize: '0.7rem',
+                          fontSize: '0.65rem',
                           fontWeight: '800',
-                          padding: '3px 8px',
-                          borderRadius: '12px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
                           backgroundColor:
-                            item.status === 'closed'
-                              ? '#ecfdf5'
-                              : item.status === 'active'
-                              ? '#eff6ff'
-                              : '#fef2f2',
+                            item.status === 'closed' ? '#ecfdf5' : item.status === 'active' ? '#eff6ff' : '#fef2f2',
                           color:
-                            item.status === 'closed'
-                              ? '#047857'
-                              : item.status === 'active'
-                              ? '#1d4ed8'
-                              : '#dc2626'
+                            item.status === 'closed' ? '#059669' : item.status === 'active' ? '#1d4ed8' : '#dc2626',
+                          border: `1px solid ${
+                            item.status === 'closed' ? '#a7f3d0' : item.status === 'active' ? '#bfdbfe' : '#fecaca'
+                          }`
                         }}
                       >
-                        {item.status === 'closed' ? 'Hoàn thành' : item.status === 'active' ? 'Đang trực' : 'Vắng mặt'}
+                        {item.status === 'closed' ? 'HOÀN THÀNH' : item.status === 'active' ? 'ĐANG TRỰC' : 'VẮNG MẶT'}
                       </span>
                     </div>
                   </div>
@@ -849,9 +1091,7 @@ const DriverAttendancePage = () => {
               </div>
             )}
           </div>
-
         </div>
-
       </div>
     </div>
   );

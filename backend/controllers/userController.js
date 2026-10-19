@@ -1,8 +1,9 @@
 const userService = require('../services/userService');
+const User = require('../models/User');
 
 // @desc    Get all staff members
 // @route   GET /api/v1/users/staff
-// @access  Private (General Manager / Admin)
+// @access  Private (General Manager / Admin / Ops Manager / Fleet Manager)
 exports.getStaff = async (req, res) => {
   try {
     const staff = await userService.getStaffList();
@@ -22,15 +23,26 @@ exports.getStaff = async (req, res) => {
 
 // @desc    Create a new staff member
 // @route   POST /api/v1/users/staff
-// @access  Private (General Manager / Admin)
+// @access  Private (General Manager / Admin / Ops Manager)
 exports.createStaff = async (req, res) => {
   try {
     const { name, email, phone, password, role, status } = req.body;
+
+    // Phân quyền: Quản lý vận tải / đội xe chỉ được tạo tài khoản tài xế hoặc phụ xe
+    if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
+      if (!['driver', 'attendant'].includes(role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý vận tải / đội xe chỉ có quyền tạo tài khoản tài xế hoặc phụ xe.'
+        });
+      }
+    }
+
     const staff = await userService.createStaff({ name, email, phone, password, role, status });
 
     res.status(201).json({
       success: true,
-      message: 'Thêm nhân viên mới thành công.',
+      message: 'Thêm tài khoản nhân viên mới thành công.',
       staff
     });
   } catch (error) {
@@ -44,11 +56,35 @@ exports.createStaff = async (req, res) => {
 
 // @desc    Update a staff member
 // @route   PUT /api/v1/users/staff/:id
-// @access  Private (General Manager / Admin)
+// @access  Private (General Manager / Admin / Ops Manager)
 exports.updateStaff = async (req, res) => {
   try {
     const { id } = req.params;
     const { name, email, phone, role, status, password } = req.body;
+
+    // Phân quyền: Quản lý vận tải / đội xe chỉ được sửa tài xế hoặc phụ xe
+    if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
+      const targetUser = await User.findById(id);
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy tài khoản nhân sự.'
+        });
+      }
+      if (!['driver', 'attendant'].includes(targetUser.role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý vận tải / đội xe chỉ có quyền cập nhật tài khoản tài xế hoặc phụ xe.'
+        });
+      }
+      if (role && !['driver', 'attendant'].includes(role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý vận tải / đội xe chỉ được gán vai trò tài xế hoặc phụ xe.'
+        });
+      }
+    }
+
     const staff = await userService.updateStaff(id, { name, email, phone, role, status, password });
 
     res.status(200).json({
@@ -67,10 +103,28 @@ exports.updateStaff = async (req, res) => {
 
 // @desc    Delete a staff member
 // @route   DELETE /api/v1/users/staff/:id
-// @access  Private (General Manager / Admin)
+// @access  Private (General Manager / Admin / Ops Manager)
 exports.deleteStaff = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Phân quyền: Quản lý vận tải / đội xe chỉ được xóa tài xế hoặc phụ xe
+    if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
+      const targetUser = await User.findById(id);
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy tài khoản nhân sự.'
+        });
+      }
+      if (!['driver', 'attendant'].includes(targetUser.role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý vận tải / đội xe chỉ có quyền xóa tài khoản tài xế hoặc phụ xe.'
+        });
+      }
+    }
+
     await userService.deleteStaff(id);
 
     res.status(200).json({

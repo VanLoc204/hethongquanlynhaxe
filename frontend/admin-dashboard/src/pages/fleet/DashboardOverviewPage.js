@@ -1162,7 +1162,8 @@ const OpsManagerOverview = ({
   staffList = [],
   todaysTripsCount = 0,
   todaysTripsList = [],
-  onRefresh
+  onRefresh,
+  setActiveTab
 }) => {
   const unassignedTrips = recentTrips.filter(t => !t.driver || !t.assistant);
   const activeBusesCount = busList.filter(b => b.status !== 'maintenance' && b.status !== 'inactive').length;
@@ -1215,6 +1216,18 @@ const OpsManagerOverview = ({
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg>
               Đồng bộ tức thời
+            </button>
+            <button
+              onClick={() => setActiveTab && setActiveTab('ops-fleet-accounts')}
+              className="btn"
+              style={{
+                backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#1e293b',
+                fontWeight: '600', padding: '0.45rem 0.85rem', borderRadius: '8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              Quản lý tài khoản đội xe
             </button>
             <button
               onClick={() => exportOpsReportToExcel(recentTrips, activeRoutes, busList)}
@@ -1318,9 +1331,12 @@ const OpsManagerOverview = ({
               </div>
             </div>
           </div>
-          <a href="/crew-assignments" style={{ background: '#be123c', color: '#fff', padding: '5px 12px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', textDecoration: 'none' }}>
+          <button
+            onClick={() => setActiveTab && setActiveTab('ops-staff')}
+            style={{ background: '#be123c', color: '#fff', border: 'none', padding: '5px 12px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', cursor: 'pointer' }}
+          >
             Phân công ngay →
-          </a>
+          </button>
         </div>
       )}
 
@@ -2024,6 +2040,7 @@ const DashboardOverviewPage = ({ setActiveTab }) => {
         staffList={staffList}
         todaysTripsCount={todaysTripsCount}
         todaysTripsList={todaysTripsList}
+        setActiveTab={setActiveTab}
         onRefresh={() => window.location.reload()}
       />
     );

@@ -96,6 +96,25 @@ const attendanceSchema = new mongoose.Schema(
     note: {
       type: String,
       default: ''
+    },
+
+    // ── Thông tin Chuyến xe liên kết ──────────────────────────────────────────
+    tripId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Trip',
+      default: null
+    },
+    tripRoute: {
+      type: String,
+      default: ''
+    },
+    busPlateNumber: {
+      type: String,
+      default: ''
+    },
+    scheduledDepartureTime: {
+      type: Date,
+      default: null
     }
   },
   {
@@ -103,8 +122,9 @@ const attendanceSchema = new mongoose.Schema(
   }
 );
 
-// Index: mỗi nhân viên chỉ có 1 bản ghi chấm công / 1 ngày
-attendanceSchema.index({ userId: 1, date: 1 }, { unique: true });
+// Index: mỗi nhân viên gắn với 1 chuyến xe (nếu chạy 2 chuyến/ngày sẽ có 2 bản ghi riêng biệt)
+attendanceSchema.index({ userId: 1, tripId: 1 }, { unique: true, sparse: true });
+attendanceSchema.index({ tripId: 1 });
 
 // Index hỗ trợ query theo ngày (ops_manager đọc bảng)
 attendanceSchema.index({ date: 1, role: 1 });

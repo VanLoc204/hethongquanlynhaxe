@@ -14,6 +14,10 @@ const DriverDashboardPage = ({ setActiveTab }) => {
     totalBoarded: 0
   });
 
+  // Dữ liệu chấm công thực tế từ Database
+  const [attendanceDuties, setAttendanceDuties] = useState([]);
+  const [attendanceStatus, setAttendanceStatus] = useState('not_checked');
+
   useEffect(() => {
     fetchSchedule();
   }, [token]);
@@ -32,6 +36,20 @@ const DriverDashboardPage = ({ setActiveTab }) => {
         setError('');
       } else {
         setError(data.message || 'Không thể tải lịch trình phân công.');
+      }
+
+      // Tải dữ liệu chấm công thực tế từ Database
+      try {
+        const attRes = await fetch('http://localhost:8000/api/v1/attendance/mine', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const attData = await attRes.json();
+        if (attRes.ok && attData.success) {
+          setAttendanceDuties(attData.todayDuties || []);
+          setAttendanceStatus(attData.todayStatus || 'not_checked');
+        }
+      } catch (attErr) {
+        console.warn('Lỗi lấy dữ liệu chấm công:', attErr);
       }
     } catch (err) {
       setError('Lỗi kết nối máy chủ khi tải lịch trình.');
@@ -96,6 +114,62 @@ const DriverDashboardPage = ({ setActiveTab }) => {
 
   const currentBusPlate = todayTrips[0]?.busId?.plateNumber || trips[0]?.busId?.plateNumber || '51B-029.29';
   const currentBusType = todayTrips[0]?.busId?.type || trips[0]?.busId?.type || 'Xe Khách Cao Cấp';
+
+  // Logic xác định trạng thái thực tế của chuyến xe từ Database
+  const getTripStatus = (trip) => {
+    if (trip.journeyStatus === 'in_transit') {
+      return { label: 'Đang di chuyển', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
+    }
+    if (trip.journeyStatus === 'completed') {
+      return { label: 'Đã hoàn thành', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
+    }
+    if (trip.journeyStatus === 'cancelled') {
+      return { label: 'Đã hủy', bg: '#fef2f2', color: '#991b1b', border: '#fecaca' };
+    }
+
+    // Kiểm tra bản ghi chấm công thực tế của tài xế cho chuyến này
+    const duty = attendanceDuties.find((d) => d.tripId?.toString() === trip._id?.toString());
+    const isPastDeparture = new Date() > new Date(trip.departureTime);
+
+    if (duty) {
+      if (duty.status === 'active') {
+        return { label: 'Đã check-in (Sẵn sàng)', bg: '#ecfdf5', color: '#15803d', border: '#bbf7d0' };
+      }
+      if (duty.status === 'closed') {
+        return { label: 'Đã hoàn thành ca', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
+      }
+      if (duty.status === 'absent') {
+        return { label: 'Vắng không phép', bg: '#fee2e2', color: '#b91c1c', border: '#ef4444' };
+      }
+    }
+
+    // Chưa chấm công
+    if (isPastDeparture) {
+      return { label: 'Vắng không phép', bg: '#fee2e2', color: '#b91c1c', border: '#ef4444' };
+    }
+
+    return { label: 'Chưa check-in', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
+  };
+
+  // Xác định trạng thái tổng ca làm việc trong ngày
+  const getOverallShiftBadge = () => {
+    if (todayTrips.length === 0) {
+      return { title: 'Nghỉ Theo Lịch', subtitle: 'Không có ca chạy hôm nay', color: '#64748b', bg: '#ffffff', border: '#e2e8f0', iconBg: '#f1f5f9' };
+    }
+    const hasActive = attendanceDuties.some((d) => d.status === 'active');
+    if (hasActive) {
+      return { title: 'Đang Trong Ca', subtitle: '▲ Đã check-in Face ID', color: '#059669', bg: '#ffffff', border: '#a7f3d0', iconBg: '#ecfdf5' };
+    }
+    const allClosed = todayTrips.length > 0 && attendanceDuties.length >= todayTrips.length && attendanceDuties.every((d) => d.status === 'closed');
+    if (allClosed) {
+      return { title: 'Đã Hoàn Thành', subtitle: '✓ Đã check-out chốt ca', color: '#2563eb', bg: '#ffffff', border: '#bfdbfe', iconBg: '#eff6ff' };
+    }
+    const hasAbsent = attendanceDuties.some((d) => d.status === 'absent') || todayTrips.some((t) => new Date() > new Date(t.departureTime) && !attendanceDuties.find((d) => d.tripId?.toString() === t._id?.toString() && (d.status === 'active' || d.status === 'closed')));
+    if (hasAbsent) {
+      return { title: 'Vắng Không Phép', subtitle: '⚠ Quá giờ chưa check-in', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', iconBg: '#fee2e2' };
+    }
+    return { title: 'Chưa Vào Ca', subtitle: '• Cần check-in trước giờ chạy', color: '#d97706', bg: '#ffffff', border: '#fde68a', iconBg: '#fffbeb' };
+  };
 
   return (
     <div style={{ animation: 'fadeIn 0.35s ease', width: '100%' }}>
@@ -399,26 +473,43 @@ const DriverDashboardPage = ({ setActiveTab }) => {
             </div>
           </div>
 
-          {/* Card 4: Trạng thái ca làm việc */}
-          <div className="driver-stat-card" style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
-              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                TRẠNG THÁI CA LÀM VIỆC
-              </span>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
+          {/* Card 4: Trạng thái ca làm việc (Dữ liệu thật từ Database) */}
+          {(() => {
+            const shiftInfo = getOverallShiftBadge();
+            return (
+              <div
+                onClick={() => setActiveTab && setActiveTab('driver-attendance')}
+                className="driver-stat-card"
+                style={{
+                  background: shiftInfo.bg,
+                  padding: '0.75rem 1rem',
+                  borderRadius: '12px',
+                  border: `1.5px solid ${shiftInfo.border}`,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  cursor: 'pointer'
+                }}
+                title="Bấm để đến trang Chấm Công Số"
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    TRẠNG THÁI CA LÀM VIỆC
+                  </span>
+                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: shiftInfo.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={shiftInfo.color} strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="driver-stat-value" style={{ fontSize: '1.2rem', fontWeight: '800', color: shiftInfo.color, marginBottom: '2px', lineHeight: '1.2' }}>
+                  {shiftInfo.title}
+                </div>
+                <div style={{ fontSize: '0.68rem', color: shiftInfo.color, fontWeight: '600' }}>
+                  {shiftInfo.subtitle}
+                </div>
               </div>
-            </div>
-            <div className="driver-stat-value" style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
-              Đã Điểm Danh GPS
-            </div>
-            <div style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: '600' }}>
-              ▲ Ca trực hợp lệ (Sẵn sàng)
-            </div>
-          </div>
+            );
+          })()}
 
         </div>
       </div>
@@ -554,20 +645,26 @@ const DriverDashboardPage = ({ setActiveTab }) => {
                         </div>
                       </td>
 
-                      {/* Cột 5: Trạng thái */}
+                      {/* Cột 5: Trạng thái thực tế từ Database */}
                       <td style={{ padding: '0.65rem 0.85rem', textAlign: 'center' }}>
-                        <span style={{
-                          background: '#ecfdf5',
-                          color: '#15803d',
-                          border: '1px solid #bbf7d0',
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.68rem',
-                          fontWeight: '700',
-                          display: 'inline-block'
-                        }}>
-                          ● Sẵn sàng xuất bến
-                        </span>
+                        {(() => {
+                          const statusInfo = getTripStatus(trip);
+                          return (
+                            <span style={{
+                              background: statusInfo.bg,
+                              color: statusInfo.color,
+                              border: `1px solid ${statusInfo.border}`,
+                              padding: '3px 9px',
+                              borderRadius: '12px',
+                              fontSize: '0.68rem',
+                              fontWeight: '700',
+                              display: 'inline-block',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              ● {statusInfo.label}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Cột 6: Thao tác */}
@@ -668,17 +765,23 @@ const DriverDashboardPage = ({ setActiveTab }) => {
                         Xuất bến: {formatTime(trip.departureTime)} ({formatDate(trip.departureTime)})
                       </div>
                     </div>
-                    <span style={{
-                      background: '#ecfdf5',
-                      color: '#15803d',
-                      border: '1px solid #bbf7d0',
-                      padding: '2px 8px',
-                      borderRadius: '10px',
-                      fontSize: '0.65rem',
-                      fontWeight: '700'
-                    }}>
-                      ● Sẵn sàng
-                    </span>
+                    {(() => {
+                      const statusInfo = getTripStatus(trip);
+                      return (
+                        <span style={{
+                          background: statusInfo.bg,
+                          color: statusInfo.color,
+                          border: `1px solid ${statusInfo.border}`,
+                          padding: '2px 8px',
+                          borderRadius: '10px',
+                          fontSize: '0.65rem',
+                          fontWeight: '700',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          ● {statusInfo.label}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   {/* Thông tin phụ xe, phương tiện, khách */}

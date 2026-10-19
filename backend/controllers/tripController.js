@@ -1,6 +1,7 @@
 const tripService = require('../services/tripService');
 const Trip = require('../models/Trip');
 const Notification = require('../models/Notification');
+const Attendance = require('../models/Attendance');
 
 // @desc    Search trips by origin, destination and date
 // @route   GET /api/v1/trips/search
@@ -615,6 +616,28 @@ exports.updateJourneyStatus = async (req, res) => {
     }
 
     if (action === 'start') {
+      // Kiểm tra Chấm công (Attendance): Bắt buộc tài xế phải Check-in vào ca trước khi Khởi hành
+      if (req.user && req.user.role === 'driver') {
+        const nowVN = new Date();
+        const startOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 0, 0, 0, 0);
+        const endOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 23, 59, 59, 999);
+
+        const activeAttendance = await Attendance.findOne({
+          userId: req.user._id || req.user.id,
+          status: 'active',
+          $or: [
+            { date: { $gte: startOfDay, $lte: endOfDay } },
+            { createdAt: { $gte: startOfDay, $lte: endOfDay } }
+          ]
+        });
+
+        if (!activeAttendance) {
+          return res.status(403).json({
+            success: false,
+            message: 'Từ chối: Bạn chưa hoàn tất Chấm công số (Face ID) cho ca trực này. Vui lòng điểm danh vào ca trước khi bắt đầu hành trình!'
+          });
+        }
+      }
       if (!req.body.bypassTime) {
         const startTimeLimit = new Date(trip.departureTime.getTime() - 5 * 60 * 1000);
         if (now < startTimeLimit) {
@@ -1019,6 +1042,29 @@ exports.updateLiveGps = async (req, res) => {
     const trip = await Trip.findById(id);
     if (!trip) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy chuyến xe.' });
+    }
+
+    // Kiểm tra Chấm công (Attendance): Tài xế phải Check-in vào ca trước khi phát GPS
+    if (req.user && req.user.role === 'driver') {
+      const nowVN = new Date();
+      const startOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 0, 0, 0, 0);
+      const endOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 23, 59, 59, 999);
+
+      const activeAttendance = await Attendance.findOne({
+        userId: req.user._id || req.user.id,
+        status: 'active',
+        $or: [
+          { date: { $gte: startOfDay, $lte: endOfDay } },
+          { createdAt: { $gte: startOfDay, $lte: endOfDay } }
+        ]
+      });
+
+      if (!activeAttendance) {
+        return res.status(403).json({
+          success: false,
+          message: 'Tài xế chưa hoàn tất Chấm công số (Face ID). Không thể phát GPS chuyến xe.'
+        });
+      }
     }
 
     trip.liveGps = {

@@ -1,13 +1,5 @@
-import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import {
-  loadFaceApiModels,
-  startWebcam,
-  stopWebcam,
-  detectFaceAndExtractDescriptor,
-  drawDetectionBox,
-  clearCanvas
-} from '../../utils/faceApiHelper';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -15,52 +7,51 @@ const ManagerAttendancePage = () => {
   const { token, user } = useContext(AuthContext);
   const isOpsManager = user?.role === 'ops_manager';
 
-  // State dữ liệu chấm công
+  // State dữ liệu chấm công theo chuyến xe
   const [attendanceData, setAttendanceData] = useState([]);
+  const [unassignedStaff, setUnassignedStaff] = useState([]);
   const [stats, setStats] = useState({
+    totalTrips: 0,
     totalScheduled: 0,
     activeDirect: 0,
     closedShift: 0,
     absent: 0,
     scheduled: 0,
+    unassignedCount: 0,
+    totalStaff: 0,
     faceRegisteredCount: 0
   });
+
+  // Mặc định chọn ngày hôm nay
   const [selectedDate, setSelectedDate] = useState(() => {
     const today = new Date();
-    return today.toISOString().split('T')[0];
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   });
+
+  const [activeTab, setActiveTab] = useState('duties'); // 'duties' | 'unassigned'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
 
-  // Bộ lọc & Phân trang
+  // Bộ lọc & Tìm kiếm
   const [filterRole, setFilterRole] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
 
-  // State Modal Đăng Ký Khuôn Mặt (Face Enrollment)
-  const [enrollModalUser, setEnrollModalUser] = useState(null);
-  const [enrollModelsReady, setEnrollModelsReady] = useState(false);
-  const [enrollCameraActive, setEnrollCameraActive] = useState(false);
-  const [enrollSamples, setEnrollSamples] = useState([]); // Mảng các vector [128D]
-  const [enrollCapturing, setEnrollCapturing] = useState(false);
-  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
-  const [enrollError, setEnrollError] = useState('');
+  // Modal xem ảnh chụp đối soát Face ID
   const [selectedPhotoModal, setSelectedPhotoModal] = useState(null);
-
-  const modalVideoRef = useRef(null);
-  const modalCanvasRef = useRef(null);
-  const modalStreamRef = useRef(null);
-  const modalScanLoopRef = useRef(null);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
   };
 
-  // 1. Tải dữ liệu chấm công từ API Backend
+  // 1. Tải dữ liệu chấm công thời gian thực theo Chuyến xe từ API Backend
   const fetchAttendance = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -72,13 +63,17 @@ const ManagerAttendancePage = () => {
 
       if (res.ok && data.success) {
         setAttendanceData(data.attendance || []);
+        setUnassignedStaff(data.unassignedStaff || []);
         setStats(
           data.stats || {
+            totalTrips: 0,
             totalScheduled: 0,
             activeDirect: 0,
             closedShift: 0,
             absent: 0,
             scheduled: 0,
+            unassignedCount: 0,
+            totalStaff: 0,
             faceRegisteredCount: 0
           }
         );
@@ -99,14 +94,19 @@ const ManagerAttendancePage = () => {
     }
   }, [token, fetchAttendance]);
 
-  // 2. Lọc danh sách nhân sự
-  const filteredData = attendanceData.filter((item) => {
+  // 2. Lọc danh sách phân công nhiệm vụ
+  const currentDataset = activeTab === 'duties' ? attendanceData : unassignedStaff;
+
+  const filteredData = currentDataset.filter((item) => {
     const matchRole = filterRole === 'all' || item.role === filterRole;
     const matchStatus = filterStatus === 'all' || item.status === filterStatus;
+    const q = searchQuery.toLowerCase().trim();
     const matchSearch =
-      !searchQuery.trim() ||
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.phone.includes(searchQuery);
+      !q ||
+      item.name?.toLowerCase().includes(q) ||
+      item.phone?.includes(q) ||
+      item.tripRoute?.toLowerCase().includes(q) ||
+      item.busPlateNumber?.toLowerCase().includes(q);
     return matchRole && matchStatus && matchSearch;
   });
 
@@ -116,152 +116,9 @@ const ManagerAttendancePage = () => {
     currentPage * itemsPerPage
   );
 
-  // 3. Xử lý Modal Face Enrollment (Đăng ký khuôn mặt cho nhân viên)
-  const openEnrollModal = async (staff) => {
-    setEnrollModalUser(staff);
-    setEnrollSamples([]);
-    setEnrollError('');
-    setEnrollCapturing(false);
-
-    try {
-      await loadFaceApiModels();
-      setEnrollModelsReady(true);
-      setTimeout(async () => {
-        try {
-          if (modalVideoRef.current) {
-            const stream = await startWebcam(modalVideoRef.current);
-            modalStreamRef.current = stream;
-            setEnrollCameraActive(true);
-          }
-        } catch (e) {
-          setEnrollError('Không thể mở Camera để quét khuôn mặt. Vui lòng cấp quyền webcam.');
-        }
-      }, 200);
-    } catch (err) {
-      setEnrollError('Không thể nạp mô hình AI: ' + err.message);
-    }
-  };
-
-  const closeEnrollModal = () => {
-    if (modalScanLoopRef.current) {
-      cancelAnimationFrame(modalScanLoopRef.current);
-      modalScanLoopRef.current = null;
-    }
-    if (modalStreamRef.current) {
-      stopWebcam(modalStreamRef.current);
-      modalStreamRef.current = null;
-    }
-    clearCanvas(modalCanvasRef.current);
-    setEnrollCameraActive(false);
-    setEnrollModalUser(null);
-    setEnrollSamples([]);
-  };
-
-  // Quét và vẽ khung nhận diện trong Modal
-  useEffect(() => {
-    let active = true;
-
-    const runModalScan = async () => {
-      if (!active || !enrollCameraActive || !modalVideoRef.current || !modalCanvasRef.current) return;
-
-      if (modalVideoRef.current.readyState === 4) {
-        try {
-          const { detection } = await detectFaceAndExtractDescriptor(modalVideoRef.current);
-          if (active && modalCanvasRef.current && modalVideoRef.current) {
-            if (detection) {
-              drawDetectionBox(
-                modalCanvasRef.current,
-                modalVideoRef.current,
-                detection,
-                'Khuôn mặt rõ ràng',
-                '#2563eb',
-                true
-              );
-            } else {
-              clearCanvas(modalCanvasRef.current);
-            }
-          }
-        } catch (e) {}
-      }
-
-      if (active && enrollCameraActive) {
-        modalScanLoopRef.current = requestAnimationFrame(runModalScan);
-      }
-    };
-
-    if (enrollCameraActive && enrollModelsReady) {
-      runModalScan();
-    }
-
-    return () => {
-      active = false;
-      if (modalScanLoopRef.current) cancelAnimationFrame(modalScanLoopRef.current);
-    };
-  }, [enrollCameraActive, enrollModelsReady]);
-
-  // Chụp mẫu khuôn mặt (Sample Capture)
-  const captureFaceSample = async () => {
-    if (!modalVideoRef.current) return;
-    setEnrollCapturing(true);
-    setEnrollError('');
-
-    try {
-      const { descriptor } = await detectFaceAndExtractDescriptor(modalVideoRef.current);
-      if (!descriptor) {
-        setEnrollError('Không phát hiện thấy khuôn mặt. Vui lòng nhìn thẳng vào camera!');
-      } else {
-        setEnrollSamples((prev) => [...prev, descriptor]);
-        showToast(`Đã thu thập mẫu ${enrollSamples.length + 1}/3 thành công!`, 'success');
-      }
-    } catch (err) {
-      setEnrollError('Lỗi trích xuất khuôn mặt: ' + err.message);
-    } finally {
-      setEnrollCapturing(false);
-    }
-  };
-
-  // Lưu đăng ký khuôn mặt vào Database
-  const saveFaceRegistration = async () => {
-    if (enrollSamples.length === 0) {
-      setEnrollError('Vui lòng chụp ít nhất 1 mẫu khuôn mặt!');
-      return;
-    }
-
-    setEnrollSubmitting(true);
-    setEnrollError('');
-
-    try {
-      const res = await fetch(`${API_BASE}/attendance/register-face`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          userId: enrollModalUser.userId,
-          faceDescriptors: enrollSamples
-        })
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        showToast(data.message, 'success');
-        closeEnrollModal();
-        fetchAttendance();
-      } else {
-        setEnrollError(data.message || 'Không thể đăng ký khuôn mặt.');
-      }
-    } catch (err) {
-      setEnrollError('Lỗi máy chủ khi lưu khuôn mặt.');
-    } finally {
-      setEnrollSubmitting(false);
-    }
-  };
-
-  // Xuất file Excel giả lập
+  // Xuất file báo cáo
   const exportExcel = () => {
-    alert(`Đã xuất báo cáo chấm công ngày ${selectedDate} ra định dạng Excel thành công!`);
+    alert(`Đã xuất báo cáo giám sát chấm công ngày ${selectedDate} ra định dạng bảng tính!`);
   };
 
   return (
@@ -289,30 +146,33 @@ const ManagerAttendancePage = () => {
         </div>
       )}
 
-      {/* Top Header & Date Picker */}
+      {/* Header & Bộ chọn ngày */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0f172a', margin: 0 }}>
-              {isOpsManager ? 'Giám Sát Chấm Công Tổ Lái' : 'Bảng Theo Dõi Chấm Công'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <h1 style={{ fontSize: '1.45rem', fontWeight: '900', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+              {isOpsManager ? 'Giám Sát Chấm Công Tổ Lái Theo Chuyến' : 'Bảng Theo Dõi Chấm Công Tổ Lái'}
             </h1>
             <span style={{ backgroundColor: '#eff6ff', color: '#2563eb', padding: '3px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: '800' }}>
-              Dữ Liệu Thật 100%
+              Dữ Liệu Thật Theo Chuyến Xe
             </span>
           </div>
           <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-            Theo dõi thời gian check-in/out, tọa độ GPS bến xe và xác thực nhận diện khuôn mặt Face ID của tài xế & phụ xe.
+            Giám sát thời gian check-in/out thực tế theo từng chuyến xe, phát hiện tức thì tổ lái quá giờ xuất bến chưa chấm công (Vắng không phép).
           </p>
         </div>
 
-        {/* Date Selector & Action Buttons */}
+        {/* Nút tác vụ & Chọn ngày */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#475569' }}>Ngày:</span>
+            <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#475569' }}>Ngày chạy:</span>
             <input
               type="date"
               value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{ border: 'none', outline: 'none', fontWeight: '700', color: '#0f172a', fontSize: '0.85rem', cursor: 'pointer' }}
             />
           </div>
@@ -342,113 +202,165 @@ const ManagerAttendancePage = () => {
         </div>
       </div>
 
-      {/* KPI Stats Cards (5 cards) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+      {/* 5 Thẻ Thống Kê KPI Thông Minh */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
         
-        {/* Card 1: Tổng số */}
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#64748b' }}>TỔNG SỐ TỔ LÁI</span>
+        {/* Card 1: Tổng lượt phân công */}
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#64748b' }}>TỔNG LƯỢT PHÂN CÔNG</span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 2px 0' }}>
-            {stats.totalScheduled} <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>nhân viên</span>
+            {stats.totalScheduled} <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>lượt ca</span>
           </div>
-          <span style={{ fontSize: '0.725rem', color: '#64748b' }}>Tài xế & Phụ xe hoạt động</span>
+          <span style={{ fontSize: '0.725rem', color: '#64748b' }}>Trên tổng số <strong>{stats.totalTrips}</strong> chuyến xe trong ngày</span>
         </div>
 
-        {/* Card 2: Đang trực */}
-        <div style={{ background: '#ffffff', border: '1.5px solid #a7f3d0', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 6px rgba(16,185,129,0.05)' }}>
-          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#047857' }}>ĐANG TRONG CA</span>
+        {/* Card 2: Đang trong ca */}
+        <div style={{ background: '#ffffff', border: '1.5px solid #a7f3d0', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 2px 6px rgba(16,185,129,0.05)' }}>
+          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#047857' }}>ĐANG TRONG CA TRỰC</span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#059669', margin: '4px 0 2px 0' }}>
             {stats.activeDirect} <span style={{ fontSize: '0.8rem', color: '#047857', fontWeight: '600' }}>đang chạy</span>
           </div>
           <span style={{ fontSize: '0.725rem', color: '#059669', fontWeight: '600' }}>Đã check-in khuôn mặt</span>
         </div>
 
-        {/* Card 3: Hoàn thành tan ca */}
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#64748b' }}>ĐÃ HOÀN THÀNH CA</span>
-          <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#334155', margin: '4px 0 2px 0' }}>
-            {stats.closedShift} <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>người</span>
-          </div>
-          <span style={{ fontSize: '0.725rem', color: '#64748b' }}>Đã check-out chốt giờ</span>
-        </div>
-
-        {/* Card 4: Chưa check-in / Vắng mặt */}
-        <div style={{ background: '#ffffff', border: '1.5px solid #fecdd3', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 2px 6px rgba(239,68,68,0.05)' }}>
-          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#b91c1c' }}>CHƯA VÀO CA / VẮNG</span>
-          <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#dc2626', margin: '4px 0 2px 0' }}>
-            {stats.scheduled + stats.absent} <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: '600' }}>chưa check-in</span>
-          </div>
-          <span style={{ fontSize: '0.725rem', color: '#dc2626', fontWeight: '600' }}>Cần theo dõi sát giờ chạy</span>
-        </div>
-
-        {/* Card 5: Đã đăng ký Face ID */}
-        <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#1d4ed8' }}>ĐÃ ĐĂNG KÝ FACE ID</span>
+        {/* Card 3: Đã hoàn thành ca */}
+        <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#1d4ed8' }}>ĐÃ HOÀN THÀNH CHUYẾN</span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#2563eb', margin: '4px 0 2px 0' }}>
-            {stats.faceRegisteredCount} <span style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: '600' }}>/ {stats.totalScheduled}</span>
+            {stats.closedShift} <span style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: '600' }}>lượt xong</span>
           </div>
-          <span style={{ fontSize: '0.725rem', color: '#2563eb', fontWeight: '600' }}>
-            Tỷ lệ: {stats.totalScheduled > 0 ? Math.round((stats.faceRegisteredCount / stats.totalScheduled) * 100) : 0}%
+          <span style={{ fontSize: '0.725rem', color: '#2563eb', fontWeight: '600' }}>Đã check-out chốt giờ</span>
+        </div>
+
+        {/* Card 4: VẮNG KHÔNG PHÉP (Nổi bật màu đỏ báo động) */}
+        <div style={{ background: stats.absent > 0 ? '#fef2f2' : '#ffffff', border: `2px solid ${stats.absent > 0 ? '#ef4444' : '#fecdd3'}`, borderRadius: '12px', padding: '1.15rem', boxShadow: '0 2px 8px rgba(239,68,68,0.1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.725rem', fontWeight: '900', color: '#b91c1c' }}>VẮNG KHÔNG PHÉP</span>
+            {stats.absent > 0 && (
+              <span style={{ background: '#ef4444', color: '#ffffff', fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px' }}>
+                BÁO ĐỘNG
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#dc2626', margin: '4px 0 2px 0' }}>
+            {stats.absent} <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: '700' }}>lượt bỏ ca</span>
+          </div>
+          <span style={{ fontSize: '0.725rem', color: '#b91c1c', fontWeight: '700' }}>
+            Quá giờ xe chạy chưa check-in
           </span>
+        </div>
+
+        {/* Card 5: Chờ xuất bến */}
+        <div style={{ background: '#ffffff', border: '1px solid #fde68a', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#b45309' }}>CHỜ XUẤT BẾN</span>
+          <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#d97706', margin: '4px 0 2px 0' }}>
+            {stats.scheduled} <span style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: '600' }}>lượt ca</span>
+          </div>
+          <span style={{ fontSize: '0.725rem', color: '#b45309' }}>Chưa đến giờ lăn bánh</span>
         </div>
 
       </div>
 
-      {/* Main Table Panel */}
+      {/* Panel Bảng Dữ Liệu Chấm Công */}
       <section style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
         
-        {/* Bộ lọc Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+        {/* Tabs: Chuyến xe hôm nay vs Nhân sự không có lịch */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
           
-          {/* Ô tìm kiếm */}
-          <div style={{ position: 'relative', width: '280px' }}>
-            <input
-              type="text"
-              placeholder="Tìm tên hoặc SĐT nhân viên..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => {
+                setActiveTab('duties');
                 setCurrentPage(1);
               }}
               style={{
-                width: '100%', padding: '8px 12px 8px 34px', borderRadius: '8px',
-                border: '1px solid #cbd5e1', fontSize: '0.85rem', outline: 'none'
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: '800',
+                fontSize: '0.825rem',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'duties' ? '#2563eb' : '#f1f5f9',
+                color: activeTab === 'duties' ? '#ffffff' : '#475569',
+                transition: 'all 0.15s ease'
               }}
-            />
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
-              🔍
-            </span>
+            >
+              Phân Công Theo Chuyến Xe ({attendanceData.length})
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('unassigned');
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                fontWeight: '800',
+                fontSize: '0.825rem',
+                cursor: 'pointer',
+                backgroundColor: activeTab === 'unassigned' ? '#0f172a' : '#f1f5f9',
+                color: activeTab === 'unassigned' ? '#ffffff' : '#475569',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Nhân Sự Không Có Chuyến Hôm Nay ({unassignedStaff.length})
+            </button>
           </div>
 
-          {/* Lọc Role & Status */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Bộ lọc Controls */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Ô tìm kiếm */}
+            <div style={{ position: 'relative', width: '260px' }}>
+              <input
+                type="text"
+                placeholder="Tìm tên, SĐT, biển số, tuyến..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{
+                  width: '100%', padding: '7px 12px 7px 32px', borderRadius: '8px',
+                  border: '1px solid #cbd5e1', fontSize: '0.825rem', outline: 'none'
+                }}
+              />
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                🔍
+              </span>
+            </div>
+
+            {/* Lọc Role */}
             <select
               value={filterRole}
               onChange={(e) => {
                 setFilterRole(e.target.value);
                 setCurrentPage(1);
               }}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.825rem', fontWeight: '600', color: '#334155' }}
+              style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.825rem', fontWeight: '600', color: '#334155' }}
             >
               <option value="all">Tất cả chức danh</option>
               <option value="driver">Tài xế (Driver)</option>
               <option value="attendant">Phụ xe (Attendant)</option>
             </select>
 
-            <select
-              value={filterStatus}
-              onChange={(e) => {
-                setFilterStatus(e.target.value);
-                setCurrentPage(1);
-              }}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.825rem', fontWeight: '600', color: '#334155' }}
-            >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="active">Đang trong ca trực</option>
-              <option value="closed">Đã hoàn thành tan ca</option>
-              <option value="scheduled">Chưa vào ca</option>
-              <option value="absent">Vắng mặt</option>
-            </select>
+            {/* Lọc Status (chỉ áp dụng cho tab duties) */}
+            {activeTab === 'duties' && (
+              <select
+                value={filterStatus}
+                onChange={(e) => {
+                  setFilterStatus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.825rem', fontWeight: '600', color: '#334155' }}
+              >
+                <option value="all">Tất cả trạng thái ca</option>
+                <option value="absent">Vắng không phép</option>
+                <option value="active">Đang trong ca trực</option>
+                <option value="closed">Đã hoàn thành chuyến</option>
+                <option value="scheduled">Chờ xuất bến</option>
+              </select>
+            )}
           </div>
         </div>
 
@@ -458,14 +370,14 @@ const ManagerAttendancePage = () => {
           </div>
         )}
 
-        {/* Bảng dữ liệu chấm công */}
+        {/* Bảng Dữ Liệu */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3.5rem 0', color: '#2563eb', fontWeight: '600' }}>
+          <div style={{ textAlign: 'center', padding: '3.5rem 0', color: '#2563eb', fontWeight: '700' }}>
             Đang tải dữ liệu chấm công thời gian thực...
           </div>
         ) : paginatedData.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3.5rem 0', color: '#94a3b8', fontSize: '0.9rem' }}>
-            Không tìm thấy nhân viên nào phù hợp với bộ lọc.
+            Không có dữ liệu nào phù hợp với bộ lọc đã chọn.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -473,125 +385,221 @@ const ManagerAttendancePage = () => {
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.725rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   <th style={{ padding: '0.85rem 1rem' }}>NHÂN VIÊN</th>
-                  <th style={{ padding: '0.85rem 1rem' }}>VAI TRÒ</th>
+                  <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>VAI TRÒ</th>
+                  <th style={{ padding: '0.85rem 1rem' }}>CHUYẾN XE &amp; PHƯƠNG TIỆN</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>GIỜ XUẤT BẾN</th>
                   <th style={{ padding: '0.85rem 1rem' }}>TRẠNG THÁI CA</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>GIỜ VÀO</th>
                   <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>GIỜ TAN</th>
-                  <th style={{ padding: '0.85rem 1rem' }}>ĐỊA ĐIỂM &amp; GPS</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>XÁC THỰC FACE ID</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>QUẢN LÝ MẪU MẶT</th>
+                  <th style={{ padding: '0.85rem 1rem' }}>ĐỊA ĐIỂM &amp; TỌA ĐỘ GPS</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>ĐỐI SOÁT FACE ID</th>
                 </tr>
               </thead>
               <tbody>
-                {paginatedData.map((staff) => (
-                  <tr key={staff.userId} style={{ borderBottom: '1px solid #f1f5f9', fontSize: '0.825rem' }}>
+                {paginatedData.map((duty) => (
+                  <tr
+                    key={duty.id || duty.dutyId}
+                    style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      fontSize: '0.825rem',
+                      backgroundColor: duty.status === 'absent' ? '#fff5f5' : 'transparent',
+                      transition: 'background-color 0.15s ease'
+                    }}
+                  >
                     
                     {/* 1. Tên & SĐT */}
                     <td style={{ padding: '0.85rem 1rem' }}>
-                      <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.875rem' }}>{staff.name}</div>
-                      <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '2px' }}>{staff.phone}</div>
+                      <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                        {duty.name}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '1px', fontFamily: 'monospace' }}>
+                        {duty.phone}
+                      </div>
                     </td>
 
-                    {/* 2. Vai trò */}
-                    <td style={{ padding: '0.85rem 1rem' }}>
+                    {/* 2. Vai trò (Cột riêng biệt, 1 hàng không xuống dòng) */}
+                    <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <span
                         style={{
                           fontSize: '0.725rem',
                           fontWeight: '800',
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          backgroundColor: staff.role === 'driver' ? '#eff6ff' : '#f5f3ff',
-                          color: staff.role === 'driver' ? '#1d4ed8' : '#6d28d9',
-                          border: `1px solid ${staff.role === 'driver' ? '#bfdbfe' : '#ddd6fe'}`
+                          padding: '3px 10px',
+                          borderRadius: '8px',
+                          display: 'inline-block',
+                          whiteSpace: 'nowrap',
+                          backgroundColor: duty.role === 'driver' ? '#eff6ff' : '#f5f3ff',
+                          color: duty.role === 'driver' ? '#1d4ed8' : '#6d28d9',
+                          border: `1px solid ${duty.role === 'driver' ? '#bfdbfe' : '#ddd6fe'}`
                         }}
                       >
-                        {staff.role === 'driver' ? 'Tài Xế' : 'Phụ Xe'}
+                        {duty.role === 'driver' ? 'Tài Xế' : 'Phụ Xe'}
                       </span>
                     </td>
 
-                    {/* 3. Trạng thái ca */}
+                    {/* 3. Tuyến đường & Biển số xe */}
                     <td style={{ padding: '0.85rem 1rem' }}>
-                      <span
-                        style={{
-                          fontSize: '0.725rem',
-                          fontWeight: '800',
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          backgroundColor:
-                            staff.status === 'active'
-                              ? '#ecfdf5'
-                              : staff.status === 'closed'
-                              ? '#eff6ff'
-                              : staff.status === 'absent'
-                              ? '#fef2f2'
-                              : '#fffbeb',
-                          color:
-                            staff.status === 'active'
-                              ? '#047857'
-                              : staff.status === 'closed'
-                              ? '#1d4ed8'
-                              : staff.status === 'absent'
-                              ? '#b91c1c'
-                              : '#b45309'
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: '6px',
-                            height: '6px',
-                            borderRadius: '50%',
-                            backgroundColor:
-                              staff.status === 'active'
-                                ? '#10b981'
-                                : staff.status === 'closed'
-                                ? '#2563eb'
-                                : staff.status === 'absent'
-                                ? '#ef4444'
-                                : '#f59e0b'
-                          }}
-                        ></span>
-                        {staff.status === 'active'
-                          ? 'Đang trực ca'
-                          : staff.status === 'closed'
-                          ? 'Đã tan ca'
-                          : staff.status === 'absent'
-                          ? 'Vắng mặt'
-                          : 'Chưa vào ca'}
-                      </span>
+                      <div style={{ fontWeight: '700', color: '#0f172a' }}>{duty.tripRoute}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#2563eb', background: '#eff6ff', padding: '1px 6px', borderRadius: '4px' }}>
+                          {duty.busPlateNumber}
+                        </span>
+                        {duty.tripId && (
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            Mã: #{duty.tripId.toString().slice(-5)}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
-                    {/* 4. Giờ vào */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: staff.checkInTime !== '--:--:--' ? '#059669' : '#94a3b8' }}>
-                      {staff.checkInTime}
-                    </td>
-
-                    {/* 5. Giờ tan */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: staff.checkOutTime !== '--:--:--' ? '#0f172a' : '#94a3b8' }}>
-                      {staff.checkOutTime}
-                    </td>
-
-                    {/* 6. Địa điểm & GPS */}
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      <div style={{ color: '#0f172a', fontWeight: '600' }}>{staff.location}</div>
-                      <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '2px' }}>{staff.gps}</div>
-                    </td>
-
-                    {/* 7. Xác thực Face ID & Ảnh đối soát */}
+                    {/* 4. Giờ xuất bến dự kiến */}
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                      {staff.faceVerified ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-                          <span style={{ color: '#059669', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                            ✓ Hợp lệ {staff.isLiveVerified && <span title="Đã qua kiểm tra cử động nháy mắt" style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '4px' }}>LIVE</span>}
+                      <div style={{ fontFamily: 'monospace', fontWeight: '900', fontSize: '0.925rem', color: '#0f172a' }}>
+                        {duty.departureTimeStr}
+                      </div>
+                      {duty.isPastDeparture && duty.status === 'absent' && (
+                        <span style={{ fontSize: '0.675rem', color: '#dc2626', fontWeight: '800', display: 'block', marginTop: '2px' }}>
+                          Trễ {duty.overdueMinutes} phút
+                        </span>
+                      )}
+                    </td>
+
+                    {/* 5. Trạng thái ca (Nổi bật Vắng không phép - gọn gàng) */}
+                    <td style={{ padding: '0.85rem 1rem' }}>
+                      {duty.status === 'absent' ? (
+                        <div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '900',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#fee2e2',
+                              color: '#b91c1c',
+                              border: '1.5px solid #ef4444',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', animation: 'pulse 1.5s infinite' }}></span>
+                            VẮNG KHÔNG PHÉP
                           </span>
-                          <span style={{ color: '#64748b', fontSize: '0.7rem' }}>
-                            Sai số: {staff.faceDistance !== null ? staff.faceDistance : '--'}
+                        </div>
+                      ) : duty.status === 'active' ? (
+                        <div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '800',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#ecfdf5',
+                              color: '#047857',
+                              border: '1px solid #a7f3d0'
+                            }}
+                          >
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                            Đang trực ca
                           </span>
-                          {staff.checkInPhoto && (
+                        </div>
+                      ) : duty.status === 'closed' ? (
+                        <div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '800',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#eff6ff',
+                              color: '#1d4ed8',
+                              border: '1px solid #bfdbfe'
+                            }}
+                          >
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span>
+                            Đã hoàn thành
+                          </span>
+                        </div>
+                      ) : duty.status === 'off' ? (
+                        <div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '700',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#64748b'
+                            }}
+                          >
+                            Không có chuyến
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '800',
+                              padding: '4px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#fffbeb',
+                              color: '#b45309',
+                              border: '1px solid #fde68a'
+                            }}
+                          >
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#f59e0b' }}></span>
+                            Chờ xuất bến
+                          </span>
+                        </div>
+                      )}
+                    </td>
+
+                    {/* 5. Giờ vào */}
+                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: duty.checkInTime !== '--:--:--' ? '#059669' : '#94a3b8' }}>
+                      {duty.checkInTime}
+                    </td>
+
+                    {/* 6. Giờ tan */}
+                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '800', color: duty.checkOutTime !== '--:--:--' ? '#0f172a' : '#94a3b8' }}>
+                      {duty.checkOutTime}
+                    </td>
+
+                    {/* 7. Địa điểm & Tọa độ GPS */}
+                    <td style={{ padding: '0.85rem 1rem' }}>
+                      <div style={{ color: duty.status === 'absent' ? '#b91c1c' : '#0f172a', fontWeight: '600' }}>
+                        {duty.location}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '2px' }}>
+                        {duty.gps}
+                      </div>
+                    </td>
+
+                    {/* 8. Đối soát Face ID & Xem ảnh thực tế */}
+                    <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                      {duty.faceVerified ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ color: '#059669', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            ✓ Hợp lệ {duty.isLiveVerified && <span title="Đạt chuẩn kiểm tra Liveness người thật" style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '4px' }}>LIVE</span>}
+                          </span>
+                          <span style={{ color: '#64748b', fontSize: '0.68rem' }}>
+                            Sai số: {duty.faceDistance !== null ? duty.faceDistance : '--'}
+                          </span>
+                          {duty.checkInPhoto && (
                             <button
-                              onClick={() => setSelectedPhotoModal(staff)}
+                              onClick={() => setSelectedPhotoModal(duty)}
                               style={{
                                 marginTop: '2px',
                                 background: '#f0fdf4',
@@ -611,32 +619,13 @@ const ManagerAttendancePage = () => {
                             </button>
                           )}
                         </div>
+                      ) : duty.status === 'absent' ? (
+                        <span style={{ color: '#ef4444', fontWeight: '700', fontSize: '0.725rem' }}>
+                          Chưa chấm công
+                        </span>
                       ) : (
-                        <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>--</span>
+                        <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Chờ điểm danh</span>
                       )}
-                    </td>
-
-                    {/* 8. Nút Quản Lý Khuôn Mặt (Face Enrollment) */}
-                    <td style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>
-                      <button
-                        onClick={() => openEnrollModal(staff)}
-                        style={{
-                          backgroundColor: staff.faceRegistered ? '#f1f5f9' : '#eff6ff',
-                          color: staff.faceRegistered ? '#475569' : '#2563eb',
-                          border: `1px solid ${staff.faceRegistered ? '#cbd5e1' : '#bfdbfe'}`,
-                          padding: '6px 12px',
-                          borderRadius: '8px',
-                          fontWeight: '700',
-                          fontSize: '0.75rem',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                        {staff.faceRegistered ? 'Cập nhật Face ID' : '+ Đăng ký Face ID'}
-                      </button>
                     </td>
 
                   </tr>
@@ -649,7 +638,7 @@ const ManagerAttendancePage = () => {
         {/* Phân trang Footer */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.25rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-            Hiển thị <strong>{paginatedData.length}</strong> trên tổng số <strong>{filteredData.length}</strong> nhân viên
+            Hiển thị <strong>{paginatedData.length}</strong> trên tổng số <strong>{filteredData.length}</strong> nhiệm vụ ca chạy
           </div>
 
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -681,209 +670,7 @@ const ManagerAttendancePage = () => {
 
       </section>
 
-      {/* ═══════════════════════════════════════════════════════════════════════════
-          MODAL ĐĂNG KÝ KHUÔN MẶT (FACE ENROLLMENT)
-      ═══════════════════════════════════════════════════════════════════════════ */}
-      {enrollModalUser && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            backgroundColor: 'rgba(15, 23, 42, 0.75)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '1rem'
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '16px',
-              maxWidth: '560px',
-              width: '100%',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)',
-              overflow: 'hidden',
-              animation: 'scaleIn 0.2s ease'
-            }}
-          >
-            {/* Header Modal */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: '1px solid #e2e8f0' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
-                  Đăng Ký Khuôn Mặt (Face Enrollment)
-                </h3>
-                <p style={{ margin: '2px 0 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-                  Nhân viên: <strong style={{ color: '#0f172a' }}>{enrollModalUser.name}</strong> • {enrollModalUser.role === 'driver' ? 'Tài Xế' : 'Phụ Xe'} ({enrollModalUser.phone})
-                </p>
-              </div>
-              <button
-                onClick={closeEnrollModal}
-                style={{ background: 'none', border: 'none', fontSize: '1.25rem', color: '#94a3b8', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Body Modal */}
-            <div style={{ padding: '1.5rem' }}>
-              {enrollError && (
-                <div style={{ padding: '10px 14px', background: '#fee2e2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.825rem', marginBottom: '1rem' }}>
-                  {enrollError}
-                </div>
-              )}
-
-              {/* Viewport Camera Modal */}
-              <div
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  aspectRatio: '4/3',
-                  background: '#0f172a',
-                  borderRadius: '12px',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <video
-                  ref={modalVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    transform: 'scaleX(-1)',
-                    display: enrollCameraActive ? 'block' : 'none'
-                  }}
-                />
-                <canvas
-                  ref={modalCanvasRef}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    pointerEvents: 'none'
-                  }}
-                />
-
-                {!enrollCameraActive && (
-                  <div style={{ color: '#94a3b8', fontSize: '0.85rem', textAlign: 'center', padding: '2rem' }}>
-                    Đang kích hoạt camera...
-                  </div>
-                )}
-              </div>
-
-              {/* Danh sách mẫu đã chụp */}
-              <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#475569' }}>
-                  Mẫu khuôn mặt đã thu thập: <strong>{enrollSamples.length}/3</strong>
-                </span>
-
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {[0, 1, 2].map((idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        width: '26px',
-                        height: '26px',
-                        borderRadius: '50%',
-                        backgroundColor: idx < enrollSamples.length ? '#10b981' : '#e2e8f0',
-                        color: idx < enrollSamples.length ? '#ffffff' : '#64748b',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.75rem',
-                        fontWeight: '800'
-                      }}
-                    >
-                      {idx < enrollSamples.length ? '✓' : idx + 1}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Hướng dẫn */}
-              <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0.75rem 0 0 0', lineHeight: '1.4' }}>
-                💡 <em>Hướng dẫn: Cho nhân viên nhìn thẳng vào camera và bấm <strong>"Chụp Mẫu Khuôn Mặt"</strong>. Bạn có thể chụp từ 1 đến 3 góc nhẹ (nhìn thẳng, nghiêng nhẹ) để tăng độ nhận diện chính xác.</em>
-              </p>
-            </div>
-
-            {/* Footer Modal Controls */}
-            <div style={{ padding: '1rem 1.5rem', backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
-              <button
-                onClick={captureFaceSample}
-                disabled={enrollCapturing || !enrollCameraActive}
-                style={{
-                  backgroundColor: '#ffffff',
-                  color: '#2563eb',
-                  border: '1.5px solid #2563eb',
-                  padding: '9px 16px',
-                  borderRadius: '8px',
-                  fontWeight: '800',
-                  fontSize: '0.825rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                📸 {enrollCapturing ? 'Đang trích xuất...' : 'Chụp Mẫu Khuôn Mặt'}
-              </button>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  onClick={closeEnrollModal}
-                  style={{
-                    backgroundColor: '#ffffff',
-                    color: '#64748b',
-                    border: '1px solid #cbd5e1',
-                    padding: '9px 16px',
-                    borderRadius: '8px',
-                    fontWeight: '700',
-                    fontSize: '0.825rem',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Hủy Bỏ
-                </button>
-
-                <button
-                  onClick={saveFaceRegistration}
-                  disabled={enrollSubmitting || enrollSamples.length === 0}
-                  style={{
-                    backgroundColor: '#10b981',
-                    color: '#ffffff',
-                    border: 'none',
-                    padding: '9px 18px',
-                    borderRadius: '8px',
-                    fontWeight: '800',
-                    fontSize: '0.825rem',
-                    cursor: enrollSubmitting || enrollSamples.length === 0 ? 'not-allowed' : 'pointer',
-                    opacity: enrollSubmitting || enrollSamples.length === 0 ? 0.6 : 1,
-                    boxShadow: '0 2px 6px rgba(16,185,129,0.3)'
-                  }}
-                >
-                  {enrollSubmitting ? 'Đang Lưu...' : 'Lưu Dữ Liệu Khuôn Mặt'}
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* Modal Xem Ảnh Đối Soát Check-in */}
+      {/* Modal Xem Ảnh Đối Soát Check-in Thực Tế */}
       {selectedPhotoModal && (
         <div
           style={{
@@ -892,7 +679,8 @@ const ManagerAttendancePage = () => {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.6)',
+            backgroundColor: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(3px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -944,12 +732,20 @@ const ManagerAttendancePage = () => {
 
               <div style={{ marginTop: '1rem', textAlign: 'left', background: '#f8fafc', padding: '12px', borderRadius: '8px', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b' }}>Chuyến xe:</span>
+                  <strong style={{ color: '#0f172a' }}>{selectedPhotoModal.tripRoute}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b' }}>Biển số xe:</span>
+                  <strong style={{ color: '#2563eb' }}>{selectedPhotoModal.busPlateNumber}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>Thời gian vào ca:</span>
                   <strong style={{ color: '#059669', fontFamily: 'monospace' }}>{selectedPhotoModal.checkInTime}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#64748b' }}>Sai số nhận diện:</span>
-                  <strong style={{ color: '#0f172a' }}>{selectedPhotoModal.faceDistance} (Ngưỡng: 0.48)</strong>
+                  <span style={{ color: '#64748b' }}>Sai số nhận diện Face ID:</span>
+                  <strong style={{ color: '#0f172a' }}>{selectedPhotoModal.faceDistance} (Ngưỡng: 0.38)</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>Xác thực người thật:</span>

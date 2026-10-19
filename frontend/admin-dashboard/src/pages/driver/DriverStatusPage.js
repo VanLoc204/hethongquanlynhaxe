@@ -11,6 +11,10 @@ const DriverStatusPage = ({ setActiveTab }) => {
   const [stops, setStops] = useState([]);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  // Trạng thái Chấm công điểm danh của tài xế hôm nay
+  const [attendanceStatus, setAttendanceStatus] = useState('loading');
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
+
   // Trạng thái GPS toàn cục từ Background Service (quản lý bởi trang Bản đồ)
   const [gpsServiceState, setGpsServiceState] = useState(() => driverGpsService.getState());
   const [distanceToTarget, setDistanceToTarget] = useState(null); // Khoảng cách tới trạm kế tiếp (mét)
@@ -100,6 +104,31 @@ const DriverStatusPage = ({ setActiveTab }) => {
     }
   }, [token]);
 
+  // 2b. Kiểm tra trạng thái Chấm công hôm nay của tài xế
+  useEffect(() => {
+    const checkAttendance = async () => {
+      if (!token) return;
+      setLoadingAttendance(true);
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/attendance/mine', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setAttendanceStatus(data.todayStatus || 'not_checked');
+        } else {
+          setAttendanceStatus('not_checked');
+        }
+      } catch (err) {
+        console.warn('Lỗi kiểm tra chấm công:', err);
+        setAttendanceStatus('not_checked');
+      } finally {
+        setLoadingAttendance(false);
+      }
+    };
+    checkAttendance();
+  }, [token]);
+
   // 3. Tự động đồng bộ GPS trực tiếp từ xe (liveGps của chuyến xe đang chạy) mỗi 2.5 giây
   useEffect(() => {
     if (!token || !trip?._id || trip.journeyStatus === 'completed') return;
@@ -184,6 +213,13 @@ const DriverStatusPage = ({ setActiveTab }) => {
   // Cập nhật hành trình lên Server
   const handleJourneyUpdate = async (action) => {
     if (!trip) return;
+
+    // RÀNG BUỘC: Chưa Chấm công (Face ID) thì không được bắt đầu hoặc cập nhật hành trình
+    if (attendanceStatus !== 'active' && action !== 'reset') {
+      setError('Từ chối: Bạn chưa hoàn tất Chấm công số (Face ID) cho ca trực này. Vui lòng điểm danh vào ca trước khi bắt đầu hành trình!');
+      return;
+    }
+
     setIsUpdating(true);
     setError('');
     try {
@@ -258,10 +294,13 @@ const DriverStatusPage = ({ setActiveTab }) => {
   const isDistanceValid = isGpsActive && distanceToTarget !== null && distanceToTarget <= 500;
   const isWithinRadius = isGpsActive && (isDistanceValid || (isDemoGps && isNotStarted));
 
+  const isAttendanceActive = attendanceStatus === 'active';
+
   // Khóa nút hoàn toàn nếu:
   // 1. Đang gửi request (isUpdating)
   // 2. Chưa bật GPS hoặc xe chưa vào bán kính hợp lệ (!isWithinRadius)
-  const isButtonDisabled = isUpdating || !isWithinRadius;
+  // 3. Chưa Chấm công Face ID vào ca (!isAttendanceActive)
+  const isButtonDisabled = isUpdating || !isWithinRadius || !isAttendanceActive;
 
   if (loading) {
     return (
@@ -565,6 +604,43 @@ const DriverStatusPage = ({ setActiveTab }) => {
             </button>
           </div>
         </div>
+
+        {/* THÔNG BÁO YÊU CẦU ĐIỂM DANH */}
+        {attendanceStatus !== 'active' && !loadingAttendance && (
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #cbd5e1',
+            borderRadius: '8px',
+            padding: '10px 16px',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            <div style={{ fontSize: '0.82rem', color: '#334155', fontWeight: '600' }}>
+              Tài xế chưa điểm danh ca trực hôm nay. Vui lòng chấm công trước khi bắt đầu hành trình.
+            </div>
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('driver-attendance')}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontWeight: '700',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer'
+                }}
+              >
+                Chấm công ngay
+              </button>
+            )}
+          </div>
+        )}
 
         {/* 4 Key Stat Cards */}
         <div className="status-stat-grid">
@@ -897,13 +973,32 @@ const DriverStatusPage = ({ setActiveTab }) => {
                     </svg>
                     {isUpdating
                       ? 'Đang kích hoạt...'
-                      : !isGpsActive
-                        ? 'Chưa Bật GPS (Vui Lòng Bật Tại Trang Bản Đồ)'
-                        : isWithinRadius
-                          ? (isDemoGps ? 'Bắt Đầu Khởi Hành (Chế Độ Demo)' : 'Bắt Đầu Khởi Hành Rời Bến')
-                          : `Chưa đến bến xuất phát (Cách ${formatDistance(distanceToTarget)})`}
+                      : !isAttendanceActive
+                        ? 'Chưa chấm công (Vui lòng chấm công trước)'
+                        : !isGpsActive
+                          ? 'Chưa Bật GPS (Vui Lòng Bật Tại Trang Bản Đồ)'
+                          : isWithinRadius
+                            ? (isDemoGps ? 'Bắt Đầu Khởi Hành (Chế Độ Demo)' : 'Bắt Đầu Khởi Hành Rời Bến')
+                            : `Chưa đến bến xuất phát (Cách ${formatDistance(distanceToTarget)})`}
                   </button>
-                  {!isGpsActive && setActiveTab && (
+                  {!isAttendanceActive && setActiveTab ? (
+                    <div style={{ textAlign: 'center', marginTop: '6px' }}>
+                      <button
+                        onClick={() => setActiveTab('driver-attendance')}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#2563eb',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        Chuyển sang Chấm công số
+                      </button>
+                    </div>
+                  ) : !isGpsActive && setActiveTab ? (
                     <div style={{ textAlign: 'center', marginTop: '6px' }}>
                       <button
                         onClick={() => setActiveTab('driver-map')}
@@ -917,10 +1012,10 @@ const DriverStatusPage = ({ setActiveTab }) => {
                           textDecoration: 'underline'
                         }}
                       >
-                        ➔ Chuyển sang Bản đồ để Bắt Đầu &amp; Phát GPS
+                        Chuyển sang Bản đồ để Bắt Đầu &amp; Phát GPS
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               ) : isLastUpdateStep ? (
                 <div>

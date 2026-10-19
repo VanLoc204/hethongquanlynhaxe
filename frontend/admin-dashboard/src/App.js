@@ -15,6 +15,7 @@ import FleetForecastPage from './pages/fleet/FleetForecastPage';
 import OpsRoutesPage from './pages/ops/OpsRoutesPage';
 import OpsTripsPage from './pages/ops/OpsTripsPage';
 import OpsStaffPage from './pages/ops/OpsStaffPage';
+import OpsFleetAccountsPage from './pages/ops/OpsFleetAccountsPage';
 import OpsReportsPage from './pages/ops/OpsReportsPage';
 import OpsTrackingPage from './pages/ops/OpsTrackingPage';
 
@@ -96,6 +97,8 @@ function DashboardLayout() {
         return <OpsTripsPage />;
       case 'ops-staff':
         return <OpsStaffPage />;
+      case 'ops-fleet-accounts':
+        return <OpsFleetAccountsPage setActiveTab={setActiveTab} />;
       case 'ops-reports':
         return <OpsReportsPage />;
       case 'ops-tracking':
@@ -210,6 +213,8 @@ function DashboardLayout() {
         return 'Quản lý chuyến xe';
       case 'ops-staff':
         return 'Quản lý nhân sự chuyến';
+      case 'ops-fleet-accounts':
+        return 'Quản lý tài khoản đội xe (Tài xế & Phụ xe)';
       case 'ops-reports':
         return 'Xem báo cáo';
       case 'ops-tracking':
