@@ -109,7 +109,11 @@ class DriverGpsService {
         this.lastPingTime = new Date().toLocaleTimeString('vi-VN');
         this.pingStatus = 'Đã kết nối máy chủ';
       } else {
-        this.pingStatus = 'Máy chủ cảnh báo';
+        this.pingStatus = data.message || 'Máy chủ cảnh báo';
+        if (res.status === 403) {
+          console.warn('[DriverGpsService] Dừng phát GPS do chưa chấm công:', data.message);
+          this.stopTracking();
+        }
       }
     } catch (err) {
       this.pingStatus = 'Mất kết nối mạng';

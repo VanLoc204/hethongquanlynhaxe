@@ -75,7 +75,7 @@ exports.getMySchedule = async (req, res) => {
     }
 
     const trips = await Trip.find(query)
-      .populate('routeId', 'startPoint endPoint distance duration')
+      .populate('routeId', 'startPoint endPoint distance duration stops')
       .populate('busId', 'plateNumber type totalSeats')
       .sort({ departureTime: 1 })
       .lean();

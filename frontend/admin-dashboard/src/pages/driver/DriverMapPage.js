@@ -4,8 +4,12 @@ import { driverGpsService } from '../../services/driverGpsService';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
-const DriverMapPage = () => {
+const DriverMapPage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
+
+  // Trạng thái Chấm công điểm danh (Bắt buộc phải Check-in vào ca mới được phát GPS)
+  const [attendanceStatus, setAttendanceStatus] = useState('loading');
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
 
   // Lấy trạng thái GPS nền toàn cục (chạy ngầm xuyên suốt các tab)
   const initialGpsState = driverGpsService.getState();
@@ -248,8 +252,39 @@ const DriverMapPage = () => {
       }
     };
 
-    fetchDriverTrips();
+    if (token) {
+      fetchDriverTrips();
+    }
   }, [token, user]);
+
+  // 2b. Kiểm tra trạng thái Chấm công hôm nay của tài xế
+  useEffect(() => {
+    const checkAttendance = async () => {
+      if (!token) return;
+      setLoadingAttendance(true);
+      try {
+        const res = await fetch(`${API_BASE}/attendance/mine`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setAttendanceStatus(data.todayStatus || 'not_checked');
+          // Nếu chưa vào ca (chưa check-in) mà GPS đang phát ngầm thì tự động dừng phát
+          if (data.todayStatus !== 'active' && driverGpsService.isTracking) {
+            driverGpsService.stopTracking();
+          }
+        } else {
+          setAttendanceStatus('not_checked');
+        }
+      } catch (err) {
+        console.warn('Lỗi kiểm tra chấm công tài xế:', err);
+        setAttendanceStatus('not_checked');
+      } finally {
+        setLoadingAttendance(false);
+      }
+    };
+    checkAttendance();
+  }, [token]);
 
   // Chuyến xe đang chọn
   const activeTrip = useMemo(() => {
@@ -560,6 +595,14 @@ const DriverMapPage = () => {
 
   // 8. Bật / Tắt Phát GPS (Tracking Core kết nối với background service)
   const toggleTracking = () => {
+    // Nếu chưa chấm công, chuyển trực tiếp sang trang chấm công
+    if (attendanceStatus !== 'active') {
+      if (setActiveTab) {
+        setActiveTab('driver-attendance');
+      }
+      return;
+    }
+
     if (isTracking) {
       driverGpsService.stopTracking();
     } else {
@@ -695,28 +738,54 @@ const DriverMapPage = () => {
               </span>
             </div>
 
-            {/* Trạng thái phát GPS */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              backgroundColor: isTracking ? 'rgba(6, 78, 59, 0.9)' : 'rgba(30, 41, 59, 0.8)',
-              color: isTracking ? '#34d399' : '#94a3b8',
-              padding: '3px 8px',
-              borderRadius: '10px',
-              fontSize: '0.68rem',
-              fontWeight: '700',
-              border: `1px solid ${isTracking ? '#059669' : '#334155'}`,
-              flexShrink: 0,
-              whiteSpace: 'nowrap'
-            }}>
-              <span style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: isTracking ? '#10b981' : '#64748b'
-              }}></span>
-              <span>{isTracking ? `Đang phát (${lastPingTime || 'Vừa xong'})` : 'Chưa phát GPS'}</span>
+            {/* Trạng thái chấm công & phát GPS */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {attendanceStatus !== 'active' && !loadingAttendance && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  backgroundColor: 'rgba(127, 29, 29, 0.9)',
+                  color: '#fca5a5',
+                  padding: '3px 8px',
+                  borderRadius: '10px',
+                  fontSize: '0.68rem',
+                  fontWeight: '800',
+                  border: '1px solid #ef4444',
+                  flexShrink: 0,
+                  whiteSpace: 'nowrap'
+                }}>
+                  <span style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ef4444'
+                  }}></span>
+                  <span>Chưa Điểm Danh Ca Trực</span>
+                </div>
+              )}
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                backgroundColor: isTracking ? 'rgba(6, 78, 59, 0.9)' : 'rgba(30, 41, 59, 0.8)',
+                color: isTracking ? '#34d399' : '#94a3b8',
+                padding: '3px 8px',
+                borderRadius: '10px',
+                fontSize: '0.68rem',
+                fontWeight: '700',
+                border: `1px solid ${isTracking ? '#059669' : '#334155'}`,
+                flexShrink: 0,
+                whiteSpace: 'nowrap'
+              }}>
+                <span style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: isTracking ? '#10b981' : '#64748b'
+                }}></span>
+                <span>{isTracking ? `Đang phát (${lastPingTime || 'Vừa xong'})` : 'Chưa phát GPS'}</span>
+              </div>
             </div>
           </div>
 
@@ -1098,7 +1167,7 @@ const DriverMapPage = () => {
             </div>
           </div>
 
-          {/* Hàng 2: Nút BẬT / DỪNG PHÁT GPS + Nút RESTART HÀNH TRÌNH */}
+          {/* Hàng 2: Nút BẬT / DỪNG PHÁT GPS hoặc KHÓA KHI CHƯA CHẤM CÔNG + Nút RESTART */}
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               onClick={toggleTracking}
@@ -1107,12 +1176,16 @@ const DriverMapPage = () => {
                 padding: '10px 16px',
                 borderRadius: '10px',
                 border: 'none',
-                backgroundColor: isTracking ? '#dc2626' : '#2563eb',
+                backgroundColor: attendanceStatus !== 'active'
+                  ? '#475569'
+                  : (isTracking ? '#dc2626' : '#2563eb'),
                 color: '#ffffff',
                 fontSize: '0.86rem',
                 fontWeight: '800',
                 cursor: 'pointer',
-                boxShadow: isTracking ? '0 4px 14px rgba(220,38,38,0.45)' : '0 4px 14px rgba(37,99,235,0.45)',
+                boxShadow: attendanceStatus !== 'active'
+                  ? 'none'
+                  : (isTracking ? '0 4px 14px rgba(220,38,38,0.45)' : '0 4px 14px rgba(37,99,235,0.45)'),
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1121,10 +1194,11 @@ const DriverMapPage = () => {
                 letterSpacing: '0.5px'
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-              <span>{isTracking ? 'DỪNG PHÁT GPS' : 'BẮT ĐẦU & PHÁT GPS'}</span>
+              <span>
+                {attendanceStatus !== 'active'
+                  ? 'Chưa Chấm Công (Bấm Để Điểm Danh)'
+                  : (isTracking ? 'DỪNG PHÁT GPS' : 'BẮT ĐẦU & PHÁT GPS')}
+              </span>
             </button>
 
             {/* Nút Restart vị trí xe về điểm xuất phát ban đầu */}

@@ -91,7 +91,7 @@ router.get('/ops/reports/punctuality', protect, restrictTo('ops_manager', 'gener
 router.patch('/ops/trips/:id/punctuality', protect, restrictTo('ops_manager', 'general_manager', 'admin'), updateTripPunctuality);
 
 // Driver Live GPS Tracking & Telemetry
-router.put('/:id/live-gps', updateLiveGps);
+router.put('/:id/live-gps', protect, updateLiveGps);
 
 // Driver Journey Updates
 router.patch('/:id/update-journey', protect, updateJourneyStatus);

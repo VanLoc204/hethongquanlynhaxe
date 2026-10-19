@@ -58,12 +58,18 @@ const userSchema = new mongoose.Schema(
     // 1 user có thể có nhiều mẫu để tăng độ chính xác nhận diện
     faceDescriptors: {
       type: [[Number]],
+      select: false,
       default: []
     },
     // Cờ xác nhận nhân viên đã được đăng ký khuôn mặt hay chưa
     faceRegistered: {
       type: Boolean,
       default: false
+    },
+    // Ảnh mẫu khuôn mặt gốc khi đăng ký Face ID (Base64 JPEG thumbnail)
+    facePhoto: {
+      type: String,
+      default: null
     }
   },
   {

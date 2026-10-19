@@ -54,12 +54,12 @@ router.post('/attendant/verify-ticket-qr', protect, verifyTicketQR);
 router.use(protect);
 
 router.route('/staff')
-  .get(restrictTo('general_manager', 'admin', 'ops_manager'), getStaff)
-  .post(restrictTo('general_manager', 'admin'), createStaff);
+  .get(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getStaff)
+  .post(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), createStaff);
 
 router.route('/staff/:id')
-  .put(restrictTo('general_manager', 'admin'), updateStaff)
-  .delete(restrictTo('general_manager', 'admin'), deleteStaff);
+  .put(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), updateStaff)
+  .delete(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), deleteStaff);
 
 router.get('/admin/leaves', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getAllLeaves);
 router.patch('/admin/leaves/:id', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), updateLeaveStatus);
