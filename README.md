@@ -30,28 +30,37 @@ Hệ thống backend được mô đun hóa chuẩn mực xử lý các mảng n
 
 Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`123456`**
 
-### A. Nhóm Quản Lý & Điều Hành (Management & Admin)
+### A. Nhóm Quản Lý & Điều Hành Hệ Thống
 | Vai trò (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email | Chức năng chính |
 | :--- | :--- | :--- | :--- | :--- |
-| **Quản Trị Viên** (`admin`) | Quản Trị Viên Hệ Thống | **`0955555666`** | `admin@anbinhlines.vn` | Quản lý toàn bộ tài khoản, phân quyền hệ thống |
-| **Giám Đốc** (`general_manager`) | Giám Đốc An Bình | **`0966555666`** | `director@anbinhlines.vn` | Duyệt tuyến mới, duyệt đơn nghỉ phép, xem Bảng lương (`Payroll`), Báo cáo doanh thu |
-| **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải An Bình | **`0977777777`** | `ops@anbinhlines.vn` | Quản lý Tuyến/Chuyến/Nhân sự chuyến, Lịch tuần Kanban, chạy thuật toán Greedy |
-| **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe An Bình | **`0988888888`** | `fleet@anbinhlines.vn` | Quản lý phương tiện xe khách, lập hồ sơ bảo trì & sửa chữa định kỳ |
-| **Quản Lý Phòng Vé (TP.HCM)** (`ticket_manager`) | Quản Lý Phòng Vé Sài Gòn | **`0944999888`** | `ticket_manager@anbinhlines.vn` | Giám sát ca trực quầy vé, đối soát quỹ, quản lý nhân viên chi nhánh TP.HCM |
-| **Quản Lý Phòng Vé (Đà Lạt)** (`ticket_manager`) | Quản Lý Phòng Vé Đà Lạt | **`0944999881`** | `ticket_manager_dl@anbinhlines.vn` | Giám sát ca trực, đối soát quỹ, quản lý nhân viên chi nhánh Đà Lạt |
-| **Quản Lý Phòng Vé (Cần Thơ)** (`ticket_manager`) | Quản Lý Phòng Vé Cần Thơ | **`0944999882`** | `ticket_manager_ct@anbinhlines.vn` | Giám sát ca trực, đối soát quỹ, quản lý nhân viên chi nhánh Cần Thơ |
-| **Nhân Viên Bán Vé (TP.HCM)** (`ticket_agent`) | Nhân Viên Bán Vé Sài Gòn | **`0944555666`** | `ticket@anbinhlines.vn` | Mở ca trực, bán vé tại quầy bến xe Miền Đông / Miền Tây, in vé |
-| **Nhân Viên Bán Vé (Đà Lạt)** (`ticket_agent`) | Nhân Viên Bán Vé Đà Lạt | **`0944555661`** | `ticket_dl@anbinhlines.vn` | Mở ca trực, bán vé tại quầy bến xe Liên Tỉnh / Bùi Thị Xuân |
-| **Nhân Viên Bán Vé (Cần Thơ)** (`ticket_agent`) | Nhân Viên Bán Vé Cần Thơ | **`0944555662`** | `ticket_ct@anbinhlines.vn` | Mở ca trực, bán vé tại quầy bến xe Trung Tâm / Ninh Kiều |
+| **Quản Trị Viên** (`admin`) | Trần Quốc Huy | **`0955555666`** | `huy.tranquoc@anbinhlines.vn` | Quản lý toàn bộ tài khoản, phân quyền hệ thống |
+| **Giám Đốc** (`general_manager`) | Nguyễn An Bình | **`0966555666`** | `binh.nguyenan@anbinhlines.vn` | Duyệt tuyến mới, duyệt đề xuất giá vé, duyệt đơn nghỉ phép, xem Bảng lương & Báo cáo |
+| **Quản Lý Vận Tải** (`ops_manager`) | Lê Trọng Nghĩa | **`0977777777`** | `nghia.letrong@anbinhlines.vn` | Quản lý Tuyến/Chuyến/Nhân sự chuyến, Lịch tuần Kanban, thuật toán Greedy |
+| **Quản Lý Xe** (`fleet_manager`) | Phạm Minh Tuấn | **`0988888888`** | `tuan.phamminh@anbinhlines.vn` | Quản lý phương tiện xe khách, lập hồ sơ bảo trì & sửa chữa định kỳ |
 
-### B. Đội Ngũ Tài Xế & Phụ Xe Chuyên Trách (1 Xe ⇄ 1 Tổ Lái Đi/Về)
+### B. Phân Hệ Phòng Vé Theo 3 Chi Nhánh (Quản Lý & Nhân Viên Bán Vé Quầy)
+Mỗi nhân viên bán vé được gán cố định theo Chi nhánh và Khu vực/Văn phòng cụ thể:
+
+| Chi nhánh | Vai trò (Role) | Họ và Tên | Số Điện Thoại (Đăng nhập) | Email | Khu vực / Văn phòng trực |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **TP. Hồ Chí Minh** (`sg`) | **Quản Lý Phòng Vé** (`ticket_manager`) | Võ Hoàng Nam | **`0944999888`** | `nam.vohoang@anbinhlines.vn` | Toàn chi nhánh TP.HCM (BXMĐ & BXMT) |
+| **TP. Hồ Chí Minh** (`sg`) | **Nhân Viên Bán Vé** (`ticket_agent`) | Nguyễn Thị Mai | **`0944555666`** | `mai.nguyenthi@anbinhlines.vn` | **Văn phòng Sài Gòn (BXMĐ)** (292 Đinh Bộ Lĩnh) |
+| **TP. Hồ Chí Minh** (`sg`) | **Nhân Viên Bán Vé** (`ticket_agent`) | Đặng Thanh Trúc | **`0944555667`** | `truc.dangthanh@anbinhlines.vn` | **Văn phòng Sài Gòn (BXMT)** (395 Kinh Dương Vương) |
+| **Đà Lạt** (`dl`) | **Quản Lý Phòng Vé** (`ticket_manager`) | Bùi Hải Đăng | **`0944999881`** | `dang.buihai@anbinhlines.vn` | Toàn chi nhánh Đà Lạt (BX Liên Tỉnh & Bùi Thị Xuân) |
+| **Đà Lạt** (`dl`) | **Nhân Viên Bán Vé** (`ticket_agent`) | Lâm Mộng Điệp | **`0944555661`** | `diep.lammong@anbinhlines.vn` | **Văn phòng Đà Lạt (BX Liên Tỉnh)** (01 Tô Hiến Thành) |
+| **Đà Lạt** (`dl`) | **Nhân Viên Bán Vé** (`ticket_agent`) | Hoàng Thu Thảo | **`0944555663`** | `thao.hoangthu@anbinhlines.vn` | **Văn phòng Đà Lạt (Bùi Thị Xuân)** |
+| **Cần Thơ** (`ct`) | **Quản Lý Phòng Vé** (`ticket_manager`) | Phan Thành Đạt | **`0944999882`** | `dat.phanthanh@anbinhlines.vn` | Toàn chi nhánh Cần Thơ (BX Trung Tâm & Ninh Kiều) |
+| **Cần Thơ** (`ct`) | **Nhân Viên Bán Vé** (`ticket_agent`) | Trương Mỹ Duyên | **`0944555662`** | `duyen.truongmy@anbinhlines.vn` | **Văn phòng Cần Thơ (BX Trung Tâm)** (KĐT Nam Cần Thơ) |
+| **Cần Thơ** (`ct`) | **Nhân Viên Bán Vé** (`ticket_agent`) | Nguyễn Quốc Khánh | **`0944555664`** | `khanh.nguyenquoc@anbinhlines.vn` | **Văn phòng Cần Thơ (Ninh Kiều)** (Đại lộ Hòa Bình) |
+
+### C. Đội Ngũ Tài Xế & Phụ Xe Chuyên Trách (1 Xe ⇄ 1 Tổ Lái Đi/Về)
 | Vai trò | Họ tên | Số Điện Thoại | Phân công Xe khách cố định |
 | :--- | :--- | :--- | :--- |
 | **Tài xế chính** | Nguyễn Văn An | **`0912999999`** | Xe `51B-044.44` (Giường nằm 44 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Phụ xe** | Bùi Hữu Nghĩa | **`0967890123`** | Xe `51B-044.44` (Giường nằm 44 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Tài xế chính** | Trần Minh Tâm | **`0987654321`** | Xe `51B-029.29` (Ghế ngồi 29 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Phụ xe** | Hoàng Văn Tuấn | **`0966666666`** | Xe `51B-029.29` (Ghế ngồi 29 chỗ - Tuyến HCM ⇄ Đà Lạt) |
-| **Tài xế chính** | Tài xế An Bình | **`0933333333`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
+| **Tài xế chính** | Đỗ Hoàng Long | **`0933333333`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
 | **Phụ xe** | Phạm Quốc Bảo | **`0944444444`** | Xe `51B-016.16` (Ghế ngồi 16 chỗ - Tuyến HCM ⇄ Cần Thơ) |
 | **Tài xế chính** | Nguyễn Văn Hùng | **`0912345678`** | Xe `51B-045.45` (Ghế ngồi 45 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Phụ xe** | Đỗ Đức Mạnh | **`0955555555`** | Xe `51B-045.45` (Ghế ngồi 45 chỗ - Tuyến HCM ⇄ Đà Lạt) |
