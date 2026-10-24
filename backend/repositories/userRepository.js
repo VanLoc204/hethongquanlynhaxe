@@ -1,8 +1,8 @@
 const User = require('../models/User');
 
 class UserRepository {
-  async findStaff() {
-    return await User.find({ role: { $ne: 'customer' } }).select('-password');
+  async findStaff(filter = {}) {
+    return await User.find({ role: { $ne: 'customer' }, ...filter }).select('-password');
   }
 
   async findByPhone(phone) {

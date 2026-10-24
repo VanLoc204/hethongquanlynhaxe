@@ -325,9 +325,10 @@ const ManagerAttendancePage = () => {
                   border: '1px solid #cbd5e1', fontSize: '0.825rem', outline: 'none'
                 }}
               />
-              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
-                🔍
-              </span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
             </div>
 
             {/* Lọc Role */}
@@ -591,8 +592,9 @@ const ManagerAttendancePage = () => {
                     <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
                       {duty.faceVerified ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                          <span style={{ color: '#059669', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                            ✓ Hợp lệ {duty.isLiveVerified && <span title="Đạt chuẩn kiểm tra Liveness người thật" style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '4px' }}>LIVE</span>}
+                          <span style={{ color: '#059669', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669', display: 'inline-block' }}></span>
+                            Hợp lệ {duty.isLiveVerified && <span title="Đạt chuẩn kiểm tra Liveness người thật" style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '4px' }}>LIVE</span>}
                           </span>
                           <span style={{ color: '#64748b', fontSize: '0.68rem' }}>
                             Sai số: {duty.faceDistance !== null ? duty.faceDistance : '--'}
@@ -615,7 +617,8 @@ const ManagerAttendancePage = () => {
                                 gap: '4px'
                               }}
                             >
-                              📷 Xem ảnh
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                              <span>Xem ảnh</span>
                             </button>
                           )}
                         </div>
@@ -710,9 +713,9 @@ const ManagerAttendancePage = () => {
               </div>
               <button
                 onClick={() => setSelectedPhotoModal(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.25rem', color: '#94a3b8', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
               >
-                ✕
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
@@ -750,7 +753,7 @@ const ManagerAttendancePage = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#64748b' }}>Xác thực người thật:</span>
                   <strong style={{ color: selectedPhotoModal.isLiveVerified ? '#059669' : '#d97706' }}>
-                    {selectedPhotoModal.isLiveVerified ? '✓ Đạt chuẩn Liveness' : 'Chưa kiểm tra'}
+                    {selectedPhotoModal.isLiveVerified ? 'Đạt chuẩn Liveness (người thật)' : 'Chưa kiểm tra'}
                   </strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>

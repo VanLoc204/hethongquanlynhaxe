@@ -44,6 +44,68 @@ const shiftSessionSchema = new mongoose.Schema(
     },
     notes: {
       type: String
+    },
+    faceVerified: {
+      type: Boolean,
+      default: false
+    },
+    faceDistance: {
+      type: Number,
+      default: null
+    },
+    isLiveVerified: {
+      type: Boolean,
+      default: false
+    },
+    checkInPhoto: {
+      type: String,
+      default: null
+    },
+    checkOutPhoto: {
+      type: String,
+      default: null
+    },
+    location: {
+      type: String,
+      default: ''
+    },
+    gpsLat: {
+      type: Number,
+      default: null
+    },
+    gpsLng: {
+      type: Number,
+      default: null
+    },
+    // ─── Phân cấp Chi nhánh & Đối soát quỹ thu ngân ───────────────────────────
+    branchId: {
+      type: String,
+      enum: ['sg', 'dl', 'ct'],
+      default: 'sg',
+      index: true
+    },
+    officeName: {
+      type: String,
+      default: ''
+    },
+    reconciliationStatus: {
+      type: String,
+      enum: ['pending', 'verified', 'discrepancy'],
+      default: 'pending',
+      index: true
+    },
+    reconciledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    reconciledAt: {
+      type: Date,
+      default: null
+    },
+    reconciliationNotes: {
+      type: String,
+      default: ''
     }
   },
   {

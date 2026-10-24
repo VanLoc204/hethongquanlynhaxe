@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
+import TicketManagerOverview from '../ticket/TicketManagerOverview';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -2064,6 +2065,15 @@ const DashboardOverviewPage = ({ setActiveTab }) => {
         ratingTrend={ratingTrend}
         todaysTripsCount={todaysTripsCount}
         todaysTripsList={todaysTripsList}
+        onRefresh={() => window.location.reload()}
+      />
+    );
+  }
+
+  if (user?.role === 'ticket_manager') {
+    return (
+      <TicketManagerOverview
+        setActiveTab={setActiveTab}
         onRefresh={() => window.location.reload()}
       />
     );

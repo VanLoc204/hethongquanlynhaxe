@@ -32,6 +32,7 @@ const userSchema = new mongoose.Schema(
         'driver',
         'attendant',
         'ticket_agent',
+        'ticket_manager',
         'fleet_manager',
         'ops_manager',
         'general_manager',
@@ -70,6 +71,22 @@ const userSchema = new mongoose.Schema(
     facePhoto: {
       type: String,
       default: null
+    },
+    // ─── Phân cấp Chi nhánh phòng vé (Áp dụng cho ticket_manager & ticket_agent) ──
+    branch: {
+      branchId: {
+        type: String,
+        enum: ['sg', 'dl', 'ct'],
+        default: 'sg'
+      },
+      branchName: {
+        type: String,
+        default: 'Chi nhánh TP. Hồ Chí Minh'
+      },
+      assignedOffices: {
+        type: [String],
+        default: []
+      }
     }
   },
   {

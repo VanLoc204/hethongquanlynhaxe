@@ -12,6 +12,7 @@ const Bus = require('./models/Bus');
 const Trip = require('./models/Trip');
 const Review = require('./models/Review');
 const Booking = require('./models/Booking');
+const ShiftSession = require('./models/ShiftSession');
 const LeaveRequest = require('./models/LeaveRequest');
 const WorkSchedule = require('./models/WorkSchedule');
 
@@ -52,6 +53,7 @@ async function seedDB() {
     await Trip.deleteMany({});
     await Review.deleteMany({});
     await Booking.deleteMany({});
+    await ShiftSession.deleteMany({});
     await LeaveRequest.deleteMany({});
     
     try {
@@ -110,11 +112,74 @@ async function seedDB() {
         phone: '0955555666', // Unique phone for Admin
         role: 'admin',
       },
+      // Quản lý phòng vé & Nhân viên bán vé Chi nhánh TP. Hồ Chí Minh
       {
-        name: 'Nhân Viên Bán Vé',
+        name: 'Quản Lý Phòng Vé Sài Gòn',
+        email: 'ticket_manager@anbinhlines.vn',
+        phone: '0944999888',
+        role: 'ticket_manager',
+        branch: {
+          branchId: 'sg',
+          branchName: 'Chi nhánh TP. Hồ Chí Minh',
+          assignedOffices: ['Văn phòng Sài Gòn (BXMĐ)', 'Văn phòng Sài Gòn (BXMT)']
+        }
+      },
+      {
+        name: 'Nhân Viên Bán Vé Sài Gòn',
         email: 'ticket@anbinhlines.vn',
-        phone: '0944555666', // Unique phone for Ticket Agent
+        phone: '0944555666',
         role: 'ticket_agent',
+        branch: {
+          branchId: 'sg',
+          branchName: 'Chi nhánh TP. Hồ Chí Minh',
+          assignedOffices: ['Văn phòng Sài Gòn (BXMĐ)']
+        }
+      },
+      // Quản lý phòng vé & Nhân viên bán vé Chi nhánh Đà Lạt
+      {
+        name: 'Quản Lý Phòng Vé Đà Lạt',
+        email: 'ticket_manager_dl@anbinhlines.vn',
+        phone: '0944999881',
+        role: 'ticket_manager',
+        branch: {
+          branchId: 'dl',
+          branchName: 'Chi nhánh Đà Lạt',
+          assignedOffices: ['Văn phòng Đà Lạt (BX Liên Tỉnh)', 'Văn phòng Đà Lạt (Bùi Thị Xuân)']
+        }
+      },
+      {
+        name: 'Nhân Viên Bán Vé Đà Lạt',
+        email: 'ticket_dl@anbinhlines.vn',
+        phone: '0944555661',
+        role: 'ticket_agent',
+        branch: {
+          branchId: 'dl',
+          branchName: 'Chi nhánh Đà Lạt',
+          assignedOffices: ['Văn phòng Đà Lạt (BX Liên Tỉnh)']
+        }
+      },
+      // Quản lý phòng vé & Nhân viên bán vé Chi nhánh Cần Thơ
+      {
+        name: 'Quản Lý Phòng Vé Cần Thơ',
+        email: 'ticket_manager_ct@anbinhlines.vn',
+        phone: '0944999882',
+        role: 'ticket_manager',
+        branch: {
+          branchId: 'ct',
+          branchName: 'Chi nhánh Cần Thơ',
+          assignedOffices: ['Văn phòng Cần Thơ (BX Trung Tâm)', 'Văn phòng Cần Thơ (Ninh Kiều)']
+        }
+      },
+      {
+        name: 'Nhân Viên Bán Vé Cần Thơ',
+        email: 'ticket_ct@anbinhlines.vn',
+        phone: '0944555662',
+        role: 'ticket_agent',
+        branch: {
+          branchId: 'ct',
+          branchName: 'Chi nhánh Cần Thơ',
+          assignedOffices: ['Văn phòng Cần Thơ (BX Trung Tâm)']
+        }
       },
       // Drivers (Tài xế)
       {
@@ -609,6 +674,7 @@ async function seedDB() {
           await tripObj.save();
 
           const cust = customerList[Math.abs(i) % customerList.length];
+          const ticketPrice = tripObj.price || 150000;
           await Booking.create({
             tripId: tripObj._id,
             userId: cust.id,
@@ -622,10 +688,113 @@ async function seedDB() {
             customerCCCD: '123456789012',
             customerEmail: cust.email,
             paymentType: 'immediate',
+            pricePerSeat: ticketPrice,
+            totalAmount: ticketPrice * seatNumbers.length,
+            paymentMethod: (globalOrderCode % 3 === 0) ? 'vietqr' : 'cash',
             orderCode: globalOrderCode++
           });
         }
       }
+    }
+
+    // Seed Real ShiftSessions linked to real Bookings
+    const allBookings = await Booking.find({}).lean();
+    const ticketAgentUser = staffIds['ticket@anbinhlines.vn'];
+    const ticketManagerUser = staffIds['ticket_manager@anbinhlines.vn'];
+
+    if (ticketAgentUser && allBookings.length > 0) {
+      const bBatch1 = allBookings.slice(0, 15);
+      const bBatch2 = allBookings.slice(15, 27);
+      const bBatchActive = allBookings.slice(27, 35);
+
+      const calcShiftRev = (batch) => {
+        let cash = 0;
+        let cashless = 0;
+        batch.forEach(b => {
+          const amt = b.totalAmount || (b.pricePerSeat || 150000) * (b.seats?.length || 1);
+          if (b.paymentMethod === 'vietqr') cashless += amt;
+          else cash += amt;
+        });
+        return { cash, cashless };
+      };
+
+      const rev1 = calcShiftRev(bBatch1);
+      const rev2 = calcShiftRev(bBatch2);
+      const revActive = calcShiftRev(bBatchActive);
+
+      const nowTime = new Date();
+      const todayDate = new Date(nowTime.getFullYear(), nowTime.getMonth(), nowTime.getDate());
+
+      const ticketAgentDl = staffIds['ticket_dl@anbinhlines.vn'];
+      const ticketManagerDl = staffIds['ticket_manager_dl@anbinhlines.vn'];
+
+      await ShiftSession.create([
+        {
+          userId: ticketAgentUser,
+          counterNumber: 'Văn phòng Sài Gòn (BXMĐ) - Quầy số 1',
+          startTime: new Date(todayDate.getTime() + 7 * 3600 * 1000),
+          endTime: null,
+          initialCash: 1000000,
+          cashRevenue: revActive.cash,
+          cashlessRevenue: revActive.cashless,
+          ticketsSold: bBatchActive.map(b => b._id),
+          status: 'active',
+          branchId: 'sg',
+          officeName: 'Văn phòng Sài Gòn (BXMĐ)',
+          reconciliationStatus: 'pending',
+          notes: 'Ca trực mở bán sáng hôm nay. Quầy phục vụ khách tuyến Sài Gòn đi Đà Lạt và Cần Thơ.'
+        },
+        {
+          userId: ticketManagerUser,
+          counterNumber: 'Văn phòng Sài Gòn (BXMĐ) - Quầy Giám sát',
+          startTime: new Date(todayDate.getTime() + 7 * 3600 * 1000),
+          endTime: null,
+          initialCash: 2000000,
+          cashRevenue: 0,
+          cashlessRevenue: 0,
+          ticketsSold: [],
+          status: 'active',
+          branchId: 'sg',
+          officeName: 'Văn phòng Sài Gòn (BXMĐ)',
+          reconciliationStatus: 'pending',
+          notes: 'Quản lý trực ca điều hành chi nhánh TP.HCM, đối soát quỹ thu ngân ngày hôm nay.'
+        },
+        {
+          userId: ticketAgentUser,
+          counterNumber: 'Văn phòng Sài Gòn (BXMĐ) - Quầy số 1',
+          startTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 7 * 3600 * 1000),
+          endTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 15 * 3600 * 1000 + 30 * 60 * 1000),
+          initialCash: 1000000,
+          cashRevenue: rev1.cash,
+          cashlessRevenue: rev1.cashless,
+          ticketsSold: bBatch1.map(b => b._id),
+          status: 'closed',
+          branchId: 'sg',
+          officeName: 'Văn phòng Sài Gòn (BXMĐ)',
+          reconciliationStatus: 'verified',
+          reconciledBy: ticketManagerUser,
+          reconciledAt: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 16 * 3600 * 1000),
+          notes: `Chốt ca đối soát đủ ${bBatch1.length} vé bán khớp 100% hóa đơn. Đã nộp tiền mặt cho thủ quỹ chi nhánh.`
+        },
+        {
+          userId: ticketAgentDl || ticketAgentUser,
+          counterNumber: 'Văn phòng Đà Lạt (BX Liên Tỉnh) - Quầy số 1',
+          startTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 8 * 3600 * 1000),
+          endTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 16 * 3600 * 1000 + 30 * 60 * 1000),
+          initialCash: 1000000,
+          cashRevenue: rev2.cash,
+          cashlessRevenue: rev2.cashless,
+          ticketsSold: bBatch2.map(b => b._id),
+          status: 'closed',
+          branchId: 'dl',
+          officeName: 'Văn phòng Đà Lạt (BX Liên Tỉnh)',
+          reconciliationStatus: 'verified',
+          reconciledBy: ticketManagerDl || ticketManagerUser,
+          reconciledAt: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 17 * 3600 * 1000),
+          notes: `Ca trực chi nhánh Đà Lạt. Đã nộp tiền mặt cho quản lý phòng vé Đà Lạt.`
+        }
+      ]);
+      console.log('Seeded realistic ShiftSessions with real bookings.');
     }
 
     // Seed generic approval requests (LeaveRequest model)

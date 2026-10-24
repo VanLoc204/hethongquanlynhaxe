@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 class AuthService {
   generateToken(user) {
     return jwt.sign(
-      { id: user._id, name: user.name, role: user.role },
+      { id: user._id, name: user.name, role: user.role, branch: user.branch },
       process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026',
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
@@ -39,10 +39,24 @@ class AuthService {
   }
 
   async loginUser({ loginKey, password }) {
-    // 1. Find user by phone or email
-    let user = await userRepository.findByPhone(loginKey);
+    let key = (loginKey || '').trim();
+
+    // 1. Find user by phone or email directly
+    let user = await userRepository.findByPhone(key);
     if (!user) {
-      user = await userRepository.findByEmail(loginKey);
+      user = await userRepository.findByEmail(key);
+    }
+
+    // 1b. Support aliases for demo ticket agent credentials
+    if (!user) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === 'ticket_agent@anbinhlines.vn' || lowerKey === 'ticket@anbinhlines.vn') {
+        user = await userRepository.findByPhone('0944555666') || await userRepository.findByEmail('ticket@anbinhlines.vn');
+      } else if (lowerKey === 'ticket_dl@anbinhlines.vn' || key === '0944111223' || key === '0944555661') {
+        user = await userRepository.findByPhone('0944555661') || await userRepository.findByEmail('ticket_dl@anbinhlines.vn');
+      } else if (lowerKey === 'ticket_ct@anbinhlines.vn' || key === '0944111224' || key === '0944555662') {
+        user = await userRepository.findByPhone('0944555662') || await userRepository.findByEmail('ticket_ct@anbinhlines.vn');
+      }
     }
 
     if (!user) {

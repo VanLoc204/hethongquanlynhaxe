@@ -8,8 +8,10 @@ const Route = require('../models/Route');
 const Bus = require('../models/Bus');
 const Payroll = require('../models/Payroll');
 const WorkSchedule = require('../models/WorkSchedule');
+const Attendance = require('../models/Attendance');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { detectBranchFromLocation, getBranchById } = require('../constants/branches');
 
 const generateTicketSignature = (bookingId) => {
   const secret = process.env.JWT_SECRET || 'anbinhlines_secret';
@@ -188,6 +190,7 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
     driver: { base: 12000000, allowance: 1000000, insurance: 500000 },
     attendant: { base: 8000000, allowance: 800000, insurance: 400000 },
     ticket_agent: { base: 7500000, allowance: 500000, insurance: 375000 },
+    ticket_manager: { base: 15500000, allowance: 1500000, insurance: 775000 },
     fleet_manager: { base: 15000000, allowance: 1500000, insurance: 750000 },
     ops_manager: { base: 16000000, allowance: 1500000, insurance: 800000 },
     general_manager: { base: 20000000, allowance: 2000000, insurance: 1000000 },
@@ -345,14 +348,25 @@ const isHoliday = (date) => {
   return false;
 };
 
-// @desc    Start shift session for ticket agent
+// @desc    Start shift session for ticket agent or ticket manager (with optional Face ID biometric check)
 // @route   POST /api/v1/users/shift/start
-// @access  Private (Ticket Agent)
+// @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.startShift = async (req, res) => {
   try {
-    const { counterNumber, initialCash } = req.body;
+    const {
+      counterNumber,
+      initialCash,
+      notes,
+      faceDescriptor,
+      checkInPhoto,
+      isLiveVerified,
+      location,
+      gpsLat,
+      gpsLng
+    } = req.body;
+
     if (!counterNumber) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số quầy vé để mở ca.' });
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số quầy vé hoặc vị trí trực để mở ca.' });
     }
 
     // Check if there is an active session
@@ -360,22 +374,108 @@ exports.startShift = async (req, res) => {
     if (activeSession) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Bạn đang có một ca làm việc hoạt động. Vui lòng đóng ca trực cũ trước.',
+        message: 'Bạn đang có một ca làm việc đang mở. Vui lòng đóng ca trực cũ trước khi mở ca mới.',
         session: activeSession
       });
     }
 
+    const user = await User.findById(req.user.id).select('+faceDescriptors +faceRegistered');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản nhân viên.' });
+    }
+
+    let faceVerified = false;
+    let faceDistance = null;
+
+    if (faceDescriptor && Array.isArray(faceDescriptor) && faceDescriptor.length === 128) {
+      if (user.faceRegistered && Array.isArray(user.faceDescriptors) && user.faceDescriptors.length > 0) {
+        // So khớp với mẫu khuôn mặt đã đăng ký
+        const distances = user.faceDescriptors.map(stored => {
+          let sum = 0;
+          for (let i = 0; i < 128; i++) {
+            sum += (faceDescriptor[i] - stored[i]) ** 2;
+          }
+          return Math.sqrt(sum);
+        });
+        const bestDistance = Math.min(...distances);
+        const THRESHOLD = 0.42;
+
+        if (bestDistance > THRESHOLD) {
+          return res.status(401).json({
+            success: false,
+            message: `Khuôn mặt trước camera không trùng khớp với nhân viên ${user.name} (sai số: ${bestDistance.toFixed(4)}, ngưỡng cho phép: ${THRESHOLD}). Vui lòng không điểm danh hộ!`,
+            faceDistance: bestDistance
+          });
+        }
+        faceVerified = true;
+        faceDistance = parseFloat(bestDistance.toFixed(4));
+      } else {
+        // Tự động kích hoạt Face ID cho nhân viên chưa có mẫu
+        user.faceDescriptors = [faceDescriptor];
+        user.faceRegistered = true;
+        if (checkInPhoto) user.facePhoto = checkInPhoto;
+        await user.save();
+        faceVerified = true;
+        faceDistance = 0.0;
+      }
+    }
+
+    const startTime = new Date();
+    const assignedBranch = user.branch?.branchId || detectBranchFromLocation(counterNumber || location);
     const session = await ShiftSession.create({
       userId: req.user.id,
       counterNumber,
       initialCash: Number(initialCash) || 0,
-      startTime: new Date(),
-      status: 'active'
+      notes: notes || '',
+      startTime,
+      status: 'active',
+      faceVerified,
+      faceDistance,
+      isLiveVerified: Boolean(isLiveVerified),
+      checkInPhoto: checkInPhoto || null,
+      location: location || counterNumber,
+      gpsLat: gpsLat || null,
+      gpsLng: gpsLng || null,
+      branchId: assignedBranch,
+      officeName: location || counterNumber,
+      reconciliationStatus: 'pending'
     });
+
+    // Đồng bộ vào bảng Attendance để quản lý tập trung
+    try {
+      const dayStart = new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate());
+      await Attendance.findOneAndUpdate(
+        { userId: req.user.id, date: dayStart },
+        {
+          $set: {
+            userId: req.user.id,
+            employeeName: user.name,
+            employeePhone: user.phone,
+            role: user.role,
+            date: dayStart,
+            checkInTime: startTime,
+            status: 'active',
+            faceVerified,
+            faceDistance,
+            isLiveVerified: Boolean(isLiveVerified),
+            checkInPhoto: checkInPhoto || null,
+            location: location || counterNumber,
+            gpsLat: gpsLat || null,
+            gpsLng: gpsLng || null,
+            note: `Mở ca quầy: ${counterNumber}`
+          }
+        },
+        { upsert: true, new: true }
+      );
+    } catch (attErr) {
+      console.warn('Attendance sync error in startShift:', attErr.message);
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Mở ca làm việc tại quầy thành công.',
+      message: faceVerified 
+        ? `Xác thực khuôn mặt Face ID thành công! Mở ca làm việc tại ${counterNumber}.`
+        : 'Mở ca làm việc tại quầy thành công.',
       session
     });
   } catch (error) {
@@ -384,27 +484,87 @@ exports.startShift = async (req, res) => {
   }
 };
 
-// @desc    End shift session for ticket agent
+// @desc    End shift session for ticket agent or manager force close
 // @route   POST /api/v1/users/shift/end
-// @access  Private (Ticket Agent)
+// @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.endShift = async (req, res) => {
   try {
-    const { notes } = req.body;
-    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
-    if (!session) {
-      return res.status(404).json({ success: false, message: 'Không tìm thấy ca làm việc hoạt động nào của bạn.' });
+    const { notes, shiftId, faceDescriptor, checkOutPhoto, isLiveVerified } = req.body;
+    let session = null;
+
+    // Quản lý phòng vé, Giám đốc hoặc Admin có quyền chốt ca cho bất kỳ quầy nào bằng shiftId
+    if (shiftId && ['ticket_manager', 'general_manager', 'admin'].includes(req.user.role)) {
+      session = await ShiftSession.findById(shiftId);
+    } else {
+      session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
     }
 
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy ca làm việc hoạt động nào để chốt ca.' });
+    }
+
+    if (session.status === 'closed') {
+      return res.status(400).json({ success: false, message: 'Ca làm việc này đã được chốt sổ trước đó.' });
+    }
+
+    // Nếu người tự chốt ca là chủ ca trực và có gửi khuôn mặt để xác thực
+    if (!shiftId || shiftId.toString() === session._id.toString()) {
+      if (faceDescriptor && Array.isArray(faceDescriptor) && faceDescriptor.length === 128) {
+        const user = await User.findById(session.userId).select('+faceDescriptors +faceRegistered');
+        if (user && user.faceRegistered && Array.isArray(user.faceDescriptors) && user.faceDescriptors.length > 0) {
+          const distances = user.faceDescriptors.map(stored => {
+            let sum = 0;
+            for (let i = 0; i < 128; i++) {
+              sum += (faceDescriptor[i] - stored[i]) ** 2;
+            }
+            return Math.sqrt(sum);
+          });
+          const bestDistance = Math.min(...distances);
+          const THRESHOLD = 0.42;
+
+          if (bestDistance > THRESHOLD) {
+            return res.status(401).json({
+              success: false,
+              message: `Khuôn mặt trước camera không trùng khớp với nhân viên mở ca (sai số: ${bestDistance.toFixed(4)}, ngưỡng: ${THRESHOLD}). Yêu cầu đúng nhân viên bàn giao ca trực!`,
+              faceDistance: bestDistance
+            });
+          }
+        }
+      }
+    }
+
+    const endTime = new Date();
     session.status = 'closed';
-    session.endTime = new Date();
+    session.endTime = endTime;
+    if (checkOutPhoto) {
+      session.checkOutPhoto = checkOutPhoto;
+    }
     if (notes) {
-      session.notes = notes;
+      session.notes = session.notes ? `${session.notes} | ${notes}` : notes;
     }
     await session.save();
 
+    // Đồng bộ vào bảng Attendance
+    try {
+      const dayStart = new Date(endTime.getFullYear(), endTime.getMonth(), endTime.getDate());
+      await Attendance.findOneAndUpdate(
+        { userId: session.userId, date: dayStart, status: 'active' },
+        {
+          $set: {
+            checkOutTime: endTime,
+            status: 'closed',
+            checkOutPhoto: checkOutPhoto || null,
+            note: notes ? `Đóng ca quầy. Ghi chú: ${notes}` : 'Đã hoàn tất ca trực quầy vé'
+          }
+        }
+      );
+    } catch (attErr) {
+      console.warn('Attendance sync error in endShift:', attErr.message);
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Đóng ca trực và tổng kết thành công.',
+      message: 'Chốt ca trực và hoàn tất đối soát doanh thu thành công.',
       session
     });
   } catch (error) {
@@ -418,10 +578,12 @@ exports.getCurrentShift = async (req, res) => {
     const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' })
       .populate({
         path: 'ticketsSold',
+        select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount paymentMethod status createdAt tripId',
         populate: {
           path: 'tripId',
+          select: 'routeId busId departureTime price',
           populate: [
-            { path: 'routeId', select: 'startPoint endPoint' },
+            { path: 'routeId', select: 'startPoint endPoint name' },
             { path: 'busId', select: 'plateNumber type price' }
           ]
         }
@@ -439,10 +601,43 @@ exports.getCurrentShift = async (req, res) => {
 
 // @desc    Get shift history
 // @route   GET /api/v1/users/shift/history
-// @access  Private (Ticket Agent)
+// @access  Private (Ticket Agent, Ticket Manager, GM, Admin)
 exports.getShiftHistory = async (req, res) => {
   try {
-    const history = await ShiftSession.find({ userId: req.user.id })
+    let query = {};
+    if (['ticket_manager', 'general_manager', 'admin'].includes(req.user.role)) {
+      if (req.query.userId && req.query.userId !== 'all') query.userId = req.query.userId;
+      if (req.query.status && req.query.status !== 'all') query.status = req.query.status;
+      if (req.query.date === 'today') {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setHours(23, 59, 59, 999);
+        query.startTime = { $gte: start, $lte: end };
+      }
+      if (req.user.role === 'ticket_manager') {
+        query.branchId = req.user.branch?.branchId || 'sg';
+      } else if (req.query.branchId && req.query.branchId !== 'all') {
+        query.branchId = req.query.branchId;
+      }
+    } else {
+      query.userId = req.user.id;
+    }
+
+    const history = await ShiftSession.find(query)
+      .populate('userId', 'name phone email role avatar')
+      .populate({
+        path: 'ticketsSold',
+        select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount paymentMethod status createdAt tripId',
+        populate: {
+          path: 'tripId',
+          select: 'routeId busId departureTime price',
+          populate: [
+            { path: 'routeId', select: 'startPoint endPoint name' },
+            { path: 'busId', select: 'plateNumber type price' }
+          ]
+        }
+      })
       .sort({ startTime: -1 })
       .lean();
 
@@ -454,6 +649,49 @@ exports.getShiftHistory = async (req, res) => {
   } catch (error) {
     console.error('Lỗi lấy lịch sử ca trực:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi lấy lịch sử ca trực.' });
+  }
+};
+
+// @desc    Verify and reconcile cash collection from ticket shift
+// @route   PATCH /api/v1/users/shift/:id/verify-cash
+// @access  Private (Ticket Manager, GM, Admin)
+exports.verifyShiftCash = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reconciliationStatus = 'verified', notes } = req.body;
+
+    const session = await ShiftSession.findById(id).populate('userId', 'name phone role branch');
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy ca trực.' });
+    }
+
+    if (req.user.role === 'ticket_manager') {
+      const myBranch = req.user.branch?.branchId || 'sg';
+      const sessionBranch = session.branchId || session.userId?.branch?.branchId || 'sg';
+      if (sessionBranch !== myBranch) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền xác nhận nộp tiền ca trực thuộc chi nhánh của mình.'
+        });
+      }
+    }
+
+    session.reconciliationStatus = reconciliationStatus;
+    session.reconciledBy = req.user.id;
+    session.reconciledAt = new Date();
+    if (notes) {
+      session.reconciliationNotes = notes;
+    }
+    await session.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Đã xác nhận nộp tiền mặt ca trực quầy ${session.counterNumber} thành công.`,
+      session
+    });
+  } catch (error) {
+    console.error('Lỗi xác nhận nộp tiền ca trực:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi xác nhận nộp tiền ca trực.' });
   }
 };
 
@@ -928,7 +1166,18 @@ exports.getAllLeaves = async (req, res) => {
       { $set: { status: 'rejected' } }
     );
 
-    const leaves = await LeaveRequest.find()
+    let query = {};
+    if (req.user.role === 'ticket_manager') {
+      const branchId = req.user.branch?.branchId || 'sg';
+      const ticketAgents = await User.find({
+        role: 'ticket_agent',
+        'branch.branchId': branchId
+      }).select('_id').lean();
+      const agentIds = ticketAgents.map(a => a._id);
+      query.userId = { $in: agentIds };
+    }
+
+    const leaves = await LeaveRequest.find(query)
       .populate('userId', 'name role email phone')
       .sort({ createdAt: -1 });
 
@@ -949,7 +1198,7 @@ exports.getAllLeaves = async (req, res) => {
 exports.updateLeaveStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status } = req.body; // 'approved' or 'rejected'
+    const { status, reviewNote } = req.body; // 'approved' or 'rejected'
 
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({
@@ -973,8 +1222,41 @@ exports.updateLeaveStatus = async (req, res) => {
       });
     }
 
+    // Phân quyền: Quản lý phòng vé chỉ được duyệt đơn của nhân viên bán vé thuộc chi nhánh mình
+    if (req.user.role === 'ticket_manager') {
+      const applicant = await User.findById(leave.userId).select('role branch').lean();
+      if (!applicant || applicant.role !== 'ticket_agent') {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền phê duyệt đơn nghỉ của nhân viên bán vé.'
+        });
+      }
+      const myBranch = req.user.branch?.branchId || 'sg';
+      const applicantBranch = applicant.branch?.branchId || 'sg';
+      if (applicantBranch !== myBranch) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền phê duyệt đơn nghỉ của nhân viên thuộc chi nhánh mình.'
+        });
+      }
+    }
+
     leave.status = status;
+    if (reviewNote) {
+      leave.details = `${leave.details || ''} [Phản hồi QL: ${reviewNote}]`;
+    }
     await leave.save();
+
+    // Gửi thông báo cho nhân viên nộp đơn
+    try {
+      await Notification.create({
+        recipientRole: 'ticket_agent',
+        title: status === 'approved' ? 'Đơn xin nghỉ phép ĐÃ ĐƯỢC DUYỆT' : 'Đơn xin nghỉ phép BỊ TỪ CHỐI',
+        content: `Đơn xin nghỉ phép của bạn đã được quản lý ${status === 'approved' ? 'chấp thuận' : 'từ chối'}.${reviewNote ? ` Ghi chú: ${reviewNote}` : ''}`,
+        type: 'general',
+        link: '/staff-leave'
+      });
+    } catch (_) {}
 
     res.status(200).json({
       success: true,

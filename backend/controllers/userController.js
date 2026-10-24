@@ -3,10 +3,30 @@ const User = require('../models/User');
 
 // @desc    Get all staff members
 // @route   GET /api/v1/users/staff
-// @access  Private (General Manager / Admin / Ops Manager / Fleet Manager)
+// @access  Private (General Manager / Admin / Ops Manager / Fleet Manager / Ticket Manager)
 exports.getStaff = async (req, res) => {
   try {
-    const staff = await userService.getStaffList();
+    let filter = {};
+    if (req.user && req.user.role === 'ticket_manager') {
+      let branchId = req.user.branch?.branchId;
+      if (!branchId) {
+        const currentMgr = await User.findById(req.user.id).select('branch').lean();
+        branchId = currentMgr?.branch?.branchId;
+      }
+      if (branchId) {
+        filter = {
+          role: 'ticket_agent',
+          'branch.branchId': branchId
+        };
+      } else {
+        // If ticket manager has no branch configured, do not return staff from other branches
+        filter = {
+          role: 'ticket_agent',
+          'branch.branchId': '__unassigned__'
+        };
+      }
+    }
+    const staff = await userService.getStaffList(filter);
     res.status(200).json({
       success: true,
       count: staff.length,
@@ -23,10 +43,10 @@ exports.getStaff = async (req, res) => {
 
 // @desc    Create a new staff member
 // @route   POST /api/v1/users/staff
-// @access  Private (General Manager / Admin / Ops Manager)
+// @access  Private (General Manager / Admin / Ops Manager / Ticket Manager)
 exports.createStaff = async (req, res) => {
   try {
-    const { name, email, phone, password, role, status } = req.body;
+    const { name, email, phone, password, role, status, branch } = req.body;
 
     // Phân quyền: Quản lý vận tải / đội xe chỉ được tạo tài khoản tài xế hoặc phụ xe
     if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
@@ -38,7 +58,38 @@ exports.createStaff = async (req, res) => {
       }
     }
 
-    const staff = await userService.createStaff({ name, email, phone, password, role, status });
+    // Phân quyền: Quản lý phòng vé chỉ được tạo tài khoản nhân viên bán vé thuộc chi nhánh mình
+    let branchData = branch;
+    if (req.user.role === 'ticket_manager') {
+      if (role !== 'ticket_agent') {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền tạo tài khoản nhân viên bán vé.'
+        });
+      }
+      let mgrBranch = req.user.branch;
+      if (!mgrBranch || !mgrBranch.branchId) {
+        const currentMgr = await User.findById(req.user.id).select('branch').lean();
+        mgrBranch = currentMgr?.branch;
+      }
+      if (!mgrBranch || !mgrBranch.branchId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tài khoản Quản lý phòng vé chưa được thiết lập chi nhánh trực thuộc.'
+        });
+      }
+      branchData = mgrBranch;
+    }
+
+    const staff = await userService.createStaff({
+      name,
+      email,
+      phone,
+      password,
+      role,
+      status,
+      branch: branchData
+    });
 
     res.status(201).json({
       success: true,
@@ -85,7 +136,46 @@ exports.updateStaff = async (req, res) => {
       }
     }
 
-    const staff = await userService.updateStaff(id, { name, email, phone, role, status, password });
+    // Phân quyền: Quản lý phòng vé chỉ được sửa nhân viên bán vé
+    if (req.user.role === 'ticket_manager') {
+      const targetUser = await User.findById(id);
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy tài khoản nhân sự.'
+        });
+      }
+      if (targetUser.role !== 'ticket_agent') {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền cập nhật tài khoản nhân viên bán vé.'
+        });
+      }
+      let mgrBranchId = req.user.branch?.branchId;
+      if (!mgrBranchId) {
+        const currentMgr = await User.findById(req.user.id).select('branch').lean();
+        mgrBranchId = currentMgr?.branch?.branchId;
+      }
+      if (mgrBranchId && targetUser.branch?.branchId && targetUser.branch.branchId !== mgrBranchId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền cập nhật nhân viên thuộc chi nhánh của mình.'
+        });
+      }
+      if (role && role !== 'ticket_agent') {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ được gán vai trò nhân viên bán vé.'
+        });
+      }
+    }
+
+    let branchData = req.body.branch;
+    if (req.user.role === 'ticket_manager') {
+      branchData = req.user.branch;
+    }
+
+    const staff = await userService.updateStaff(id, { name, email, phone, role, status, password, branch: branchData });
 
     res.status(200).json({
       success: true,
@@ -103,7 +193,7 @@ exports.updateStaff = async (req, res) => {
 
 // @desc    Delete a staff member
 // @route   DELETE /api/v1/users/staff/:id
-// @access  Private (General Manager / Admin / Ops Manager)
+// @access  Private (General Manager / Admin / Ops Manager / Ticket Manager)
 exports.deleteStaff = async (req, res) => {
   try {
     const { id } = req.params;
@@ -121,6 +211,34 @@ exports.deleteStaff = async (req, res) => {
         return res.status(403).json({
           success: false,
           message: 'Quản lý vận tải / đội xe chỉ có quyền xóa tài khoản tài xế hoặc phụ xe.'
+        });
+      }
+    }
+
+    // Phân quyền: Quản lý phòng vé chỉ được xóa nhân viên bán vé thuộc chi nhánh mình
+    if (req.user.role === 'ticket_manager') {
+      const targetUser = await User.findById(id);
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy tài khoản nhân sự.'
+        });
+      }
+      if (targetUser.role !== 'ticket_agent') {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền xóa tài khoản nhân viên bán vé.'
+        });
+      }
+      let mgrBranchId = req.user.branch?.branchId;
+      if (!mgrBranchId) {
+        const currentMgr = await User.findById(req.user.id).select('branch').lean();
+        mgrBranchId = currentMgr?.branch?.branchId;
+      }
+      if (mgrBranchId && targetUser.branch?.branchId && targetUser.branch.branchId !== mgrBranchId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý phòng vé chỉ có quyền xóa nhân viên thuộc chi nhánh của mình.'
         });
       }
     }

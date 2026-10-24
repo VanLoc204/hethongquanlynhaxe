@@ -624,9 +624,22 @@ const AgentShiftSummaryPage = () => {
                       </td>
                       <td>
                         <div style={{ fontWeight: '600', color: '#0f172a' }}>{item.counterNumber}</div>
-                        <span className={`badge-shift ${item.status === 'active' ? 'badge-active' : 'badge-closed'}`} style={{ marginTop: '3px' }}>
-                          {item.status === 'active' ? 'Đang Mở Ca' : 'Đã Đóng Ca'}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
+                          <span className={`badge-shift ${item.status === 'active' ? 'badge-active' : 'badge-closed'}`}>
+                            {item.status === 'active' ? 'Đang Mở Ca' : 'Đã Đóng Ca'}
+                          </span>
+                          <span style={{
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            fontSize: '0.65rem',
+                            fontWeight: '700',
+                            background: item.faceVerified ? '#ecfdf5' : '#f1f5f9',
+                            color: item.faceVerified ? '#059669' : '#64748b',
+                            border: `1px solid ${item.faceVerified ? '#a7f3d0' : '#cbd5e1'}`
+                          }}>
+                            {item.faceVerified ? 'Face ID' : 'Thủ công'}
+                          </span>
+                        </div>
                       </td>
                       <td>
                         <div style={{ color: '#64748b' }}>{formatCurrency(item.initialCash)}</div>

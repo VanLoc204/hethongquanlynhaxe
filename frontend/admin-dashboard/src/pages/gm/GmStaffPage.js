@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import { BRANCHES, getBranchById } from '../../constants/branches';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -7,6 +8,7 @@ const ROLE_LABELS = {
   driver: 'Tài xế',
   attendant: 'Phụ xe',
   ticket_agent: 'Nhân viên bán vé',
+  ticket_manager: 'Quản lý phòng vé',
   fleet_manager: 'Quản lý Đội xe',
   ops_manager: 'Quản lý Vận tải',
   general_manager: 'Ban Giám đốc',
@@ -18,6 +20,7 @@ const ROLE_BADGE_STYLES = {
   general_manager: { bg: '#f3e8ff', color: '#7e22ce', border: '#e9d5ff' },
   ops_manager: { bg: '#e0f2fe', color: '#0284c7', border: '#bae6fd' },
   fleet_manager: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
+  ticket_manager: { bg: '#e0e7ff', color: '#4338ca', border: '#c7d2fe' },
   ticket_agent: { bg: '#ccfbf1', color: '#0d9488', border: '#99f6e4' },
   driver: { bg: '#dcfce7', color: '#16a34a', border: '#bbf7d0' },
   attendant: { bg: '#fce7f3', color: '#be185d', border: '#fbcfe8' }
@@ -38,16 +41,17 @@ const exportStaffToExcel = (staffList) => {
   let csvContent = '\uFEFF';
   csvContent += 'DANH SÁCH TÀI KHOẢN NGƯỜI DÙNG & PHÂN QUYỀN RBAC - AN BÌNH LINES\n';
   csvContent += `Thời gian xuất: ${new Date().toLocaleString('vi-VN')}\n\n`;
-  csvContent += 'STT,Họ và tên,Số điện thoại / Đăng nhập,Email,Vai trò RBAC,Trạng thái\n';
+  csvContent += 'STT,Họ và tên,Số điện thoại / Đăng nhập,Email,Vai trò RBAC,Chi nhánh,Trạng thái\n';
 
   staffList.forEach((s, idx) => {
     const nameClean = `"${(s.name || '').replace(/"/g, '""')}"`;
     const phoneClean = `"${(s.phone || '').replace(/"/g, '""')}"`;
     const emailClean = `"${(s.email || '').replace(/"/g, '""')}"`;
     const roleClean = `"${(ROLE_LABELS[s.role] || s.role || '').replace(/"/g, '""')}"`;
+    const branchClean = `"${(s.branch?.branchName || 'Toàn hệ thống').replace(/"/g, '""')}"`;
     const statusClean = `"${(STATUS_LABELS[s.status] || s.status || '').replace(/"/g, '""')}"`;
 
-    csvContent += `${idx + 1},${nameClean},${phoneClean},${emailClean},${roleClean},${statusClean}\n`;
+    csvContent += `${idx + 1},${nameClean},${phoneClean},${emailClean},${roleClean},${branchClean},${statusClean}\n`;
   });
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -77,6 +81,7 @@ const GmStaffPage = () => {
   // Filter & Search states
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [filterBranch, setFilterBranch] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
 
   // Form states
@@ -85,6 +90,7 @@ const GmStaffPage = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('admin');
+  const [branchId, setBranchId] = useState('sg');
   const [status, setStatus] = useState('active');
 
   const showToast = (msg, type = 'success') => {
@@ -122,6 +128,7 @@ const GmStaffPage = () => {
     setPhone('');
     setPassword('');
     setRole('admin');
+    setBranchId('sg');
     setStatus('active');
     setShowModal(true);
   };
@@ -133,6 +140,7 @@ const GmStaffPage = () => {
     setPhone(staff.phone || '');
     setPassword('');
     setRole(staff.role || 'driver');
+    setBranchId(staff.branch?.branchId || 'sg');
     setStatus(staff.status || 'active');
     setShowModal(true);
   };
@@ -209,6 +217,15 @@ const GmStaffPage = () => {
       status
     };
 
+    if (['ticket_manager', 'ticket_agent'].includes(role)) {
+      const branchObj = getBranchById(branchId);
+      payload.branch = {
+        branchId,
+        branchName: branchObj?.branchName || 'Chi nhánh TP. Hồ Chí Minh',
+        assignedOffices: (branchObj?.offices || []).map(o => o.name)
+      };
+    }
+
     if (password) {
       payload.password = password;
     }
@@ -243,6 +260,7 @@ const GmStaffPage = () => {
   const handleResetFiltersAndRefresh = () => {
     setSearchTerm('');
     setFilterRole('all');
+    setFilterBranch('all');
     setFilterStatus('all');
     setCurrentPage(1);
     setSelectedIds([]);
@@ -265,8 +283,9 @@ const GmStaffPage = () => {
                           s.phone.includes(searchTerm) ||
                           (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesRole = filterRole === 'all' || s.role === filterRole;
+    const matchesBranch = filterBranch === 'all' || s.branch?.branchId === filterBranch;
     const matchesStatus = filterStatus === 'all' || s.status === filterStatus;
-    return matchesSearch && matchesRole && matchesStatus;
+    return matchesSearch && matchesRole && matchesBranch && matchesStatus;
   });
 
   // Pagination logic
@@ -500,9 +519,25 @@ const GmStaffPage = () => {
               <option value="general_manager">Ban Giám đốc (GM)</option>
               <option value="ops_manager">Quản lý Vận tải</option>
               <option value="fleet_manager">Quản lý Đội xe</option>
+              <option value="ticket_manager">Quản lý phòng vé</option>
               <option value="ticket_agent">Nhân viên bán vé</option>
               <option value="driver">Tài xế</option>
               <option value="attendant">Phụ xe</option>
+            </select>
+
+            {/* Branch Filter */}
+            <select
+              value={filterBranch}
+              onChange={(e) => { setFilterBranch(e.target.value); setCurrentPage(1); }}
+              style={{
+                padding: '0.45rem 0.75rem', fontSize: '0.78rem', borderRadius: '8px',
+                border: '1px solid #cbd5e1', background: '#ffffff', color: '#0f172a', fontWeight: '500', outline: 'none'
+              }}
+            >
+              <option value="all">Tất cả chi nhánh</option>
+              <option value="sg">Chi nhánh TP. Hồ Chí Minh</option>
+              <option value="dl">Chi nhánh Đà Lạt</option>
+              <option value="ct">Chi nhánh Cần Thơ</option>
             </select>
 
             {/* Status Filter */}
@@ -558,6 +593,7 @@ const GmStaffPage = () => {
                   <th style={{ padding: '0.65rem 0.85rem' }}>SỐ ĐIỆN THOẠI / ĐĂNG NHẬP</th>
                   <th style={{ padding: '0.65rem 0.85rem' }}>EMAIL</th>
                   <th style={{ padding: '0.65rem 0.85rem' }}>VAI TRÒ RBAC</th>
+                  <th style={{ padding: '0.65rem 0.85rem' }}>CHI NHÁNH</th>
                   <th style={{ padding: '0.65rem 0.85rem' }}>TRẠNG THÁI</th>
                   <th style={{ padding: '0.65rem 0.85rem', textAlign: 'right' }}>THAO TÁC</th>
                 </tr>
@@ -621,6 +657,21 @@ const GmStaffPage = () => {
                         }}>
                           • {ROLE_LABELS[staff.role] || staff.role}
                         </span>
+                      </td>
+
+                      {/* Branch Badge */}
+                      <td style={{ padding: '0.65rem 0.85rem' }}>
+                        {staff.branch?.branchName ? (
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: '600', color: '#1e40af',
+                            background: '#eff6ff', padding: '2px 8px', borderRadius: '4px',
+                            border: '1px solid #bfdbfe'
+                          }}>
+                            {staff.branch.branchName}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Toàn hệ thống</span>
+                        )}
                       </td>
 
                       {/* Status Badge */}
@@ -805,6 +856,7 @@ const GmStaffPage = () => {
                     <option value="general_manager">Ban Giám đốc (GM)</option>
                     <option value="ops_manager">Quản lý Vận tải</option>
                     <option value="fleet_manager">Quản lý Đội xe</option>
+                    <option value="ticket_manager">Quản lý phòng vé</option>
                     <option value="ticket_agent">Nhân viên bán vé</option>
                     <option value="driver">Tài xế</option>
                     <option value="attendant">Phụ xe</option>
@@ -827,6 +879,26 @@ const GmStaffPage = () => {
                   </select>
                 </div>
               </div>
+
+              {['ticket_manager', 'ticket_agent'].includes(role) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '0.85rem' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e40af' }}>
+                    Chi nhánh trực thuộc (Bắt buộc cho nhân sự phòng vé) *
+                  </label>
+                  <select
+                    value={branchId}
+                    onChange={(e) => setBranchId(e.target.value)}
+                    style={{
+                      padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe',
+                      fontSize: '0.8rem', fontWeight: '600', outline: 'none', background: '#eff6ff', color: '#1e3a8a'
+                    }}
+                  >
+                    <option value="sg">Chi nhánh TP. Hồ Chí Minh (sg)</option>
+                    <option value="dl">Chi nhánh Đà Lạt (dl)</option>
+                    <option value="ct">Chi nhánh Cần Thơ (ct)</option>
+                  </select>
+                </div>
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
                 <button

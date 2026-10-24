@@ -1,6 +1,7 @@
 const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const Trip = require('../models/Trip');
+const ShiftSession = require('../models/ShiftSession');
 require('../models/Route');
 require('../models/Bus');
 
@@ -59,8 +60,8 @@ exports.registerFace = async (req, res) => {
   try {
     let { userId, faceDescriptors, facePhoto } = req.body;
 
-    // Nếu là tài xế hoặc phụ xe tự chụp khuôn mặt của mình thì lấy userId từ token
-    if (req.user && (req.user.role === 'driver' || req.user.role === 'attendant')) {
+    // Nếu không truyền userId thì tự lấy userId từ tài khoản đang đăng nhập
+    if (!userId && req.user) {
       userId = req.user.id || req.user._id;
     }
 
@@ -85,10 +86,10 @@ exports.registerFace = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhân viên.' });
     }
 
-    if (user.role !== 'driver' && user.role !== 'attendant') {
+    if (!['driver', 'attendant', 'ticket_agent', 'ticket_manager'].includes(user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'Chỉ có thể đăng ký khuôn mặt cho Tài xế hoặc Phụ xe.'
+        message: 'Chỉ có thể đăng ký khuôn mặt cho Tài xế, Phụ xe, Nhân viên bán vé hoặc Quản lý phòng vé.'
       });
     }
 
@@ -354,7 +355,7 @@ exports.getMyAttendance = async (req, res) => {
     const userId = req.user?.id || req.user?._id;
     const limit = parseInt(req.query.limit) || 30;
 
-    const user = await User.findById(userId).select('name phone role faceRegistered faceDescriptors').lean();
+    const user = await User.findById(userId).select('name phone role faceRegistered facePhoto +faceDescriptors').lean();
 
     const records = await Attendance.find({ userId })
       .sort({ createdAt: -1 })
@@ -363,7 +364,45 @@ exports.getMyAttendance = async (req, res) => {
 
     const { dayStart, dayEnd } = getDayRangeVN();
 
-    // Tìm các chuyến xe hôm nay của nhân viên này
+    // Đối với Nhân viên Bán vé / Quản lý phòng vé: lấy dữ liệu từ ShiftSession
+    if (user && ['ticket_agent', 'ticket_manager'].includes(user.role)) {
+      const activeShift = await ShiftSession.findOne({ userId, status: 'active' }).lean();
+      const latestShift = activeShift || (await ShiftSession.findOne({ userId }).sort({ startTime: -1 }).lean());
+
+      const shiftHistory = await ShiftSession.find({ userId })
+        .sort({ startTime: -1 })
+        .limit(limit)
+        .lean();
+
+      const combinedHistory = shiftHistory.map(s => ({
+        id: s._id,
+        tripRoute: s.counterNumber || 'Quầy vé trực',
+        busPlateNumber: `Quỹ: ${(s.initialCash || 0).toLocaleString('vi-VN')}đ`,
+        date: new Date(s.startTime).toLocaleDateString('vi-VN'),
+        checkInTime: formatTime(s.startTime),
+        checkOutTime: s.endTime ? formatTime(s.endTime) : '--:--:--',
+        status: s.status,
+        faceVerified: Boolean(s.faceVerified),
+        faceDistance: s.faceDistance,
+        isLiveVerified: Boolean(s.isLiveVerified),
+        checkInPhoto: s.checkInPhoto || null,
+        location: s.location || s.counterNumber
+      }));
+
+      return res.status(200).json({
+        success: true,
+        faceRegistered: Boolean(user.faceRegistered),
+        facePhoto: user.facePhoto || null,
+        faceDescriptors: Array.isArray(user.faceDescriptors) ? user.faceDescriptors : [],
+        todayDuties: [],
+        activeTrip: null,
+        todayStatus: activeShift ? 'active' : latestShift && new Date(latestShift.startTime) >= dayStart ? latestShift.status : 'not_checked',
+        todayRecord: activeShift || latestShift || null,
+        history: combinedHistory
+      });
+    }
+
+    // Tìm các chuyến xe hôm nay của nhân viên này (driver / attendant)
     const tripQuery = {
       departureTime: { $gte: dayStart, $lte: dayEnd },
       journeyStatus: { $ne: 'cancelled' }

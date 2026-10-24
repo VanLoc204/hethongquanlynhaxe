@@ -37,7 +37,12 @@ Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`
 | **Giám Đốc** (`general_manager`) | Giám Đốc An Bình | **`0966555666`** | `director@anbinhlines.vn` | Duyệt tuyến mới, duyệt đơn nghỉ phép, xem Bảng lương (`Payroll`), Báo cáo doanh thu |
 | **Quản Lý Vận Tải** (`ops_manager`) | Quản Lý Vận Tải An Bình | **`0977777777`** | `ops@anbinhlines.vn` | Quản lý Tuyến/Chuyến/Nhân sự chuyến, Lịch tuần Kanban, chạy thuật toán Greedy |
 | **Quản Lý Xe** (`fleet_manager`) | Quản Lý Xe An Bình | **`0988888888`** | `fleet@anbinhlines.vn` | Quản lý phương tiện xe khách, lập hồ sơ bảo trì & sửa chữa định kỳ |
-| **Nhân Viên Bán Vé** (`ticket_agent`) | Nhân Viên Bán Vé | **`0944555666`** | `ticket@anbinhlines.vn` | Bán vé tại quầy, quản lý ca quầy (`ShiftSession`), soát vé QR, in vé giấy |
+| **Quản Lý Phòng Vé (TP.HCM)** (`ticket_manager`) | Quản Lý Phòng Vé Sài Gòn | **`0944999888`** | `ticket_manager@anbinhlines.vn` | Giám sát ca trực quầy vé, đối soát quỹ, quản lý nhân viên chi nhánh TP.HCM |
+| **Quản Lý Phòng Vé (Đà Lạt)** (`ticket_manager`) | Quản Lý Phòng Vé Đà Lạt | **`0944999881`** | `ticket_manager_dl@anbinhlines.vn` | Giám sát ca trực, đối soát quỹ, quản lý nhân viên chi nhánh Đà Lạt |
+| **Quản Lý Phòng Vé (Cần Thơ)** (`ticket_manager`) | Quản Lý Phòng Vé Cần Thơ | **`0944999882`** | `ticket_manager_ct@anbinhlines.vn` | Giám sát ca trực, đối soát quỹ, quản lý nhân viên chi nhánh Cần Thơ |
+| **Nhân Viên Bán Vé (TP.HCM)** (`ticket_agent`) | Nhân Viên Bán Vé Sài Gòn | **`0944555666`** | `ticket@anbinhlines.vn` | Mở ca trực, bán vé tại quầy bến xe Miền Đông / Miền Tây, in vé |
+| **Nhân Viên Bán Vé (Đà Lạt)** (`ticket_agent`) | Nhân Viên Bán Vé Đà Lạt | **`0944555661`** | `ticket_dl@anbinhlines.vn` | Mở ca trực, bán vé tại quầy bến xe Liên Tỉnh / Bùi Thị Xuân |
+| **Nhân Viên Bán Vé (Cần Thơ)** (`ticket_agent`) | Nhân Viên Bán Vé Cần Thơ | **`0944555662`** | `ticket_ct@anbinhlines.vn` | Mở ca trực, bán vé tại quầy bến xe Trung Tâm / Ninh Kiều |
 
 ### B. Đội Ngũ Tài Xế & Phụ Xe Chuyên Trách (1 Xe ⇄ 1 Tổ Lái Đi/Về)
 | Vai trò | Họ tên | Số Điện Thoại | Phân công Xe khách cố định |
@@ -93,13 +98,23 @@ Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`
 * **Quản lý Bảo trì & Sửa chữa (`MaintenanceRecord`)**: Lập lịch bảo trì định kỳ, lưu chi phí bảo dưỡng, cập nhật tình trạng xe (Hoạt động / Bảo trì / Sự cố).
 * **Báo cáo Phương tiện**: Xem tổng quan tình trạng đội xe và chỉ số sẵn sàng vận tải.
 
-#### 3. Nhân Viên Bán Vé Quầy (`ticket_agent`)
-* **Quản lý Ca bán vé quầy (`ShiftSession`)**: Mở ca, kiểm tra tiền quỹ ban đầu, chốt ca tổng kết doanh thu tiền mặt & chuyển khoản.
+#### 3. Quản Lý Phòng Vé (`ticket_manager`)
+* **Giám sát Ca trực quầy vé & Đối soát quỹ (`ShiftSession`)**: Theo dõi thời gian thực các quầy đang mở bán, tiền đầu ca, doanh thu tiền mặt, quét mã VietQR và số lượng vé in tại quầy. Đối soát ảnh chụp sinh trắc học Face ID của từng nhân viên khi mở ca và chốt ca trực. Hỗ trợ chốt ca hộ cho thu ngân.
+* **Chấm công Ca trực Quản lý**: Mở ca trực điều hành, ghi nhận bến xe/văn phòng phụ trách, quỹ két bàn giao ban đầu, đếm thời lượng trực Live và chốt ca lập biên bản bàn giao.
+* **Lập Đề xuất Giá vé (`PricingProposal`)**: Khởi tạo phiếu đề xuất giá vé với 2 lựa chọn chuyên biệt gửi Ban Giám Đốc phê duyệt (Quy trình Maker-Checker):
+  1. **Đề xuất Điều chỉnh vé**: Tăng/giảm giá theo % hoặc mức giá tạm thời theo đợt/chiến dịch trong khoảng thời gian xác định (Lễ, Tết, cao điểm, kích cầu...). Tự động kích hoạt quy định giá vé (`PricingRule`) khi được duyệt.
+  2. **Đề xuất Thay đổi giá vé (Giá gốc)**: Điều chỉnh mức giá niêm yết cơ bản (`BasePrice`) của tuyến đường theo từng loại xe. Áp dụng dài hạn và tự động cập nhật đồng bộ vào các chuyến xe trong tương lai chưa khởi hành khi được duyệt.
+* **Quản trị Nhân sự Phòng vé**: Tạo tài khoản nhân viên bán vé, phân quyền chi nhánh quầy vé và phê duyệt đơn xin nghỉ phép của nhân viên bán vé.
+* **Tra cứu & Quản lý vé quầy**: Tra cứu trạng thái vé, lịch trình chuyến và hỗ trợ đổi/hủy vé khách mua tại quầy.
+
+#### 4. Nhân Viên Bán Vé Quầy (`ticket_agent`)
+* **Chấm công Sinh trắc học Face ID (`ShiftSession` & `face-api.js`)**: Nhận diện khuôn mặt thời gian thực bằng camera AI, kiểm tra người thật (Liveness Blink Detection), so khớp vector 128 chiều (Euclidean distance threshold 0.42), lưu trữ ảnh chụp check-in/check-out đối soát minh bạch, ngăn chặn hoàn toàn việc điểm danh hộ tương tự như Tài xế và Phụ xe.
+* **Quản lý Ca bán vé quầy**: Mở ca, kiểm tra tiền quỹ ban đầu, đếm thời gian trực Live, chốt ca tổng kết doanh thu tiền mặt & chuyển khoản.
 * **Đặt vé & In vé tại quầy**: Đặt vé trực tiếp cho khách mua tại quầy, xuất vé giấy.
 * **Soát vé & Hủy vé**: Tra cứu vé nhanh, soát vé cho khách hoặc thực hiện đổi/hủy vé theo quy định.
 * **Lịch làm việc cá nhân**: Xem ca làm việc hành chính 8h/ngày (`WorkSchedule`).
 
-#### 4. Đội Ngũ Tài Xế & Phụ Xe (`driver` & `attendant`)
+#### 5. Đội Ngũ Tài Xế & Phụ Xe (`driver` & `attendant`)
 * **Xem Chuyến xe phân công**: Xem danh sách các chuyến xe mình phụ trách cố định theo đầu xe.
 * **Soát vé QR Code (Phụ xe)**: Quét mã QR vé điện tử của khách hàng trước khi lên xe để check-in.
 * **Cập nhật trạng thái chuyến**: Chuyển trạng thái chuyến đi (Đang chạy ➔ Đã hoàn thành).
