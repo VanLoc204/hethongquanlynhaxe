@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import GmDynamicPricingPage from './GmDynamicPricingPage';
+import { getBranchName } from '../../constants/branches';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 const DAYS_MAP = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
@@ -101,11 +102,82 @@ const GmPricingPage = () => {
     }
   };
 
+  // Pricing Proposals states
+  const [proposals, setProposals] = useState([]);
+  const [loadingProposals, setLoadingProposals] = useState(false);
+
+  const fetchProposals = async () => {
+    setLoadingProposals(true);
+    try {
+      const res = await fetch(`${API_BASE}/pricing/proposals`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProposals(data.proposals || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingProposals(false);
+    }
+  };
+
+  const handleApproveProposal = async (propId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn phê duyệt đề xuất giá vé này và tự động áp dụng vào hệ thống?')) return;
+    try {
+      const res = await fetch(`${API_BASE}/pricing/proposals/${propId}/review`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: 'approved' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã phê duyệt đề xuất và tự động cập nhật giá vé thành công!');
+        fetchProposals();
+        fetchBasePrices();
+        fetchRules();
+      } else {
+        showToast(data.message || 'Lỗi phê duyệt.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ.', 'error');
+    }
+  };
+
+  const handleRejectProposal = async (propId) => {
+    const note = window.prompt('Nhập lý do từ chối đề xuất giá vé (tùy chọn):', 'Giá đề xuất chưa phù hợp với kế hoạch doanh thu.');
+    if (note === null) return;
+    try {
+      const res = await fetch(`${API_BASE}/pricing/proposals/${propId}/review`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: 'rejected', reviewNote: note })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã từ chối đề xuất giá vé.');
+        fetchProposals();
+      } else {
+        showToast(data.message || 'Lỗi từ chối.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ.', 'error');
+    }
+  };
+
   useEffect(() => {
     if (token) {
       fetchRoutes();
       fetchRules();
       fetchBasePrices();
+      fetchProposals();
     }
   }, [token]);
 
@@ -465,7 +537,7 @@ const GmPricingPage = () => {
             <div>
               <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CẬP NHẬT LẦN CUỐI</div>
               <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0f172a', marginTop: '4px' }}>Hôm nay lúc 09:15</div>
-              <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>✓ Đã áp dụng toàn hệ thống</div>
+              <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>Đã áp dụng toàn hệ thống</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
@@ -482,7 +554,7 @@ const GmPricingPage = () => {
             <div>
               <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>QUY ĐỊNH ĐANG ÁP DỤNG</div>
               <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#0f172a', marginTop: '4px' }}>{String(activeRulesCount).padStart(2, '0')} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>chính sách</span></div>
-              <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>✓ Đồng bộ máy chủ toàn hệ thống</div>
+              <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>Đồng bộ máy chủ toàn hệ thống</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
@@ -493,7 +565,7 @@ const GmPricingPage = () => {
             <div>
               <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>PHỤ THU LỄ &amp; CAO ĐIỂM</div>
               <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#2563eb', marginTop: '4px' }}>+15% ~ 40%</div>
-              <div style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: '700', marginTop: '2px' }}>⚡ Tự động kích hoạt theo lịch</div>
+              <div style={{ fontSize: '0.7rem', color: '#d97706', fontWeight: '700', marginTop: '2px' }}>Tự động kích hoạt theo lịch</div>
             </div>
             <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#fff7ed', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>
@@ -565,7 +637,27 @@ const GmPricingPage = () => {
             fontWeight: '800', fontSize: '0.875rem', cursor: 'pointer'
           }}
         >
-          Xem gợi ý giá vé (AI Suggestions)
+          Xem gợi ý điều chỉnh giá vé
+        </button>
+
+        <button
+          onClick={() => setActiveTab('ticket-proposals')}
+          style={{
+            padding: '10px 0', background: 'none', border: 'none',
+            borderBottom: activeTab === 'ticket-proposals' ? '3px solid #2563eb' : '3px solid transparent',
+            color: activeTab === 'ticket-proposals' ? '#2563eb' : '#64748b',
+            fontWeight: '800', fontSize: '0.875rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px'
+          }}
+        >
+          Đề xuất từ Phòng vé
+          <span style={{
+            backgroundColor: proposals.filter(p => p.status === 'pending').length > 0 ? '#ef4444' : (activeTab === 'ticket-proposals' ? '#eff6ff' : '#f1f5f9'),
+            color: proposals.filter(p => p.status === 'pending').length > 0 ? '#ffffff' : (activeTab === 'ticket-proposals' ? '#2563eb' : '#64748b'),
+            fontSize: '0.7rem', padding: '1px 7px', borderRadius: '10px', fontWeight: '800'
+          }}>
+            {proposals.length}
+          </span>
         </button>
 
       </div>
@@ -648,11 +740,11 @@ const GmPricingPage = () => {
                       const isDiscount = rule.adjustmentValue < 0;
                       const isPercentage = rule.adjustmentType === 'percentage';
 
-                      let typeBadge = { label: '⚡ Phụ thu cao điểm', bg: '#fffbe6', color: '#d97706' };
+                      let typeBadge = { label: 'Phụ thu cao điểm', bg: '#fffbe6', color: '#d97706' };
                       if (isDiscount) {
                         typeBadge = { label: '% Chiết khấu ưu đãi', bg: '#ecfdf5', color: '#059669' };
                       } else if (!isPercentage) {
-                        typeBadge = { label: '📅 Phụ thu định kỳ', bg: '#fff7ed', color: '#c2410c' };
+                        typeBadge = { label: 'Phụ thu định kỳ', bg: '#fff7ed', color: '#c2410c' };
                       }
 
                       return (
@@ -688,7 +780,7 @@ const GmPricingPage = () => {
 
                           <td style={{ padding: '1rem', fontSize: '0.75rem', color: '#64748b' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                              📅 Liên tục cả năm 2026 - 2027
+                              Liên tục cả năm 2026 - 2027
                             </div>
                             <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '1px' }}>
                               {rule.dayOfWeek.length === 0 ? 'Áp dụng 7 ngày/tuần' : rule.dayOfWeek.map(d => DAYS_MAP[d]).join(', ')}
@@ -981,6 +1073,148 @@ const GmPricingPage = () => {
           <GmDynamicPricingPage />
         )}
 
+        {/* TAB 4: TICKET PROPOSALS FROM BOOKING OFFICE */}
+        {activeTab === 'ticket-proposals' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Đề Xuất Điều Chỉnh Giá Vé Từ Phòng Vé
+                </h3>
+                <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  Các phiếu đề xuất giá do Quản lý phòng vé gửi lên Ban Giám Đốc xem xét và phê duyệt
+                </p>
+              </div>
+              <button
+                onClick={fetchProposals}
+                style={{ padding: '6px 14px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '700', color: '#334155' }}
+              >
+                Làm mới đề xuất
+              </button>
+            </div>
+
+            {loadingProposals ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>Đang tải danh sách đề xuất giá vé...</div>
+            ) : proposals.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>Chưa có đề xuất giá vé nào từ phòng vé.</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: '800', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                      <th style={{ padding: '10px 12px' }}>STT</th>
+                      <th style={{ padding: '10px 12px' }}>Tiêu đề đề xuất</th>
+                      <th style={{ padding: '10px 12px' }}>Tuyến đường</th>
+                      <th style={{ padding: '10px 12px' }}>Loại xe</th>
+                      <th style={{ padding: '10px 12px' }}>Giá cũ &rarr; Giá đề xuất</th>
+                      <th style={{ padding: '10px 12px' }}>Thời hạn áp dụng</th>
+                      <th style={{ padding: '10px 12px' }}>Lý do đề xuất</th>
+                      <th style={{ padding: '10px 12px' }}>Trạng thái</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>Thao tác Giám đốc</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {proposals.map((p, idx) => {
+                      const isPending = p.status === 'pending';
+                      const routeName = p.routeId?.name || (p.routeId ? `${p.routeId.startPoint} -> ${p.routeId.endPoint}` : 'N/A');
+
+                      return (
+                        <tr key={p._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '10px 12px', color: '#64748b' }}>{idx + 1}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px', flexWrap: 'wrap' }}>
+                              {p.proposalCategory === 'base_price' ? (
+                                <span style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe', fontSize: '0.62rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px' }}>
+                                  GIÁ CƠ SỞ NIÊM YẾT
+                                </span>
+                              ) : (
+                                <span style={{ background: '#f8fafc', color: '#475569', border: '1px solid #cbd5e1', fontSize: '0.62rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px' }}>
+                                  ĐIỀU CHỈNH MÙA VỤ
+                                </span>
+                              )}
+                              <span style={{ fontWeight: '700', color: '#0f172a' }}>{p.title}</span>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span>Người lập: {p.proposerName} ({new Date(p.createdAt).toLocaleDateString('vi-VN')})</span>
+                              {p.branchId && (
+                                <span style={{ background: '#eff6ff', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontWeight: '600', fontSize: '0.65rem', border: '1px solid #bfdbfe' }}>
+                                  {getBranchName(p.branchId)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', fontWeight: '600', color: '#334155' }}>{routeName}</td>
+                          <td style={{ padding: '10px 12px', color: '#64748b' }}>{p.busType === 'all' ? 'Tất cả loại xe' : p.busType}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <div style={{ textDecoration: 'line-through', color: '#94a3b8', fontSize: '0.72rem' }}>
+                              {(p.currentPrice || 0).toLocaleString('vi-VN')} đ
+                            </div>
+                            <div style={{ fontWeight: '800', color: '#2563eb', fontSize: '0.85rem' }}>
+                              {(p.proposedPrice || 0).toLocaleString('vi-VN')} đ
+                              {p.adjustmentPercentage !== 0 && (
+                                <span style={{ marginLeft: '4px', fontSize: '0.68rem', color: p.adjustmentPercentage > 0 ? '#16a34a' : '#dc2626' }}>
+                                  ({p.adjustmentPercentage > 0 ? `+${p.adjustmentPercentage}%` : `${p.adjustmentPercentage}%`})
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: '#334155' }}>
+                            {p.effectiveTo
+                              ? `${new Date(p.effectiveFrom).toLocaleDateString('vi-VN')} → ${new Date(p.effectiveTo).toLocaleDateString('vi-VN')}`
+                              : `Từ ${new Date(p.effectiveFrom).toLocaleDateString('vi-VN')} (Dài hạn)`}
+                          </td>
+                          <td style={{ padding: '10px 12px', maxWidth: '240px', color: '#475569' }}>
+                            {p.reason}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <span style={{
+                              padding: '2px 8px', borderRadius: '12px', fontSize: '0.68rem', fontWeight: '700',
+                              background: p.status === 'approved' ? '#ecfdf5' : (p.status === 'rejected' ? '#fef2f2' : '#fef3c7'),
+                              color: p.status === 'approved' ? '#047857' : (p.status === 'rejected' ? '#b91c1c' : '#b45309'),
+                              border: `1px solid ${p.status === 'approved' ? '#a7f3d0' : (p.status === 'rejected' ? '#fecaca' : '#fde68a')}`
+                            }}>
+                              {p.status === 'approved' ? 'Đã áp dụng' : (p.status === 'rejected' ? 'Từ chối' : 'Chờ duyệt')}
+                            </span>
+                          </td>
+                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                            {isPending ? (
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                <button
+                                  onClick={() => handleApproveProposal(p._id)}
+                                  style={{
+                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
+                                    border: 'none', background: '#10b981', color: '#ffffff', cursor: 'pointer',
+                                    boxShadow: '0 1px 3px rgba(16,185,129,0.3)'
+                                  }}
+                                >
+                                  Phê duyệt &amp; Áp giá
+                                </button>
+                                <button
+                                  onClick={() => handleRejectProposal(p._id)}
+                                  style={{
+                                    padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
+                                    border: '1px solid #fecaca', background: '#fef2f2', color: '#b91c1c', cursor: 'pointer'
+                                  }}
+                                >
+                                  Từ chối
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                                {p.reviewedAt ? new Date(p.reviewedAt).toLocaleDateString('vi-VN') : 'Đã xử lý'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
       </section>
 
       {/* MODAL: ADD / EDIT RULE */}
@@ -1153,7 +1387,7 @@ const GmPricingPage = () => {
                   style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', fontWeight: '800', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#2563eb', outline: 'none' }}
                 />
                 <span style={{ fontSize: '0.725rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                  Giá đề xuất của AI: {selectedCombo.recommendedPrice?.toLocaleString('vi-VN')} đ
+                  Giá đề xuất tối ưu: {selectedCombo.recommendedPrice?.toLocaleString('vi-VN')} đ
                 </span>
               </div>
 

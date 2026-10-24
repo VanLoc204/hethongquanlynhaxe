@@ -448,7 +448,7 @@ const OpsFleetAccountsPage = () => {
         }
       }, 250);
     } catch (err) {
-      setFaceError('Không thể nạp mô hình AI nhận diện khuôn mặt: ' + err.message);
+      setFaceError('Không thể nạp mô hình nhận diện khuôn mặt: ' + err.message);
     }
   };
 
@@ -851,7 +851,7 @@ const OpsFleetAccountsPage = () => {
             {faceCount} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>({facePercent}%)</span>
           </div>
           <div style={{ fontSize: '0.72rem', color: facePercent >= 80 ? '#16a34a' : '#d97706', fontWeight: '600', marginTop: '2px' }}>
-            {facePercent >= 80 ? 'Đạt chuẩn AI chấm công' : 'Cần bổ sung mẫu mặt'}
+            {facePercent >= 80 ? 'Đạt chuẩn xác thực sinh trắc học' : 'Cần bổ sung mẫu mặt'}
           </div>
         </div>
       </div>
@@ -985,7 +985,7 @@ const OpsFleetAccountsPage = () => {
               padding: '0.4rem 0.6rem'
             }}
           >
-            ✕ Xóa bộ lọc
+            Xóa bộ lọc
           </button>
         )}
       </div>
@@ -1454,12 +1454,14 @@ const OpsFleetAccountsPage = () => {
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  fontSize: '1.3rem',
                   color: '#94a3b8',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '4px'
                 }}
               >
-                ✕
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
@@ -1772,9 +1774,9 @@ const OpsFleetAccountsPage = () => {
               </div>
               <button
                 onClick={() => setShowPasswordModal(false)}
-                style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
               >
-                ✕
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
@@ -1908,9 +1910,9 @@ const OpsFleetAccountsPage = () => {
               </div>
               <button
                 onClick={closeFaceModal}
-                style={{ background: 'transparent', border: 'none', fontSize: '1.3rem', color: '#94a3b8', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
               >
-                ✕
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
@@ -2219,9 +2221,9 @@ const OpsFleetAccountsPage = () => {
               </div>
               <button
                 onClick={() => setPreviewPhotoStaff(null)}
-                style={{ background: 'transparent', border: 'none', fontSize: '1.3rem', color: '#94a3b8', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
               >
-                ✕
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 

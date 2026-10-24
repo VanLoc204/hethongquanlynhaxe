@@ -537,7 +537,7 @@ const DriverAttendancePage = () => {
                   fontWeight: '800'
                 }}
               >
-                {faceRegistered ? '✓ ĐÃ CÓ FACE ID' : '⚠ CHƯA CÓ FACE ID'}
+                {faceRegistered ? 'ĐÃ ĐĂNG KÝ KHUÔN MẶT' : 'CHƯA ĐĂNG KÝ KHUÔN MẶT'}
               </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '4px', margin: 0 }}>
@@ -586,13 +586,13 @@ const DriverAttendancePage = () => {
 
       {/* ── BỐ CỤC 2 CỘT RESPONSIVE ── */}
       <div className="attendance-grid">
-        {/* CỘT TRÁI: CAMERA AI VÀ ĐỊNH VỊ XUẤT BẾN */}
+        {/* CỘT TRÁI: CAMERA VÀ ĐỊNH VỊ XUẤT BẾN */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Card Camera AI */}
+          {/* Card Camera Xác Thực */}
           <div className="executive-box">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
               <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase' }}>
-                Camera AI Quét Khuôn Mặt
+                Camera Xác Thực Khuôn Mặt
               </div>
               <span
                 style={{
@@ -605,7 +605,7 @@ const DriverAttendancePage = () => {
                   border: `1px solid ${modelsReady ? '#a7f3d0' : '#fed7aa'}`
                 }}
               >
-                {modelsReady ? 'AI MODELS SẴN SÀNG' : 'ĐANG TẢI MÔ HÌNH...'}
+                {modelsReady ? 'MÔ HÌNH SẴN SÀNG' : 'ĐANG TẢI MÔ HÌNH...'}
               </span>
             </div>
 
@@ -789,7 +789,7 @@ const DriverAttendancePage = () => {
                       lineHeight: '1.4'
                     }}
                   >
-                    <strong>📸 Tài khoản chưa có dữ liệu khuôn mặt:</strong> Vui lòng bật camera, nhìn thẳng vào ống kính và bấm nút bên dưới để <strong>chụp ảnh kích hoạt Face ID lần đầu</strong> trước khi điểm danh ca trực.
+                    <strong>Tài khoản chưa có dữ liệu khuôn mặt:</strong> Vui lòng bật camera, nhìn thẳng vào ống kính và bấm nút bên dưới để <strong>chụp ảnh đăng ký dữ liệu khuôn mặt</strong> trước khi điểm danh ca trực.
                   </div>
 
                   <button
@@ -811,7 +811,12 @@ const DriverAttendancePage = () => {
                       transition: 'all 0.15s ease'
                     }}
                   >
-                    {isRegisteringFace ? 'Đang phân tích & lưu khuôn mặt...' : '📸 Chụp Ảnh & Kích Hoạt Face ID Ngay'}
+                    {isRegisteringFace ? 'Đang phân tích & lưu khuôn mặt...' : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        Chụp Ảnh &amp; Kích Hoạt Dữ Liệu Khuôn Mặt
+                      </span>
+                    )}
                   </button>
                 </div>
               ) : todayStatus !== 'closed' ? (

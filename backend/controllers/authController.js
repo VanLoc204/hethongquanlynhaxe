@@ -65,6 +65,7 @@ exports.login = async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
+        branch: user.branch,
         points: user.points || 150,
         membershipTier: user.membershipTier || 'Bronze'
       }
@@ -93,6 +94,7 @@ exports.getMe = async (req, res) => {
         phone: user.phone,
         role: user.role,
         status: user.status,
+        branch: user.branch,
         points: user.points || 150,
         membershipTier: user.membershipTier || 'Bronze'
       }

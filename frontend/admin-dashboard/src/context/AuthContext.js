@@ -9,6 +9,26 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('admin_user') || 'null'));
   const [loading, setLoading] = useState(false);
 
+  // Sync latest user profile and branch data on mount/refresh
+  useEffect(() => {
+    if (!token) return;
+    let isMounted = true;
+    fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (isMounted && data.success && data.user) {
+          setUser(prev => ({ ...(prev || {}), ...data.user }));
+          localStorage.setItem('admin_user', JSON.stringify(data.user));
+        }
+      })
+      .catch(err => {
+        console.error('Lỗi đồng bộ hồ sơ người dùng:', err);
+      });
+    return () => { isMounted = false; };
+  }, [token]);
+
   const login = async (phone, password) => {
     setLoading(true);
     try {
@@ -20,7 +40,7 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        const allowedRoles = ['fleet_manager', 'ops_manager', 'general_manager', 'admin', 'ticket_agent', 'driver', 'attendant'];
+        const allowedRoles = ['fleet_manager', 'ops_manager', 'general_manager', 'admin', 'ticket_manager', 'ticket_agent', 'driver', 'attendant'];
         if (!allowedRoles.includes(data.user.role)) {
           return { success: false, message: 'Tài khoản không có quyền truy cập hệ thống quản lý.' };
         }

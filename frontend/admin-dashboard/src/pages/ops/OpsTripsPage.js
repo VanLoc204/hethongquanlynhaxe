@@ -1552,8 +1552,8 @@ const OpsTripsPage = () => {
                 />
                 <small style={{ color: price === '' ? '#ef4444' : '#10b981', display: 'block', marginTop: '4px', fontWeight: '600' }}>
                   {price === '' 
-                    ? "⚠️ Tuyến đường & loại xe này chưa được thiết lập giá vé bởi quản lý!" 
-                    : "✓ Giá vé tự động áp dụng theo quy định của quản lý nhà xe."
+                    ? "Tuyến đường & loại xe này chưa được thiết lập giá vé bởi quản lý!" 
+                    : "Giá vé tự động áp dụng theo quy định của quản lý nhà xe."
                   }
                 </small>
               </div>
@@ -1692,7 +1692,7 @@ const OpsTripsPage = () => {
               maxHeight: '90vh', overflowY: 'auto', position: 'relative' 
             }}
           >
-            <h3 style={{ marginBottom: '20px' }}>⚡ Xếp lịch chuyến xe tự động</h3>
+            <h3 style={{ marginBottom: '20px' }}>Xếp lịch chuyến xe tự động</h3>
             
             <form onSubmit={handleAutoScheduleSubmit}>
               {/* Date range */}
@@ -1797,7 +1797,7 @@ const OpsTripsPage = () => {
                   Hủy
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ background: 'var(--accent)', borderColor: 'var(--accent)' }}>
-                  ✓ Bắt đầu xếp lịch
+                  Bắt đầu xếp lịch
                 </button>
               </div>
             </form>

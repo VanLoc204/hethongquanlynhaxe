@@ -12,21 +12,21 @@ const {
 
 const router = express.Router();
 
-// ─── Route dùng riêng cho Tài xế / Phụ xe ────────────────────────────────────
-// Xem lịch sử chấm công của mình (kèm trạng thái hôm nay)
-router.get('/mine', protect, restrictTo('driver', 'attendant'), getMyAttendance);
+// ─── Route dùng riêng cho Nhân viên (Tài xế / Phụ xe / Bán vé / Quản lý) ────
+// Xem lịch sử chấm công của mình (kèm trạng thái hôm nay & Face ID)
+router.get('/mine', protect, restrictTo('driver', 'attendant', 'ticket_agent', 'ticket_manager'), getMyAttendance);
 
 // Chấm công vào ca bằng khuôn mặt
-router.post('/check-in', protect, restrictTo('driver', 'attendant'), checkIn);
+router.post('/check-in', protect, restrictTo('driver', 'attendant', 'ticket_agent', 'ticket_manager'), checkIn);
 
 // Chấm công tan ca bằng khuôn mặt
-router.post('/check-out', protect, restrictTo('driver', 'attendant'), checkOut);
+router.post('/check-out', protect, restrictTo('driver', 'attendant', 'ticket_agent', 'ticket_manager'), checkOut);
 
 // Đặt lại (reset) bản ghi ca trực hôm nay để phục vụ test/demo
 router.delete(
   '/reset-today',
   protect,
-  restrictTo('driver', 'attendant', 'ops_manager', 'general_manager', 'admin'),
+  restrictTo('driver', 'attendant', 'ticket_agent', 'ticket_manager', 'ops_manager', 'general_manager', 'admin'),
   resetTodayAttendance
 );
 
@@ -44,7 +44,7 @@ router.get(
 router.post(
   '/register-face',
   protect,
-  restrictTo('ops_manager', 'general_manager', 'admin', 'driver', 'attendant'),
+  restrictTo('ops_manager', 'general_manager', 'admin', 'ticket_manager', 'driver', 'attendant', 'ticket_agent'),
   registerFace
 );
 

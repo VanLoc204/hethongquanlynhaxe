@@ -61,6 +61,12 @@ import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminLogsPage from './pages/admin/AdminLogsPage';
 import AdminErrorsPage from './pages/admin/AdminErrorsPage';
 
+// Ticket Manager Pages
+import TicketStaffAccountsPage from './pages/ticket/TicketStaffAccountsPage';
+import TicketStaffLeavesPage from './pages/ticket/TicketStaffLeavesPage';
+import TicketAttendanceMonitoringPage from './pages/ticket/TicketAttendanceMonitoringPage';
+import TicketPricingProposalPage from './pages/ticket/TicketPricingProposalPage';
+
 function DashboardLayout() {
   const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -171,6 +177,15 @@ function DashboardLayout() {
       case 'driver-map':
         return <DriverMapPage setActiveTab={setActiveTab} />;
 
+      // Ticket Manager views
+      case 'ticket-staff':
+        return <TicketStaffAccountsPage />;
+      case 'ticket-leaves':
+        return <TicketStaffLeavesPage />;
+      case 'ticket-attendance':
+        return <TicketAttendanceMonitoringPage />;
+      case 'ticket-proposals':
+        return <TicketPricingProposalPage />;
 
       default:
         // Generic fallback placeholder for other role views under development
@@ -274,6 +289,16 @@ function DashboardLayout() {
       case 'driver-map':
         return 'Bản đồ di chuyển GPS';
 
+      // Ticket Manager views
+      case 'ticket-staff':
+        return 'Quản lý tài khoản nhân viên bán vé';
+      case 'ticket-leaves':
+        return 'Duyệt đơn xin nghỉ nhân viên bán vé';
+      case 'ticket-attendance':
+        return 'Giám sát ca trực & đối soát quỹ phòng vé';
+      case 'ticket-proposals':
+        return 'Đề xuất điều chỉnh giá vé';
+
       default:
         return 'Chức năng đang phát triển';
     }
@@ -284,6 +309,7 @@ function DashboardLayout() {
     ops_manager: 'Quản lý Vận tải',
     general_manager: 'Ban Giám đốc',
     admin: 'Quản trị viên',
+    ticket_manager: 'Quản lý Phòng vé',
     ticket_agent: 'Nhân viên bán vé',
     driver: 'Nhân viên Tài xế',
     attendant: 'Nhân viên Phụ xe',

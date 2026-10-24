@@ -9,12 +9,24 @@ const {
   lookupPrice,
   getExecutiveAiChat,
   getDemandAnalytics,
+  createPricingProposal,
+  getPricingProposals,
+  reviewPricingProposal,
+  deletePricingProposal
 } = require('../controllers/pricingController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
 
 router.use(protect);
+
+// Pricing proposals (Ticket Manager -> General Manager)
+router.route('/proposals')
+  .get(restrictTo('ticket_manager', 'general_manager', 'admin'), getPricingProposals)
+  .post(restrictTo('ticket_manager', 'general_manager', 'admin'), createPricingProposal);
+
+router.patch('/proposals/:id/review', restrictTo('general_manager', 'admin'), reviewPricingProposal);
+router.delete('/proposals/:id', restrictTo('ticket_manager', 'general_manager', 'admin'), deletePricingProposal);
 
 // GM Executive AI Chat Assistant & Analytics
 router.post('/gm-ai-chat', restrictTo('general_manager', 'admin'), getExecutiveAiChat);

@@ -19,7 +19,15 @@ const protect = async (req, res, next) => {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026');
       const userId = decoded.id || decoded._id;
-      req.user = { ...decoded, id: userId, _id: userId }; // Ensure both id and _id exist
+      let branch = decoded.branch;
+      if (!branch) {
+        const User = require('../models/User');
+        const dbUser = await User.findById(userId).select('branch role name').lean();
+        if (dbUser && dbUser.branch) {
+          branch = dbUser.branch;
+        }
+      }
+      req.user = { ...decoded, id: userId, _id: userId, branch }; // Ensure both id and _id exist, and branch is populated
       next();
     } catch (err) {
       return res.status(401).json({

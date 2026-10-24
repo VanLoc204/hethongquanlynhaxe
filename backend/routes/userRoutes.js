@@ -10,6 +10,7 @@ const {
   getMySalary,
   startShift,
   endShift,
+  verifyShiftCash,
   getCurrentShift,
   getShiftHistory,
   lookupTickets,
@@ -34,9 +35,10 @@ router.get('/leave', protect, getMyLeaves);
 router.get('/notifications', protect, getNotifications);
 router.get('/salary', protect, getMySalary);
 
-// Ticket Agent specific routes
+// Ticket Agent & Shift specific routes
 router.post('/shift/start', protect, startShift);
 router.post('/shift/end', protect, endShift);
+router.patch('/shift/:id/verify-cash', protect, restrictTo('ticket_manager', 'general_manager', 'admin'), verifyShiftCash);
 router.get('/shift/current', protect, getCurrentShift);
 router.get('/shift/history', protect, getShiftHistory);
 router.get('/agent/tickets', protect, lookupTickets);
@@ -54,16 +56,16 @@ router.post('/attendant/verify-ticket-qr', protect, verifyTicketQR);
 router.use(protect);
 
 router.route('/staff')
-  .get(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getStaff)
-  .post(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), createStaff);
+  .get(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), getStaff)
+  .post(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), createStaff);
 
 router.route('/staff/:id')
-  .put(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), updateStaff)
-  .delete(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), deleteStaff);
+  .put(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), updateStaff)
+  .delete(restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), deleteStaff);
 
-router.get('/admin/leaves', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getAllLeaves);
-router.patch('/admin/leaves/:id', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), updateLeaveStatus);
-router.get('/admin/attendance', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager'), getManagerAttendance);
+router.get('/admin/leaves', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), getAllLeaves);
+router.patch('/admin/leaves/:id', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), updateLeaveStatus);
+router.get('/admin/attendance', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'ticket_manager'), getManagerAttendance);
 router.post('/admin/incidents', restrictTo('general_manager', 'admin', 'ops_manager', 'fleet_manager', 'driver', 'attendant'), createIncidentReport);
 
 // 2. Dynamic ID routes (placed at the end to prevent route hijacking)

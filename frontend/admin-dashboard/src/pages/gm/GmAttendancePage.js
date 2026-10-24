@@ -232,8 +232,8 @@ const GmAttendancePage = () => {
             </div>
 
             {topAbsent.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#059669', fontWeight: '700', fontSize: '0.9rem' }}>
-                🎉 Tuyệt vời! Không có nhân sự nào ghi nhận vắng mặt trong tháng {month}/{year}.
+              <div style={{ textAlign: 'center', padding: '2.5rem 0', color: '#059669', fontWeight: '700', fontSize: '0.85rem' }}>
+                Ghi nhận 100% quân số đi làm đầy đủ, không có nhân sự vắng mặt trong tháng {month}/{year}.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
