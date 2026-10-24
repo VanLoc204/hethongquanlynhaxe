@@ -67,6 +67,17 @@ Mỗi nhân viên bán vé được gán cố định theo Chi nhánh và Khu v�
 | **Tài xế chính** | Lê Hoàng Nam | **`0909090909`** | Xe `51B-009.09` (Limousine 9 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 | **Phụ xe** | Nguyễn Tiến Dũng | **`0977889900`** | Xe `51B-009.09` (Limousine 9 chỗ - Tuyến HCM ⇄ Đà Lạt) |
 
+### D. Tài Khoản Khách Hàng (Customer App - Đặt Vé & Tích Điểm)
+Các tài khoản khách hàng dùng để đăng nhập ứng dụng hành khách (`Customer App` - Port 3000), thử nghiệm đặt vé trực tuyến, thanh toán VietQR và tích điểm nâng hạng thành viên:
+
+| STT | Họ và Tên Khách Hàng | Số Điện Thoại (Đăng nhập) | Email | Hạng Thành Viên | Điểm Tích Lũy |
+| :---: | :--- | :--- | :--- | :---: | :---: |
+| 1 | **Hồ Văn Lộc** | **`0829927690`** | `hovanloc.lv@gmail.com` | **Platinum** (VIP) | 1,250 điểm |
+| 2 | **Nguyễn Minh Tuấn** | **`0901234567`** | `tuan.nguyenminh@gmail.com` | **Bronze** | 150 điểm |
+| 3 | **Trần Thu Hà** | **`0902345678`** | `ha.tranthu@gmail.com` | **Silver** | 450 điểm |
+| 4 | **Phạm Văn Minh** | **`0918112233`** | `minh.phamvan@gmail.com` | **Gold** | 850 điểm |
+| 5 | **Lê Thị Hoài** | **`0937445566`** | `hoai.lethi@gmail.com` | **Bronze** | 250 điểm |
+
 ---
 
 ## 3. Phân Chia Chức Năng Chi Tiết Theo Actor (Actor Feature Matrix)
