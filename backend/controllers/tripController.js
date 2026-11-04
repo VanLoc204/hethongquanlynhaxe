@@ -431,7 +431,7 @@ exports.getTrips = async (req, res) => {
 // @access  Private (Ops Manager)
 exports.createTrip = async (req, res) => {
   try {
-    const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy } = req.body;
+    const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, repeatWeekly } = req.body;
 
     if (!routeId || !busId || !departureTime || !arrivalTime) {
       return res.status(400).json({
@@ -440,7 +440,7 @@ exports.createTrip = async (req, res) => {
       });
     }
 
-    const trip = await tripService.createTrip({ routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy });
+    const trip = await tripService.createTrip({ routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, repeatWeekly });
 
     res.status(201).json({
       success: true,
@@ -462,13 +462,75 @@ exports.createTrip = async (req, res) => {
 exports.updateTrip = async (req, res) => {
   try {
     const { id } = req.params;
-    const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant } = req.body;
+    const { 
+      routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, 
+      policy, driver, assistant, repeatWeekly, applyOnlyThisTrip, isReliever 
+    } = req.body;
 
+    const currentTrip = await Trip.findById(id);
+    if (!currentTrip) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy chuyến xe.'
+      });
+    }
+
+    const effectiveBusId = busId || currentTrip.busId;
+
+    // Trường hợp 1: Điều động chạy thay / Tạm thời chỉ cho chuyến này (không thay thế các ngày tiếp theo)
+    if (applyOnlyThisTrip) {
+      const tripStart = departureTime ? new Date(departureTime) : currentTrip.departureTime;
+      const tripEnd = arrivalTime ? new Date(arrivalTime) : currentTrip.arrivalTime;
+
+      if (driver && driver.phone) {
+        const overlapTrip = await Trip.findOne({
+          _id: { $ne: id },
+          'driver.phone': driver.phone,
+          departureTime: { $lt: tripEnd },
+          arrivalTime: { $gt: tripStart }
+        });
+        if (overlapTrip) {
+          return res.status(400).json({
+            success: false,
+            message: `Tài xế dự bị ${driver.name} đang bận chạy một chuyến khác trong khung giờ này.`
+          });
+        }
+      }
+
+      if (assistant && assistant.phone) {
+        const overlapTrip = await Trip.findOne({
+          _id: { $ne: id },
+          'assistant.phone': assistant.phone,
+          departureTime: { $lt: tripEnd },
+          arrivalTime: { $gt: tripStart }
+        });
+        if (overlapTrip) {
+          return res.status(400).json({
+            success: false,
+            message: `Phụ xe dự bị ${assistant.name} đang bận theo một chuyến khác trong khung giờ này.`
+          });
+        }
+      }
+
+      if (driver) currentTrip.driver = driver;
+      if (assistant) currentTrip.assistant = assistant;
+      currentTrip.needsReplacement = false;
+      currentTrip.isReliever = isReliever !== undefined ? isReliever : true;
+      await currentTrip.save();
+
+      return res.status(200).json({
+        success: true,
+        message: 'Bố trí nhân sự chạy thay cho chuyến này thành công (không ảnh hưởng các chuyến khác).',
+        trip: currentTrip
+      });
+    }
+
+    // Trường hợp 2: Điều động cố định (đồng bộ tất cả các chuyến của xe)
     if (driver && driver.phone) {
       const otherTrip = await Trip.findOne({
         _id: { $ne: id },
         'driver.phone': driver.phone,
-        busId: { $ne: busId }
+        busId: { $ne: effectiveBusId }
       }).populate('busId');
 
       if (otherTrip) {
@@ -479,11 +541,38 @@ exports.updateTrip = async (req, res) => {
       }
     }
 
-    const trip = await tripService.updateTrip(id, { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant });
+    if (assistant && assistant.phone) {
+      const otherTrip = await Trip.findOne({
+        _id: { $ne: id },
+        'assistant.phone': assistant.phone,
+        busId: { $ne: effectiveBusId }
+      }).populate('busId');
+
+      if (otherTrip) {
+        return res.status(400).json({
+          success: false,
+          message: `Phụ xe ${assistant.name || 'này'} đã được phân công theo xe khác (${otherTrip.busId?.plateNumber || 'biển số khác'}). Một phụ xe chỉ được đi theo một chiếc xe duy nhất.`
+        });
+      }
+    }
+
+    const trip = await tripService.updateTrip(id, { routeId, busId: effectiveBusId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant, repeatWeekly });
+
+    // Điều động 1 lần cho tất cả: Tự động đồng bộ đội ngũ tài xế + phụ xe sang TOÀN BỘ các chuyến xe của phương tiện này
+    if ((driver && driver.phone) || (assistant && assistant.phone)) {
+      const bulkUpdate = {};
+      if (driver && driver.phone) bulkUpdate.driver = driver;
+      if (assistant && assistant.phone) bulkUpdate.assistant = assistant;
+
+      await Trip.updateMany(
+        { busId: effectiveBusId },
+        { $set: bulkUpdate }
+      );
+    }
 
     res.status(200).json({
       success: true,
-      message: 'Cập nhật chuyến xe thành công.',
+      message: 'Cập nhật chuyến xe và đồng bộ đội ngũ thành công.',
       trip
     });
   } catch (error) {

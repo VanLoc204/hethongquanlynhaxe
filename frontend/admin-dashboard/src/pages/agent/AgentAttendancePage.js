@@ -15,7 +15,7 @@ import { getBranchById, getOfficesByBranchId } from '../../constants/branches';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
-const AgentAttendancePage = () => {
+const AgentAttendancePage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
 
   // Trạng thái AI Models & Camera
@@ -37,6 +37,7 @@ const AgentAttendancePage = () => {
   const [loading, setLoading] = useState(true);
   const [liveDuration, setLiveDuration] = useState('');
   const [notification, setNotification] = useState(null);
+  const [recentHistory, setRecentHistory] = useState([]);
 
   // Phân cấp Chi nhánh phòng vé
   const agentBranchId = user?.branch?.branchId || 'sg';
@@ -87,6 +88,9 @@ const AgentAttendancePage = () => {
           setRegisteredDescriptors(attData.faceDescriptors);
         } else {
           setRegisteredDescriptors([]);
+        }
+        if (Array.isArray(attData.history)) {
+          setRecentHistory(attData.history);
         }
       }
     } catch (err) {
@@ -529,6 +533,26 @@ const AgentAttendancePage = () => {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {setActiveTab && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('agent-attendance-report')}
+              style={{
+                backgroundColor: '#2563eb',
+                border: '1px solid #1d4ed8',
+                color: '#ffffff',
+                padding: '6px 14px',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 1px 2px rgba(37,99,235,0.2)'
+              }}
+            >
+              Báo Cáo Chấm Công
+            </button>
+          )}
           <button
             type="button"
             onClick={fetchCurrentShiftAndFace}
@@ -1075,6 +1099,105 @@ const AgentAttendancePage = () => {
           )}
 
         </div>
+      </div>
+
+      {/* ================= PHẦN DƯỚI: NHẬT KÝ CHẤM CÔNG GẦN ĐÂY ================= */}
+      <div style={{
+        marginTop: '1.5rem',
+        background: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e2e8f0',
+        padding: '1.25rem 1.5rem',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'nowrap', gap: '8px' }}>
+          <div style={{ whiteSpace: 'nowrap' }}>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+              Nhật Ký Chấm Công Gần Đây (Các Ca Trực Trước)
+            </h3>
+            <span style={{ fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+              Theo dõi đối soát giờ công và doanh thu bán vé ca trực của bạn.
+            </span>
+          </div>
+
+          {setActiveTab && (
+            <button
+              onClick={() => setActiveTab('agent-attendance-report')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#2563eb',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Xem toàn bộ báo cáo chấm công &rarr;
+            </button>
+          )}
+        </div>
+
+        {recentHistory.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+            Chưa có lịch sử ca trực nào được ghi nhận.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', whiteSpace: 'nowrap' }}>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', whiteSpace: 'nowrap' }}>Ngày làm việc</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', whiteSpace: 'nowrap' }}>Quầy vé</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', whiteSpace: 'nowrap' }}>Vào ca</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', whiteSpace: 'nowrap' }}>Tan ca</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>Số giờ làm</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>Xác thực Face ID</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', textAlign: 'right', whiteSpace: 'nowrap' }}>Doanh số vé</th>
+                  <th style={{ padding: '8px 12px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentHistory.slice(0, 5).map((sh, idx) => (
+                  <tr key={sh.id || idx} style={{ borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: '600', color: '#0f172a', whiteSpace: 'nowrap' }}>{sh.date}</td>
+                    <td style={{ padding: '10px 12px', color: '#334155', whiteSpace: 'nowrap' }}>{sh.counterNumber}</td>
+                    <td style={{ padding: '10px 12px', color: '#16a34a', fontWeight: '600', whiteSpace: 'nowrap' }}>{sh.checkInTime}</td>
+                    <td style={{ padding: '10px 12px', color: sh.status === 'open' ? '#ca8a04' : '#334155', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                      {sh.status === 'open' ? 'Đang mở' : sh.checkOutTime}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <span style={{ background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                        {sh.durationHours}h
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      {sh.faceVerified ? (
+                        <span style={{ color: '#16a34a', fontWeight: '700', whiteSpace: 'nowrap' }}>Đã xác thực</span>
+                      ) : (
+                        <span style={{ color: '#dc2626', whiteSpace: 'nowrap' }}>Chưa nhận diện</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                      {(sh.totalRevenue || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      {sh.status === 'open' ? (
+                        <span style={{ background: '#fef9c3', color: '#854d0e', padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          Đang trực
+                        </span>
+                      ) : (
+                        <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '10px', fontSize: '0.72rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                          Đã đóng ca
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

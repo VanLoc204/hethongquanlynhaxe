@@ -454,18 +454,61 @@ const GmReportsPage = () => {
 
     // Filter bookings based on active time range & route
     let bookings = [...bookingsList];
+    const now = new Date();
+
+    if (timeRange === 'today') {
+      const todayStr = now.toISOString().slice(0, 10);
+      bookings = bookings.filter(b => b.createdAt && new Date(b.createdAt).toISOString().slice(0, 10) === todayStr);
+    } else if (timeRange === 'last7days') {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      bookings = bookings.filter(b => b.createdAt && new Date(b.createdAt) >= sevenDaysAgo);
+    } else if (timeRange === 'thisMonth') {
+      const curMonth = now.getMonth();
+      const curYear = now.getFullYear();
+      bookings = bookings.filter(b => {
+        if (!b.createdAt) return false;
+        const d = new Date(b.createdAt);
+        return d.getMonth() === curMonth && d.getFullYear() === curYear;
+      });
+    } else if (timeRange === 'custom' && fromDate && toDate) {
+      const start = new Date(fromDate);
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      bookings = bookings.filter(b => {
+        if (!b.createdAt) return false;
+        const d = new Date(b.createdAt);
+        return d >= start && d <= end;
+      });
+    }
+
     if (selectedRoute !== 'all') {
       bookings = bookings.filter(b => b.tripId?.routeId && (b.tripId.routeId._id === selectedRoute || b.tripId.routeId === selectedRoute));
     }
 
+    // Set of ticket IDs sold at counter shifts
+    const counterBookingIdsSet = new Set();
+    shiftHistory.forEach(s => {
+      if (Array.isArray(s.ticketsSold)) {
+        s.ticketsSold.forEach(tId => {
+          if (tId) {
+            const idStr = typeof tId === 'object' ? (tId._id?.toString() || tId.toString()) : tId.toString();
+            counterBookingIdsSet.add(idStr);
+          }
+        });
+      }
+    });
+
     bookings.forEach(b => {
       const seatsCount = b.seats?.length || 1;
-      const price = b.tripId?.price || 200000;
-      const bookingRev = seatsCount * price;
+      const price = b.pricePerSeat || b.tripId?.price || 200000;
+      const bookingRev = b.totalAmount || (seatsCount * price);
 
-      if (b.status === 'paid') {
+      if (b.status === 'paid' || b.status === 'confirmed') {
         totalRev += bookingRev;
-        if (b.paymentType === 'immediate') {
+        const bIdStr = b._id?.toString();
+        const isCounter = counterBookingIdsSet.has(bIdStr) || b.customerCCCD === 'COUNTER_BOOKING';
+
+        if (isCounter) {
           counterTix += seatsCount;
           cashSum += bookingRev;
         } else {
@@ -487,7 +530,7 @@ const GmReportsPage = () => {
       shifts: shiftHistory,
       bookings
     };
-  }, [bookingsList, shiftHistory, selectedRoute, gmCalculations.ticketsSold]);
+  }, [bookingsList, shiftHistory, selectedRoute, timeRange, fromDate, toDate, gmCalculations.ticketsSold]);
 
   // 6. Tính toán Báo Cáo Bộ Phận: QUẢN LÝ PHƯƠNG TIỆN & ĐỘI XE (FLEET)
   const fleetCalculations = React.useMemo(() => {

@@ -33,11 +33,13 @@ import StaffSchedulePage from './pages/common/StaffSchedulePage';
 import StaffLeavePage from './pages/common/StaffLeavePage';
 import ManagerApprovalsPage from './pages/common/ManagerApprovalsPage';
 import ManagerAttendancePage from './pages/common/ManagerAttendancePage';
+import ManagerLeavesPage from './pages/common/ManagerLeavesPage';
 import StaffSalaryPage from './pages/common/StaffSalaryPage';
 import StaffNotificationsPage from './pages/common/StaffNotificationsPage';
 
 // Ticket Agent Pages
 import AgentAttendancePage from './pages/agent/AgentAttendancePage';
+import AgentAttendanceReportPage from './pages/agent/AgentAttendanceReportPage';
 import AgentBookingPage from './pages/agent/AgentBookingPage';
 import AgentTicketsPage from './pages/agent/AgentTicketsPage';
 import AgentShiftSummaryPage from './pages/agent/AgentShiftSummaryPage';
@@ -55,6 +57,7 @@ import DriverDashboardPage from './pages/driver/DriverDashboardPage';
 import DriverAttendancePage from './pages/driver/DriverAttendancePage';
 import DriverStatusPage from './pages/driver/DriverStatusPage';
 import DriverMapPage from './pages/driver/DriverMapPage';
+import CrewAttendanceReportPage from './pages/crew/CrewAttendanceReportPage';
 
 // Admin Pages
 import AdminUsersPage from './pages/admin/AdminUsersPage';
@@ -113,6 +116,8 @@ function DashboardLayout() {
         return <ManagerApprovalsPage />;
       case 'manager-attendance':
         return <ManagerAttendancePage />;
+      case 'manager-leaves':
+        return <ManagerLeavesPage />;
 
       // GM views
       case 'gm-reports':
@@ -150,7 +155,9 @@ function DashboardLayout() {
 
       // Ticket Agent views
       case 'agent-attendance':
-        return <AgentAttendancePage />;
+        return <AgentAttendancePage setActiveTab={setActiveTab} />;
+      case 'agent-attendance-report':
+        return <AgentAttendanceReportPage setActiveTab={setActiveTab} />;
       case 'counter-booking':
       case 'agent-booking':
         return <AgentBookingPage />;
@@ -165,9 +172,11 @@ function DashboardLayout() {
 
       // Attendant views
       case 'attendant-attendance':
-        return <AttendantAttendancePage />;
+        return <AttendantAttendancePage setActiveTab={setActiveTab} />;
       case 'attendant-checkin':
         return <AttendantCheckinPage />;
+      case 'attendant-attendance-report':
+        return <CrewAttendanceReportPage role="attendant" setActiveTab={setActiveTab} />;
 
       // Driver views
       case 'driver-attendance':
@@ -176,6 +185,8 @@ function DashboardLayout() {
         return <DriverStatusPage setActiveTab={setActiveTab} />;
       case 'driver-map':
         return <DriverMapPage setActiveTab={setActiveTab} />;
+      case 'driver-attendance-report':
+        return <CrewAttendanceReportPage role="driver" setActiveTab={setActiveTab} />;
 
       // Ticket Manager views
       case 'ticket-staff':
@@ -238,6 +249,8 @@ function DashboardLayout() {
         return 'Xem danh sách chờ duyệt';
       case 'manager-attendance':
         return user?.role === 'ops_manager' ? 'Quản lý chấm công tổ lái' : 'Quản lý chấm công nhân sự';
+      case 'manager-leaves':
+        return 'Phê duyệt đơn xin nghỉ phép';
 
       // GM views
       case 'gm-reports':
@@ -264,6 +277,8 @@ function DashboardLayout() {
       // Ticket Agent views
       case 'agent-attendance':
         return 'Chấm công ca trực quầy';
+      case 'agent-attendance-report':
+        return 'Lịch sử chấm công nhân viên bán vé';
       case 'agent-booking':
         return 'Đặt vé xe tại quầy';
       case 'agent-tickets':
@@ -280,6 +295,8 @@ function DashboardLayout() {
         return 'Chấm công số (Phụ xe)';
       case 'attendant-checkin':
         return 'Soát vé & Check-in hành khách';
+      case 'attendant-attendance-report':
+        return 'Lịch sử chấm công phụ xe';
 
       // Driver views
       case 'driver-attendance':
@@ -288,6 +305,8 @@ function DashboardLayout() {
         return 'Cập nhật lộ trình xe chạy';
       case 'driver-map':
         return 'Bản đồ di chuyển GPS';
+      case 'driver-attendance-report':
+        return 'Lịch sử chấm công tài xế';
 
       // Ticket Manager views
       case 'ticket-staff':
@@ -378,10 +397,12 @@ function DashboardLayout() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div className="header-user-text" style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                  {ROLE_LABEL[user?.role] || user?.role}
+                  {user?.name || user?.fullName || ROLE_LABEL[user?.role] || 'Người dùng'}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-                  {user?.email || 'admin@anbinhlines.vn'}
+                <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: '500' }}>
+                  {user?.branch?.branchName
+                    ? `${ROLE_LABEL[user?.role] || user?.role} (${user.branch.branchName.replace('Chi nhánh ', '')})`
+                    : (ROLE_LABEL[user?.role] || user?.role || 'Nhân sự')}
                 </div>
               </div>
               <div className="user-profile">
@@ -398,7 +419,7 @@ function DashboardLayout() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  {user?.role === 'driver' ? 'TX' : user?.role === 'attendant' ? 'PX' : 'AB'}
+                  {user?.name ? user.name.trim().split(' ').slice(-1)[0].substring(0, 2).toUpperCase() : (user?.role === 'driver' ? 'TX' : user?.role === 'attendant' ? 'PX' : 'AB')}
                 </span>
               </div>
             </div>

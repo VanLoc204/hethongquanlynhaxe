@@ -496,9 +496,66 @@ docker-compose down
 
 ---
 
-## 10. Từ Điển Dữ Liệu Chi Tiết MongoDB (Database Data Dictionary)
+## 10. Hướng Dẫn Khởi Chạy Ngrok Thử Nghiệm Trên Điện Thoại Di Động
+
+Hệ thống đã tích hợp sẵn file thực thi `ngrok.exe` tại thư mục gốc của dự án (`HeThongQuanLyNhaXe`). Việc chạy qua ngrok cung cấp đường hầm HTTPS an toàn, cho phép truy cập camera điện thoại để thực hiện chấm công Face ID thực tế và đặt vé trên thiết bị di động.
+
+### A. Cài Đặt Token Lần Đầu (Chỉ Cần Thực Hiện 1 Lần)
+Nếu máy tính của bạn chưa liên kết tài khoản ngrok, mở PowerShell tại thư mục gốc và chạy:
+```powershell
+.\ngrok.exe config add-authtoken <TOKEN_NGROK_CỦA_BẠN>
+```
+
+---
+
+### B. Cách 1: Chạy Ngrok Qua Nginx Gateway Cổng 80 (Khuyên Dùng)
+Mô hình Gateway (`nginx.conf`) gom cả 3 phân hệ (Khách hàng 3000, Quản trị 3001, Backend 8000) vào duy nhất cổng `80`.
+
+1. **Khởi động Docker Containers & Gateway:**
+   ```powershell
+   docker-compose up -d
+   ```
+
+2. **Chạy lệnh Ngrok tại thư mục gốc dự án:**
+   ```powershell
+   .\ngrok.exe http 80
+   ```
+   *(Hoặc nếu đã cài ngrok toàn cục vào máy: `ngrok http 80`)*
+
+3. **Truy cập trên điện thoại bằng liên kết HTTPS ngrok cấp (ví dụ: `https://xxxx.ngrok-free.app`):**
+   * **Giao diện Khách hàng (Customer App):**
+     `https://xxxx.ngrok-free.app/`
+   * **Giao diện Quản trị / Tài xế / Phụ xe (Admin Dashboard):**
+     `https://xxxx.ngrok-free.app/admin/`
+   * **Backend API Gateway:**
+     `https://xxxx.ngrok-free.app/api/v1/`
+
+---
+
+### C. Cách 2: Chạy Ngrok Trực Tiếp Theo Từng Cổng Khi Phát Triển Local (npm run dev)
+Nếu đang khởi chạy mã nguồn trực tiếp bằng `npm run dev` ở 3 terminal riêng biệt mà không dùng Nginx Gateway:
+
+* **Mở đường hầm cho Admin Dashboard (Quản trị, Tài xế & Phụ xe chấm công Face ID):**
+  ```powershell
+  .\ngrok.exe http 3001
+  ```
+
+* **Mở đường hầm cho Khách hàng (Customer App):**
+  ```powershell
+  .\ngrok.exe http 3000
+  ```
+
+* **Mở đường hầm cho Backend API:**
+  ```powershell
+  .\ngrok.exe http 8000
+  ```
+
+---
+
+## 11. Từ Điển Dữ Liệu Chi Tiết MongoDB (Database Data Dictionary)
 
 Toàn bộ tài liệu chi tiết giải thích cấu trúc dữ liệu, các trường (fields), mục đích thiết kế và ứng dụng thực tế theo từng Actor cho tất cả các bảng (Collections) trong cơ sở dữ liệu `bus_management` được quản lý tại file riêng để đảm bảo tính trực quan và dễ tra cứu:
 
-👉 **Xem chi tiết tài liệu tại:** [DATABASE_DICTIONARY.md](./DATABASE_DICTIONARY.md)
+* Xem chi tiết tài liệu tại: [DATABASE_DICTIONARY.md](./DATABASE_DICTIONARY.md)
+* Xem chi tiết cấu hình Reverse Proxy tại: [NGROK_AND_GATEWAY_DOCS.md](./NGROK_AND_GATEWAY_DOCS.md)
 
