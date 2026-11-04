@@ -20,6 +20,7 @@ const OpsTripsPage = () => {
   const [departureTime, setDepartureTime] = useState('');
   const [arrivalTime, setArrivalTime] = useState('');
   const [price, setPrice] = useState('');
+  const [repeatWeekly, setRepeatWeekly] = useState(true);
   
   // Pickup / Dropoff subforms
   const [pickupPoints, setPickupPoints] = useState([
@@ -431,6 +432,7 @@ const OpsTripsPage = () => {
     setDepartureTime('');
     setArrivalTime('');
     setPrice('');
+    setRepeatWeekly(true);
     const { pickup, dropoff } = getPointsFromRoute(initialRouteId, '08:00', '15:00');
     setPickupPoints(pickup);
     setDropoffPoints(dropoff);
@@ -460,6 +462,7 @@ const OpsTripsPage = () => {
     setDepartureTime(depFormatted);
     setArrivalTime(arrFormatted);
     setPrice(trip.price);
+    setRepeatWeekly(true);
 
     let curPickup = trip.pickupPoints && trip.pickupPoints.length > 0 ? trip.pickupPoints : [];
     let curDropoff = trip.dropoffPoints && trip.dropoffPoints.length > 0 ? trip.dropoffPoints : [];
@@ -545,7 +548,8 @@ const OpsTripsPage = () => {
       arrivalTime,
       price: Number(price),
       pickupPoints,
-      dropoffPoints
+      dropoffPoints,
+      repeatWeekly
     };
 
     try {
@@ -1537,6 +1541,28 @@ const OpsTripsPage = () => {
                     required
                   />
                 </div>
+              </div>
+
+              {/* Weekly Recurring Toggle */}
+              <div style={{ 
+                marginBottom: '16px', 
+                backgroundColor: '#f0fdf4', 
+                border: '1.5px solid #bbf7d0', 
+                padding: '12px 16px', 
+                borderRadius: '10px' 
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: '600', color: '#166534', margin: 0, fontSize: '0.9rem' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={repeatWeekly} 
+                    onChange={(e) => setRepeatWeekly(e.target.checked)} 
+                    style={{ width: '18px', height: '18px', accentColor: '#16a34a', cursor: 'pointer' }}
+                  />
+                  <span>Lặp lại hàng tuần (Tự động tạo lịch chạy cố định vào thứ này mỗi tuần đến cuối năm)</span>
+                </label>
+                <small style={{ color: '#15803d', display: 'block', marginTop: '4px', marginLeft: '28px', fontSize: '0.8rem' }}>
+                  Chuyến xe sẽ tự động được nhân bản cố định vào cùng khung giờ của các tuần tiếp theo để không phải cài đặt lại ngày tháng.
+                </small>
               </div>
 
               <div className="form-group" style={{ marginBottom: '20px' }}>

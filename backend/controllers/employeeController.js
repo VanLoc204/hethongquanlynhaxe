@@ -1160,13 +1160,17 @@ exports.getAllLeaves = async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Auto-reject pending leave requests whose start date has passed
+    // Auto-reject pending leave requests whose start date has passed (chỉ áp dụng cho đơn xin nghỉ)
     await LeaveRequest.updateMany(
-      { status: 'pending', startDate: { $lt: today } },
+      { 
+        type: 'leave',
+        status: 'pending', 
+        startDate: { $exists: true, $ne: null, $lt: today } 
+      },
       { $set: { status: 'rejected' } }
     );
 
-    let query = {};
+    let query = { type: 'leave' };
     if (req.user.role === 'ticket_manager') {
       const branchId = req.user.branch?.branchId || 'sg';
       const ticketAgents = await User.find({
@@ -1175,6 +1179,12 @@ exports.getAllLeaves = async (req, res) => {
       }).select('_id').lean();
       const agentIds = ticketAgents.map(a => a._id);
       query.userId = { $in: agentIds };
+    } else if (req.user.role === 'ops_manager') {
+      const fleetStaff = await User.find({
+        role: { $in: ['driver', 'attendant', 'assistant'] }
+      }).select('_id').lean();
+      const staffIds = fleetStaff.map(s => s._id);
+      query.userId = { $in: staffIds };
     }
 
     const leaves = await LeaveRequest.find(query)
@@ -1241,11 +1251,77 @@ exports.updateLeaveStatus = async (req, res) => {
       }
     }
 
+    // Phân quyền: Quản lý vận tải chỉ được duyệt đơn của tài xế và phụ xe
+    if (req.user.role === 'ops_manager') {
+      const applicant = await User.findById(leave.userId).select('role').lean();
+      if (!applicant || !['driver', 'attendant', 'assistant'].includes(applicant.role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Quản lý vận tải chỉ có quyền phê duyệt đơn nghỉ của tài xế và phụ xe.'
+        });
+      }
+    }
+
     leave.status = status;
     if (reviewNote) {
       leave.details = `${leave.details || ''} [Phản hồi QL: ${reviewNote}]`;
     }
     await leave.save();
+
+    // Liên kết tự động giữa Đơn xin nghỉ và Lịch chuyến xe:
+    // Khi đơn được duyệt và người nộp là Tài xế hoặc Phụ xe:
+    // Tự động quét các chuyến xe trong ngày nghỉ, gắn cờ cảnh báo "Cần bố trí người chạy thay (Tài xế/Phụ xe nghỉ phép)"
+    // và gửi thông báo Notification tới Quản lý vận hành (ops_manager)
+    if (status === 'approved') {
+      try {
+        const applicant = await User.findById(leave.userId);
+        if (applicant && (applicant.role === 'driver' || applicant.role === 'attendant')) {
+          const isDriver = applicant.role === 'driver';
+          const roleTitle = isDriver ? 'Tài xế' : 'Phụ xe';
+
+          const leaveStart = new Date(leave.startDate || leave.createdAt);
+          leaveStart.setHours(0, 0, 0, 0);
+          const leaveEnd = new Date(leave.endDate || leave.startDate || leave.createdAt);
+          leaveEnd.setHours(23, 59, 59, 999);
+
+          const tripQuery = {
+            departureTime: { $gte: leaveStart, $lte: leaveEnd }
+          };
+          if (isDriver) {
+            tripQuery['driver.phone'] = applicant.phone;
+          } else {
+            tripQuery['assistant.phone'] = applicant.phone;
+          }
+
+          const affectedTrips = await Trip.find(tripQuery).populate('routeId busId');
+
+          for (const trip of affectedTrips) {
+            trip.needsReplacement = true;
+            trip.replacementReason = `${roleTitle} ${applicant.name} nghỉ phép`;
+            if (isDriver) {
+              trip.originalDriver = { name: applicant.name, phone: applicant.phone };
+            } else {
+              trip.originalAssistant = { name: applicant.name, phone: applicant.phone };
+            }
+            await trip.save();
+
+            const depTimeStr = new Date(trip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+            const depDateStr = new Date(trip.departureTime).toLocaleDateString('vi-VN');
+            const routeName = trip.routeId ? `${trip.routeId.startPoint} -> ${trip.routeId.endPoint}` : 'Tuyến đường';
+
+            await Notification.create({
+              recipientRole: 'ops_manager',
+              title: `Cần điều động người chạy thay cho chuyến ${depTimeStr} ${depDateStr}`,
+              content: `${roleTitle} ${applicant.name} được duyệt nghỉ ngày ${depDateStr}, cần điều động người chạy thay cho chuyến ${depTimeStr} ${routeName} (Xe ${trip.busId?.plateNumber || ''}).`,
+              type: 'general',
+              link: '/ops/staff'
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi liên kết chuyến xe khi duyệt đơn nghỉ:', err);
+      }
+    }
 
     // Gửi thông báo cho nhân viên nộp đơn
     try {

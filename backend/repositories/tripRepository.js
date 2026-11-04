@@ -5,6 +5,10 @@ class TripRepository {
     return await Trip.find(query);
   }
 
+  async findOne(query) {
+    return await Trip.findOne(query);
+  }
+
   async findWithPopulate(query, sortField = { departureTime: 1 }) {
     return await Trip.find(query)
       .populate('routeId')

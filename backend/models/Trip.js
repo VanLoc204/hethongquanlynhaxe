@@ -63,6 +63,26 @@ const tripSchema = new mongoose.Schema(
       name: { type: String, default: '' },
       phone: { type: String, default: '' }
     },
+    needsReplacement: {
+      type: Boolean,
+      default: false
+    },
+    replacementReason: {
+      type: String,
+      default: ''
+    },
+    isReliever: {
+      type: Boolean,
+      default: false
+    },
+    originalDriver: {
+      name: { type: String, default: '' },
+      phone: { type: String, default: '' }
+    },
+    originalAssistant: {
+      name: { type: String, default: '' },
+      phone: { type: String, default: '' }
+    },
     journeyStatus: {
       type: String,
       enum: ['scheduled', 'in_transit', 'completed', 'cancelled'],

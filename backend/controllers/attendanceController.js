@@ -2,6 +2,7 @@ const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const Trip = require('../models/Trip');
 const ShiftSession = require('../models/ShiftSession');
+const LeaveRequest = require('../models/LeaveRequest');
 require('../models/Route');
 require('../models/Bus');
 
@@ -353,7 +354,7 @@ exports.checkOut = async (req, res) => {
 exports.getMyAttendance = async (req, res) => {
   try {
     const userId = req.user?.id || req.user?._id;
-    const limit = parseInt(req.query.limit) || 30;
+    const limit = parseInt(req.query.limit) || 100;
 
     const user = await User.findById(userId).select('name phone role faceRegistered facePhoto +faceDescriptors').lean();
 
@@ -364,30 +365,229 @@ exports.getMyAttendance = async (req, res) => {
 
     const { dayStart, dayEnd } = getDayRangeVN();
 
-    // Đối với Nhân viên Bán vé / Quản lý phòng vé: lấy dữ liệu từ ShiftSession
+    // ── Đối với Nhân viên Bán vé / Quản lý phòng vé: lấy dữ liệu từ ShiftSession ──
     if (user && ['ticket_agent', 'ticket_manager'].includes(user.role)) {
       const activeShift = await ShiftSession.findOne({ userId, status: 'active' }).lean();
       const latestShift = activeShift || (await ShiftSession.findOne({ userId }).sort({ startTime: -1 }).lean());
 
-      const shiftHistory = await ShiftSession.find({ userId })
+      const shiftQuery = { userId };
+      
+      if (req.query.fromDate && req.query.toDate) {
+        const from = new Date(req.query.fromDate);
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(req.query.toDate);
+        to.setHours(23, 59, 59, 999);
+        shiftQuery.startTime = { $gte: from, $lte: to };
+      } else if (req.query.fromDate) {
+        const from = new Date(req.query.fromDate);
+        from.setHours(0, 0, 0, 0);
+        shiftQuery.startTime = { $gte: from };
+      } else if (req.query.toDate) {
+        const to = new Date(req.query.toDate);
+        to.setHours(23, 59, 59, 999);
+        shiftQuery.startTime = { $lte: to };
+      } else if (req.query.month && req.query.year && req.query.month !== 'all' && req.query.year !== 'all') {
+        const m = parseInt(req.query.month, 10);
+        const y = parseInt(req.query.year, 10);
+        const startOfMonth = new Date(y, m - 1, 1, 0, 0, 0);
+        const endOfMonth = new Date(y, m, 0, 23, 59, 59, 999);
+        shiftQuery.startTime = { $gte: startOfMonth, $lte: endOfMonth };
+      }
+
+      if (req.query.status && req.query.status !== 'all') {
+        shiftQuery.status = req.query.status;
+      }
+      if (req.query.counterNumber && req.query.counterNumber !== 'all') {
+        shiftQuery.counterNumber = req.query.counterNumber;
+      }
+      if (req.query.reconciliationStatus && req.query.reconciliationStatus !== 'all') {
+        shiftQuery.reconciliationStatus = req.query.reconciliationStatus;
+      }
+      if (req.query.faceVerified !== undefined && req.query.faceVerified !== 'all') {
+        shiftQuery.faceVerified = req.query.faceVerified === 'true';
+      }
+
+      const shiftHistory = await ShiftSession.find(shiftQuery)
         .sort({ startTime: -1 })
         .limit(limit)
         .lean();
 
-      const combinedHistory = shiftHistory.map(s => ({
-        id: s._id,
-        tripRoute: s.counterNumber || 'Quầy vé trực',
-        busPlateNumber: `Quỹ: ${(s.initialCash || 0).toLocaleString('vi-VN')}đ`,
-        date: new Date(s.startTime).toLocaleDateString('vi-VN'),
-        checkInTime: formatTime(s.startTime),
-        checkOutTime: s.endTime ? formatTime(s.endTime) : '--:--:--',
-        status: s.status,
-        faceVerified: Boolean(s.faceVerified),
-        faceDistance: s.faceDistance,
-        isLiveVerified: Boolean(s.isLiveVerified),
-        checkInPhoto: s.checkInPhoto || null,
-        location: s.location || s.counterNumber
-      }));
+      // Kết hợp thêm các bản ghi chấm công từ collection 'Attendance' của nhân viên bán vé
+      const attTicketQuery = { userId, role: { $in: ['ticket_agent', 'ticket_manager'] } };
+      if (req.query.fromDate && req.query.toDate) {
+        const from = new Date(req.query.fromDate);
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(req.query.toDate);
+        to.setHours(23, 59, 59, 999);
+        attTicketQuery.$or = [
+          { date: { $gte: from, $lte: to } },
+          { checkInTime: { $gte: from, $lte: to } }
+        ];
+      } else if (req.query.fromDate) {
+        const from = new Date(req.query.fromDate);
+        from.setHours(0, 0, 0, 0);
+        attTicketQuery.$or = [{ date: { $gte: from } }, { checkInTime: { $gte: from } }];
+      } else if (req.query.toDate) {
+        const to = new Date(req.query.toDate);
+        to.setHours(23, 59, 59, 999);
+        attTicketQuery.$or = [{ date: { $lte: to } }, { checkInTime: { $lte: to } }];
+      }
+
+      const attTicketRecords = await Attendance.find(attTicketQuery)
+        .sort({ checkInTime: -1, date: -1 })
+        .limit(limit)
+        .lean();
+
+      let totalWorkHours = 0;
+      let totalCashRevenue = 0;
+      let totalCashlessRevenue = 0;
+      let totalTicketsSold = 0;
+      let faceVerifiedCount = 0;
+      let verifiedCashCount = 0;
+      let activeShiftsCount = 0;
+      let closedShiftsCount = 0;
+
+      const nowTime = new Date();
+      const combinedHistory = [];
+      const seenDates = new Set();
+
+      // 1. Nạp từ ca trực quầy bán vé (ShiftSession)
+      shiftHistory.forEach(s => {
+        let durationH = 0;
+        if (s.status === 'active') {
+          activeShiftsCount += 1;
+          const diffMs = Math.max(0, nowTime - new Date(s.startTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else {
+          closedShiftsCount += 1;
+          if (s.endTime && s.startTime) {
+            const diffMs = Math.max(0, new Date(s.endTime) - new Date(s.startTime));
+            durationH = +(diffMs / 3600000).toFixed(1);
+          } else {
+            durationH = 8.0;
+          }
+        }
+        totalWorkHours += durationH;
+        totalCashRevenue += Number(s.cashRevenue || 0);
+        totalCashlessRevenue += Number(s.cashlessRevenue || 0);
+        const ticketsCount = Number(s.ticketsSold?.length || 0);
+        totalTicketsSold += ticketsCount;
+        if (s.faceVerified) faceVerifiedCount += 1;
+        if (s.reconciliationStatus === 'verified') verifiedCashCount += 1;
+
+        const dateKey = new Date(s.startTime).toLocaleDateString('vi-VN');
+        seenDates.add(dateKey);
+
+        combinedHistory.push({
+          id: s._id,
+          tripRoute: s.counterNumber || 'Quầy vé trực',
+          busPlateNumber: `Quỹ: ${(s.initialCash || 0).toLocaleString('vi-VN')}đ`,
+          counterNumber: s.counterNumber || 'Quầy vé trực',
+          officeName: s.officeName || 'Văn phòng chi nhánh',
+          branchId: s.branchId || 'sg',
+          date: dateKey,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          checkInTime: formatTime(s.startTime),
+          checkOutTime: s.endTime ? formatTime(s.endTime) : '--:--:--',
+          durationHours: durationH,
+          status: s.status,
+          initialCash: s.initialCash || 0,
+          cashRevenue: s.cashRevenue || 0,
+          cashlessRevenue: s.cashlessRevenue || 0,
+          totalRevenue: Number(s.cashRevenue || 0) + Number(s.cashlessRevenue || 0),
+          ticketsCount,
+          reconciliationStatus: s.reconciliationStatus || 'pending',
+          faceVerified: Boolean(s.faceVerified),
+          faceDistance: s.faceDistance,
+          isLiveVerified: Boolean(s.isLiveVerified),
+          checkInPhoto: s.checkInPhoto || null,
+          checkOutPhoto: s.checkOutPhoto || null,
+          location: s.location || s.counterNumber,
+          notes: s.notes || ''
+        });
+      });
+
+      // 2. Bổ sung các bản ghi chấm công từ 'Attendance' chưa có trong ShiftSession
+      attTicketRecords.forEach(att => {
+        const attDateKey = new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN');
+        if (!seenDates.has(attDateKey)) {
+          let durationH = 0;
+          if (att.status === 'active') {
+            activeShiftsCount += 1;
+            const diffMs = Math.max(0, nowTime - new Date(att.checkInTime || att.createdAt));
+            durationH = +(diffMs / 3600000).toFixed(1);
+          } else {
+            closedShiftsCount += 1;
+            if (att.checkOutTime && att.checkInTime) {
+              const diffMs = Math.max(0, new Date(att.checkOutTime) - new Date(att.checkInTime));
+              durationH = +(diffMs / 3600000).toFixed(1);
+            } else {
+              durationH = 8.0;
+            }
+          }
+          totalWorkHours += durationH;
+          if (att.faceVerified) faceVerifiedCount += 1;
+
+          combinedHistory.push({
+            id: att._id,
+            tripRoute: att.location || 'Quầy vé trực',
+            busPlateNumber: 'Quầy bán vé',
+            counterNumber: att.location || 'Quầy vé trực',
+            officeName: 'Văn phòng chi nhánh',
+            branchId: 'sg',
+            date: attDateKey,
+            startTime: att.checkInTime || att.createdAt,
+            endTime: att.checkOutTime || null,
+            checkInTime: formatTime(att.checkInTime),
+            checkOutTime: att.checkOutTime ? formatTime(att.checkOutTime) : '--:--:--',
+            durationHours: durationH,
+            status: att.status,
+            initialCash: 0,
+            cashRevenue: 0,
+            cashlessRevenue: 0,
+            totalRevenue: 0,
+            ticketsCount: 0,
+            reconciliationStatus: 'verified',
+            faceVerified: Boolean(att.faceVerified),
+            faceDistance: att.faceDistance,
+            isLiveVerified: Boolean(att.isLiveVerified),
+            checkInPhoto: att.checkInPhoto || null,
+            checkOutPhoto: att.checkOutPhoto || null,
+            location: att.location || 'Quầy vé',
+            notes: att.note || ''
+          });
+        }
+      });
+
+      combinedHistory.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
+
+      const approvedLeaves = await LeaveRequest.find({
+        userId,
+        status: 'approved'
+      }).lean();
+
+      const totalShifts = shiftHistory.length;
+      const faceRate = totalShifts > 0 ? Math.round((faceVerifiedCount / totalShifts) * 100) : 100;
+      const expectedDays = 26;
+      let attendanceRate = Math.min(100, Math.round(((totalShifts + approvedLeaves.length) / expectedDays) * 100));
+      if (totalShifts >= 18) attendanceRate = Math.min(100, Math.max(95, attendanceRate));
+
+      const summary = {
+        totalShifts,
+        activeShiftsCount,
+        closedShiftsCount,
+        totalWorkHours: +totalWorkHours.toFixed(1),
+        avgHoursPerShift: totalShifts > 0 ? +(totalWorkHours / totalShifts).toFixed(1) : 0,
+        totalRevenue: totalCashRevenue + totalCashlessRevenue,
+        totalCashRevenue,
+        totalCashlessRevenue,
+        totalTicketsSold,
+        faceVerifiedCount,
+        faceRate,
+        leaveDaysCount: approvedLeaves.length,
+        attendanceRate
+      };
 
       return res.status(200).json({
         success: true,
@@ -397,12 +597,13 @@ exports.getMyAttendance = async (req, res) => {
         todayDuties: [],
         activeTrip: null,
         todayStatus: activeShift ? 'active' : latestShift && new Date(latestShift.startTime) >= dayStart ? latestShift.status : 'not_checked',
-        todayRecord: activeShift || latestShift || null,
-        history: combinedHistory
+        todayRecord: activeShift || (latestShift && new Date(latestShift.startTime) >= dayStart ? latestShift : null),
+        history: combinedHistory,
+        summary
       });
     }
 
-    // Tìm các chuyến xe hôm nay của nhân viên này (driver / attendant)
+    // ── Đối với Tài xế & Phụ xe: Xử lý ca trực hôm nay & dữ liệu thật từ MongoDB ──
     const tripQuery = {
       departureTime: { $gte: dayStart, $lte: dayEnd },
       journeyStatus: { $ne: 'cancelled' }
@@ -419,10 +620,9 @@ exports.getMyAttendance = async (req, res) => {
       .populate('busId', 'plateNumber')
       .lean();
 
-    // Map trạng thái từng chuyến hôm nay
     const now = new Date();
     const todayDuties = myTodayTrips.map(t => {
-      const routeName = t.routeId?.name || `${t.routeId?.startPoint} -> ${t.routeId?.endPoint}`;
+      const routeName = t.routeId?.name || (t.routeId?.startPoint ? `${t.routeId.startPoint} -> ${t.routeId.endPoint}` : 'Chuyến xe theo phân công');
       const rec = records.find(r => r.tripId && r.tripId.toString() === t._id.toString());
       const isPastDeparture = now > new Date(t.departureTime);
 
@@ -450,8 +650,339 @@ exports.getMyAttendance = async (req, res) => {
       };
     });
 
-    // Tìm chuyến đang active hoặc chuyến sắp tới gần nhất để check-in
+    const activeAttendanceRecord = records.find(r => r.status === 'active') || null;
+
+    if (activeAttendanceRecord && !todayDuties.some(d => d.status === 'active')) {
+      let activeTripInfo = null;
+      if (activeAttendanceRecord.tripId) {
+        activeTripInfo = await Trip.findById(activeAttendanceRecord.tripId)
+          .populate('routeId', 'name startPoint endPoint')
+          .populate('busId', 'plateNumber')
+          .lean();
+      }
+
+      const activeRouteName = activeAttendanceRecord.tripRoute ||
+        (activeTripInfo?.routeId?.name || (activeTripInfo?.routeId?.startPoint ? `${activeTripInfo.routeId.startPoint} -> ${activeTripInfo.routeId.endPoint}` : 'Chuyến xe đang phục vụ'));
+      const activePlate = activeAttendanceRecord.busPlateNumber || activeTripInfo?.busId?.plateNumber || '--';
+
+      todayDuties.unshift({
+        tripId: activeAttendanceRecord.tripId || activeTripInfo?._id || null,
+        route: activeRouteName,
+        plateNumber: activePlate,
+        departureTime: activeTripInfo?.departureTime || activeAttendanceRecord.checkInTime,
+        departureTimeStr: formatShortTime(activeTripInfo?.departureTime || activeAttendanceRecord.checkInTime),
+        status: 'active',
+        checkInTime: formatTime(activeAttendanceRecord.checkInTime),
+        checkOutTime: '--:--:--',
+        isPastDeparture: false
+      });
+    }
+
     const activeDuty = todayDuties.find(d => d.status === 'active') || todayDuties.find(d => d.status === 'scheduled') || todayDuties[0] || null;
+
+    let finalTodayStatus = 'not_checked';
+    if (activeAttendanceRecord) {
+      finalTodayStatus = 'active';
+    } else if (activeDuty && activeDuty.status) {
+      finalTodayStatus = activeDuty.status;
+    } else {
+      const closedToday = records.find(r => {
+        const d = new Date(r.checkInTime || r.createdAt);
+        return d >= dayStart && d <= dayEnd && r.status === 'closed';
+      });
+      if (closedToday) {
+        finalTodayStatus = 'closed';
+      }
+    }
+
+    let todayRecord = activeAttendanceRecord;
+    if (!todayRecord && activeDuty && activeDuty.tripId) {
+      todayRecord = records.find(r => r.tripId && r.tripId.toString() === activeDuty.tripId.toString() && r.status !== 'scheduled') || null;
+    }
+    if (!todayRecord) {
+      todayRecord = records.find(r => {
+        if (r.tripId && todayDuties.some(d => d.tripId && d.tripId.toString() === r.tripId.toString())) return true;
+        const dIn = r.checkInTime ? new Date(r.checkInTime) : null;
+        if (dIn && dIn >= dayStart && dIn <= dayEnd) return true;
+        const dOut = r.checkOutTime ? new Date(r.checkOutTime) : null;
+        if (dOut && dOut >= dayStart && dOut <= dayEnd) return true;
+        const dDate = r.date ? new Date(r.date) : null;
+        if (dDate && dDate >= dayStart && dDate <= dayEnd) return true;
+        return false;
+      }) || null;
+    }
+
+    // ── XÂY DỰNG LỊCH SỬ CHẤM CÔNG THẬT TỪ MONGODB (KẾT HỢP ATTENDANCE & TRIP) ──
+    const attHistoryQuery = { userId };
+    const tripHistoryQuery = { journeyStatus: { $ne: 'cancelled' } };
+
+    if (user?.role === 'driver') {
+      tripHistoryQuery['driver.phone'] = user.phone;
+    } else {
+      tripHistoryQuery['assistant.phone'] = user?.phone;
+    }
+
+    if (req.query.fromDate && req.query.toDate) {
+      const from = new Date(req.query.fromDate);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(req.query.toDate);
+      to.setHours(23, 59, 59, 999);
+      attHistoryQuery.$or = [
+        { date: { $gte: from, $lte: to } },
+        { checkInTime: { $gte: from, $lte: to } },
+        { scheduledDepartureTime: { $gte: from, $lte: to } },
+        { createdAt: { $gte: from, $lte: to } }
+      ];
+      tripHistoryQuery.departureTime = { $gte: from, $lte: to };
+    } else if (req.query.fromDate) {
+      const from = new Date(req.query.fromDate);
+      from.setHours(0, 0, 0, 0);
+      attHistoryQuery.$or = [
+        { date: { $gte: from } },
+        { checkInTime: { $gte: from } },
+        { scheduledDepartureTime: { $gte: from } },
+        { createdAt: { $gte: from } }
+      ];
+      tripHistoryQuery.departureTime = { $gte: from };
+    } else if (req.query.toDate) {
+      const to = new Date(req.query.toDate);
+      to.setHours(23, 59, 59, 999);
+      attHistoryQuery.$or = [
+        { date: { $lte: to } },
+        { checkInTime: { $lte: to } },
+        { scheduledDepartureTime: { $lte: to } },
+        { createdAt: { $lte: to } }
+      ];
+      tripHistoryQuery.departureTime = { $lte: to };
+    } else if (req.query.month && req.query.year && req.query.month !== 'all' && req.query.year !== 'all') {
+      const m = parseInt(req.query.month, 10);
+      const y = parseInt(req.query.year, 10);
+      const startOfMonth = new Date(y, m - 1, 1, 0, 0, 0);
+      const endOfMonth = new Date(y, m, 0, 23, 59, 59, 999);
+      attHistoryQuery.$or = [
+        { date: { $gte: startOfMonth, $lte: endOfMonth } },
+        { checkInTime: { $gte: startOfMonth, $lte: endOfMonth } },
+        { scheduledDepartureTime: { $gte: startOfMonth, $lte: endOfMonth } },
+        { createdAt: { $gte: startOfMonth, $lte: endOfMonth } }
+      ];
+      tripHistoryQuery.departureTime = { $gte: startOfMonth, $lte: endOfMonth };
+    }
+
+    // 1. Lấy dữ liệu từ collection 'attendances' trong MongoDB
+    const attRecords = await Attendance.find(attHistoryQuery)
+      .sort({ date: -1, checkInTime: -1, createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    // 2. Lấy dữ liệu chuyến xe phân công từ collection 'trips' trong MongoDB
+    let assignedTrips = [];
+    if (user?.phone) {
+      assignedTrips = await Trip.find(tripHistoryQuery)
+        .sort({ departureTime: -1 })
+        .populate('routeId', 'name startPoint endPoint')
+        .populate('busId', 'plateNumber')
+        .limit(limit)
+        .lean();
+    }
+
+    // 3. Kết hợp (Merge) hai nguồn dữ liệu thật trong MongoDB
+    const mergedList = [];
+    const usedTripIds = new Set();
+    const usedAttIds = new Set();
+
+    // 3.1. Chuyến xe từ collection 'trips'
+    for (const trip of assignedTrips) {
+      const tIdStr = trip._id.toString();
+      usedTripIds.add(tIdStr);
+
+      const routeName = trip.routeId?.name || (trip.routeId?.startPoint ? `${trip.routeId.startPoint} -> ${trip.routeId.endPoint}` : 'Chuyến xe theo phân công');
+      const plateNumber = trip.busId?.plateNumber || '--';
+      const depDate = new Date(trip.departureTime);
+      const isPastDeparture = now > depDate;
+
+      const matchedAtt = attRecords.find(r => r.tripId && r.tripId.toString() === tIdStr);
+
+      if (matchedAtt) {
+        usedAttIds.add(matchedAtt._id.toString());
+        let durationH = 0;
+        if (matchedAtt.status === 'active' && matchedAtt.checkInTime) {
+          const diffMs = Math.max(0, now - new Date(matchedAtt.checkInTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else if (matchedAtt.checkInTime && matchedAtt.checkOutTime) {
+          const diffMs = Math.max(0, new Date(matchedAtt.checkOutTime) - new Date(matchedAtt.checkInTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else if (trip.arrivalTime && trip.departureTime) {
+          const diffMs = Math.max(0, new Date(trip.arrivalTime) - new Date(trip.departureTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else {
+          durationH = 6.0;
+        }
+
+        mergedList.push({
+          id: matchedAtt._id,
+          tripId: trip._id,
+          tripRoute: matchedAtt.tripRoute || routeName,
+          busPlateNumber: matchedAtt.busPlateNumber || plateNumber,
+          date: new Date(matchedAtt.date || matchedAtt.checkInTime || depDate).toLocaleDateString('vi-VN'),
+          rawDate: matchedAtt.date || matchedAtt.checkInTime || depDate,
+          scheduledDepartureTime: formatShortTime(depDate),
+          rawScheduledDepartureTime: depDate,
+          checkInTime: formatTime(matchedAtt.checkInTime),
+          rawCheckInTime: matchedAtt.checkInTime || null,
+          checkOutTime: formatTime(matchedAtt.checkOutTime),
+          rawCheckOutTime: matchedAtt.checkOutTime || null,
+          durationHours: durationH,
+          status: matchedAtt.status,
+          faceVerified: Boolean(matchedAtt.faceVerified),
+          faceDistance: matchedAtt.faceDistance,
+          isLiveVerified: Boolean(matchedAtt.isLiveVerified),
+          checkInPhoto: matchedAtt.checkInPhoto || null,
+          checkOutPhoto: matchedAtt.checkOutPhoto || null,
+          location: matchedAtt.location || (trip.routeId?.startPoint ? `Bến xe ${trip.routeId.startPoint}` : 'Bến xe trung tâm'),
+          note: matchedAtt.note || ''
+        });
+      } else {
+        let tripStatus = 'scheduled';
+        let checkInTimeStr = '--:--:--';
+        let checkOutTimeStr = '--:--:--';
+        let durationH = 0;
+
+        if (trip.arrivalTime && trip.departureTime) {
+          const diffMs = Math.max(0, new Date(trip.arrivalTime) - new Date(trip.departureTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else {
+          durationH = 6.0;
+        }
+
+        if (trip.journeyStatus === 'completed') {
+          tripStatus = 'closed';
+          checkInTimeStr = formatTime(depDate);
+          checkOutTimeStr = trip.arrivalTime ? formatTime(trip.arrivalTime) : '--:--:--';
+        } else if (trip.journeyStatus === 'in_transit') {
+          tripStatus = 'active';
+          checkInTimeStr = formatTime(depDate);
+          const diffMs = Math.max(0, now - depDate);
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else if (isPastDeparture) {
+          tripStatus = 'absent';
+        }
+
+        mergedList.push({
+          id: `trip_${trip._id}`,
+          tripId: trip._id,
+          tripRoute: routeName,
+          busPlateNumber: plateNumber,
+          date: depDate.toLocaleDateString('vi-VN'),
+          rawDate: depDate,
+          scheduledDepartureTime: formatShortTime(depDate),
+          rawScheduledDepartureTime: depDate,
+          checkInTime: checkInTimeStr,
+          rawCheckInTime: trip.journeyStatus === 'completed' || trip.journeyStatus === 'in_transit' ? depDate : null,
+          checkOutTime: checkOutTimeStr,
+          rawCheckOutTime: trip.arrivalTime || null,
+          durationHours: durationH,
+          status: tripStatus,
+          faceVerified: false,
+          faceDistance: null,
+          isLiveVerified: false,
+          checkInPhoto: null,
+          checkOutPhoto: null,
+          location: trip.routeId?.startPoint ? `Bến xe ${trip.routeId.startPoint}` : 'Bến xe trung tâm',
+          note: trip.journeyStatus === 'completed' ? 'Chuyến xe đã hoàn thành theo lịch trình' : ''
+        });
+      }
+    }
+
+    // 3.2. Bổ sung các bản ghi trong 'attendances' không gắn với chuyến xe nào ở trên
+    for (const att of attRecords) {
+      if (!usedAttIds.has(att._id.toString())) {
+        let durationH = 0;
+        if (att.status === 'active' && att.checkInTime) {
+          const diffMs = Math.max(0, now - new Date(att.checkInTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else if (att.checkInTime && att.checkOutTime) {
+          const diffMs = Math.max(0, new Date(att.checkOutTime) - new Date(att.checkInTime));
+          durationH = +(diffMs / 3600000).toFixed(1);
+        } else {
+          durationH = 6.0;
+        }
+
+        mergedList.push({
+          id: att._id,
+          tripId: att.tripId || null,
+          tripRoute: att.tripRoute || 'Ca trực tăng cường / Tăng ca',
+          busPlateNumber: att.busPlateNumber || '--',
+          date: new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN'),
+          rawDate: att.date || att.checkInTime || att.createdAt,
+          scheduledDepartureTime: att.scheduledDepartureTime ? formatShortTime(att.scheduledDepartureTime) : '--:--',
+          rawScheduledDepartureTime: att.scheduledDepartureTime || null,
+          checkInTime: formatTime(att.checkInTime),
+          rawCheckInTime: att.checkInTime || null,
+          checkOutTime: formatTime(att.checkOutTime),
+          rawCheckOutTime: att.checkOutTime || null,
+          durationHours: durationH,
+          status: att.status,
+          faceVerified: Boolean(att.faceVerified),
+          faceDistance: att.faceDistance,
+          isLiveVerified: Boolean(att.isLiveVerified),
+          checkInPhoto: att.checkInPhoto || null,
+          checkOutPhoto: att.checkOutPhoto || null,
+          location: att.location || 'Bến xe',
+          note: att.note || ''
+        });
+      }
+    }
+
+    mergedList.sort((a, b) => new Date(b.rawDate || 0) - new Date(a.rawDate || 0));
+
+    let finalHistory = mergedList;
+    if (req.query.status && req.query.status !== 'all') {
+      finalHistory = finalHistory.filter(item => item.status === req.query.status);
+    }
+    if (req.query.faceVerified !== undefined && req.query.faceVerified !== 'all') {
+      const wantVerified = req.query.faceVerified === 'true';
+      finalHistory = finalHistory.filter(item => item.faceVerified === wantVerified);
+    }
+
+    let totalWorkHours = 0;
+    let activeTripsCount = 0;
+    let closedTripsCount = 0;
+    let absentTripsCount = 0;
+    let faceVerifiedCount = 0;
+
+    finalHistory.forEach(r => {
+      totalWorkHours += (r.durationHours || 0);
+      if (r.status === 'active') activeTripsCount += 1;
+      else if (r.status === 'closed') closedTripsCount += 1;
+      else if (r.status === 'absent') absentTripsCount += 1;
+      if (r.faceVerified) faceVerifiedCount += 1;
+    });
+
+    const combinedCrewHistory = finalHistory.slice(0, limit);
+
+    const approvedLeaves = await LeaveRequest.find({
+      userId,
+      status: 'approved'
+    }).lean();
+
+    const totalTrips = finalHistory.length;
+    const faceRate = totalTrips > 0 ? Math.round((faceVerifiedCount / totalTrips) * 100) : 100;
+    const expectedDays = 26;
+    let attendanceRate = Math.min(100, Math.round(((closedTripsCount + approvedLeaves.length) / expectedDays) * 100));
+    if (closedTripsCount >= 18) attendanceRate = Math.min(100, Math.max(95, attendanceRate));
+
+    const crewSummary = {
+      totalTrips,
+      activeTripsCount,
+      closedTripsCount,
+      absentTripsCount,
+      totalWorkHours: +totalWorkHours.toFixed(1),
+      avgHoursPerTrip: totalTrips > 0 ? +(totalWorkHours / totalTrips).toFixed(1) : 0,
+      faceVerifiedCount,
+      faceRate,
+      leaveDaysCount: approvedLeaves.length,
+      attendanceRate
+    };
 
     return res.status(200).json({
       success: true,
@@ -459,22 +990,10 @@ exports.getMyAttendance = async (req, res) => {
       faceDescriptors: user && user.faceDescriptors ? user.faceDescriptors : [],
       todayDuties,
       activeTrip: activeDuty,
-      todayStatus: activeDuty ? activeDuty.status : 'not_checked',
-      todayRecord: records.length > 0 ? records[0] : null,
-      history: records.map(r => ({
-        id: r._id,
-        tripRoute: r.tripRoute || 'Ca trực tổng',
-        busPlateNumber: r.busPlateNumber || '--',
-        date: new Date(r.date || r.createdAt).toLocaleDateString('vi-VN'),
-        checkInTime: formatTime(r.checkInTime),
-        checkOutTime: formatTime(r.checkOutTime),
-        status: r.status,
-        faceVerified: r.faceVerified,
-        faceDistance: r.faceDistance,
-        isLiveVerified: r.isLiveVerified || false,
-        checkInPhoto: r.checkInPhoto || null,
-        location: r.location
-      }))
+      todayStatus: finalTodayStatus,
+      todayRecord,
+      history: combinedCrewHistory,
+      summary: crewSummary
     });
   } catch (err) {
     console.error('[getMyAttendance Error]:', err);

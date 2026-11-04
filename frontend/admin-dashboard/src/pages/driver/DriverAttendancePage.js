@@ -17,7 +17,7 @@ import AttendanceGpsCard from '../../components/AttendanceGpsCard';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
-const DriverAttendancePage = () => {
+const DriverAttendancePage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
 
   // Trạng thái AI Models & Camera
@@ -89,7 +89,10 @@ const DriverAttendancePage = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setTodayStatus(data.todayStatus || 'not_checked');
+        const computedStatus = (data.todayRecord && data.todayRecord.status === 'active')
+          ? 'active'
+          : (data.todayStatus || 'not_checked');
+        setTodayStatus(computedStatus);
         setTodayRecord(data.todayRecord || null);
         setHistory(data.history || []);
         if (Array.isArray(data.faceDescriptors) && data.faceDescriptors.length > 0) {
@@ -296,8 +299,8 @@ const DriverAttendancePage = () => {
         if (gpsLocation.gpsMode === 'device' && gpsLocation.isWithinGeofence === false) {
           const distKm = gpsLocation.distance
             ? (gpsLocation.distance >= 1000
-                ? `${(gpsLocation.distance / 1000).toFixed(1)}km`
-                : `${Math.round(gpsLocation.distance)}m`)
+              ? `${(gpsLocation.distance / 1000).toFixed(1)}km`
+              : `${Math.round(gpsLocation.distance)}m`)
             : 'quá xa';
           showToast(
             `Không thể chấm công: Bạn đang cách bến xuất phát ${distKm} (vượt quá bán kính cho phép 1.5km). Vui lòng di chuyển đến bến xuất phát hoặc chuyển sang chế độ "Tại Bến Xuất Bến (Demo)" để thử nghiệm!`,
@@ -314,22 +317,22 @@ const DriverAttendancePage = () => {
       const payload =
         actionType === 'check-in'
           ? {
-              faceDescriptor: descriptor,
-              checkInPhoto: photoSnapshot,
-              isLiveVerified: livenessVerified,
-              location: gpsLocation.address,
-              gpsLat: gpsLocation.lat,
-              gpsLng: gpsLocation.lng,
-              tripId: gpsLocation.tripId || null
-            }
+            faceDescriptor: descriptor,
+            checkInPhoto: photoSnapshot,
+            isLiveVerified: livenessVerified,
+            location: gpsLocation.address,
+            gpsLat: gpsLocation.lat,
+            gpsLng: gpsLocation.lng,
+            tripId: gpsLocation.tripId || null
+          }
           : {
-              faceDescriptor: descriptor,
-              checkOutPhoto: photoSnapshot,
-              location: gpsLocation.address,
-              gpsLat: gpsLocation.lat,
-              gpsLng: gpsLocation.lng,
-              tripId: gpsLocation.tripId || null
-            };
+            faceDescriptor: descriptor,
+            checkOutPhoto: photoSnapshot,
+            location: gpsLocation.address,
+            gpsLat: gpsLocation.lat,
+            gpsLng: gpsLocation.lng,
+            tripId: gpsLocation.tripId || null
+          };
 
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
@@ -344,9 +347,16 @@ const DriverAttendancePage = () => {
 
       if (res.ok && data.success) {
         showToast(data.message, 'success');
+        setTodayStatus(actionType === 'check-in' ? 'active' : 'closed');
         fetchMyAttendance();
       } else {
-        showToast(data.message || 'Xác thực khuôn mặt thất bại. Vui lòng thử lại!', 'error');
+        if (data.message && data.message.includes('đã bắt đầu ca')) {
+          setTodayStatus('active');
+          fetchMyAttendance();
+          showToast(data.message, 'info');
+        } else {
+          showToast(data.message || 'Xác thực khuôn mặt thất bại. Vui lòng thử lại!', 'error');
+        }
       }
     } catch (err) {
       console.error('[Attendance Action Error]:', err);
@@ -423,7 +433,7 @@ const DriverAttendancePage = () => {
         showToast(data.message, 'success');
         setTodayStatus('not_checked');
         setTodayRecord(null);
-        fetchMyAttendance();
+        await fetchMyAttendance();
       } else {
         showToast(data.message || 'Không thể đặt lại dữ liệu.', 'error');
       }
@@ -491,27 +501,26 @@ const DriverAttendancePage = () => {
                     todayStatus === 'closed'
                       ? '#ecfdf5'
                       : todayStatus === 'active'
-                      ? '#eff6ff'
-                      : todayStatus === 'absent'
-                      ? '#fef2f2'
-                      : '#fef3c7',
+                        ? '#eff6ff'
+                        : todayStatus === 'absent'
+                          ? '#fef2f2'
+                          : '#fef3c7',
                   color:
                     todayStatus === 'closed'
                       ? '#059669'
                       : todayStatus === 'active'
-                      ? '#1d4ed8'
-                      : todayStatus === 'absent'
-                      ? '#b91c1c'
-                      : '#b45309',
-                  border: `1px solid ${
-                    todayStatus === 'closed'
+                        ? '#1d4ed8'
+                        : todayStatus === 'absent'
+                          ? '#b91c1c'
+                          : '#b45309',
+                  border: `1px solid ${todayStatus === 'closed'
                       ? '#a7f3d0'
                       : todayStatus === 'active'
-                      ? '#bfdbfe'
-                      : todayStatus === 'absent'
-                      ? '#fecaca'
-                      : '#fde68a'
-                  }`,
+                        ? '#bfdbfe'
+                        : todayStatus === 'absent'
+                          ? '#fecaca'
+                          : '#fde68a'
+                    }`,
                   padding: '2px 8px',
                   borderRadius: '4px',
                   fontSize: '0.68rem',
@@ -521,10 +530,10 @@ const DriverAttendancePage = () => {
                 {todayStatus === 'closed'
                   ? 'ĐÃ HOÀN THÀNH CA HÔM NAY'
                   : todayStatus === 'active'
-                  ? 'ĐANG TRỰC CA'
-                  : todayStatus === 'absent'
-                  ? 'VẮNG KHÔNG PHÉP'
-                  : 'CHƯA CHECK-IN'}
+                    ? 'ĐANG TRỰC CA'
+                    : todayStatus === 'absent'
+                      ? 'VẮNG KHÔNG PHÉP'
+                      : 'CHƯA CHECK-IN'}
               </span>
               <span
                 style={{
@@ -713,20 +722,19 @@ const DriverAttendancePage = () => {
                     background: !faceDetected
                       ? 'rgba(15, 23, 42, 0.88)'
                       : registeredDescriptors.length > 0 && !faceMatchResult.isMatch
-                      ? 'rgba(153, 27, 27, 0.9)'
-                      : 'rgba(5, 150, 105, 0.9)',
+                        ? 'rgba(153, 27, 27, 0.9)'
+                        : 'rgba(5, 150, 105, 0.9)',
                     color: '#ffffff',
                     padding: '6px 16px',
                     borderRadius: '20px',
                     fontSize: '0.78rem',
                     fontWeight: '700',
-                    border: `1px solid ${
-                      !faceDetected
+                    border: `1px solid ${!faceDetected
                         ? 'rgba(255, 255, 255, 0.22)'
                         : registeredDescriptors.length > 0 && !faceMatchResult.isMatch
-                        ? 'rgba(248, 113, 113, 0.45)'
-                        : 'rgba(52, 211, 153, 0.45)'
-                    }`,
+                          ? 'rgba(248, 113, 113, 0.45)'
+                          : 'rgba(52, 211, 153, 0.45)'
+                      }`,
                     boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
                     whiteSpace: 'nowrap',
                     backdropFilter: 'blur(6px)',
@@ -737,8 +745,8 @@ const DriverAttendancePage = () => {
                   {registeredDescriptors.length > 0 && !faceMatchResult.isMatch && faceStatusHint.includes('không khớp')
                     ? 'Khuôn mặt không khớp'
                     : !faceDetected
-                    ? 'Nhìn thẳng vào ống kính'
-                    : 'Giữ yên khuôn mặt'}
+                      ? 'Nhìn thẳng vào ống kính'
+                      : 'Giữ yên khuôn mặt'}
                 </div>
               )}
             </div>
@@ -813,7 +821,7 @@ const DriverAttendancePage = () => {
                   >
                     {isRegisteringFace ? 'Đang phân tích & lưu khuôn mặt...' : (
                       <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
                         Chụp Ảnh &amp; Kích Hoạt Dữ Liệu Khuôn Mặt
                       </span>
                     )}
@@ -863,8 +871,8 @@ const DriverAttendancePage = () => {
                       {actionLoading
                         ? 'Đang phân tích...'
                         : todayStatus === 'active'
-                        ? 'Kết Thúc Ca Trực'
-                        : 'Bắt Đầu Ca Trực'}
+                          ? 'Kết Thúc Ca Trực'
+                          : 'Bắt Đầu Ca Trực'}
                     </button>
 
                     <div style={{ textAlign: 'center', marginTop: '8px' }}>
@@ -1083,9 +1091,8 @@ const DriverAttendancePage = () => {
                             item.status === 'closed' ? '#ecfdf5' : item.status === 'active' ? '#eff6ff' : '#fef2f2',
                           color:
                             item.status === 'closed' ? '#059669' : item.status === 'active' ? '#1d4ed8' : '#dc2626',
-                          border: `1px solid ${
-                            item.status === 'closed' ? '#a7f3d0' : item.status === 'active' ? '#bfdbfe' : '#fecaca'
-                          }`
+                          border: `1px solid ${item.status === 'closed' ? '#a7f3d0' : item.status === 'active' ? '#bfdbfe' : '#fecaca'
+                            }`
                         }}
                       >
                         {item.status === 'closed' ? 'HOÀN THÀNH' : item.status === 'active' ? 'ĐANG TRỰC' : 'VẮNG MẶT'}
@@ -1094,6 +1101,30 @@ const DriverAttendancePage = () => {
                   </div>
                 ))}
               </div>
+            )}
+            {setActiveTab && (
+              <button
+                onClick={() => setActiveTab('driver-attendance-report')}
+                style={{
+                  width: '100%',
+                  marginTop: '0.85rem',
+                  padding: '9px 12px',
+                  backgroundColor: '#ffffff',
+                  color: '#2563eb',
+                  border: '1.5px solid #bfdbfe',
+                  borderRadius: '8px',
+                  fontWeight: '800',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <span>Xem toàn bộ lịch sử chấm công & chuyến xe →</span>
+              </button>
             )}
           </div>
         </div>

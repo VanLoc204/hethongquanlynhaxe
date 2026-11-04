@@ -115,7 +115,8 @@ const DriverStatusPage = ({ setActiveTab }) => {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          setAttendanceStatus(data.todayStatus || 'not_checked');
+          const isCurrentlyActive = data.todayStatus === 'active' || data.todayRecord?.status === 'active';
+          setAttendanceStatus(isCurrentlyActive ? 'active' : (data.todayStatus || 'not_checked'));
         } else {
           setAttendanceStatus('not_checked');
         }

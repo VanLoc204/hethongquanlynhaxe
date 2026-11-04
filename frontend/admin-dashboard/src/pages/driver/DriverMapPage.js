@@ -199,44 +199,50 @@ const DriverMapPage = ({ setActiveTab }) => {
         const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
 
-        // 1. Thử lấy lịch phân công cá nhân của tài xế
+        // 1. Lấy lịch phân công cá nhân của tài xế từ my-schedule
         let tripsList = [];
         const myRes = await fetch(`${API_BASE}/users/my-schedule`, { headers });
         const myData = await myRes.json();
-        if (myData.success && Array.isArray(myData.trips) && myData.trips.length > 0) {
-          // LỌC CHÍNH XÁC: Chỉ lấy các chuyến xe có departureTime đúng vào ngày HÔM NAY
-          tripsList = myData.trips.filter(t => {
-            if (!t.departureTime) return false;
-            return new Date(t.departureTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) === todayStr;
-          });
-        }
 
-        // 2. Nếu my-schedule không tìm thấy chuyến hôm nay (hoặc tài xế mới phân công), lấy từ ops/trips
-        if (tripsList.length === 0) {
+        let driverTrips = [];
+        if (myData.success && Array.isArray(myData.trips) && myData.trips.length > 0) {
+          driverTrips = myData.trips;
+        } else {
+          // Dự phòng: Chỉ lọc các chuyến xe của CHÍNH tài xế này từ ops/trips
           const allRes = await fetch(`${API_BASE}/trips/ops/trips`, { headers });
           const allData = await allRes.json();
           if (allData.success && Array.isArray(allData.trips)) {
-            // Lọc các chuyến xe hôm nay của chính tài xế này trước
-            const driverTodayTrips = allData.trips.filter(t => {
-              if (!t.departureTime) return false;
-              const isToday = new Date(t.departureTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) === todayStr;
-              const matchesDriver = user?.name && t.driver?.name && t.driver.name.toLowerCase().includes(user.name.toLowerCase());
-              return isToday && matchesDriver;
+            driverTrips = allData.trips.filter(t => {
+              const matchesPhone = user?.phone && (t.driver?.phone === user.phone || t.assistant?.phone === user.phone);
+              const matchesName = user?.name && (
+                (t.driver?.name && t.driver.name.toLowerCase().includes(user.name.toLowerCase())) ||
+                (t.assistant?.name && t.assistant.name.toLowerCase().includes(user.name.toLowerCase()))
+              );
+              return matchesPhone || matchesName;
             });
-
-            if (driverTodayTrips.length > 0) {
-              tripsList = driverTodayTrips;
-            } else {
-              // Hoặc danh sách các chuyến hôm nay trong hệ thống
-              tripsList = allData.trips.filter(t => {
-                if (!t.departureTime) return false;
-                return new Date(t.departureTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) === todayStr;
-              });
-            }
           }
         }
 
-        // Sắp xếp các chuyến hôm nay theo giờ xuất bến
+        if (driverTrips.length > 0) {
+          // Ưu tiên 1: Chuyến xe có ngày khởi hành hôm nay
+          const todayTrips = driverTrips.filter(t => {
+            if (!t.departureTime) return false;
+            return new Date(t.departureTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) === todayStr;
+          });
+
+          if (todayTrips.length > 0) {
+            tripsList = todayTrips;
+          } else {
+            // Ưu tiên 2: Nếu hôm nay không có chuyến, lấy chuyến xe sắp tới gần nhất của chính tài xế này
+            const futureTrips = driverTrips
+              .filter(t => t.departureTime && new Date(t.departureTime) >= new Date(Date.now() - 4 * 3600 * 1000))
+              .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+
+            tripsList = futureTrips.length > 0 ? futureTrips : driverTrips;
+          }
+        }
+
+        // Sắp xếp các chuyến theo giờ xuất bến
         tripsList.sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
 
         setAssignedTrips(tripsList);
@@ -268,9 +274,10 @@ const DriverMapPage = ({ setActiveTab }) => {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-          setAttendanceStatus(data.todayStatus || 'not_checked');
+          const isCurrentlyActive = data.todayStatus === 'active' || data.todayRecord?.status === 'active';
+          setAttendanceStatus(isCurrentlyActive ? 'active' : (data.todayStatus || 'not_checked'));
           // Nếu chưa vào ca (chưa check-in) mà GPS đang phát ngầm thì tự động dừng phát
-          if (data.todayStatus !== 'active' && driverGpsService.isTracking) {
+          if (!isCurrentlyActive && driverGpsService.isTracking) {
             driverGpsService.stopTracking();
           }
         } else {
@@ -724,7 +731,7 @@ const DriverMapPage = ({ setActiveTab }) => {
                 borderRadius: '5px',
                 flexShrink: 0
               }}>
-                Xe {activeTrip?.busId?.plateNumber || '51B-029.29'}
+                Xe {activeTrip?.busId?.plateNumber || '--'}
               </span>
               <span style={{
                 fontSize: '0.86rem',
@@ -734,7 +741,9 @@ const DriverMapPage = ({ setActiveTab }) => {
                 overflow: 'hidden',
                 textOverflow: 'ellipsis'
               }}>
-                {activeTrip?.routeId ? `${activeTrip.routeId.startPoint} ➔ ${activeTrip.routeId.endPoint}` : 'Đà Lạt ➔ Hồ Chí Minh'}
+                {activeTrip?.routeId
+                  ? (activeTrip.routeId.name || `${activeTrip.routeId.startPoint} ➔ ${activeTrip.routeId.endPoint}`)
+                  : (loadingTrip ? 'Đang nạp chuyến xe...' : 'Chưa có chuyến xe phân công')}
               </span>
             </div>
 
@@ -822,7 +831,7 @@ const DriverMapPage = ({ setActiveTab }) => {
 
             {/* Giờ xuất bến */}
             <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: '700', whiteSpace: 'nowrap' }}>
-              Xuất bến: {activeTrip?.departureTime ? new Date(activeTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '16:00'}
+              Xuất bến: {activeTrip?.departureTime ? new Date(activeTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
             </span>
 
             {/* Chọn chế độ test / GPS thật */}

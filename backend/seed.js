@@ -89,33 +89,33 @@ async function seedDB() {
     const systemUsers = [
       // Managers & Admin
       {
-        name: 'Quản Lý Xe An Bình',
-        email: 'fleet@anbinhlines.vn',
+        name: 'Phạm Minh Tuấn',
+        email: 'tuan.phamminh@anbinhlines.vn',
         phone: '0988888888',
         role: 'fleet_manager',
       },
       {
-        name: 'Quản Lý Vận Tải An Bình',
-        email: 'ops@anbinhlines.vn',
+        name: 'Lê Trọng Nghĩa',
+        email: 'nghia.letrong@anbinhlines.vn',
         phone: '0977777777',
         role: 'ops_manager',
       },
       {
-        name: 'Giám Đốc An Bình',
-        email: 'director@anbinhlines.vn',
+        name: 'Nguyễn An Bình',
+        email: 'binh.nguyenan@anbinhlines.vn',
         phone: '0966555666', // Unique phone for GM
         role: 'general_manager',
       },
       {
-        name: 'Quản Trị Viên Hệ Thống',
-        email: 'admin@anbinhlines.vn',
+        name: 'Trần Quốc Huy',
+        email: 'huy.tranquoc@anbinhlines.vn',
         phone: '0955555666', // Unique phone for Admin
         role: 'admin',
       },
       // Quản lý phòng vé & Nhân viên bán vé Chi nhánh TP. Hồ Chí Minh
       {
-        name: 'Quản Lý Phòng Vé Sài Gòn',
-        email: 'ticket_manager@anbinhlines.vn',
+        name: 'Võ Hoàng Nam',
+        email: 'nam.vohoang@anbinhlines.vn',
         phone: '0944999888',
         role: 'ticket_manager',
         branch: {
@@ -125,8 +125,8 @@ async function seedDB() {
         }
       },
       {
-        name: 'Nhân Viên Bán Vé Sài Gòn',
-        email: 'ticket@anbinhlines.vn',
+        name: 'Nguyễn Thị Mai',
+        email: 'mai.nguyenthi@anbinhlines.vn',
         phone: '0944555666',
         role: 'ticket_agent',
         branch: {
@@ -135,10 +135,21 @@ async function seedDB() {
           assignedOffices: ['Văn phòng Sài Gòn (BXMĐ)']
         }
       },
+      {
+        name: 'Đặng Thanh Trúc',
+        email: 'truc.dangthanh@anbinhlines.vn',
+        phone: '0944555667',
+        role: 'ticket_agent',
+        branch: {
+          branchId: 'sg',
+          branchName: 'Chi nhánh TP. Hồ Chí Minh',
+          assignedOffices: ['Văn phòng Sài Gòn (BXMT)']
+        }
+      },
       // Quản lý phòng vé & Nhân viên bán vé Chi nhánh Đà Lạt
       {
-        name: 'Quản Lý Phòng Vé Đà Lạt',
-        email: 'ticket_manager_dl@anbinhlines.vn',
+        name: 'Bùi Hải Đăng',
+        email: 'dang.buihai@anbinhlines.vn',
         phone: '0944999881',
         role: 'ticket_manager',
         branch: {
@@ -148,8 +159,8 @@ async function seedDB() {
         }
       },
       {
-        name: 'Nhân Viên Bán Vé Đà Lạt',
-        email: 'ticket_dl@anbinhlines.vn',
+        name: 'Lâm Mộng Điệp',
+        email: 'diep.lammong@anbinhlines.vn',
         phone: '0944555661',
         role: 'ticket_agent',
         branch: {
@@ -158,10 +169,21 @@ async function seedDB() {
           assignedOffices: ['Văn phòng Đà Lạt (BX Liên Tỉnh)']
         }
       },
+      {
+        name: 'Hoàng Thu Thảo',
+        email: 'thao.hoangthu@anbinhlines.vn',
+        phone: '0944555663',
+        role: 'ticket_agent',
+        branch: {
+          branchId: 'dl',
+          branchName: 'Chi nhánh Đà Lạt',
+          assignedOffices: ['Văn phòng Đà Lạt (Bùi Thị Xuân)']
+        }
+      },
       // Quản lý phòng vé & Nhân viên bán vé Chi nhánh Cần Thơ
       {
-        name: 'Quản Lý Phòng Vé Cần Thơ',
-        email: 'ticket_manager_ct@anbinhlines.vn',
+        name: 'Phan Thành Đạt',
+        email: 'dat.phanthanh@anbinhlines.vn',
         phone: '0944999882',
         role: 'ticket_manager',
         branch: {
@@ -171,8 +193,8 @@ async function seedDB() {
         }
       },
       {
-        name: 'Nhân Viên Bán Vé Cần Thơ',
-        email: 'ticket_ct@anbinhlines.vn',
+        name: 'Trương Mỹ Duyên',
+        email: 'duyen.truongmy@anbinhlines.vn',
         phone: '0944555662',
         role: 'ticket_agent',
         branch: {
@@ -181,10 +203,21 @@ async function seedDB() {
           assignedOffices: ['Văn phòng Cần Thơ (BX Trung Tâm)']
         }
       },
+      {
+        name: 'Nguyễn Quốc Khánh',
+        email: 'khanh.nguyenquoc@anbinhlines.vn',
+        phone: '0944555664',
+        role: 'ticket_agent',
+        branch: {
+          branchId: 'ct',
+          branchName: 'Chi nhánh Cần Thơ',
+          assignedOffices: ['Văn phòng Cần Thơ (Ninh Kiều)']
+        }
+      },
       // Drivers (Tài xế)
       {
-        name: 'Tài xế An Bình',
-        email: 'driver1@anbinhlines.vn',
+        name: 'Đỗ Hoàng Long',
+        email: 'long.dohoang@anbinhlines.vn',
         phone: '0933333333',
         role: 'driver',
       },
@@ -310,8 +343,8 @@ async function seedDB() {
 
     // Seed Customer accounts
     const cust1 = await mongoose.connection.collection('users').insertOne({
-      name: 'Nguyễn Văn Khách',
-      email: 'khach1@gmail.com',
+      name: 'Nguyễn Minh Tuấn',
+      email: 'tuan.nguyenminh@gmail.com',
       phone: '0901234567',
       password: hashedPassword,
       role: 'customer',
@@ -323,14 +356,27 @@ async function seedDB() {
     });
 
     const cust2 = await mongoose.connection.collection('users').insertOne({
-      name: 'Trần Thị Khách',
-      email: 'khach2@gmail.com',
+      name: 'Trần Thu Hà',
+      email: 'ha.tranthu@gmail.com',
       phone: '0902345678',
       password: hashedPassword,
       role: 'customer',
       status: 'active',
       points: 450,
       membershipTier: 'Silver',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    const cust3 = await mongoose.connection.collection('users').insertOne({
+      name: 'Hồ Văn Lộc',
+      email: 'hovanloc.lv@gmail.com',
+      phone: '0829927690',
+      password: hashedPassword,
+      role: 'customer',
+      status: 'active',
+      points: 1250,
+      membershipTier: 'Platinum',
       createdAt: new Date(),
       updatedAt: new Date()
     });
@@ -483,11 +529,11 @@ async function seedDB() {
 
     // Seed trips for -30 days to +90 days (3-4 full months of identical weekly schedules with clean Outbound -> Return pairings)
     const customerList = [
-      { name: 'Nguyễn Văn Khách', email: 'khach1@gmail.com', phone: '0901234567', id: customer1Id },
-      { name: 'Trần Thị Khách', email: 'khach2@gmail.com', phone: '0902345678', id: customer2Id },
-      { name: 'Phạm Văn Minh', email: 'minh.pham@gmail.com', phone: '0918112233', id: customer1Id },
-      { name: 'Lê Thi Hoài', email: 'hoai.le@gmail.com', phone: '0937445566', id: customer2Id },
-      { name: 'Hoàng Anh Tuấn', email: 'tuan.hoang@gmail.com', phone: '0982778899', id: customer1Id }
+      { name: 'Nguyễn Minh Tuấn', email: 'tuan.nguyenminh@gmail.com', phone: '0901234567', id: customer1Id },
+      { name: 'Trần Thu Hà', email: 'ha.tranthu@gmail.com', phone: '0902345678', id: customer2Id },
+      { name: 'Phạm Văn Minh', email: 'minh.phamvan@gmail.com', phone: '0918112233', id: customer1Id },
+      { name: 'Lê Thị Hoài', email: 'hoai.lethi@gmail.com', phone: '0937445566', id: customer2Id },
+      { name: 'Hoàng Anh Tuấn', email: 'tuan.hoanganh@gmail.com', phone: '0982778899', id: customer1Id }
     ];
 
     let globalOrderCode = 100001;
@@ -699,8 +745,8 @@ async function seedDB() {
 
     // Seed Real ShiftSessions linked to real Bookings
     const allBookings = await Booking.find({}).lean();
-    const ticketAgentUser = staffIds['ticket@anbinhlines.vn'];
-    const ticketManagerUser = staffIds['ticket_manager@anbinhlines.vn'];
+    const ticketAgentUser = staffIds['mai.nguyenthi@anbinhlines.vn'];
+    const ticketManagerUser = staffIds['nam.vohoang@anbinhlines.vn'];
 
     if (ticketAgentUser && allBookings.length > 0) {
       const bBatch1 = allBookings.slice(0, 15);
@@ -725,8 +771,8 @@ async function seedDB() {
       const nowTime = new Date();
       const todayDate = new Date(nowTime.getFullYear(), nowTime.getMonth(), nowTime.getDate());
 
-      const ticketAgentDl = staffIds['ticket_dl@anbinhlines.vn'];
-      const ticketManagerDl = staffIds['ticket_manager_dl@anbinhlines.vn'];
+      const ticketAgentDl = staffIds['diep.lammong@anbinhlines.vn'];
+      const ticketManagerDl = staffIds['dang.buihai@anbinhlines.vn'];
 
       await ShiftSession.create([
         {
@@ -800,7 +846,7 @@ async function seedDB() {
     // Seed generic approval requests (LeaveRequest model)
     const mockLeaves = [
       {
-        userId: staffIds['driver1@anbinhlines.vn'],
+        userId: staffIds['long.dohoang@anbinhlines.vn'],
         type: 'leave',
         typeName: 'Đơn xin nghỉ phép',
         details: 'Nghỉ từ 29/08/2026 đến 30/08/2026. Lý do: Giải quyết việc gia đình ở quê.',
@@ -820,7 +866,7 @@ async function seedDB() {
         status: 'approved'
       },
       {
-        userId: staffIds['ticket@anbinhlines.vn'],
+        userId: staffIds['mai.nguyenthi@anbinhlines.vn'],
         type: 'leave',
         typeName: 'Đơn xin nghỉ phép',
         details: 'Nghỉ từ 25/08/2026 đến 26/08/2026. Lý do: Nghỉ khám bệnh định kỳ.',
@@ -830,7 +876,7 @@ async function seedDB() {
         status: 'pending'
       },
       {
-        userId: staffIds['driver1@anbinhlines.vn'],
+        userId: staffIds['long.dohoang@anbinhlines.vn'],
         type: 'maintenance',
         typeName: 'Đề xuất bảo trì xe',
         details: 'Yêu cầu thay dầu nhớt định kỳ & má phanh trước cho xe giường nằm 51B-044.44.',

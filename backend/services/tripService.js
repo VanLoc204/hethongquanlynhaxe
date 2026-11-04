@@ -571,25 +571,95 @@ class TripService {
       }
     }
 
+    const baseDep = new Date(departureTime);
+    let baseArr = new Date(arrivalTime);
+
+    // Chuẩn hóa thời lượng chuyến xe
+    let duration = baseArr.getTime() - baseDep.getTime();
+    if (duration <= 0 || duration > 24 * 3600 * 1000) {
+      // Nếu giờ đến bị nhập lệch ngày xa (ví dụ cuối năm), chuẩn hóa thời lượng theo giờ trong ngày
+      const arrHours = (baseArr.getUTCHours() + 7) % 24;
+      const arrMinutes = baseArr.getUTCMinutes();
+      const depHours = (baseDep.getUTCHours() + 7) % 24;
+      const depMinutes = baseDep.getUTCMinutes();
+      let diffMinutes = (arrHours * 60 + arrMinutes) - (depHours * 60 + depMinutes);
+      if (diffMinutes <= 0) diffMinutes += 24 * 60;
+      duration = diffMinutes * 60 * 1000;
+      baseArr = new Date(baseDep.getTime() + duration);
+    }
+
+    // Tự động gán tổ lái chuyên trách của xe (nếu xe này đã có tài xế / phụ xe cố định)
+    let assignedDriver = tripData.driver;
+    let assignedAssistant = tripData.assistant;
+
+    if (!assignedDriver?.phone || !assignedAssistant?.phone) {
+      const existingCrewTrip = await tripRepository.findOne({
+        busId,
+        'driver.phone': { $exists: true, $ne: '' }
+      });
+      if (existingCrewTrip) {
+        if (!assignedDriver?.phone && existingCrewTrip.driver?.phone) {
+          assignedDriver = existingCrewTrip.driver;
+        }
+        if (!assignedAssistant?.phone && existingCrewTrip.assistant?.phone) {
+          assignedAssistant = existingCrewTrip.assistant;
+        }
+      }
+    }
+
     const trip = await tripRepository.create({
       routeId,
       busId,
-      departureTime: new Date(departureTime),
-      arrivalTime: new Date(arrivalTime),
+      departureTime: baseDep,
+      arrivalTime: baseArr,
       price: basePriceDoc.price,
       pickupPoints: finalPickups,
       dropoffPoints: finalDropoffs,
+      driver: assignedDriver || { name: '', phone: '' },
+      assistant: assignedAssistant || { name: '', phone: '' },
       policy: policy || {
         cancellation: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.',
         luggage: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.'
       }
     });
 
+    // Tự động lặp lại hàng tuần (mặc định lặp cho các tuần tiếp theo đến hết 31/12/2026)
+    if (tripData.repeatWeekly !== false) {
+      const maxEndDate = new Date('2026-12-31T23:59:59.999+07:00');
+      let nextDep = new Date(baseDep.getTime() + 7 * 24 * 3600 * 1000);
+
+      while (nextDep <= maxEndDate) {
+        const nextArr = new Date(nextDep.getTime() + duration);
+        const exists = await tripRepository.findOne({
+          routeId,
+          busId,
+          departureTime: nextDep
+        });
+
+        if (!exists) {
+          await tripRepository.create({
+            routeId,
+            busId,
+            departureTime: nextDep,
+            arrivalTime: nextArr,
+            price: basePriceDoc.price,
+            pickupPoints: finalPickups,
+            dropoffPoints: finalDropoffs,
+            driver: assignedDriver || { name: '', phone: '' },
+            assistant: assignedAssistant || { name: '', phone: '' },
+            policy: trip.policy
+          });
+        }
+
+        nextDep = new Date(nextDep.getTime() + 7 * 24 * 3600 * 1000);
+      }
+    }
+
     return trip;
   }
 
   async updateTrip(id, tripData) {
-    const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant } = tripData;
+    const { routeId, busId, departureTime, arrivalTime, pickupPoints, dropoffPoints, policy, driver, assistant, repeatWeekly } = tripData;
 
     let trip = await tripRepository.findById(id);
     if (!trip) {
@@ -630,6 +700,45 @@ class TripService {
     if (assistant) trip.assistant = assistant;
 
     await tripRepository.save(trip);
+
+    // Nếu người dùng chọn lặp lại hàng tuần khi cập nhật
+    if (repeatWeekly) {
+      const baseDep = new Date(trip.departureTime);
+      let baseArr = new Date(trip.arrivalTime);
+      let duration = baseArr.getTime() - baseDep.getTime();
+      if (duration <= 0 || duration > 24 * 3600 * 1000) {
+        duration = 2 * 3600 * 1000;
+      }
+      const maxEndDate = new Date('2026-12-31T23:59:59.999+07:00');
+      let nextDep = new Date(baseDep.getTime() + 7 * 24 * 3600 * 1000);
+
+      while (nextDep <= maxEndDate) {
+        const nextArr = new Date(nextDep.getTime() + duration);
+        const exists = await tripRepository.findOne({
+          routeId: trip.routeId,
+          busId: trip.busId,
+          departureTime: nextDep
+        });
+
+        if (!exists) {
+          await tripRepository.create({
+            routeId: trip.routeId,
+            busId: trip.busId,
+            departureTime: nextDep,
+            arrivalTime: nextArr,
+            price: trip.price,
+            pickupPoints: trip.pickupPoints,
+            dropoffPoints: trip.dropoffPoints,
+            policy: trip.policy,
+            driver: trip.driver,
+            assistant: trip.assistant
+          });
+        }
+
+        nextDep = new Date(nextDep.getTime() + 7 * 24 * 3600 * 1000);
+      }
+    }
+
     return trip;
   }
 

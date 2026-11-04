@@ -77,7 +77,9 @@ const ManagerLeavesPage = () => {
   };
 
   const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString('vi-VN');
+    if (!dateStr) return 'N/A';
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('vi-VN');
   };
 
   const getStatusBadge = (status) => {
@@ -199,7 +201,7 @@ const ManagerLeavesPage = () => {
 
                       {/* Vacation Period */}
                       <td style={{ padding: '1rem', fontSize: '0.85rem', fontWeight: '500', whiteSpace: 'nowrap' }}>
-                        {formatDate(item.startDate)} ➔ {formatDate(item.endDate)}
+                        {formatDate(item.startDate)} đến {formatDate(item.endDate)}
                       </td>
 
                       {/* Reason */}
@@ -213,9 +215,9 @@ const ManagerLeavesPage = () => {
                           overflow: 'hidden',
                           textOverflow: 'ellipsis'
                         }}
-                        title={item.reason}
+                        title={item.reason || item.details}
                       >
-                        {item.reason}
+                        {item.reason || item.details || 'Không có ghi chú lý do'}
                       </td>
 
                       {/* Status */}

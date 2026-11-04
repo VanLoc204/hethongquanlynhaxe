@@ -24,18 +24,30 @@ const operationalTargetSchema = new mongoose.Schema(
     },
     fuelBudget: {
       type: Number,
-      required: true,
-      default: 150000000 // Default 150 Million VND
+      default: 150000000
     },
     maintenanceBudget: {
       type: Number,
-      required: true,
-      default: 50000000 // Default 50 Million VND
+      default: 50000000
     },
     otherBudget: {
       type: Number,
       default: 30000000
     },
+    counterTarget: {
+      type: Number,
+      default: 600000000 // 600 Million VND counter sales target
+    },
+    onlineTarget: {
+      type: Number,
+      default: 400000000 // 400 Million VND online sales target
+    },
+    branchTargets: [
+      {
+        branchId: { type: String, enum: ['sg', 'dl', 'ct'] },
+        target: { type: Number, default: 0 }
+      }
+    ],
     notes: {
       type: String,
       default: 'Chỉ tiêu vận hành định hướng kinh doanh tháng.'

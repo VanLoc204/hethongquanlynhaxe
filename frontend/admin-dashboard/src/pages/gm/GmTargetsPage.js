@@ -7,6 +7,7 @@ const GmTargetsPage = () => {
   const { token } = useContext(AuthContext);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [branchFilter, setBranchFilter] = useState('all');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -16,33 +17,42 @@ const GmTargetsPage = () => {
   // Target values stored in MongoDB
   const [revenueTarget, setRevenueTarget] = useState(1000000000);
   const [occupancyTarget, setOccupancyTarget] = useState(80);
-  const [fuelBudget, setFuelBudget] = useState(150000000);
-  const [maintenanceBudget, setMaintenanceBudget] = useState(50000000);
+  const [counterTarget, setCounterTarget] = useState(600000000);
+  const [onlineTarget, setOnlineTarget] = useState(400000000);
+  const [targetSg, setTargetSg] = useState(500000000);
+  const [targetDl, setTargetDl] = useState(300000000);
+  const [targetCt, setTargetCt] = useState(200000000);
   const [notes, setNotes] = useState('');
 
   // Actual data calculated from system
   const [actualData, setActualData] = useState({
     actualRevenue: 0,
+    actualCounterRevenue: 0,
+    actualOnlineRevenue: 0,
+    counterSharePercent: 0,
+    onlineSharePercent: 0,
     actualOccupancy: 0,
-    actualFuel: 0,
-    actualMaintenance: 0,
-    totalTrips: 0
+    totalTrips: 0,
+    totalSeatsBooked: 0,
+    totalSeatsPossible: 0
   });
 
   // Progress metrics
   const [progressData, setProgressData] = useState({
     revenueProgress: 0,
-    occupancyProgress: 0,
-    fuelUsagePercent: 0,
-    maintenanceUsagePercent: 0
+    occupancyProgress: 0
   });
+
+  // Detailed breakdowns
+  const [branchBreakdown, setBranchBreakdown] = useState([]);
+  const [staffPerformance, setStaffPerformance] = useState([]);
 
   const fetchTargets = async () => {
     setLoading(true);
     setError('');
     setSuccess('');
     try {
-      const res = await fetch(`${API_BASE}/targets?month=${month}&year=${year}`, {
+      const res = await fetch(`${API_BASE}/targets?month=${month}&year=${year}&branchId=${branchFilter}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -51,12 +61,23 @@ const GmTargetsPage = () => {
         const t = data.target || {};
         setRevenueTarget(t.revenueTarget || 1000000000);
         setOccupancyTarget(t.occupancyTarget || 80);
-        setFuelBudget(t.fuelBudget || 150000000);
-        setMaintenanceBudget(t.maintenanceBudget || 50000000);
-        setNotes(t.notes || `Chỉ tiêu vận hành tự động thiết lập cho Tháng ${String(month).padStart(2, '0')}/${year}`);
+        setCounterTarget(t.counterTarget || 600000000);
+        setOnlineTarget(t.onlineTarget || 400000000);
 
+        if (Array.isArray(t.branchTargets)) {
+          const sgObj = t.branchTargets.find(b => b.branchId === 'sg');
+          const dlObj = t.branchTargets.find(b => b.branchId === 'dl');
+          const ctObj = t.branchTargets.find(b => b.branchId === 'ct');
+          if (sgObj) setTargetSg(sgObj.target);
+          if (dlObj) setTargetDl(dlObj.target);
+          if (ctObj) setTargetCt(ctObj.target);
+        }
+
+        setNotes(t.notes || `Chỉ tiêu vận hành tự động thiết lập cho Tháng ${String(month).padStart(2, '0')}/${year}`);
         setActualData(data.actual || {});
         setProgressData(data.progress || {});
+        setBranchBreakdown(data.branchBreakdown || []);
+        setStaffPerformance(data.staffPerformance || []);
       } else {
         setError(data.message || 'Không thể tải thông tin chỉ tiêu vận hành.');
       }
@@ -71,7 +92,7 @@ const GmTargetsPage = () => {
     if (token) {
       fetchTargets();
     }
-  }, [token, month, year]);
+  }, [token, month, year, branchFilter]);
 
   const handleSaveTarget = async (e) => {
     e.preventDefault();
@@ -91,8 +112,13 @@ const GmTargetsPage = () => {
           year: Number(year),
           revenueTarget: Number(revenueTarget),
           occupancyTarget: Number(occupancyTarget),
-          fuelBudget: Number(fuelBudget),
-          maintenanceBudget: Number(maintenanceBudget),
+          counterTarget: Number(counterTarget),
+          onlineTarget: Number(onlineTarget),
+          branchTargets: [
+            { branchId: 'sg', target: Number(targetSg) },
+            { branchId: 'dl', target: Number(targetDl) },
+            { branchId: 'ct', target: Number(targetCt) }
+          ],
           notes
         })
       });
@@ -116,24 +142,51 @@ const GmTargetsPage = () => {
     return (amount || 0).toLocaleString('vi-VN') + ' đ';
   };
 
+  const getBranchFilterLabel = () => {
+    if (branchFilter === 'sg') return 'Chi nhánh TP. Hồ Chí Minh';
+    if (branchFilter === 'dl') return 'Chi nhánh Đà Lạt';
+    if (branchFilter === 'ct') return 'Chi nhánh Cần Thơ';
+    return 'Tất cả các chi nhánh';
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', animation: 'fadeIn 0.3s ease' }}>
       
-      {/* 1. Header Title */}
+      {/* 1. Header Title & Filter Controls */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-            Hoạch Định Chi Tiêu &amp; Chỉ Tiêu Vận Hành
+            Hoạch Định Doanh Thu &amp; Chỉ Tiêu Chi Nhánh
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px', margin: 0 }}>
-            Thiết lập chỉ tiêu kinh doanh vào CSDL MongoDB và theo dõi tiến độ hoàn thành tự động từ thực tế.
+            Thiết lập chỉ tiêu doanh số theo chi nhánh vào CSDL MongoDB và theo dõi hiệu suất bán vé quầy vs online từ thực tế.
           </p>
         </div>
 
-        {/* Month & Year Selectors */}
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        {/* Filters Group: Branch, Month, Year */}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          
+          {/* Branch Filter Dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Kỳ vận hành:</span>
+            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Chi nhánh:</span>
+            <select
+              value={branchFilter}
+              onChange={(e) => setBranchFilter(e.target.value)}
+              style={{
+                padding: '7px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1',
+                borderRadius: '8px', background: '#ffffff', color: '#0f172a', fontWeight: '700', outline: 'none'
+              }}
+            >
+              <option value="all">Toàn hệ thống (Tất cả chi nhánh)</option>
+              <option value="sg">Chi nhánh TP. Hồ Chí Minh</option>
+              <option value="dl">Chi nhánh Đà Lạt</option>
+              <option value="ct">Chi nhánh Cần Thơ</option>
+            </select>
+          </div>
+
+          {/* Month & Year Selectors */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Kỳ:</span>
             <select
               value={month}
               onChange={(e) => setMonth(Number(e.target.value))}
@@ -162,6 +215,7 @@ const GmTargetsPage = () => {
 
           <button
             onClick={fetchTargets}
+            disabled={loading}
             style={{
               backgroundColor: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.825rem',
               padding: '8px 16px', borderRadius: '8px', border: 'none', display: 'flex', alignItems: 'center',
@@ -169,28 +223,43 @@ const GmTargetsPage = () => {
             }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            Tải lại
+            {loading ? 'Đang tải...' : 'Tải lại'}
           </button>
+        </div>
+      </div>
+
+      {/* Filter Scope Notice Banner */}
+      <div style={{
+        backgroundColor: '#f1f5f9', borderLeft: '4px solid #2563eb', padding: '0.65rem 1rem',
+        borderRadius: '0 8px 8px 0', fontSize: '0.825rem', color: '#334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }}>
+        <div>
+          Đang xem dữ liệu: <strong style={{ color: '#0f172a' }}>{getBranchFilterLabel()}</strong> - Kỳ hoạt động: <strong style={{ color: '#0f172a' }}>Tháng {String(month).padStart(2, '0')}/{year}</strong>
+        </div>
+        <div style={{ fontSize: '0.775rem', color: '#64748b' }}>
+          Tổng số chuyến khởi hành: <strong style={{ color: '#0f172a' }}>{actualData.totalTrips || 0} chuyến</strong>
         </div>
       </div>
 
       {error && <div style={{ padding: '0.75rem', background: '#fee2e2', color: '#b91c1c', borderRadius: '8px', fontSize: '0.85rem' }}>{error}</div>}
       {success && <div style={{ padding: '0.75rem', background: '#ecfdf5', color: '#047857', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600' }}>{success}</div>}
 
-      {/* 2. 4 Progress KPI Cards */}
+      {/* 2. 4 Top KPI Cards (Revenue, Occupancy, Counter Sales, Online Sales) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '1.25rem' }}>
         
         {/* Card 1: Revenue Target */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>MỤC TIÊU DOANH THU</span>
-            <span style={{ backgroundColor: '#fffbe6', color: '#d97706', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
+            <span style={{ backgroundColor: '#ecfdf5', color: '#047857', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
               {progressData.revenueProgress}%
             </span>
           </div>
           <div>
             <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#0f172a' }}>{formatVND(actualData.actualRevenue)}</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Chỉ tiêu DB: {formatVND(revenueTarget)}</div>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+              Chỉ tiêu DB: {formatVND(branchFilter === 'all' ? revenueTarget : (branchBreakdown.find(b => b.branchId === branchFilter)?.target || revenueTarget))}
+            </div>
           </div>
           <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{ width: `${Math.min(progressData.revenueProgress, 100)}%`, height: '100%', backgroundColor: '#10b981', transition: 'width 0.5s ease' }}></div>
@@ -207,49 +276,266 @@ const GmTargetsPage = () => {
           </div>
           <div>
             <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#2563eb' }}>{actualData.actualOccupancy}%</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Chỉ tiêu DB: {occupancyTarget}% / chuyến</div>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+              Chỉ tiêu: {occupancyTarget}% ({actualData.totalSeatsBooked}/{actualData.totalSeatsPossible} chỗ)
+            </div>
           </div>
           <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
             <div style={{ width: `${Math.min(progressData.occupancyProgress, 100)}%`, height: '100%', backgroundColor: '#2563eb', transition: 'width 0.5s ease' }}></div>
           </div>
         </div>
 
-        {/* Card 3: Fuel Budget */}
+        {/* Card 3: Counter Sales (Chi nhánh) */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>HẠN MỨC TIỀN DẦU</span>
-            <span style={{ backgroundColor: '#fff7ed', color: '#d97706', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
-              Đã chi {progressData.fuelUsagePercent}%
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>DOANH THU TẠI QUẦY (CHI NHÁNH)</span>
+            <span style={{ backgroundColor: '#fff7ed', color: '#c2410c', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
+              Đóng góp {actualData.counterSharePercent}%
             </span>
           </div>
           <div>
-            <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#0f172a' }}>{formatVND(actualData.actualFuel)}</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Hạn mức DB: {formatVND(fuelBudget)}</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#c2410c' }}>{formatVND(actualData.actualCounterRevenue)}</div>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+              Chỉ tiêu quầy vé: {formatVND(counterTarget)}
+            </div>
           </div>
           <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(progressData.fuelUsagePercent, 100)}%`, height: '100%', backgroundColor: '#f59e0b', transition: 'width 0.5s ease' }}></div>
+            <div style={{ width: `${Math.min(actualData.counterSharePercent, 100)}%`, height: '100%', backgroundColor: '#ea580c', transition: 'width 0.5s ease' }}></div>
           </div>
         </div>
 
-        {/* Card 4: Maintenance Budget */}
+        {/* Card 4: Online Sales (Trực tuyến) */}
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>NGÂN SÁCH BẢO TRÌ XE</span>
+            <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>DOANH THU TRỰC TUYẾN (ONLINE)</span>
             <span style={{ backgroundColor: '#faf5ff', color: '#7c3aed', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
-              Đã chi {progressData.maintenanceUsagePercent}%
+              Đóng góp {actualData.onlineSharePercent}%
             </span>
           </div>
           <div>
-            <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#0f172a' }}>{formatVND(actualData.actualMaintenance)}</div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>Hạn mức DB: {formatVND(maintenanceBudget)}</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#7c3aed' }}>{formatVND(actualData.actualOnlineRevenue)}</div>
+            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+              Chỉ tiêu online: {formatVND(onlineTarget)}
+            </div>
           </div>
           <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(progressData.maintenanceUsagePercent, 100)}%`, height: '100%', backgroundColor: '#7c3aed', transition: 'width 0.5s ease' }}></div>
+            <div style={{ width: `${Math.min(actualData.onlineSharePercent, 100)}%`, height: '100%', backgroundColor: '#9333ea', transition: 'width 0.5s ease' }}></div>
           </div>
         </div>
+
       </div>
 
-      {/* 3. Main Target Form Panel */}
+      {/* 3. Branch Breakdown Table (Always visible or highlighting selected) */}
+      <section className="panel" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ width: '4px', height: '18px', backgroundColor: '#2563eb', borderRadius: '2px', display: 'inline-block' }}></span>
+            <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Bảng Phân Rã Doanh Thu &amp; Chỉ Tiêu Theo Chi Nhánh
+            </h2>
+          </div>
+          <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
+            Dữ liệu tổng hợp từ 3 chi nhánh trọng điểm
+          </span>
+        </div>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', fontSize: '0.725rem', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <th style={{ padding: '0.85rem 1rem' }}>CHI NHÁNH</th>
+                <th style={{ padding: '0.85rem 1rem' }}>QUẢN LÝ PHÒNG VÉ</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>CHỈ TIÊU (DB)</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>DOANH THU THỰC TẾ</th>
+                <th style={{ padding: '0.85rem 1rem' }}>CƠ CẤU (QUẦY / ONLINE)</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>LẤP ĐẦY GHẾ</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>TIẾN ĐỘ (%)</th>
+                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>ĐÁNH GIÁ</th>
+              </tr>
+            </thead>
+            <tbody style={{ fontSize: '0.85rem' }}>
+              {branchBreakdown.map((b) => {
+                const isSelected = branchFilter === b.branchId;
+                const rowBg = isSelected ? '#f0f9ff' : 'transparent';
+                let ratingLabel = 'Cần đẩy mạnh';
+                let ratingColor = '#d97706';
+                let ratingBg = '#fffbe6';
+                let ratingBorder = '#fef08a';
+
+                if (b.revenueProgress >= 80) {
+                  ratingLabel = 'Đạt chỉ tiêu tốt';
+                  ratingColor = '#047857';
+                  ratingBg = '#ecfdf5';
+                  ratingBorder = '#a7f3d0';
+                } else if (b.revenueProgress >= 40) {
+                  ratingLabel = 'Tiến độ khả quan';
+                  ratingColor = '#2563eb';
+                  ratingBg = '#eff6ff';
+                  ratingBorder = '#bfdbfe';
+                }
+
+                return (
+                  <tr key={b.branchId} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: rowBg, cursor: 'pointer' }} onClick={() => setBranchFilter(b.branchId)}>
+                    <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          padding: '3px 8px', borderRadius: '4px', fontSize: '0.725rem', fontWeight: '800',
+                          backgroundColor: b.branchId === 'sg' ? '#eff6ff' : (b.branchId === 'dl' ? '#f5f3ff' : '#ecfdf5'),
+                          color: b.branchId === 'sg' ? '#1d4ed8' : (b.branchId === 'dl' ? '#6d28d9' : '#047857')
+                        }}>
+                          {b.branchId.toUpperCase()}
+                        </span>
+                        <span>{b.branchName}</span>
+                      </div>
+                      <div style={{ fontSize: '0.725rem', color: '#64748b', marginTop: '2px' }}>
+                        {b.totalTrips} chuyến khởi hành - {b.staffCount} nhân viên bán vé
+                      </div>
+                    </td>
+                    <td style={{ padding: '1rem', color: '#334155' }}>
+                      <div style={{ fontWeight: '700' }}>{b.managerName}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{b.managerPhone}</div>
+                    </td>
+                    <td style={{ padding: '1rem', fontWeight: '600', color: '#64748b', textAlign: 'right' }}>
+                      {formatVND(b.target)}
+                    </td>
+                    <td style={{ padding: '1rem', fontWeight: '800', color: '#0f172a', textAlign: 'right' }}>
+                      {formatVND(b.actualRevenue)}
+                    </td>
+                    <td style={{ padding: '1rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#334155', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div>Quầy: <strong>{formatVND(b.counterRevenue)}</strong></div>
+                        <div>Online: <strong>{formatVND(b.onlineRevenue)}</strong></div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <span style={{ fontWeight: '800', color: '#2563eb' }}>{b.occupancyRate}%</span>
+                      <div style={{ fontSize: '0.725rem', color: '#64748b' }}>({b.totalSeatsBooked}/{b.totalSeatsPossible})</div>
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.8rem' }}>{b.revenueProgress}%</span>
+                        <div style={{ width: '50px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(b.revenueProgress, 100)}%`, height: '100%', backgroundColor: b.revenueProgress >= 80 ? '#10b981' : (b.revenueProgress >= 40 ? '#2563eb' : '#f59e0b') }}></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'right' }}>
+                      <span style={{
+                        backgroundColor: ratingBg, color: ratingColor, border: `1px solid ${ratingBorder}`,
+                        padding: '4px 10px', borderRadius: '16px', fontSize: '0.725rem', fontWeight: '700'
+                      }}>
+                        {ratingLabel}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* 4. Staff Performance Table (Ticket Agents) */}
+      <section className="panel" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ width: '4px', height: '18px', backgroundColor: '#059669', borderRadius: '2px', display: 'inline-block' }}></span>
+            <div>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Hiệu Suất Bán Vé Nhân Viên Quầy Vé (Chi Nhánh)
+              </h2>
+              <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '2px', margin: 0 }}>
+                Theo dõi số vé bán, doanh thu tiền mặt, chuyển khoản và trạng thái ca trực của từng nhân viên.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ fontSize: '0.775rem', color: '#64748b' }}>
+            Đang hiển thị: <strong style={{ color: '#0f172a' }}>{staffPerformance.length} nhân viên bán vé</strong>
+          </div>
+        </div>
+
+        {staffPerformance.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b', fontSize: '0.875rem' }}>
+            Không có nhân viên bán vé nào thuộc chi nhánh được chọn.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', fontSize: '0.725rem', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <th style={{ padding: '0.85rem 1rem' }}>NHÂN VIÊN BÁN VÉ</th>
+                  <th style={{ padding: '0.85rem 1rem' }}>CHI NHÁNH / VĂN PHÒNG</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>SỐ VÉ ĐÃ BÁN</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>TIỀN MẶT</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>CHUYỂN KHOẢN</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>TỔNG DOANH THU</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>TRẠNG THÁI CA TRỰC</th>
+                </tr>
+              </thead>
+              <tbody style={{ fontSize: '0.85rem' }}>
+                {staffPerformance.map((staff, idx) => {
+                  let shiftBadgeBg = '#f1f5f9';
+                  let shiftBadgeColor = '#475569';
+                  let shiftBadgeText = 'Chưa mở ca';
+
+                  if (staff.shiftStatus === 'active') {
+                    shiftBadgeBg = '#ecfdf5';
+                    shiftBadgeColor = '#047857';
+                    shiftBadgeText = 'Đang trong ca trực';
+                  } else if (staff.shiftStatus === 'closed') {
+                    shiftBadgeBg = '#f1f5f9';
+                    shiftBadgeColor = '#334155';
+                    shiftBadgeText = 'Đã giao ca xong';
+                  }
+
+                  return (
+                    <tr key={staff.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
+                        <div>{staff.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '500' }}>
+                          {staff.phone} - {staff.email || 'N/A'}
+                        </div>
+                      </td>
+                      <td style={{ padding: '1rem', color: '#334155' }}>
+                        <div style={{ fontWeight: '600', color: '#0f172a' }}>{staff.office}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{staff.branchName}</div>
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'center', fontWeight: '800', color: '#2563eb' }}>
+                        {staff.ticketsSold} vé
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'right', fontWeight: '600', color: '#059669' }}>
+                        {formatVND(staff.cashRevenue)}
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'right', fontWeight: '600', color: '#2563eb' }}>
+                        {formatVND(staff.cashlessRevenue)}
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'right', fontWeight: '900', color: '#0f172a' }}>
+                        {formatVND(staff.totalRevenue)}
+                      </td>
+                      <td style={{ padding: '1rem', textAlign: 'center' }}>
+                        <span style={{
+                          backgroundColor: shiftBadgeBg, color: shiftBadgeColor,
+                          padding: '4px 10px', borderRadius: '16px', fontSize: '0.725rem', fontWeight: '700',
+                          display: 'inline-flex', alignItems: 'center', gap: '4px'
+                        }}>
+                          {staff.shiftStatus === 'active' && (
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                          )}
+                          {shiftBadgeText}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* 5. Main Target Form Panel (MongoDB Configuration) */}
       <section className="panel" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
         
         {/* Section Title Header */}
@@ -262,25 +548,34 @@ const GmTargetsPage = () => {
               Thiết Lập Chỉ Tiêu Vận Hành Tháng {String(month).padStart(2, '0')}/{year} (Lưu MongoDB)
             </h2>
             <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '2px', margin: 0 }}>
-              Các tham số này sẽ được ghi trực tiếp vào collection <code style={{ color: '#2563eb', backgroundColor: '#eff6ff', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>operation_targets</code>
+              Các chỉ tiêu sẽ được ghi trực tiếp vào collection <code style={{ color: '#2563eb', backgroundColor: '#eff6ff', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>operation_targets</code>
             </p>
           </div>
         </div>
 
         <form onSubmit={handleSaveTarget} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           
+          {/* Row 1: Tổng Doanh thu, Tỷ lệ lấp đầy, Chỉ tiêu quầy, Chỉ tiêu online */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '1.25rem', alignItems: 'start' }}>
             
             {/* Input 1: Revenue Target */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="1. Chỉ tiêu tổng doanh thu tháng (VND) *">
+              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                 1. Chỉ tiêu tổng doanh thu tháng (VND) <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input
                   type="number"
                   value={revenueTarget}
-                  onChange={(e) => setRevenueTarget(e.target.value)}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    setRevenueTarget(val);
+                    setCounterTarget(Math.round(val * 0.6));
+                    setOnlineTarget(Math.round(val * 0.4));
+                    setTargetSg(Math.round(val * 0.5));
+                    setTargetDl(Math.round(val * 0.3));
+                    setTargetCt(Math.round(val * 0.2));
+                  }}
                   step="10000000"
                   style={{
                     width: '100%', padding: '9px 45px 9px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1',
@@ -290,14 +585,14 @@ const GmTargetsPage = () => {
                 />
                 <span style={{ position: 'absolute', right: '12px', fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>VNĐ</span>
               </div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                Ví dụ: 1.000.000.000 đ (1 Tỷ đồng)
+              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
+                Tổng doanh số toàn công ty
               </span>
             </div>
 
             {/* Input 2: Occupancy Target */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="2. Chỉ tiêu tỷ lệ lấp đầy ghế (%) *">
+              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                 2. Chỉ tiêu tỷ lệ lấp đầy ghế (%) <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -315,59 +610,106 @@ const GmTargetsPage = () => {
                 />
                 <span style={{ position: 'absolute', right: '12px', fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>%</span>
               </div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
+              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
                 Mục tiêu trung bình % ghế lấp đầy / chuyến
               </span>
             </div>
 
-            {/* Input 3: Fuel Budget */}
+            {/* Input 3: Counter Target */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="3. Hạn mức ngân sách nhiên liệu / xăng dầu (VND) *">
-                3. Hạn mức ngân sách nhiên liệu (VND) <span style={{ color: '#dc2626' }}>*</span>
+              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                3. Chỉ tiêu bán vé quầy (VND)
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input
                   type="number"
-                  value={fuelBudget}
-                  onChange={(e) => setFuelBudget(e.target.value)}
+                  value={counterTarget}
+                  onChange={(e) => setCounterTarget(e.target.value)}
                   step="5000000"
                   style={{
                     width: '100%', padding: '9px 45px 9px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1',
                     borderRadius: '8px', outline: 'none', fontWeight: '700', color: '#0f172a', background: '#f8fafc'
                   }}
-                  required
                 />
                 <span style={{ position: 'absolute', right: '12px', fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>VNĐ</span>
               </div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                Ngân sách tối đa chi cho nhiên liệu trong tháng
+              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
+                Doanh thu quầy vé các chi nhánh
               </span>
             </div>
 
-            {/* Input 4: Maintenance Budget */}
+            {/* Input 4: Online Target */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title="4. Hạn mức ngân sách bảo trì & vật tư xe (VND) *">
-                4. Hạn mức ngân sách bảo trì xe (VND) <span style={{ color: '#dc2626' }}>*</span>
+              <label style={{ fontSize: '0.73rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
+                4. Chỉ tiêu bán vé online (VND)
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input
                   type="number"
-                  value={maintenanceBudget}
-                  onChange={(e) => setMaintenanceBudget(e.target.value)}
+                  value={onlineTarget}
+                  onChange={(e) => setOnlineTarget(e.target.value)}
                   step="5000000"
                   style={{
                     width: '100%', padding: '9px 45px 9px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1',
                     borderRadius: '8px', outline: 'none', fontWeight: '700', color: '#0f172a', background: '#f8fafc'
                   }}
-                  required
                 />
                 <span style={{ position: 'absolute', right: '12px', fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>VNĐ</span>
               </div>
-              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                Dự phòng chi phí sửa chữa, bảo dưỡng xe
+              <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '4px' }}>
+                Doanh thu khách đặt trực tuyến
               </span>
             </div>
 
+          </div>
+
+          {/* Row 2: Phân bổ chỉ tiêu cho 3 Chi nhánh */}
+          <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: '800', color: '#0f172a', marginBottom: '0.75rem' }}>
+              Phân bổ chỉ tiêu doanh số theo từng chi nhánh:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+              
+              <div>
+                <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  Chi nhánh TP. Hồ Chí Minh (SG):
+                </label>
+                <input
+                  type="number"
+                  value={targetSg}
+                  onChange={(e) => setTargetSg(e.target.value)}
+                  step="5000000"
+                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', fontWeight: '700' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  Chi nhánh Đà Lạt (DL):
+                </label>
+                <input
+                  type="number"
+                  value={targetDl}
+                  onChange={(e) => setTargetDl(e.target.value)}
+                  step="5000000"
+                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', fontWeight: '700' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.725rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  Chi nhánh Cần Thơ (CT):
+                </label>
+                <input
+                  type="number"
+                  value={targetCt}
+                  onChange={(e) => setTargetCt(e.target.value)}
+                  step="5000000"
+                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', fontWeight: '700' }}
+                />
+              </div>
+
+            </div>
           </div>
 
           {/* Notes Input */}
@@ -379,7 +721,7 @@ const GmTargetsPage = () => {
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="VD: Tập trung tăng chuyến dịp cuối tuần, kiểm soát chặt tiền dầu..."
+              placeholder="VD: Tập trung tăng chuyến các tuyến du lịch, tối ưu tỷ lệ lấp đầy quầy vé BXMĐ..."
               style={{
                 width: '100%', padding: '9px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1',
                 borderRadius: '8px', outline: 'none', color: '#0f172a', background: '#ffffff'
@@ -399,157 +741,10 @@ const GmTargetsPage = () => {
               }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              {saving ? 'Đang lưu vào MongoDB...' : 'Lưu Chi Tiêu Tháng Vào MongoDB'}
+              {saving ? 'Đang lưu vào MongoDB...' : 'Lưu Chỉ Tiêu Vào MongoDB'}
             </button>
           </div>
         </form>
-      </section>
-
-      {/* 4. Comparison Board Table Panel */}
-      <section className="panel" style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
-        
-        {/* Table Header Controls */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ width: '4px', height: '18px', backgroundColor: '#2563eb', borderRadius: '2px', display: 'inline-block' }}></span>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-              Bảng Đối Chiếu Chỉ Tiêu MongoDB ↔ Thực Tế Hệ Thống
-            </h2>
-          </div>
-          <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-            Dữ liệu tổng hợp thời gian thực
-          </span>
-        </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', fontSize: '0.725rem', color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                <th style={{ padding: '0.85rem 1rem' }}>HẠNG MỤC CHỈ TIÊU</th>
-                <th style={{ padding: '0.85rem 1rem' }}>MỤC TIÊU (LƯU DB)</th>
-                <th style={{ padding: '0.85rem 1rem' }}>DỮ LIỆU THỰC TẾ (SYSTEM)</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>TIẾN ĐỘ (%)</th>
-                <th style={{ padding: '0.85rem 1rem', textAlign: 'right' }}>ĐÁNH GIÁ VẬN HÀNH</th>
-              </tr>
-            </thead>
-            <tbody style={{ fontSize: '0.85rem' }}>
-              
-              {/* Row 1: Doanh thu vé */}
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    </div>
-                    <span>1. Tổng Doanh Thu Vé</span>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>{formatVND(revenueTarget)}</td>
-                <td style={{ padding: '1rem', fontWeight: '800', color: '#2563eb' }}>{formatVND(actualData.actualRevenue)}</td>
-                <td style={{ padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.8rem' }}>{progressData.revenueProgress}%</span>
-                    <div style={{ width: '60px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(progressData.revenueProgress, 100)}%`, height: '100%', backgroundColor: '#f59e0b' }}></div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right' }}>
-                  <span style={{ backgroundColor: '#fffbe6', color: '#d97706', border: '1px solid #fef08a', padding: '4px 12px', borderRadius: '20px', fontSize: '0.725rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#d97706' }}></span>
-                    Cần đẩy mạnh bán vé
-                  </span>
-                </td>
-              </tr>
-
-              {/* Row 2: Occupancy Rate */}
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    </div>
-                    <span>2. Tỷ Lệ Lấp Đầy Ghế Trung Bình</span>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>{occupancyTarget}% / chuyến</td>
-                <td style={{ padding: '1rem', fontWeight: '800', color: '#2563eb' }}>{actualData.actualOccupancy}% / chuyến</td>
-                <td style={{ padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.8rem' }}>{progressData.occupancyProgress}%</span>
-                    <div style={{ width: '60px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(progressData.occupancyProgress, 100)}%`, height: '100%', backgroundColor: '#2563eb' }}></div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right' }}>
-                  <span style={{ backgroundColor: '#fffbe6', color: '#d97706', border: '1px solid #fef08a', padding: '4px 12px', borderRadius: '20px', fontSize: '0.725rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#d97706' }}></span>
-                    Cần tối ưu lịch chuyến
-                  </span>
-                </td>
-              </tr>
-
-              {/* Row 3: Fuel */}
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#fff7ed', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 22V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v18"/><path d="M13 10h4a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V9l-3-3"/><path d="M3 22h10"/><line x1="7" y1="9" x2="9" y2="9"/></svg>
-                    </div>
-                    <span>3. Chi Phí Nhiên Liệu (Tiền Dầu)</span>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>{formatVND(fuelBudget)}</td>
-                <td style={{ padding: '1rem', fontWeight: '800', color: '#0f172a' }}>{formatVND(actualData.actualFuel)}</td>
-                <td style={{ padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.8rem' }}>{progressData.fuelUsagePercent}%</span>
-                    <div style={{ width: '60px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(progressData.fuelUsagePercent, 100)}%`, height: '100%', backgroundColor: '#f59e0b' }}></div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right' }}>
-                  <span style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '4px 12px', borderRadius: '20px', fontSize: '0.725rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                    Trong ngân sách
-                  </span>
-                </td>
-              </tr>
-
-              {/* Row 4: Maintenance */}
-              <tr>
-                <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#faf5ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                    </div>
-                    <span>4. Chi Phí Bảo Trì &amp; Vật Tư Xe</span>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', fontWeight: '600', color: '#64748b' }}>{formatVND(maintenanceBudget)}</td>
-                <td style={{ padding: '1rem', fontWeight: '800', color: '#0f172a' }}>{formatVND(actualData.actualMaintenance)}</td>
-                <td style={{ padding: '1rem', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.8rem' }}>{progressData.maintenanceUsagePercent}%</span>
-                    <div style={{ width: '60px', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(progressData.maintenanceUsagePercent, 100)}%`, height: '100%', backgroundColor: '#7c3aed' }}></div>
-                    </div>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right' }}>
-                  <span style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '4px 12px', borderRadius: '20px', fontSize: '0.725rem', fontWeight: '700', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                    Kiểm soát an toàn
-                  </span>
-                </td>
-              </tr>
-
-            </tbody>
-          </table>
-        </div>
       </section>
 
     </div>

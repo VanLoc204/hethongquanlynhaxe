@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const API_BASE = 'http://localhost:8000/api/v1';
@@ -27,6 +27,7 @@ const OpsStaffPage = () => {
   const [editingTrip, setEditingTrip] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState('');
   const [selectedAssistant, setSelectedAssistant] = useState('');
+  const [applyScope, setApplyScope] = useState('single');
   const [algoRunning, setAlgoRunning] = useState(false);
 
   const showToast = (msg, type = 'success') => {
@@ -163,12 +164,145 @@ const OpsStaffPage = () => {
       .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
   };
 
+  // Lập bản đồ các xe đã có tổ lái chuyên trách (1 Xe ⇄ 1 Tổ lái)
+  const busStaffMap = useMemo(() => {
+    const map = {};
+    trips.forEach(t => {
+      const bId = t.busId?._id ? String(t.busId._id) : (t.busId ? String(t.busId) : null);
+      const bPlate = t.busId?.plateNumber;
+      if (t.driver?.phone) {
+        if (bId && !map[bId]) {
+          map[bId] = {
+            plateNumber: bPlate,
+            driver: { name: t.driver.name, phone: t.driver.phone },
+            assistant: t.assistant?.phone ? { name: t.assistant.name, phone: t.assistant.phone } : null
+          };
+        }
+        if (bPlate && !map[bPlate]) {
+          map[bPlate] = {
+            busId: bId,
+            driver: { name: t.driver.name, phone: t.driver.phone },
+            assistant: t.assistant?.phone ? { name: t.assistant.name, phone: t.assistant.phone } : null
+          };
+        }
+      }
+    });
+    return map;
+  }, [trips]);
+
+  const assignedDriverPhones = useMemo(() => {
+    const set = new Set();
+    Object.values(busStaffMap).forEach(team => {
+      if (team.driver?.phone) set.add(team.driver.phone);
+    });
+    return set;
+  }, [busStaffMap]);
+
+  const assignedAssistantPhones = useMemo(() => {
+    const set = new Set();
+    Object.values(busStaffMap).forEach(team => {
+      if (team.assistant?.phone) set.add(team.assistant.phone);
+    });
+    return set;
+  }, [busStaffMap]);
+
+  // Bộ lọc tài xế và phụ xe phù hợp với chuyến xe đang điều động
+  const { filteredDrivers, filteredAssistants, isFixedTeamBus, fixedTeamInfo, isRelieverMode } = useMemo(() => {
+    if (!editingTrip) {
+      return { 
+        filteredDrivers: availableDrivers, 
+        filteredAssistants: availableAssistants, 
+        isFixedTeamBus: false, 
+        fixedTeamInfo: null,
+        isRelieverMode: false
+      };
+    }
+
+    const bId = editingTrip.busId?._id ? String(editingTrip.busId._id) : (editingTrip.busId ? String(editingTrip.busId) : null);
+    const bPlate = editingTrip.busId?.plateNumber;
+    const fixedTeam = (bId && busStaffMap[bId]) || (bPlate && busStaffMap[bPlate]);
+
+    // Trường hợp A: Điều động người chạy thay tạm thời cho chuyến này
+    if (applyScope === 'single' || editingTrip.needsReplacement) {
+      const tripStart = new Date(editingTrip.departureTime);
+      const tripEnd = new Date(editingTrip.arrivalTime);
+
+      const busyDriverPhones = new Set();
+      const busyAssistantPhones = new Set();
+
+      trips.forEach(t => {
+        if (String(t._id) === String(editingTrip._id)) return;
+        const tStart = new Date(t.departureTime);
+        const tEnd = new Date(t.arrivalTime);
+        if (tripStart < tEnd && tripEnd > tStart) {
+          if (t.driver?.phone) busyDriverPhones.add(t.driver.phone);
+          if (t.assistant?.phone) busyAssistantPhones.add(t.assistant.phone);
+        }
+      });
+
+      // Lọc các nhân sự không bị trùng lịch chạy trong khung giờ này
+      const relieverDrivers = availableDrivers.filter(d => !busyDriverPhones.has(d.phone));
+      const relieverAssistants = availableAssistants.filter(a => !busyAssistantPhones.has(a.phone));
+
+      return {
+        filteredDrivers: relieverDrivers,
+        filteredAssistants: relieverAssistants,
+        isFixedTeamBus: false,
+        fixedTeamInfo: null,
+        isRelieverMode: true
+      };
+    }
+
+    // Trường hợp B: Điều động cố định (đồng bộ tất cả các tuần)
+    if (fixedTeam && fixedTeam.driver?.phone) {
+      const matchedDriver = availableDrivers.find(d => d.phone === fixedTeam.driver.phone) || fixedTeam.driver;
+      const matchedAssistant = fixedTeam.assistant?.phone
+        ? (availableAssistants.find(a => a.phone === fixedTeam.assistant.phone) || fixedTeam.assistant)
+        : null;
+
+      return {
+        filteredDrivers: matchedDriver ? [matchedDriver] : [],
+        filteredAssistants: matchedAssistant ? [matchedAssistant] : [],
+        isFixedTeamBus: true,
+        fixedTeamInfo: fixedTeam,
+        isRelieverMode: false
+      };
+    } else {
+      const unassignedDrivers = availableDrivers.filter(d => !assignedDriverPhones.has(d.phone));
+      const unassignedAssistants = availableAssistants.filter(a => !assignedAssistantPhones.has(a.phone));
+
+      return {
+        filteredDrivers: unassignedDrivers,
+        filteredAssistants: unassignedAssistants,
+        isFixedTeamBus: false,
+        fixedTeamInfo: null,
+        isRelieverMode: false
+      };
+    }
+  }, [editingTrip, availableDrivers, availableAssistants, busStaffMap, assignedDriverPhones, assignedAssistantPhones, applyScope, trips]);
+
   const handleOpenEdit = (trip) => {
     setEditingTrip(trip);
-    const driverMatch = availableDrivers.find(d => d.name === trip.driver?.name) || '';
-    const assistantMatch = availableAssistants.find(a => a.name === trip.assistant?.name) || '';
-    setSelectedDriver(driverMatch ? JSON.stringify(driverMatch) : '');
-    setSelectedAssistant(assistantMatch ? JSON.stringify(assistantMatch) : '');
+    if (trip.needsReplacement) {
+      setApplyScope('single');
+    } else {
+      setApplyScope('all');
+    }
+
+    const bId = trip.busId?._id ? String(trip.busId._id) : (trip.busId ? String(trip.busId) : null);
+    const bPlate = trip.busId?.plateNumber;
+    const fixedTeam = (bId && busStaffMap[bId]) || (bPlate && busStaffMap[bPlate]);
+
+    let targetDriver = trip.driver?.phone
+      ? availableDrivers.find(d => d.phone === trip.driver.phone || d.name === trip.driver.name)
+      : (fixedTeam ? fixedTeam.driver : null);
+
+    let targetAssistant = trip.assistant?.phone
+      ? availableAssistants.find(a => a.phone === trip.assistant.phone || a.name === trip.assistant.name)
+      : (fixedTeam ? fixedTeam.assistant : null);
+
+    setSelectedDriver(targetDriver ? JSON.stringify(targetDriver) : '');
+    setSelectedAssistant(targetAssistant ? JSON.stringify(targetAssistant) : '');
   };
 
   const handleSaveAssignment = async (e) => {
@@ -179,6 +313,7 @@ const OpsStaffPage = () => {
     const assistantObj = selectedAssistant ? JSON.parse(selectedAssistant) : { name: '', phone: '' };
 
     try {
+      const busIdVal = editingTrip.busId?._id || editingTrip.busId;
       const res = await fetch(`${API_BASE}/trips/ops/trips/${editingTrip._id}`, {
         method: 'PUT',
         headers: {
@@ -186,13 +321,20 @@ const OpsStaffPage = () => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
+          busId: busIdVal,
           driver: driverObj,
-          assistant: assistantObj
+          assistant: assistantObj,
+          applyOnlyThisTrip: applyScope === 'single',
+          isReliever: applyScope === 'single'
         })
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Cập nhật nhân sự chuyến xe thành công!');
+        showToast(
+          applyScope === 'single'
+            ? 'Bố trí nhân sự chạy thay cho chuyến này thành công (không ảnh hưởng các chuyến khác).'
+            : 'Điều động thành công! Đội ngũ đã được đồng bộ cho toàn bộ các chuyến của phương tiện này.'
+        );
         setEditingTrip(null);
         fetchTrips();
       } else {
@@ -223,27 +365,43 @@ const OpsStaffPage = () => {
       const tripStart = new Date(trip.departureTime);
       const tripEnd = new Date(trip.arrivalTime);
 
-      let chosenDriver = null;
-      for (const driver of availableDrivers) {
-        const intervals = busyDrivers[driver.phone] || [];
-        const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
-        if (!isOverlap) {
-          chosenDriver = driver;
-          if (!busyDrivers[driver.phone]) busyDrivers[driver.phone] = [];
-          busyDrivers[driver.phone].push({ start: tripStart, end: tripEnd });
-          break;
-        }
-      }
+      const bId = trip.busId?._id ? String(trip.busId._id) : (trip.busId ? String(trip.busId) : null);
+      const bPlate = trip.busId?.plateNumber;
+      const fixedTeam = (bId && busStaffMap[bId]) || (bPlate && busStaffMap[bPlate]);
 
+      let chosenDriver = null;
       let chosenAssistant = null;
-      for (const assistant of availableAssistants) {
-        const intervals = busyAssistants[assistant.phone] || [];
-        const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
-        if (!isOverlap) {
-          chosenAssistant = assistant;
-          if (!busyAssistants[assistant.phone]) busyAssistants[assistant.phone] = [];
-          busyAssistants[assistant.phone].push({ start: tripStart, end: tripEnd });
-          break;
+
+      if (fixedTeam && fixedTeam.driver?.phone) {
+        // Xe đã có tổ lái cố định -> luôn gán đúng tổ lái đó
+        chosenDriver = availableDrivers.find(d => d.phone === fixedTeam.driver.phone) || fixedTeam.driver;
+        chosenAssistant = fixedTeam.assistant?.phone
+          ? (availableAssistants.find(a => a.phone === fixedTeam.assistant.phone) || fixedTeam.assistant)
+          : null;
+      } else {
+        // Xe chưa có tổ lái cố định -> chỉ lấy từ các tài xế / phụ xe tự do (chưa gán xe cố định)
+        const freeDrivers = availableDrivers.filter(d => !assignedDriverPhones.has(d.phone));
+        for (const driver of freeDrivers) {
+          const intervals = busyDrivers[driver.phone] || [];
+          const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
+          if (!isOverlap) {
+            chosenDriver = driver;
+            if (!busyDrivers[driver.phone]) busyDrivers[driver.phone] = [];
+            busyDrivers[driver.phone].push({ start: tripStart, end: tripEnd });
+            break;
+          }
+        }
+
+        const freeAssistants = availableAssistants.filter(a => !assignedAssistantPhones.has(a.phone));
+        for (const assistant of freeAssistants) {
+          const intervals = busyAssistants[assistant.phone] || [];
+          const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
+          if (!isOverlap) {
+            chosenAssistant = assistant;
+            if (!busyAssistants[assistant.phone]) busyAssistants[assistant.phone] = [];
+            busyAssistants[assistant.phone].push({ start: tripStart, end: tripEnd });
+            break;
+          }
         }
       }
 
@@ -607,19 +765,49 @@ const OpsStaffPage = () => {
                         )}
                       </td>
                       <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                        <span 
-                          style={{ 
-                            padding: '4px 10px', 
-                            borderRadius: '12px', 
-                            fontSize: '0.75rem', 
-                            fontWeight: '700',
-                            backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                            color: hasStaff ? '#10b981' : '#ef4444',
-                            border: hasStaff ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
-                          }}
-                        >
-                          {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
-                        </span>
+                        {trip.needsReplacement ? (
+                          <span 
+                            style={{ 
+                              padding: '4px 10px', 
+                              borderRadius: '12px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: '700',
+                              backgroundColor: '#fff7ed',
+                              color: '#c2410c',
+                              border: '1px solid #fed7aa'
+                            }}
+                          >
+                            Cần bố trí người chạy thay ({trip.replacementReason || 'Tài xế nghỉ phép'})
+                          </span>
+                        ) : trip.isReliever ? (
+                          <span 
+                            style={{ 
+                              padding: '4px 10px', 
+                              borderRadius: '12px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: '700',
+                              backgroundColor: '#f0fdf4',
+                              color: '#15803d',
+                              border: '1px solid #bbf7d0'
+                            }}
+                          >
+                            Đã có người chạy thay
+                          </span>
+                        ) : (
+                          <span 
+                            style={{ 
+                              padding: '4px 10px', 
+                              borderRadius: '12px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: '700',
+                              backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                              color: hasStaff ? '#10b981' : '#ef4444',
+                              border: hasStaff ? '1px solid rgba(16, 185, 129, 0.2)' : '1px solid rgba(239, 68, 68, 0.2)'
+                            }}
+                          >
+                            {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '16px 12px', textAlign: 'right' }}>
                         <button 
@@ -790,18 +978,48 @@ const OpsStaffPage = () => {
                             </div>
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
-                              <span 
-                                style={{ 
-                                  padding: '2px 8px', 
-                                  borderRadius: '10px', 
-                                  fontSize: '0.7rem', 
-                                  fontWeight: '700',
-                                  backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                  color: hasStaff ? '#10b981' : '#ef4444'
-                                }}
-                              >
-                                {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
-                              </span>
+                              {trip.needsReplacement ? (
+                                <span 
+                                  style={{ 
+                                    padding: '2px 8px', 
+                                    borderRadius: '6px', 
+                                    fontSize: '0.7rem', 
+                                    fontWeight: '700',
+                                    backgroundColor: '#fff7ed',
+                                    color: '#c2410c',
+                                    border: '1px solid #fed7aa'
+                                  }}
+                                >
+                                  Cần người chạy thay
+                                </span>
+                              ) : trip.isReliever ? (
+                                <span 
+                                  style={{ 
+                                    padding: '2px 8px', 
+                                    borderRadius: '6px', 
+                                    fontSize: '0.7rem', 
+                                    fontWeight: '700',
+                                    backgroundColor: '#f0fdf4',
+                                    color: '#15803d',
+                                    border: '1px solid #bbf7d0'
+                                  }}
+                                >
+                                  Đã có người chạy thay
+                                </span>
+                              ) : (
+                                <span 
+                                  style={{ 
+                                    padding: '2px 8px', 
+                                    borderRadius: '10px', 
+                                    fontSize: '0.7rem', 
+                                    fontWeight: '700',
+                                    backgroundColor: hasStaff ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                    color: hasStaff ? '#10b981' : '#ef4444'
+                                  }}
+                                >
+                                  {hasStaff ? 'Đã bố trí' : 'Thiếu nhân sự'}
+                                </span>
+                              )}
 
                               <button 
                                 onClick={() => handleOpenEdit(trip)} 
@@ -834,7 +1052,7 @@ const OpsStaffPage = () => {
         }}>
           <div className="panel" style={{ width: '100%', maxWidth: '450px', padding: '24px', position: 'relative' }}>
             <h3 style={{ marginBottom: '8px' }}>Điều động nhân sự</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '16px' }}>
               Chuyến: <strong style={{ color: 'var(--primary)' }}>{editingTrip.routeId ? `${editingTrip.routeId.startPoint} → ${editingTrip.routeId.endPoint}` : 'N/A'}</strong>
               <br />
               Khởi hành: {new Date(editingTrip.departureTime).toLocaleString('vi-VN')}
@@ -843,11 +1061,82 @@ const OpsStaffPage = () => {
             </p>
 
             <form onSubmit={handleSaveAssignment}>
+              {/* Banner trạng thái phân công */}
+              {editingTrip.needsReplacement ? (
+                <div style={{
+                  backgroundColor: '#fff7ed',
+                  border: '1px solid #fed7aa',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  fontSize: '0.82rem',
+                  color: '#c2410c',
+                  lineHeight: '1.4'
+                }}>
+                  <strong>Cần bố trí người chạy thay:</strong> {editingTrip.replacementReason || 'Tài xế/Phụ xe nghỉ phép'}. Hệ thống đã tự động lọc danh sách nhân sự dự bị phù hợp và không trùng lịch chạy.
+                </div>
+              ) : isFixedTeamBus && applyScope === 'all' ? (
+                <div style={{
+                  backgroundColor: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  fontSize: '0.82rem',
+                  color: '#1e40af',
+                  lineHeight: '1.4'
+                }}>
+                  <strong>Xe chuyên trách có tổ lái cố định:</strong> Phương tiện <strong>{editingTrip.busId?.plateNumber}</strong> gắn với 1 tổ lái cố định. Danh sách điều động chỉ hiển thị tài xế và phụ xe chuyên trách của xe này.
+                </div>
+              ) : (
+                <div style={{
+                  backgroundColor: '#fffbeb',
+                  border: '1px solid #fef3c7',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  fontSize: '0.82rem',
+                  color: '#92400e',
+                  lineHeight: '1.4'
+                }}>
+                  <strong>Xe chưa có đội ngũ cố định:</strong> Phương tiện <strong>{editingTrip.busId?.plateNumber}</strong> là xe mới/tự do. Hệ thống chỉ hiển thị nhân sự tự do sẵn sàng nhận xe.
+                </div>
+              )}
+
+              {/* Lựa chọn phạm vi áp dụng */}
+              <div style={{ marginBottom: '16px', padding: '10px 12px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: '700', color: '#475569', marginBottom: '8px' }}>
+                  Phạm vi áp dụng:
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="applyScope"
+                      value="single"
+                      checked={applyScope === 'single'}
+                      onChange={() => setApplyScope('single')}
+                    />
+                    <span><strong>Chỉ áp dụng chuyến này</strong> (Người chạy thay tạm thời cho ngày này)</span>
+                  </label>
+                  <label style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="radio"
+                      name="applyScope"
+                      value="all"
+                      checked={applyScope === 'all'}
+                      onChange={() => setApplyScope('all')}
+                    />
+                    <span><strong>Áp dụng cố định</strong> (Cập nhật cho chuyến này và các tuần tiếp theo)</span>
+                  </label>
+                </div>
+              </div>
+
               <div className="form-group" style={{ marginBottom: '16px' }}>
                 <label className="form-label">Chọn tài xế chính</label>
-                {availableDrivers.length === 0 ? (
+                {filteredDrivers.length === 0 ? (
                   <p style={{ color: '#ef4444', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                    Không có tài xế nào trong hệ thống. Vui lòng tạo tài xế trước.
+                    Không có tài xế dự bị khả dụng trong khung giờ này.
                   </p>
                 ) : (
                   <select 
@@ -856,9 +1145,9 @@ const OpsStaffPage = () => {
                     onChange={(e) => setSelectedDriver(e.target.value)}
                   >
                     <option value="">-- Bỏ trống / Chưa phân công --</option>
-                    {availableDrivers.map((driver, idx) => (
+                    {filteredDrivers.map((driver, idx) => (
                       <option key={idx} value={JSON.stringify(driver)}>
-                        {driver.name} ({driver.phone})
+                        {driver.name} ({driver.phone}) {isRelieverMode ? '[Dự bị khả dụng]' : isFixedTeamBus ? `[Tổ lái xe ${editingTrip.busId?.plateNumber}]` : '[Tự do]'}
                       </option>
                     ))}
                   </select>
@@ -867,9 +1156,9 @@ const OpsStaffPage = () => {
 
               <div className="form-group" style={{ marginBottom: '24px' }}>
                 <label className="form-label">Chọn phụ xe</label>
-                {availableAssistants.length === 0 ? (
+                {filteredAssistants.length === 0 ? (
                   <p style={{ color: '#ef4444', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                    Không có phụ xe/nhân viên bán vé nào trong hệ thống. Vui lòng tạo trước.
+                    Không có phụ xe dự bị khả dụng trong khung giờ này.
                   </p>
                 ) : (
                   <select 
@@ -878,9 +1167,9 @@ const OpsStaffPage = () => {
                     onChange={(e) => setSelectedAssistant(e.target.value)}
                   >
                     <option value="">-- Bỏ trống / Chưa phân công --</option>
-                    {availableAssistants.map((assistant, idx) => (
+                    {filteredAssistants.map((assistant, idx) => (
                       <option key={idx} value={JSON.stringify(assistant)}>
-                        {assistant.name} ({assistant.phone})
+                        {assistant.name} ({assistant.phone}) {isRelieverMode ? '[Dự bị khả dụng]' : isFixedTeamBus ? `[Tổ lái xe ${editingTrip.busId?.plateNumber}]` : '[Tự do]'}
                       </option>
                     ))}
                   </select>
@@ -891,7 +1180,7 @@ const OpsStaffPage = () => {
                 <button type="button" onClick={() => setEditingTrip(null)} className="btn btn-secondary">
                   Hủy
                 </button>
-                <button type="submit" className="btn btn-primary" disabled={availableDrivers.length === 0}>
+                <button type="submit" className="btn btn-primary" disabled={filteredDrivers.length === 0}>
                   Xác nhận điều động
                 </button>
               </div>
