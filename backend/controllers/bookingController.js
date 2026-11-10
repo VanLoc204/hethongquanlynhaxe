@@ -1,4 +1,5 @@
 const bookingService = require('../services/bookingService');
+const payosPaymentService = require('../services/payosPaymentService');
 
 // @desc    Create a new booking and save to MongoDB
 // @route   POST /book
@@ -33,7 +34,32 @@ exports.createBooking = async (req, res) => {
       customerCCCD, customerEmail, paymentType
     });
 
-    res.status(201).json({ success: true, message: 'Tạo thông tin đặt vé thành công.', booking });
+    // Tạo liên kết thanh toán payOS trực tiếp nếu thanh toán ngay
+    let payosData = null;
+    if (booking.paymentType === 'immediate') {
+      try {
+        const linkRes = await payosPaymentService.createPaymentLink({
+          orderCode: booking.orderCode,
+          amount: booking.totalAmount,
+          description: `SmartBus ${booking.orderCode}`,
+          buyerName: booking.customerName,
+          buyerEmail: booking.customerEmail,
+          buyerPhone: booking.customerPhone
+        });
+        if (linkRes && linkRes.success) {
+          payosData = linkRes;
+        }
+      } catch (payosErr) {
+        console.warn('[payOS Link creation] Error:', payosErr.message);
+      }
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Tạo thông tin đặt vé thành công.', 
+      booking,
+      payosData 
+    });
   } catch (error) {
     console.error('Lỗi lưu thông tin đặt vé:', error);
     res.status(error.statusCode || 400).json({

@@ -12,6 +12,9 @@ class DriverGpsService {
     this.currentHeading = 0;
     this.simIndex = 0;
     this.routeCoordinates = [];
+    this.isOffRoute = false;
+    this.offRouteDistance = 0;
+    this.rerouteCoords = [];
     this.lastPingTime = null;
     this.pingStatus = 'Sẵn sàng';
     this.simTimer = null;
@@ -47,7 +50,10 @@ class DriverGpsService {
       simIndex: this.simIndex,
       lastPingTime: this.lastPingTime,
       pingStatus: this.pingStatus,
-      routeCoordinates: this.routeCoordinates
+      routeCoordinates: this.routeCoordinates,
+      isOffRoute: this.isOffRoute,
+      offRouteDistance: this.offRouteDistance,
+      rerouteCoords: this.rerouteCoords
     };
   }
 
@@ -86,10 +92,18 @@ class DriverGpsService {
     return isNaN(brng) ? 0 : brng;
   }
 
-  async sendGpsToBackend(lat, lng, speed, heading) {
+  async sendGpsToBackend(lat, lng, speed, heading, isOffRoute = false, offRouteDistance = 0, rerouteCoords = []) {
     if (!this.trip?._id) return;
+    this.isOffRoute = Boolean(isOffRoute);
+    this.offRouteDistance = Math.round(offRouteDistance || 0);
+    if (Array.isArray(rerouteCoords) && rerouteCoords.length > 0) {
+      this.rerouteCoords = rerouteCoords;
+    } else if (!isOffRoute) {
+      this.rerouteCoords = [];
+    }
+
     try {
-      this.pingStatus = 'Đang gửi vị trí...';
+      this.pingStatus = this.isOffRoute ? `Lệch lộ trình (+${this.offRouteDistance}m)` : 'Đang gửi vị trí...';
       const res = await fetch(`${API_BASE}/trips/${this.trip._id}/live-gps`, {
         method: 'PUT',
         headers: {
@@ -101,13 +115,18 @@ class DriverGpsService {
           lng,
           speed: Math.round(speed),
           heading: Math.round(heading),
-          status: speed > 5 ? 'moving' : 'stopped'
+          status: speed > 5 ? 'moving' : 'stopped',
+          isOffRoute: this.isOffRoute,
+          offRouteDistance: this.offRouteDistance,
+          rerouteCoords: this.rerouteCoords
         })
       });
       const data = await res.json();
       if (data.success) {
         this.lastPingTime = new Date().toLocaleTimeString('vi-VN');
-        this.pingStatus = 'Đã kết nối máy chủ';
+        this.pingStatus = this.isOffRoute 
+          ? `Cảnh báo lệch tuyến (+${this.offRouteDistance}m) - Đã đồng bộ`
+          : 'Đã kết nối máy chủ';
       } else {
         this.pingStatus = data.message || 'Máy chủ cảnh báo';
         if (res.status === 403) {
@@ -182,18 +201,88 @@ class DriverGpsService {
 
         const target = coords[currIdx];
         const nextTarget = coords[(currIdx + 1) % coords.length];
-        const lat = target[0];
-        const lng = target[1];
+        let lat = target[0];
+        let lng = target[1];
         const simulatedSpeed = 58 + Math.floor(Math.random() * 12);
         const heading = this.calculateBearing(lat, lng, nextTarget[0], nextTarget[1]);
+
+        let isOff = false;
+        let offDist = 0;
+        if (this.isForcedDetour) {
+          // Tính độ lệch vuông góc với hướng di chuyển (~350 mét ra đường song song)
+          const perpAngle = (heading + 90) * (Math.PI / 180);
+          lat = Number((lat + Math.sin(perpAngle) * 0.0035).toFixed(6));
+          lng = Number((lng + Math.cos(perpAngle) * 0.0035).toFixed(6));
+          isOff = true;
+          offDist = 380;
+
+          // Tạo các điểm dẫn đường mới từ vị trí rẽ về lại các mốc tiếp theo trên tuyến
+          const aheadPoints = [];
+          for (let step = 1; step <= 8; step++) {
+            const nextIdx = (currIdx + step * 3) % coords.length;
+            aheadPoints.push(coords[nextIdx]);
+          }
+          this.rerouteCoords = [[lat, lng], ...aheadPoints];
+        } else {
+          this.rerouteCoords = [];
+        }
 
         this.currentCoord = { lat, lng };
         this.currentSpeed = simulatedSpeed;
         this.currentHeading = heading;
+        this.isOffRoute = isOff;
+        this.offRouteDistance = offDist;
 
-        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading);
+        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading, isOff, offDist, this.rerouteCoords);
       }, 3000);
     }
+  }
+
+  simulateDetour(isDetour = true) {
+    this.isForcedDetour = Boolean(isDetour);
+    if (this.currentCoord) {
+      if (this.isForcedDetour) {
+        // Dịch chuyển xe lệch khỏi trục lộ trình ~350m
+        const heading = this.currentHeading || 45;
+        const perpAngle = (heading + 90) * (Math.PI / 180);
+        this.currentCoord = {
+          lat: Number((this.currentCoord.lat + Math.sin(perpAngle) * 0.0035).toFixed(6)),
+          lng: Number((this.currentCoord.lng + Math.cos(perpAngle) * 0.0035).toFixed(6))
+        };
+        this.isOffRoute = true;
+        this.offRouteDistance = 380;
+
+        const coords = this.routeCoordinates || [];
+        const aheadPoints = [];
+        if (coords.length > 0) {
+          for (let step = 1; step <= 8; step++) {
+            const nextIdx = (this.simIndex + step * 3) % coords.length;
+            aheadPoints.push(coords[nextIdx]);
+          }
+        }
+        this.rerouteCoords = [[this.currentCoord.lat, this.currentCoord.lng], ...aheadPoints];
+      } else {
+        this.isOffRoute = false;
+        this.offRouteDistance = 0;
+        this.rerouteCoords = [];
+        if (this.routeCoordinates && this.routeCoordinates.length > 0) {
+          const original = this.routeCoordinates[this.simIndex % this.routeCoordinates.length];
+          if (original) {
+            this.currentCoord = { lat: original[0], lng: original[1] };
+          }
+        }
+      }
+      this.sendGpsToBackend(
+        this.currentCoord.lat,
+        this.currentCoord.lng,
+        this.currentSpeed || 55,
+        this.currentHeading || 45,
+        this.isOffRoute,
+        this.offRouteDistance,
+        this.rerouteCoords
+      );
+    }
+    this.notify();
   }
 
   stopTracking() {
@@ -243,16 +332,39 @@ class DriverGpsService {
 
         const target = coords[currIdx];
         const nextTarget = coords[(currIdx + 1) % coords.length];
-        const lat = target[0];
-        const lng = target[1];
+        let lat = target[0];
+        let lng = target[1];
         const simulatedSpeed = 58 + Math.floor(Math.random() * 12);
         const heading = this.calculateBearing(lat, lng, nextTarget[0], nextTarget[1]);
+
+        let isOff = false;
+        let offDist = 0;
+        if (this.isForcedDetour) {
+          // Tính độ lệch vuông góc với hướng di chuyển (~350 mét ra đường song song)
+          const perpAngle = (heading + 90) * (Math.PI / 180);
+          lat = Number((lat + Math.sin(perpAngle) * 0.0035).toFixed(6));
+          lng = Number((lng + Math.cos(perpAngle) * 0.0035).toFixed(6));
+          isOff = true;
+          offDist = 380;
+
+          // Tạo các điểm dẫn đường mới từ vị trí rẽ về lại các mốc tiếp theo trên tuyến
+          const aheadPoints = [];
+          for (let step = 1; step <= 8; step++) {
+            const nextIdx = (currIdx + step * 3) % coords.length;
+            aheadPoints.push(coords[nextIdx]);
+          }
+          this.rerouteCoords = [[lat, lng], ...aheadPoints];
+        } else {
+          this.rerouteCoords = [];
+        }
 
         this.currentCoord = { lat, lng };
         this.currentSpeed = simulatedSpeed;
         this.currentHeading = heading;
+        this.isOffRoute = isOff;
+        this.offRouteDistance = offDist;
 
-        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading);
+        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading, isOff, offDist, this.rerouteCoords);
       }, 3000);
     }
 
@@ -267,6 +379,7 @@ if (!window.__driverGpsServiceInstance) {
   // Cập nhật lại prototype và phương thức mới khi Webpack Hot Module Replacement (HMR) reload
   Object.setPrototypeOf(window.__driverGpsServiceInstance, DriverGpsService.prototype);
   window.__driverGpsServiceInstance.restartSimulation = DriverGpsService.prototype.restartSimulation.bind(window.__driverGpsServiceInstance);
+  window.__driverGpsServiceInstance.simulateDetour = DriverGpsService.prototype.simulateDetour.bind(window.__driverGpsServiceInstance);
 }
 
 export const driverGpsService = window.__driverGpsServiceInstance;

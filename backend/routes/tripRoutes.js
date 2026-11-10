@@ -25,11 +25,21 @@ const {
   updateJourneyStatus,
   getMaintenanceRecords,
   createMaintenanceRecord,
+  getMaintenanceApprovals,
+  reviewMaintenanceApproval,
   getPunctualityReport,
   updateTripPunctuality,
   updateLiveGps
 } = require('../controllers/tripController');
 const { createBooking, updateBookingPayment, cancelExpiredBooking, getMyBookings } = require('../controllers/bookingController');
+const {
+  getFleetExpensePreview,
+  submitFleetExpenseReport,
+  getFleetExpenseReports,
+  getFleetExpenseReportById,
+  approveFleetExpenseReport,
+  rejectFleetExpenseReport
+} = require('../controllers/fleetExpenseReportController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
 
 // ==========================================
@@ -69,6 +79,16 @@ router.delete('/fleet/buses/:id', protect, restrictTo('fleet_manager', 'admin', 
 // Fleet Maintenance Routes
 router.get('/fleet/maintenance-records', protect, getMaintenanceRecords);
 router.post('/fleet/maintenance-records', protect, restrictTo('fleet_manager', 'admin', 'general_manager'), createMaintenanceRecord);
+router.get('/fleet/maintenance-approvals', protect, restrictTo('general_manager', 'admin', 'fleet_manager'), getMaintenanceApprovals);
+router.patch('/fleet/maintenance-approvals/:id', protect, restrictTo('general_manager', 'admin'), reviewMaintenanceApproval);
+
+// Fleet Monthly Expense Reports (Quản lý chi tiêu Đội xe hàng tháng)
+router.get('/fleet-expense-reports/preview', protect, restrictTo('fleet_manager', 'general_manager', 'admin'), getFleetExpensePreview);
+router.post('/fleet-expense-reports/submit', protect, restrictTo('fleet_manager', 'admin'), submitFleetExpenseReport);
+router.get('/fleet-expense-reports', protect, restrictTo('fleet_manager', 'general_manager', 'admin'), getFleetExpenseReports);
+router.get('/fleet-expense-reports/:id', protect, restrictTo('fleet_manager', 'general_manager', 'admin'), getFleetExpenseReportById);
+router.patch('/fleet-expense-reports/:id/approve', protect, restrictTo('general_manager', 'admin'), approveFleetExpenseReport);
+router.patch('/fleet-expense-reports/:id/reject', protect, restrictTo('general_manager', 'admin'), rejectFleetExpenseReport);
 
 // Ops Route Routes
 router.get('/ops/routes', protect, getRoutes);

@@ -52,6 +52,7 @@ const AgentBookingPage = () => {
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [submitting, setSubmitting] = useState(false);
   const [printTarget, setPrintTarget] = useState(null);
@@ -302,12 +303,18 @@ const AgentBookingPage = () => {
           dropoff: selectedDropoff || selectedTrip.routeId?.endPoint || 'Bến xe kết thúc',
           customerName,
           customerPhone,
+          customerEmail: customerEmail.trim(),
           paymentMethod
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccess(paymentMethod === 'cashless' ? 'Đang chờ khách quét mã VietQR thanh toán...' : 'Nhận tiền tại quầy và xuất vé thành công! Mã vé: ' + data.booking.orderCode);
+        setSuccess(
+          data.message ||
+            (paymentMethod === 'cashless'
+              ? 'Đang chờ khách quét mã VietQR thanh toán...'
+              : 'Nhận tiền tại quầy và xuất vé thành công! Mã vé: ' + data.booking.orderCode)
+        );
         const printedBooking = {
           ...data.booking,
           tripId: selectedTrip
@@ -322,6 +329,7 @@ const AgentBookingPage = () => {
         setSelectedSeats([]);
         setCustomerName('');
         setCustomerPhone('');
+        setCustomerEmail('');
         setSelectedPickup('');
         setSelectedDropoff('');
         fetchInitialData();
@@ -1294,7 +1302,7 @@ const AgentBookingPage = () => {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 1fr 1.2fr', gap: '0.85rem' }}>
                   <div>
                     <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '4px' }}>
                       Họ Và Tên Khách Hàng *
@@ -1316,13 +1324,34 @@ const AgentBookingPage = () => {
                     <input
                       type="tel"
                       className="agent-form-control"
-                      placeholder="Nhập SĐT nhận vé SMS..."
+                      placeholder="Nhập SĐT khách hàng..."
                       value={customerPhone}
                       onChange={(e) => setCustomerPhone(e.target.value)}
                       required
                     />
                   </div>
+
+                  <div>
+                    <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Email Khách Hàng (Tùy chọn)
+                    </label>
+                    <input
+                      type="email"
+                      className="agent-form-control"
+                      placeholder="Gửi vé điện tử qua Email / Hotline..."
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                    />
+                  </div>
                 </div>
+
+                {customerEmail && (
+                  <div style={{ fontSize: '0.73rem', color: '#0369a1', backgroundColor: '#f0f9ff', padding: '0.55rem 0.85rem', borderRadius: '6px', border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>
+                      Chính sách vé điện tử: Hệ thống sẽ tự động gửi Hóa đơn điện tử kèm mã QR soát vé về Email cho khách hàng.
+                    </span>
+                  </div>
+                )}
 
                 <div>
                   <label style={{ fontWeight: '700', fontSize: '0.78rem', color: '#475569', display: 'block', marginBottom: '6px' }}>
@@ -1424,6 +1453,15 @@ const AgentBookingPage = () => {
               <div><strong>Xe:</strong> {printTarget.tripId?.busId?.plateNumber} ({printTarget.tripId?.busId?.type})</div>
               <div><strong>Ghế đã đặt:</strong> {printTarget.seats?.join(', ')}</div>
               <div><strong>Số lượng vé:</strong> {printTarget.seats?.length} vé</div>
+              {printTarget.customerEmail && (
+                <>
+                  <div><strong>Email nhận vé:</strong> {printTarget.customerEmail}</div>
+                  <div style={{ margin: '4px 0', borderTop: '1px dashed #000000' }}></div>
+                  <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: '700' }}>
+                    [OK] Đã gửi Hóa đơn điện tử có mã QR tới Email: {printTarget.customerEmail}
+                  </div>
+                </>
+              )}
               <div style={{ margin: '4px 0', borderTop: '1px dashed #000000' }}></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: '800' }}>
                 <span>TỔNG TIỀN:</span>

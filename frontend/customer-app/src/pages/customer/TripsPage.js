@@ -387,7 +387,7 @@ const TripsPage = () => {
         });
 
         if (res.data.success) {
-          setCreatedBooking(res.data.booking);
+          setCreatedBooking({ ...res.data.booking, payosData: res.data.payosData });
           setBookingStep('payment');
         } else {
           alert(res.data.message || 'Lỗi lưu thông tin khách hàng.');
@@ -1121,6 +1121,29 @@ const TripsPage = () => {
 
               <div className="glass-card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', margin: '0 auto' }}>
                 <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
+
+                {createdBooking?.payosData?.checkoutUrl && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <a
+                      href={createdBooking.payosData.checkoutUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'block',
+                        padding: '10px 14px',
+                        backgroundColor: '#059669',
+                        color: '#ffffff',
+                        borderRadius: '8px',
+                        fontWeight: '700',
+                        fontSize: '0.85rem',
+                        textDecoration: 'none',
+                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.3)'
+                      }}
+                    >
+                      Mở Cổng Thanh Toán payOS (AnBinhLine) &rarr;
+                    </a>
+                  </div>
+                )}
 
                 <img
                   src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${trip.price * selectedSeats.length}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`}

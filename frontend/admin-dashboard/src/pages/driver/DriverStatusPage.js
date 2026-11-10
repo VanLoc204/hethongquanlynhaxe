@@ -603,6 +603,34 @@ const DriverStatusPage = ({ setActiveTab }) => {
               </svg>
               Bản Đồ Di Chuyển GPS
             </button>
+
+            {/* NÚT BÁO SỰ CỐ TRÊN TUYẾN */}
+            <button
+              onClick={() => setActiveTab && setActiveTab('driver-incidents')}
+              title="Báo sự cố phát sinh trên đường (Vá vỏ, đổ nhớt, xe hỏng khẩn cấp)"
+              style={{
+                backgroundColor: '#fef2f2',
+                border: '1.5px solid #ef4444',
+                color: '#b91c1c',
+                fontWeight: '800',
+                padding: '0.45rem 0.95rem',
+                borderRadius: '8px',
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(239,68,68,0.15)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Báo sự cố trên tuyến
+            </button>
           </div>
         </div>
 

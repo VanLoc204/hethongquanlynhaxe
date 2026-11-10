@@ -9,6 +9,10 @@ const Bus = require('../models/Bus');
 const Payroll = require('../models/Payroll');
 const WorkSchedule = require('../models/WorkSchedule');
 const Attendance = require('../models/Attendance');
+const Incident = require('../models/Incident');
+const Review = require('../models/Review');
+const CustomerBankAccount = require('../models/CustomerBankAccount');
+const payosPayoutService = require('../services/payosPayoutService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { detectBranchFromLocation, getBranchById } = require('../constants/branches');
@@ -240,7 +244,32 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
   const standardWorkingDays = 26;
   const dailyRate = details.base / standardWorkingDays;
   const absentDeduction = Math.round(absentDays * dailyRate);
-  const netSalary = Math.max(0, details.base + details.allowance - details.insurance - absentDeduction);
+
+  // Tính các khoản hoàn ứng sự cố trên tuyến được Quản lý duyệt trong tháng
+  const approvedIncidents = await Incident.find({
+    reportedBy: userId,
+    scenario: 'self_resolved',
+    reimbursementStatus: { $in: ['approved', 'paid'] },
+    createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+  }).lean();
+
+  const incidentReimbursement = approvedIncidents.reduce(
+    (sum, inc) => sum + (inc.reimbursementAmount || 0),
+    0
+  );
+
+  const incidentItems = approvedIncidents.map(inc => ({
+    incidentCode: inc.incidentCode,
+    title: inc.title,
+    amount: inc.reimbursementAmount || 0,
+    status: inc.reimbursementStatus,
+    approvedAt: inc.reimbursementApprovedAt || inc.createdAt
+  }));
+
+  const netSalary = Math.max(
+    0,
+    details.base + details.allowance + incidentReimbursement - details.insurance - absentDeduction
+  );
 
   const fullUser = await User.findById(userId).select('name phone').lean();
 
@@ -262,6 +291,8 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
         insuranceDeduction: details.insurance,
         absentDays,
         absentDeduction,
+        incidentReimbursement,
+        incidentItems,
         netSalary,
         status,
         paymentDate: new Date(qYear, qMonth - 1, 5)
@@ -588,6 +619,18 @@ exports.getCurrentShift = async (req, res) => {
           ]
         }
       })
+      .populate({
+        path: 'ticketsRefunded',
+        select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount refundAmount cancellationFee paymentMethod status cancelledAt tripId',
+        populate: {
+          path: 'tripId',
+          select: 'routeId busId departureTime price',
+          populate: [
+            { path: 'routeId', select: 'startPoint endPoint name' },
+            { path: 'busId', select: 'plateNumber type price' }
+          ]
+        }
+      })
       .lean();
     res.status(200).json({
       success: true,
@@ -629,6 +672,18 @@ exports.getShiftHistory = async (req, res) => {
       .populate({
         path: 'ticketsSold',
         select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount paymentMethod status createdAt tripId',
+        populate: {
+          path: 'tripId',
+          select: 'routeId busId departureTime price',
+          populate: [
+            { path: 'routeId', select: 'startPoint endPoint name' },
+            { path: 'busId', select: 'plateNumber type price' }
+          ]
+        }
+      })
+      .populate({
+        path: 'ticketsRefunded',
+        select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount refundAmount cancellationFee paymentMethod status cancelledAt tripId',
         populate: {
           path: 'tripId',
           select: 'routeId busId departureTime price',
@@ -784,7 +839,7 @@ exports.lookupTickets = async (req, res) => {
 // @access  Private (Ticket Agent)
 exports.createCounterBooking = async (req, res) => {
   try {
-    const { tripId, seats, pickup, dropoff, customerName, customerPhone, paymentMethod } = req.body;
+    const { tripId, seats, pickup, dropoff, customerName, customerPhone, customerEmail, paymentMethod } = req.body;
     
     if (!tripId || !seats || !seats.length || !pickup || !dropoff || !customerName || !customerPhone || !paymentMethod) {
       return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ các trường thông tin bắt buộc.' });
@@ -796,8 +851,8 @@ exports.createCounterBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Vui lòng mở ca trực tại quầy (Nhập mã quầy & Tiền đầu ca) trước khi đặt vé.' });
     }
 
-    // 2. Fetch Trip
-    const trip = await Trip.findById(tripId);
+    // 2. Fetch Trip with Route and Bus info
+    const trip = await Trip.findById(tripId).populate('routeId').populate('busId');
     if (!trip) {
       return res.status(404).json({ success: false, message: 'Chuyến xe không tồn tại.' });
     }
@@ -823,6 +878,7 @@ exports.createCounterBooking = async (req, res) => {
       passenger = await User.create({
         name: customerName,
         phone: customerPhone,
+        email: customerEmail ? customerEmail.trim().toLowerCase() : undefined,
         password: tempPassword,
         role: 'customer',
         status: 'active',
@@ -830,6 +886,9 @@ exports.createCounterBooking = async (req, res) => {
         membershipTier: 'Bronze'
       });
       console.log(`[Counter Registration] Auto registered new customer account with phone ${customerPhone}`);
+    } else if (customerEmail && !passenger.email) {
+      passenger.email = customerEmail.trim().toLowerCase();
+      await passenger.save();
     }
 
     // 5. Generate unique orderCode
@@ -849,6 +908,7 @@ exports.createCounterBooking = async (req, res) => {
       dropoff,
       customerName,
       customerPhone,
+      customerEmail: customerEmail ? customerEmail.trim().toLowerCase() : '',
       customerBirthYear: 2000,          // Dummy fallback
       customerCCCD: 'COUNTER_BOOKING',  // Dummy fallback
       status: 'paid',                   // Counter booking is paid immediately
@@ -887,12 +947,47 @@ exports.createCounterBooking = async (req, res) => {
 
     await passenger.save();
 
+    // 10. Tự động gửi Email hóa đơn vé điện tử (nếu khách cung cấp email)
+    const { sendBookingInvoiceEmail } = require('../services/emailService');
+
+    let emailSent = false;
+    let emailNote = '';
+    if (booking.customerEmail) {
+      try {
+        const emailRes = await sendBookingInvoiceEmail(booking, trip);
+        if (emailRes && emailRes.success) {
+          emailSent = true;
+          console.log(`[Counter Booking] Đã gửi Email hóa đơn vé xe về: ${booking.customerEmail}`);
+        } else {
+          emailNote = emailRes?.code === 'unauthorized'
+            ? ' (Lưu ý: Email tạm thời bị chặn do Brevo yêu cầu ủy quyền IP https://app.brevo.com/security/authorised_ips)'
+            : ' (Chưa gửi được email hóa đơn)';
+          console.warn(`[Counter Booking] Gửi Email không thành công:`, emailRes?.error || emailRes);
+        }
+      } catch (emailErr) {
+        console.error('[Counter Booking] Lỗi gửi Email:', emailErr.message);
+      }
+    }
+
     const bookingJson = booking.toJSON();
     bookingJson.qrSignature = generateTicketSignature(booking._id);
+    bookingJson.notificationStatus = {
+      emailSent,
+      emailRecipient: booking.customerEmail || null
+    };
+
+    let replyMsg = `Đặt vé thành công! Mã vé: #${booking.orderCode || booking._id.toString().slice(-6).toUpperCase()}.`;
+    if (booking.customerEmail) {
+      if (emailSent) {
+        replyMsg += ` Đã gửi Hóa đơn điện tử kèm mã QR tới Email ${booking.customerEmail}.`;
+      } else {
+        replyMsg += emailNote;
+      }
+    }
 
     res.status(201).json({
       success: true,
-      message: 'Đặt và thanh toán vé tại quầy thành công.',
+      message: replyMsg,
       booking: bookingJson
     });
 
@@ -902,18 +997,53 @@ exports.createCounterBooking = async (req, res) => {
   }
 };
 
-// @desc    Cancel ticket directly at counter (applying refund schedule rules)
+// @desc    Get linked customer bank account by phone number
+// @route   GET /api/v1/users/customer-bank-account/:phone
+// @access  Private (Ticket Agent, Ticket Manager, Admin)
+exports.getCustomerBankAccount = async (req, res) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Số điện thoại không hợp lệ.' });
+    }
+    const cleanPhone = phone.trim();
+    const bankAccount =
+      (await CustomerBankAccount.findOne({ customerPhone: cleanPhone, isDefault: true })) ||
+      (await CustomerBankAccount.findOne({ customerPhone: cleanPhone }));
+
+    return res.status(200).json({ success: true, bankAccount: bankAccount || null });
+  } catch (error) {
+    console.error('getCustomerBankAccount error:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi khi tải thông tin tài khoản ngân hàng khách.' });
+  }
+};
+
+// @desc    Get list of supported banks for PayOS Payout
+// @route   GET /api/v1/users/banks-list
+// @access  Public / Private
+exports.getBanksList = async (req, res) => {
+  try {
+    const banks = payosPayoutService.getBanks();
+    return res.status(200).json({ success: true, banks });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Lỗi tải danh mục ngân hàng.' });
+  }
+};
+
+// @desc    Cancel ticket directly at counter (applying refund rules & payOS Payout)
 // @route   POST /api/v1/users/agent/cancel-ticket/:id
-// @access  Private (Ticket Agent)
+// @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.cancelTicketAtCounter = async (req, res) => {
   try {
-    // Check if active shift session exists
-    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
-    if (!session) {
-      return res.status(400).json({ success: false, message: 'Vui lòng mở ca trực tại quầy trước khi thực hiện hủy vé và hoàn tiền.' });
-    }
-
     const { id } = req.params;
+    const {
+      refundAmount: customRefundAmount,
+      refundMethod = 'payos_payout', // 'payos_payout' | 'cash'
+      bankDetails = {},
+      saveBankAccount = true,
+      cancellationReason = 'Khách yêu cầu hủy vé'
+    } = req.body || {};
+
     const booking = await Booking.findById(id);
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy thông tin vé.' });
@@ -925,102 +1055,160 @@ exports.cancelTicketAtCounter = async (req, res) => {
 
     const trip = await Trip.findById(booking.tripId);
     if (!trip) {
-      return res.status(444).json({ success: false, message: 'Không tìm thấy chuyến đi liên quan để kiểm tra lịch trình.' });
+      return res.status(404).json({ success: false, message: 'Không tìm thấy chuyến đi liên quan để kiểm tra lịch trình.' });
     }
 
-    // Calculation constants
-    const totalPrice = trip.price * booking.seats.length;
-    const ticketCount = booking.seats.length;
+    // Kiểm tra ca trực nếu hoàn tiền mặt
+    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
+    if (refundMethod === 'cash' && !session && req.user.role === 'ticket_agent') {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng mở ca trực tại quầy trước khi thực hiện hoàn tiền mặt tại két.'
+      });
+    }
+
+    // Tính toán phí hủy đề xuất theo thời gian xuất bến
+    const totalPrice = booking.totalAmount || ((trip.price || 0) * (booking.seats?.length || 1));
+    const ticketCount = booking.seats?.length || 1;
     const departureTime = new Date(trip.departureTime);
     const now = new Date();
     const diffMs = departureTime - now;
     const diffHours = diffMs / (1000 * 60 * 60);
 
     const holiday = isHoliday(trip.departureTime);
-    let feePercent = 1.0; // default 100% fee if time constraints not satisfied
+    let feePercent = 1.0;
 
     if (!holiday) {
-      // REGULAR DAYS (Ngày thường)
       if (ticketCount >= 1 && ticketCount <= 3) {
-        if (diffHours >= 4) {
-          feePercent = 0.1; // 10%
-        } else if (diffHours >= 0.5 && diffHours < 4) {
-          feePercent = 0.3; // 30%
-        } else {
-          feePercent = 1.0; // 100%
-        }
+        if (diffHours >= 4) feePercent = 0.1;
+        else if (diffHours >= 0.5 && diffHours < 4) feePercent = 0.3;
+        else feePercent = 1.0;
       } else if (ticketCount >= 4 && ticketCount <= 9) {
-        if (diffHours >= 24) {
-          feePercent = 0.1;
-        } else {
-          feePercent = 1.0;
-        }
+        feePercent = diffHours >= 24 ? 0.1 : 1.0;
       } else if (ticketCount >= 10) {
-        if (diffHours >= 48) {
-          feePercent = 0.1;
-        } else {
-          feePercent = 1.0;
+        feePercent = diffHours >= 48 ? 0.1 : 1.0;
+      }
+    } else {
+      if (ticketCount >= 1 && ticketCount <= 3) {
+        feePercent = diffHours >= 24 ? 0.3 : 1.0;
+      } else if (ticketCount >= 4 && ticketCount <= 9) {
+        feePercent = diffHours >= 48 ? 0.3 : 1.0;
+      } else if (ticketCount >= 10) {
+        feePercent = diffHours >= 72 ? 0.3 : 1.0;
+      }
+    }
+
+    const defaultCancellationFee = totalPrice * feePercent;
+    const defaultRefundAmount = Math.max(0, totalPrice - defaultCancellationFee);
+
+    // Xác định số tiền hoàn trả thực tế
+    let finalRefundAmount = defaultRefundAmount;
+    if (customRefundAmount !== undefined && customRefundAmount !== null && customRefundAmount !== '') {
+      finalRefundAmount = Math.max(0, Math.min(totalPrice, Number(customRefundAmount)));
+    }
+    const finalCancellationFee = Math.max(0, totalPrice - finalRefundAmount);
+
+    let payoutResult = null;
+
+    // Xử lý bắn tiền tự động qua payOS (Payout)
+    if (refundMethod === 'payos_payout') {
+      const { bankCode, accountNumber, accountHolder } = bankDetails;
+
+      if (!accountNumber || !accountNumber.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vui lòng cung cấp số tài khoản ngân hàng để payOS thực hiện chuyển tiền hoàn.'
+        });
+      }
+
+      if (!bankCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vui lòng chọn ngân hàng thụ hưởng nhận tiền hoàn.'
+        });
+      }
+
+      payoutResult = await payosPayoutService.executePayout({
+        bankCode: bankCode.trim().toUpperCase(),
+        accountNumber: accountNumber.trim(),
+        accountHolder: (accountHolder || booking.customerName).trim().toUpperCase(),
+        amount: finalRefundAmount,
+        orderCode: booking.orderCode,
+        bookingId: booking._id
+      });
+
+      booking.refundMethod = 'payos_payout';
+      booking.bankInfo = {
+        bankCode: payoutResult.bankCode,
+        bankName: payoutResult.bankName,
+        accountNumber: payoutResult.accountNumber,
+        accountHolder: payoutResult.accountHolder,
+        transactionCode: payoutResult.transactionCode,
+        payoutStatus: payoutResult.payoutStatus
+      };
+
+      // Lưu lại thông tin STK này cho khách vào DB nếu chọn lưu
+      if (saveBankAccount && booking.customerPhone) {
+        try {
+          await CustomerBankAccount.findOneAndUpdate(
+            { customerPhone: booking.customerPhone.trim() },
+            {
+              customerPhone: booking.customerPhone.trim(),
+              customerName: booking.customerName,
+              bankCode: payoutResult.bankCode,
+              bankName: payoutResult.bankName,
+              bin: payoutResult.bin || '',
+              accountNumber: payoutResult.accountNumber,
+              accountHolder: payoutResult.accountHolder,
+              isDefault: true
+            },
+            { upsert: true, new: true }
+          );
+        } catch (dbBankErr) {
+          console.error('[CustomerBankAccount] Error saving bank record:', dbBankErr.message);
         }
       }
     } else {
-      // HOLIDAYS & TET (Ngày Lễ, Tết)
-      if (ticketCount >= 1 && ticketCount <= 3) {
-        if (diffHours >= 24) {
-          feePercent = 0.3;
-        } else {
-          feePercent = 1.0;
-        }
-      } else if (ticketCount >= 4 && ticketCount <= 9) {
-        if (diffHours >= 48) {
-          feePercent = 0.3;
-        } else {
-          feePercent = 1.0;
-        }
-      } else if (ticketCount >= 10) {
-        if (diffHours >= 72) {
-          feePercent = 0.3;
-        } else {
-          feePercent = 1.0;
-        }
+      // Hoàn tiền mặt tại quầy: Trích tiền mặt từ két ca trực của nhân viên
+      booking.refundMethod = 'cash';
+      if (session) {
+        session.refundCash = (session.refundCash || 0) + finalRefundAmount;
+        if (!session.ticketsRefunded) session.ticketsRefunded = [];
+        session.ticketsRefunded.push(booking._id);
+        await session.save();
       }
     }
 
-    const cancellationFee = totalPrice * feePercent;
-    const refundAmount = totalPrice - cancellationFee;
-
-    // Apply Cancellation and release seats
+    // Cập nhật trạng thái vé
     booking.status = 'cancelled';
-    booking.cancellationFee = cancellationFee;
-    booking.refundAmount = refundAmount;
+    booking.cancellationFee = finalCancellationFee;
+    booking.refundAmount = finalRefundAmount;
+    booking.cancelledAt = new Date();
+    booking.cancelledBy = req.user._id;
+    booking.cancellationReason = cancellationReason;
     await booking.save();
 
-    // Release seats
-    trip.bookedSeats = (trip.bookedSeats || []).filter(seat => !booking.seats.includes(seat));
+    // Giải phóng ghế xe đã đặt
+    trip.bookedSeats = (trip.bookedSeats || []).filter((seat) => !booking.seats.includes(seat));
     await trip.save();
-
-    // Deduct from overall sales accordingly (refunding)
-    if (session) {
-      // Deduct the refunded amount from the corresponding pocket
-      // For simplicity, we just reduce it from cash/cashless depending on original payment method
-      // (refunded at counter)
-      // Since booking doesn't hold paymentMethod, we can assume refund reduces cashless (if booking had orderCode etc)
-      // Or default to cash deduction
-      session.cashRevenue = Math.max(0, session.cashRevenue - refundAmount);
-      await session.save();
-    }
 
     res.status(200).json({
       success: true,
-      message: 'Hủy vé và đối chiếu phạt hoàn trả thành công.',
+      message:
+        refundMethod === 'payos_payout'
+          ? `Hủy vé thành công! Đã tự động bắn ${finalRefundAmount.toLocaleString('vi-VN')} đ về tài khoản ${booking.bankInfo?.bankName} (STK: ${booking.bankInfo?.accountNumber}) qua cổng payOS.`
+          : `Hủy vé thành công! Đã hoàn trả tiền mặt ${finalRefundAmount.toLocaleString('vi-VN')} đ tại quầy và giải phóng ghế.`,
       refundSummary: {
         totalPrice,
         ticketCount,
         isHoliday: holiday,
         diffHours: Math.round(diffHours * 10) / 10,
-        feePercent: feePercent * 100,
-        cancellationFee,
-        refundAmount
+        feePercent: Math.round(feePercent * 100),
+        cancellationFee: finalCancellationFee,
+        refundAmount: finalRefundAmount,
+        refundMethod: booking.refundMethod
       },
+      payoutResult,
       booking
     });
 
@@ -1620,6 +1808,835 @@ exports.createIncidentReport = async (req, res) => {
   } catch (error) {
     console.error('Lỗi tạo báo cáo sự cố:', error);
     res.status(500).json({ success: false, message: 'Lỗi hệ thống khi ghi nhận sự cố.' });
+  }
+};
+
+// =========================================================================
+// QUẢN LÝ PHÒNG VÉ: BÁO CÁO DOANH THU, SỰ CỐ & PHẢN HỒI KHÁCH HÀNG
+// =========================================================================
+
+// @desc    Lấy báo cáo doanh thu phòng vé chi tiết theo chi nhánh, quầy, nhân viên, tuyến đường
+// @route   GET /api/v1/users/ticket-manager/revenue-report
+// @access  Private (ticket_manager, general_manager, admin)
+exports.getTicketRevenueReport = async (req, res) => {
+  try {
+    let branchId = req.query.branchId;
+    if (req.user.role === 'ticket_manager') {
+      branchId = req.user.branch?.branchId || 'sg';
+    } else if (branchId === 'all') {
+      branchId = null;
+    }
+
+    const { fromDate, toDate, counterNumber, staffId } = req.query;
+
+    // 1. Query ShiftSessions
+    let shiftQuery = {};
+    if (branchId) shiftQuery.branchId = branchId;
+    if (counterNumber && counterNumber !== 'all') shiftQuery.counterNumber = counterNumber;
+    if (staffId && staffId !== 'all') shiftQuery.userId = staffId;
+
+    if (fromDate || toDate) {
+      shiftQuery.startTime = {};
+      if (fromDate) shiftQuery.startTime.$gte = new Date(`${fromDate}T00:00:00.000Z`);
+      if (toDate) shiftQuery.startTime.$lte = new Date(`${toDate}T23:59:59.999Z`);
+    }
+
+    const shifts = await ShiftSession.find(shiftQuery)
+      .populate('userId', 'name phone email role')
+      .sort({ startTime: -1 })
+      .lean();
+
+    // 2. Tính toán tổng hợp dòng tiền từ ca trực
+    let totalCashRevenue = 0;
+    let totalCashlessRevenue = 0;
+    let totalInitialCash = 0;
+    let totalTicketsFromShifts = 0;
+
+    const counterMap = {};
+    const staffMap = {};
+
+    shifts.forEach(s => {
+      const cash = s.cashRevenue || 0;
+      const cashless = s.cashlessRevenue || 0;
+      const initial = s.initialCash || 0;
+      const tickets = s.ticketsSold?.length || 0;
+
+      totalCashRevenue += cash;
+      totalCashlessRevenue += cashless;
+      totalInitialCash += initial;
+      totalTicketsFromShifts += tickets;
+
+      // Nhóm theo quầy
+      const cKey = s.counterNumber || 'Quầy vé';
+      if (!counterMap[cKey]) {
+        counterMap[cKey] = { counter: cKey, totalCash: 0, totalCashless: 0, totalRevenue: 0, ticketsCount: 0, shiftsCount: 0 };
+      }
+      counterMap[cKey].totalCash += cash;
+      counterMap[cKey].totalCashless += cashless;
+      counterMap[cKey].totalRevenue += (cash + cashless);
+      counterMap[cKey].ticketsCount += tickets;
+      counterMap[cKey].shiftsCount += 1;
+
+      // Nhóm theo nhân viên
+      const sId = s.userId?._id?.toString() || 'unknown';
+      const sName = s.userId?.name || 'Nhân viên';
+      const sPhone = s.userId?.phone || '';
+      if (!staffMap[sId]) {
+        staffMap[sId] = { staffId: sId, staffName: sName, phone: sPhone, totalCash: 0, totalCashless: 0, totalRevenue: 0, ticketsCount: 0, shiftsCount: 0 };
+      }
+      staffMap[sId].totalCash += cash;
+      staffMap[sId].totalCashless += cashless;
+      staffMap[sId].totalRevenue += (cash + cashless);
+      staffMap[sId].ticketsCount += tickets;
+      staffMap[sId].shiftsCount += 1;
+    });
+
+    const counterBreakdown = Object.values(counterMap).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    const staffBreakdown = Object.values(staffMap).sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+    // 3. Query Bookings để lấy chi tiết bán vé & phân tích theo tuyến đường
+    let bookingQuery = { status: { $in: ['paid', 'confirmed'] } };
+    if (fromDate || toDate) {
+      bookingQuery.createdAt = {};
+      if (fromDate) bookingQuery.createdAt.$gte = new Date(`${fromDate}T00:00:00.000Z`);
+      if (toDate) bookingQuery.createdAt.$lte = new Date(`${toDate}T23:59:59.999Z`);
+    }
+
+    const bookings = await Booking.find(bookingQuery)
+      .populate({
+        path: 'tripId',
+        select: 'routeId busId departureTime price',
+        populate: [
+          { path: 'routeId', select: 'startPoint endPoint name' },
+          { path: 'busId', select: 'plateNumber type' }
+        ]
+      })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    const routeMap = {};
+    bookings.forEach(b => {
+      const rName = b.tripId?.routeId?.name || (b.tripId?.routeId?.startPoint && b.tripId?.routeId?.endPoint ? `${b.tripId.routeId.startPoint} ➔ ${b.tripId.routeId.endPoint}` : 'Tuyến liên tỉnh');
+      const ticketCount = b.seats?.length || 1;
+      const rev = b.totalAmount || (ticketCount * (b.tripId?.price || 0));
+
+      if (!routeMap[rName]) {
+        routeMap[rName] = { routeName: rName, ticketCount: 0, revenue: 0, bookingCount: 0 };
+      }
+      routeMap[rName].ticketCount += ticketCount;
+      routeMap[rName].revenue += rev;
+      routeMap[rName].bookingCount += 1;
+    });
+
+    const routeBreakdown = Object.values(routeMap).sort((a, b) => b.revenue - a.revenue);
+    const grandTotalRevenue = totalCashRevenue + totalCashlessRevenue;
+
+    res.status(200).json({
+      success: true,
+      summary: {
+        totalRevenue: grandTotalRevenue,
+        cashRevenue: totalCashRevenue,
+        cashlessRevenue: totalCashlessRevenue,
+        initialCash: totalInitialCash,
+        ticketsCount: totalTicketsFromShifts || bookings.length,
+        shiftsCount: shifts.length,
+        cashRate: grandTotalRevenue > 0 ? Math.round((totalCashRevenue / grandTotalRevenue) * 100) : 0,
+        cashlessRate: grandTotalRevenue > 0 ? Math.round((totalCashlessRevenue / grandTotalRevenue) * 100) : 0
+      },
+      counterBreakdown,
+      staffBreakdown,
+      routeBreakdown,
+      shifts: shifts.slice(0, 50),
+      recentBookings: bookings.slice(0, 30)
+    });
+  } catch (error) {
+    console.error('Lỗi lấy báo cáo doanh thu phòng vé:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tải báo cáo doanh thu.' });
+  }
+};
+
+// @desc    Lấy danh sách sự cố phòng vé
+// @route   GET /api/v1/users/ticket-manager/incidents
+// @access  Private (ticket_manager, general_manager, admin, ticket_agent)
+exports.getTicketIncidents = async (req, res) => {
+  try {
+    const userRole = req.user.role;
+    const userBranch = req.user.branch?.branchId || 'sg';
+
+    // Auto-seed dữ liệu mẫu thực tế cho chi nhánh SG nếu chưa có dữ liệu
+    const branchToSeed = userRole === 'ticket_manager' ? userBranch : (req.query.branchId || 'sg');
+    if (branchToSeed === 'sg') {
+      const existingCount = await Incident.countDocuments({ branchId: 'sg' });
+      if (existingCount === 0) {
+        try {
+          const agentMai = await User.findOne({ phone: '0944555666' });
+          const agentTruc = await User.findOne({ phone: '0944555667' });
+          const managerNam = await User.findOne({ phone: '0944999888' });
+
+          const maiId = agentMai ? agentMai._id : req.user.id;
+          const trucId = agentTruc ? agentTruc._id : req.user.id;
+          const namId = managerNam ? managerNam._id : req.user.id;
+
+          await Incident.insertMany([
+            {
+              incidentCode: 'SC-20261104-001',
+              title: 'Máy in vé nhiệt EPSON quầy 01 kẹt cuộn phôi giấy, báo đèn Error đỏ',
+              category: 'equipment',
+              severity: 'urgent',
+              branchId: 'sg',
+              location: 'Văn phòng Sài Gòn (BXMĐ)',
+              counterNumber: 'Quầy 01',
+              reportedBy: maiId,
+              details: 'Khoảng 09:15 lúc khách đang xếp hàng đông mua vé đi Đà Lạt chuyến 10h, máy in vé bị kẹt phôi giấy, đèn Error nhấp nháy đỏ liên tục không xuất vé ra được.',
+              initialAction: 'Em đã chuyển 3 khách sang quầy 02 của bạn Trúc in tạm, đã tắt nguồn khởi động lại máy in và gọi IT hỗ trợ nhưng chưa được.',
+              status: 'open',
+              estimatedCost: 0,
+              createdAt: new Date(Date.now() - 40 * 60 * 1000)
+            },
+            {
+              incidentCode: 'SC-20261103-002',
+              title: 'Máy quẹt thẻ POS VietinBank mất tín hiệu sóng 4G khi thanh toán vé',
+              category: 'network',
+              severity: 'high',
+              branchId: 'sg',
+              location: 'Văn phòng Sài Gòn (BXMT)',
+              counterNumber: 'Quầy 02',
+              reportedBy: trucId,
+              details: 'Máy POS quẹt thẻ của ngân hàng báo "No SIM Connection / GPRS Timeout". Khách quẹt thẻ thanh toán 2 vé đi Cần Thơ 360.000đ trừ tiền thẻ nhưng máy POS không nhả hóa đơn đối soát.',
+              initialAction: 'Em đã hướng dẫn khách kiểm tra app ngân hàng, chuyển sang quét mã VietQR quầy vé. Đã báo Quản lý Nam để liên hệ kỹ thuật ngân hàng kiểm tra.',
+              status: 'processing',
+              resolutionNotes: 'Quản lý Võ Hoàng Nam đã liên hệ chuyên viên hỗ trợ POS VietinBank chi nhánh An Lạc, đang điều phối cấp lại SIM 4G và tiến hành đối soát hoàn tất giao dịch cho khách.',
+              estimatedCost: 0,
+              createdAt: new Date(Date.now() - 25 * 3600 * 1000)
+            },
+            {
+              incidentCode: 'SC-20261101-003',
+              title: 'Khách khiếu nại trùng ghế 12B tuyến SG - Đà Lạt do đặt online cùng lúc',
+              category: 'service',
+              severity: 'medium',
+              branchId: 'sg',
+              location: 'Văn phòng Sài Gòn (BXMĐ)',
+              counterNumber: 'Quầy 01',
+              reportedBy: maiId,
+              details: 'Khách mua vé tại quầy đúng lúc hệ thống website vừa chốt giữ chỗ ghế 12B chuyến 20:00. Xuất hiện tình trạng 2 khách cùng cầm mã ghế 12B.',
+              initialAction: 'Xin lỗi khách hàng và mời khách ngồi chờ tại phòng chờ VIP phòng vé để trình Quản lý chi nhánh xử lý.',
+              status: 'resolved',
+              resolutionNotes: 'Quản lý Võ Hoàng Nam đã kiểm tra sơ đồ xe còn trống ghế 14B tầng dưới, đã chuyển vé và nâng hạng miễn phí cho khách kèm voucher nước 50.000đ. Khách vui vẻ đồng ý.',
+              resolvedBy: namId,
+              resolvedAt: new Date(Date.now() - 70 * 3600 * 1000),
+              estimatedCost: 50000,
+              createdAt: new Date(Date.now() - 72 * 3600 * 1000)
+            },
+            {
+              incidentCode: 'SC-20261029-004',
+              title: 'Lệch tiền két thu ngân ca sáng thiếu 50.000đ do nhầm lẫn tiền thối',
+              category: 'fund',
+              severity: 'low',
+              branchId: 'sg',
+              location: 'Văn phòng Sài Gòn (BXMT)',
+              counterNumber: 'Quầy 02',
+              reportedBy: trucId,
+              details: 'Khi kết ca sáng 14:00, đếm tiền mặt két quầy thực tế thu 3.450.000đ, hệ thống ghi nhận 3.500.000đ. Lệch thiếu 50.000đ.',
+              initialAction: 'Đã báo cáo trưởng ca và tạm dừng bàn giao ca để kiểm kê lại toàn bộ cuống vé đã xuất.',
+              status: 'closed',
+              resolutionNotes: 'Đã trích xuất camera quầy thu ngân lúc 10:15, nhân viên trả nhầm tờ 100k thay vì 50k cho khách. Nhân viên Đặng Thanh Trúc đã tự nguyện bù quỹ đủ 50.000đ, đã hoàn tất biên bản bàn giao két ca sáng.',
+              resolvedBy: namId,
+              resolvedAt: new Date(Date.now() - 140 * 3600 * 1000),
+              estimatedCost: 0,
+              createdAt: new Date(Date.now() - 144 * 3600 * 1000)
+            }
+          ]);
+        } catch (seedErr) {
+          console.error('Lỗi auto-seed incident:', seedErr);
+        }
+      }
+    }
+
+    let query = {};
+    if (userRole === 'ticket_agent') {
+      // Nhân viên bán vé chỉ xem các sự cố do chính mình báo cáo lên quản lý
+      query.reportedBy = req.user.id;
+    } else if (userRole === 'ticket_manager') {
+      // Quản lý phòng vé xem toàn bộ sự cố của nhân viên thuộc chi nhánh mình
+      query.branchId = userBranch;
+    } else if (req.query.branchId && req.query.branchId !== 'all') {
+      query.branchId = req.query.branchId;
+    }
+
+    if (req.query.reportedBy && req.query.reportedBy !== 'all' && userRole !== 'ticket_agent') {
+      query.reportedBy = req.query.reportedBy;
+    }
+    if (req.query.status && req.query.status !== 'all') query.status = req.query.status;
+    if (req.query.category && req.query.category !== 'all') query.category = req.query.category;
+    if (req.query.severity && req.query.severity !== 'all') query.severity = req.query.severity;
+
+    const incidents = await Incident.find(query)
+      .populate('reportedBy', 'name phone email role')
+      .populate('resolvedBy', 'name phone email role')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: incidents.length,
+      incidents
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách sự cố phòng vé:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách sự cố.' });
+  }
+};
+
+// @desc    Tạo báo cáo sự cố phòng vé mới
+// @route   POST /api/v1/users/ticket-manager/incidents
+// @access  Private (ticket_manager, general_manager, admin, ticket_agent)
+exports.createTicketIncident = async (req, res) => {
+  try {
+    const { title, category, severity, location, counterNumber, details, initialAction, estimatedCost } = req.body;
+
+    if (!title || !details) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tiêu đề và chi tiết sự cố.' });
+    }
+
+    const code = `SC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
+
+    const incident = await Incident.create({
+      incidentCode: code,
+      title,
+      category: category || 'equipment',
+      severity: severity || 'medium',
+      branchId: req.user.branch?.branchId || req.body.branchId || 'sg',
+      location: location || 'Quầy vé chi nhánh',
+      counterNumber: counterNumber || '',
+      reportedBy: req.user.id,
+      details,
+      initialAction: initialAction || '',
+      estimatedCost: Number(estimatedCost) || 0,
+      status: 'open'
+    });
+
+    await incident.populate('reportedBy', 'name phone role email');
+
+    // Gửi thông báo cho quản lý chi nhánh
+    try {
+      await Notification.create({
+        title: `[SỰ CỐ PHÒNG VÉ] ${title}`,
+        content: `Nhân viên ${req.user.name} vừa báo cáo sự cố: ${details} tại ${location}. Mức độ: ${severity || 'Vừa'}.`,
+        recipientRole: 'ticket_manager'
+      });
+    } catch {
+      // non-blocking
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Ghi nhận báo cáo sự cố thành công!',
+      incident
+    });
+  } catch (error) {
+    console.error('Lỗi tạo sự cố phòng vé:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tạo sự cố phòng vé.' });
+  }
+};
+
+// @desc    Cập nhật tiến độ xử lý sự cố phòng vé
+// @route   PATCH /api/v1/users/ticket-manager/incidents/:id
+// @access  Private (ticket_manager, general_manager, admin)
+exports.updateTicketIncident = async (req, res) => {
+  try {
+    const { status, resolutionNotes, estimatedCost } = req.body;
+    const incident = await Incident.findById(req.params.id);
+
+    if (!incident) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy sự cố cần cập nhật.' });
+    }
+
+    if (status) incident.status = status;
+    if (resolutionNotes) incident.resolutionNotes = resolutionNotes;
+    if (estimatedCost !== undefined) incident.estimatedCost = Number(estimatedCost);
+
+    if (status === 'resolved' || status === 'closed') {
+      incident.resolvedBy = req.user.id;
+      incident.resolvedAt = new Date();
+    }
+
+    await incident.save();
+    await incident.populate('reportedBy', 'name phone role email');
+    await incident.populate('resolvedBy', 'name phone role email');
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật tiến độ xử lý sự cố thành công!',
+      incident
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật sự cố phòng vé:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi cập nhật sự cố.' });
+  }
+};
+
+// @desc    Lấy danh sách đánh giá & bình luận chuyến xe của khách hàng
+// @route   GET /api/v1/users/ticket-manager/feedbacks
+// @access  Private (ticket_manager, general_manager, admin)
+exports.getTicketFeedbacks = async (req, res) => {
+  try {
+    const userRole = req.user.role;
+    const userBranch = req.user.branch?.branchId || 'sg';
+    const targetBranch = userRole === 'ticket_manager' ? userBranch : (req.query.branchId || 'sg');
+
+    let query = {};
+    if (targetBranch && targetBranch !== 'all') {
+      if (targetBranch === 'sg') {
+        query.$or = [{ branchId: 'sg' }, { branchId: { $exists: false } }, { branchId: '' }];
+      } else {
+        query.branchId = targetBranch;
+      }
+    }
+
+    if (req.query.rating && req.query.rating !== 'all') {
+      query.rating = Number(req.query.rating);
+    }
+    if (req.query.status && req.query.status !== 'all') {
+      query.status = req.query.status;
+    }
+    if (req.query.isReplied && req.query.isReplied !== 'all') {
+      query.isReplied = req.query.isReplied === 'true';
+    }
+
+    const feedbacks = await Review.find(query)
+      .populate({
+        path: 'tripId',
+        select: 'routeId busId departureTime arrivalTime price driver assistant',
+        populate: [
+          { path: 'routeId', select: 'startPoint endPoint name distance duration' },
+          { path: 'busId', select: 'plateNumber type' }
+        ]
+      })
+      .populate('repliedBy', 'name phone email role')
+      .populate('resolvedBy', 'name phone email role')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Tính toán chỉ số CSAT & phân bố sao
+    let totalScore = 0;
+    const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    let positiveCount = 0;
+    let repliedCount = 0;
+
+    feedbacks.forEach(f => {
+      const r = Math.min(5, Math.max(1, Math.round(f.rating || 5)));
+      totalScore += f.rating || 5;
+      ratingDistribution[r] = (ratingDistribution[r] || 0) + 1;
+      if (r >= 4) positiveCount++;
+      if (f.isReplied || f.replyContent) repliedCount++;
+    });
+
+    const count = feedbacks.length;
+    const avgRating = count > 0 ? (totalScore / count).toFixed(1) : '5.0';
+    const positiveRate = count > 0 ? Math.round((positiveCount / count) * 100) : 100;
+    const repliedRate = count > 0 ? Math.round((repliedCount / count) * 100) : 0;
+
+    res.status(200).json({
+      success: true,
+      count,
+      csat: {
+        avgRating,
+        positiveRate,
+        repliedRate,
+        repliedCount,
+        ratingDistribution,
+        totalFeedbacks: count
+      },
+      feedbacks
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách phản hồi khách hàng:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tải phản hồi khách hàng.' });
+  }
+};
+
+// @desc    Quản lý phòng vé trả lời bình luận của khách hàng về chuyến xe
+// @route   PATCH /api/v1/users/ticket-manager/feedbacks/:id/reply
+// @access  Private (ticket_manager, general_manager, admin)
+exports.replyTicketFeedback = async (req, res) => {
+  try {
+    const { replyContent } = req.body;
+
+    if (!replyContent || !replyContent.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập nội dung câu trả lời cho khách hàng.' });
+    }
+
+    const feedback = await Review.findById(req.params.id);
+    if (!feedback) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy bình luận đánh giá của khách hàng.' });
+    }
+
+    feedback.replyContent = replyContent.trim();
+    feedback.repliedBy = req.user.id;
+    feedback.repliedAt = new Date();
+    feedback.isReplied = true;
+    feedback.status = 'resolved';
+
+    await feedback.save();
+    await feedback.populate('repliedBy', 'name phone role email');
+    await feedback.populate({
+      path: 'tripId',
+      select: 'routeId busId departureTime',
+      populate: [
+        { path: 'routeId', select: 'startPoint endPoint name' },
+        { path: 'busId', select: 'plateNumber type' }
+      ]
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã gửi câu trả lời cho bình luận của khách hàng thành công!',
+      feedback
+    });
+  } catch (error) {
+    console.error('Lỗi trả lời bình luận:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi trả lời bình luận khách hàng.' });
+  }
+};
+
+// @desc    Tạo phản hồi khách hàng ghi nhận tại quầy hoặc hotline
+// @route   POST /api/v1/users/ticket-manager/feedbacks
+// @access  Private (ticket_manager, general_manager, admin, ticket_agent)
+exports.createTicketFeedback = async (req, res) => {
+  try {
+    const { userName, customerPhone, rating, comment, tripId, counterNumber, category } = req.body;
+
+    if (!userName || !comment) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên khách hàng và nội dung nhận xét.' });
+    }
+
+    const feedback = await Review.create({
+      userName,
+      customerPhone: customerPhone || '',
+      rating: Number(rating) || 5,
+      comment,
+      tripId: tripId || null,
+      counterNumber: counterNumber || 'Quầy vé trực tiếp',
+      category: category || 'ticket_counter',
+      branchId: req.user.branch?.branchId || req.body.branchId || 'sg',
+      status: 'pending'
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Ghi nhận ý kiến đóng góp của khách hàng thành công!',
+      feedback
+    });
+  } catch (error) {
+    console.error('Lỗi tạo phản hồi khách hàng:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi ghi nhận phản hồi.' });
+  }
+};
+
+// @desc    Xử lý & giải quyết khiếu nại/phản hồi khách hàng
+// @route   PATCH /api/v1/users/ticket-manager/feedbacks/:id/resolve
+// @access  Private (ticket_manager, general_manager, admin)
+exports.resolveTicketFeedback = async (req, res) => {
+  try {
+    const { status, resolutionNotes } = req.body;
+    const feedback = await Review.findById(req.params.id);
+
+    if (!feedback) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy phản hồi cần xử lý.' });
+    }
+
+    feedback.status = status || 'resolved';
+    if (resolutionNotes) feedback.resolutionNotes = resolutionNotes;
+    feedback.resolvedBy = req.user.id;
+    feedback.resolvedAt = new Date();
+
+    await feedback.save();
+    await feedback.populate('resolvedBy', 'name phone role email');
+
+    res.status(200).json({
+      success: true,
+      message: 'Đã lưu kết quả xử lý phản hồi khách hàng thành công!',
+      feedback
+    });
+  } catch (error) {
+    console.error('Lỗi xử lý phản hồi khách hàng:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi cập nhật phản hồi.' });
+  }
+};
+
+// =========================================================================
+// ON-ROUTE DRIVER INCIDENTS (SỰ CỐ TRÊN TUYẾN DÀNH CHO TÀI XẾ & ĐIỀU HÀNH)
+// =========================================================================
+
+// @desc    Tài xế báo cáo sự cố trên tuyến (Tự khắc phục & xin hoàn tiền; Cần cứu viện khẩn cấp)
+// @route   POST /api/v1/users/driver/incidents
+// @access  Private (Driver, Admin)
+exports.createDriverIncident = async (req, res) => {
+  try {
+    const {
+      title,
+      scenario, // 'self_resolved' | 'need_assistance'
+      category, // 'tire', 'engine', 'vehicle', 'traffic', 'other'
+      severity,
+      details,
+      tripId,
+      location,
+      images,
+      reimbursementAmount
+    } = req.body;
+
+    if (!details || !details.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập mô tả chi tiết sự cố.' });
+    }
+
+    const isSelfResolved = scenario === 'self_resolved';
+    const amountNum = Number(reimbursementAmount) || 0;
+
+    const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const incidentCode = `SC-TX-${todayStr}-${randomSuffix}`;
+
+    // Chỉ lưu những thông tin thực sự thuộc về sự cố, tái sử dụng dữ liệu quan hệ từ tripId và reportedBy
+    const incident = await Incident.create({
+      incidentCode,
+      title: title?.trim() || (isSelfResolved ? `Tự khắc phục: ${details.slice(0, 45)}...` : `Cứu hộ khẩn cấp: ${details.slice(0, 45)}...`),
+      category: category || (isSelfResolved ? 'tire' : 'vehicle'),
+      severity: isSelfResolved ? (severity || 'medium') : 'urgent',
+      source: 'driver_on_route',
+      scenario: isSelfResolved ? 'self_resolved' : 'need_assistance',
+      tripId: tripId || null,
+      location: location?.trim() || 'Trên tuyến đường',
+      reportedBy: req.user.id,
+      details: details.trim(),
+      images: Array.isArray(images) ? images : [],
+      reimbursementAmount: isSelfResolved ? amountNum : 0,
+      reimbursementStatus: isSelfResolved ? (amountNum > 0 ? 'pending' : 'none') : 'none',
+      assistanceStatus: !isSelfResolved ? 'pending' : 'none',
+      status: 'open'
+    });
+
+    // Populate dữ liệu tái sử dụng từ User, Trip, Bus, Route
+    await incident.populate([
+      { path: 'reportedBy', select: 'name phone email role' },
+      {
+        path: 'tripId',
+        select: 'departureTime arrivalTime',
+        populate: [
+          { path: 'busId', select: 'plateNumber type' },
+          { path: 'routeId', select: 'routeName startPoint endPoint' }
+        ]
+      }
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: isSelfResolved
+        ? 'Đã gửi báo cáo sự cố và đề xuất hoàn ứng chi phí thành công.'
+        : 'ĐÃ PHÁT TÍN HIỆU CỨU VIỆN KHẨN CẤP ĐẾN QUẢN LÝ VẬN TẢI. Vui lòng giữ liên lạc điện thoại!',
+      incident
+    });
+  } catch (error) {
+    console.error('Lỗi tài xế gửi báo cáo sự cố:', error);
+    res.status(500).json({ success: false, message: error.message || 'Lỗi máy chủ khi gửi báo cáo sự cố.' });
+  }
+};
+
+// @desc    Lấy danh sách sự cố do chính tài xế báo cáo
+// @route   GET /api/v1/users/driver/incidents
+// @access  Private (Driver, Admin)
+exports.getDriverIncidents = async (req, res) => {
+  try {
+    const incidents = await Incident.find({
+      source: 'driver_on_route',
+      reportedBy: req.user.id
+    })
+      .populate('reportedBy', 'name phone email role')
+      .populate({
+        path: 'tripId',
+        select: 'departureTime arrivalTime',
+        populate: [
+          { path: 'busId', select: 'plateNumber type' },
+          { path: 'routeId', select: 'routeName startPoint endPoint' }
+        ]
+      })
+      .populate('reimbursementApprovedBy', 'name role phone')
+      .populate('resolvedBy', 'name role phone')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: incidents.length,
+      incidents
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách sự cố của tài xế:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách sự cố.' });
+  }
+};
+
+// @desc    Quản lý vận tải lấy toàn bộ danh sách sự cố trên tuyến
+// @route   GET /api/v1/users/ops/incidents
+// @access  Private (Ops Manager, Admin)
+exports.getOpsIncidents = async (req, res) => {
+  try {
+    const { scenario, status, reimbursementStatus, assistanceStatus } = req.query;
+
+    let query = { source: 'driver_on_route' };
+    if (scenario && scenario !== 'all') query.scenario = scenario;
+    if (status && status !== 'all') query.status = status;
+    if (reimbursementStatus && reimbursementStatus !== 'all') query.reimbursementStatus = reimbursementStatus;
+    if (assistanceStatus && assistanceStatus !== 'all') query.assistanceStatus = assistanceStatus;
+
+    const incidents = await Incident.find(query)
+      .populate('reportedBy', 'name phone email role')
+      .populate('reimbursementApprovedBy', 'name phone role email')
+      .populate('resolvedBy', 'name phone role email')
+      .populate({
+        path: 'tripId',
+        select: 'departureTime arrivalTime',
+        populate: [
+          { path: 'busId', select: 'plateNumber type' },
+          { path: 'routeId', select: 'routeName startPoint endPoint' }
+        ]
+      })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: incidents.length,
+      incidents
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách sự cố trên tuyến cho Quản lý:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách sự cố trên tuyến.' });
+  }
+};
+
+// @desc    Quản lý vận tải duyệt hoàn ứng hoặc xác nhận đã chi trả tiền (Trường hợp A)
+// @route   PATCH /api/v1/users/ops/incidents/:id/reimbursement
+// @access  Private (Ops Manager, Admin)
+exports.reviewIncidentReimbursement = async (req, res) => {
+  try {
+    const { status, reimbursementNote } = req.body;
+    if (!['approved', 'rejected', 'paid'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Trạng thái hoàn ứng không hợp lệ.' });
+    }
+
+    const incident = await Incident.findById(req.params.id);
+    if (!incident) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ sự cố.' });
+    }
+
+    incident.reimbursementStatus = status;
+    if (reimbursementNote !== undefined) incident.reimbursementNote = reimbursementNote;
+
+    if (status === 'approved') {
+      incident.reimbursementApprovedBy = req.user.id;
+      incident.reimbursementApprovedAt = new Date();
+    }
+
+    await incident.save();
+    await incident.populate('reportedBy', 'name phone email role');
+    await incident.populate('reimbursementApprovedBy', 'name phone email role');
+
+    const msg = status === 'approved' 
+      ? 'Đã phê duyệt hoàn ứng chi phí thành công cho tài xế.'
+      : status === 'rejected'
+      ? 'Đã từ chối đề xuất hoàn ứng chi phí.'
+      : 'Đã xác nhận chi trả tiền hoàn ứng cho tài xế.';
+
+    res.status(200).json({
+      success: true,
+      message: msg,
+      incident
+    });
+  } catch (error) {
+    console.error('Lỗi duyệt hoàn ứng sự cố:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi duyệt hoàn ứng chi phí.' });
+  }
+};
+
+// @desc    Quản lý vận tải cập nhật tiến độ cứu hộ / điều người tới sửa (Trường hợp B)
+// @route   PATCH /api/v1/users/ops/incidents/:id/assistance
+// @access  Private (Ops Manager, Admin)
+exports.updateIncidentAssistance = async (req, res) => {
+  try {
+    const { assistanceStatus, assistanceNotes } = req.body;
+    if (!['contacted', 'dispatched', 'resolved'].includes(assistanceStatus)) {
+      return res.status(400).json({ success: false, message: 'Trạng thái cứu viện không hợp lệ.' });
+    }
+
+    const incident = await Incident.findById(req.params.id);
+    if (!incident) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ sự cố.' });
+    }
+
+    incident.assistanceStatus = assistanceStatus;
+    if (assistanceNotes !== undefined) incident.assistanceNotes = assistanceNotes;
+
+    if (assistanceStatus === 'resolved') {
+      incident.status = 'resolved';
+      incident.resolvedBy = req.user.id;
+      incident.resolvedAt = new Date();
+    } else {
+      incident.status = 'processing';
+    }
+
+    await incident.save();
+    await incident.populate('reportedBy', 'name phone email role');
+    await incident.populate('resolvedBy', 'name phone email role');
+
+    res.status(200).json({
+      success: true,
+      message: 'Cập nhật tiến độ ứng cứu sự cố thành công!',
+      incident
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật tiến độ ứng cứu:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi cập nhật tiến độ ứng cứu.' });
+  }
+};
+
+// @desc    Gửi lại Email hóa đơn vé xe cho khách hàng (Hotline / Khách yêu cầu gửi lại)
+// @route   POST /api/v1/users/agent/resend-ticket/:id
+// @access  Private (Ticket Agent, Ticket Manager, Admin)
+exports.resendTicketNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { customEmail } = req.body || {};
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy vé xe.' });
+    }
+
+    if (customEmail && customEmail.trim()) {
+      booking.customerEmail = customEmail.trim().toLowerCase();
+      await booking.save();
+    }
+
+    if (!booking.customerEmail) {
+      return res.status(400).json({ success: false, message: 'Vé này chưa có thông tin Email. Vui lòng nhập email khách hàng.' });
+    }
+
+    const trip = await Trip.findById(booking.tripId).populate('routeId').populate('busId');
+    const { sendBookingInvoiceEmail } = require('../services/emailService');
+
+    const emailRes = await sendBookingInvoiceEmail(booking, trip);
+    if (emailRes && emailRes.success) {
+      return res.status(200).json({
+        success: true,
+        message: `Đã gửi lại thành công Email hóa đơn điện tử kèm mã QR tới ${booking.customerEmail}.`
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: emailRes?.error || 'Không thể gửi email hóa đơn vé xe lúc này.'
+      });
+    }
+  } catch (error) {
+    console.error('Lỗi gửi lại thông báo vé:', error);
+    res.status(500).json({ success: false, message: 'Lỗi máy chủ khi gửi lại vé xe.' });
   }
 };
 

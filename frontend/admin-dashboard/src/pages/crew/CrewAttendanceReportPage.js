@@ -72,14 +72,10 @@ const CrewAttendanceReportPage = ({ role = 'driver', setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
   const isDriver = role === 'driver' || user?.role === 'driver';
 
-  // Thời gian mặc định: Đầu tháng đến Cuối tháng hiện tại
-  const now = new Date();
-  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  const [startDate, setStartDate] = useState(formatDateToISO(firstDayOfMonth));
-  const [endDate, setEndDate] = useState(formatDateToISO(lastDayOfMonth));
-  const [activePreset, setActivePreset] = useState('this-month'); // 'today' | '7days' | 'this-month' | 'last-month' | 'all' | 'custom'
+  // Thời gian mặc định: Mặc định 'all' để nạp toàn bộ chuyến xe thật từ database
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [activePreset, setActivePreset] = useState('all'); // 'today' | '7days' | 'this-month' | 'last-month' | 'all' | 'custom'
 
   // Bộ lọc
   const [statusFilter, setStatusFilter] = useState('all'); // all | closed | active | scheduled | absent
@@ -143,7 +139,7 @@ const CrewAttendanceReportPage = ({ role = 'driver', setActiveTab }) => {
 
   // Đặt lại toàn bộ bộ lọc
   const handleResetFilters = () => {
-    applyPreset('this-month');
+    applyPreset('all');
     setStatusFilter('all');
     setFaceFilter('all');
     setSearchQuery('');
@@ -782,19 +778,19 @@ const CrewAttendanceReportPage = ({ role = 'driver', setActiveTab }) => {
             </p>
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+          <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
+            <table style={{ width: '100%', minWidth: '1050px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
               <thead>
-                <tr style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', width: '45px' }}>STT</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Ngày Chạy</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Tuyến Đường & Xe</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Giờ Check-in</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Giờ Check-out</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Thời Lượng</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Trạng Thái</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1' }}>Face ID</th>
-                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', textAlign: 'center' }}>Thao Tác</th>
+                <tr style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', width: '45px', whiteSpace: 'nowrap' }}>STT</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Ngày Chạy</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Tuyến Đường & Xe</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Giờ Check-in</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Giờ Check-out</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Thời Lượng</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Trạng Thái</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>Face ID</th>
+                  <th style={{ padding: '12px 16px', borderBottom: '1px solid #cbd5e1', textAlign: 'center', whiteSpace: 'nowrap' }}>Thao Tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -808,30 +804,31 @@ const CrewAttendanceReportPage = ({ role = 'driver', setActiveTab }) => {
                       style={{
                         borderBottom: '1px solid #f1f5f9',
                         backgroundColor: isRowActive ? '#f8faff' : 'transparent',
-                        transition: 'background-color 0.12s ease'
+                        transition: 'background-color 0.12s ease',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       {/* STT */}
-                      <td style={{ padding: '14px 16px', color: '#94a3b8', fontWeight: '700' }}>
+                      <td style={{ padding: '14px 16px', color: '#94a3b8', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         {(currentPage - 1) * itemsPerPage + index + 1}
                       </td>
 
                       {/* Ngày chạy */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: '800', color: '#0f172a' }}>{item.date}</div>
+                      <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>{item.date}</div>
                         {item.scheduledDepartureTime && item.scheduledDepartureTime !== '--:--' && (
-                          <div style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                          <div style={{ fontSize: '0.725rem', color: '#64748b', whiteSpace: 'nowrap' }}>
                             Xuất bến: <strong>{item.scheduledDepartureTime}</strong>
                           </div>
                         )}
                       </td>
 
                       {/* Tuyến đường & Xe */}
-                      <td style={{ padding: '14px 16px' }}>
-                        <div style={{ fontWeight: '800', color: '#1e293b' }}>
+                      <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontWeight: '800', color: '#1e293b', whiteSpace: 'nowrap' }}>
                           {item.tripRoute}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', whiteSpace: 'nowrap' }}>
                           <span style={{
                             backgroundColor: '#f1f5f9',
                             color: '#334155',
@@ -839,12 +836,13 @@ const CrewAttendanceReportPage = ({ role = 'driver', setActiveTab }) => {
                             borderRadius: '4px',
                             fontSize: '0.725rem',
                             fontWeight: '700',
-                            fontFamily: 'monospace'
+                            fontFamily: 'monospace',
+                            whiteSpace: 'nowrap'
                           }}>
                             {item.busPlateNumber}
                           </span>
                           {item.location && (
-                            <span style={{ fontSize: '0.725rem', color: '#64748b' }}>
+                            <span style={{ fontSize: '0.725rem', color: '#64748b', whiteSpace: 'nowrap' }}>
                               • {item.location}
                             </span>
                           )}

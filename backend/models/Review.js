@@ -5,11 +5,14 @@ const reviewSchema = new mongoose.Schema(
     tripId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Trip',
-      required: true
+      required: false
     },
     userName: {
       type: String,
       required: [true, 'Tên người dùng là bắt buộc.']
+    },
+    customerName: {
+      type: String
     },
     rating: {
       type: Number,
@@ -20,6 +23,54 @@ const reviewSchema = new mongoose.Schema(
     comment: {
       type: String,
       required: [true, 'Nội dung nhận xét là bắt buộc.']
+    },
+    customerPhone: {
+      type: String,
+      default: ''
+    },
+    branchId: {
+      type: String,
+      default: 'sg'
+    },
+    counterNumber: {
+      type: String,
+      default: ''
+    },
+    category: {
+      type: String,
+      default: 'bus_quality' // 'bus_quality' | 'service' | 'staff' | 'general'
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'resolved'],
+      default: 'pending'
+    },
+    // Quản lý phòng vé trả lời bình luận của khách hàng
+    replyContent: {
+      type: String,
+      default: ''
+    },
+    repliedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    repliedAt: {
+      type: Date
+    },
+    isReplied: {
+      type: Boolean,
+      default: false
+    },
+    resolutionNotes: {
+      type: String,
+      default: ''
+    },
+    resolvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    resolvedAt: {
+      type: Date
     }
   },
   {
@@ -27,4 +78,15 @@ const reviewSchema = new mongoose.Schema(
   }
 );
 
+// Đồng bộ customerName và userName khi lưu
+reviewSchema.pre('save', function (next) {
+  if (this.userName && !this.customerName) {
+    this.customerName = this.userName;
+  } else if (this.customerName && !this.userName) {
+    this.userName = this.customerName;
+  }
+  next();
+});
+
 module.exports = mongoose.model('Review', reviewSchema);
+

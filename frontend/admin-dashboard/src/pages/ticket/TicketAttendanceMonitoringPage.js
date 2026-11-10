@@ -4,6 +4,15 @@ import { getBranchById, getBranchName, getOfficesByBranchId } from '../../consta
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
+const formatDateToISO = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const exportShiftsToCsv = (shifts) => {
   let csvContent = '\uFEFF';
   csvContent += 'BẢNG THEO DÕI CA TRỰC & ĐỐI SOÁT QUỸ THU NGÂN PHÒNG VÉ - AN BÌNH LINES\n';
@@ -44,7 +53,9 @@ const TicketAttendanceMonitoringPage = () => {
   const managerBranchId = user?.branch?.branchId;
   const branchInfo = managerBranchId ? getBranchById(managerBranchId) : null;
   const branchOffices = useMemo(() => {
-    return managerBranchId ? getOfficesByBranchId(managerBranchId) : [];
+    const rawOffices = managerBranchId ? getOfficesByBranchId(managerBranchId) : [];
+    // Chuẩn hóa về mảng chuỗi tên văn phòng (tránh lỗi React render object { id, name, address })
+    return rawOffices.map(o => (typeof o === 'object' && o !== null ? (o.name || o.id) : o));
   }, [managerBranchId]);
 
   // Active Tab: 'monitoring' (Giám sát toàn bộ quầy vé) | 'manager-shift' (Chấm công ca trực Quản lý)
@@ -55,11 +66,75 @@ const TicketAttendanceMonitoringPage = () => {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Filters for Monitoring Tab
-  const [filterStatus, setFilterStatus] = useState('all');
+  // Filters for Monitoring Tab (Bộ lọc nghiệp vụ nâng cao)
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'active' | 'closed'
   const [selectedStaff, setSelectedStaff] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'week'
+  const [selectedCounter, setSelectedCounter] = useState('all');
+  const [reconcileFilter, setReconcileFilter] = useState('all'); // 'all' | 'verified' | 'pending'
+  const [faceFilter, setFaceFilter] = useState('all'); // 'all' | 'verified' | 'not-verified'
+  const [datePreset, setDatePreset] = useState('all'); // 'all' | 'today' | 'yesterday' | '7days' | 'this-month' | 'last-month' | 'custom'
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Lấy danh sách điểm bán vé (Quầy / Văn phòng) động từ dữ liệu ca trực
+  const availableCounters = useMemo(() => {
+    const set = new Set();
+    shifts.forEach(s => {
+      if (s.counterNumber && s.counterNumber.trim()) {
+        set.add(s.counterNumber.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [shifts]);
+
+  // Áp dụng các preset thời gian 1-Click
+  const applyDatePreset = (preset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    if (preset === 'today') {
+      const todayStr = formatDateToISO(now);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = formatDateToISO(y);
+      setStartDate(yStr);
+      setEndDate(yStr);
+    } else if (preset === '7days') {
+      const past7 = new Date();
+      past7.setDate(past7.getDate() - 6);
+      setStartDate(formatDateToISO(past7));
+      setEndDate(formatDateToISO(now));
+    } else if (preset === 'this-month') {
+      const f = new Date(now.getFullYear(), now.getMonth(), 1);
+      const l = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setStartDate(formatDateToISO(f));
+      setEndDate(formatDateToISO(l));
+    } else if (preset === 'last-month') {
+      const f = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const l = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(formatDateToISO(f));
+      setEndDate(formatDateToISO(l));
+    } else if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
+
+  // Đặt lại toàn bộ bộ lọc về mặc định
+  const handleResetFilters = () => {
+    setDatePreset('all');
+    setStartDate('');
+    setEndDate('');
+    setSelectedCounter('all');
+    setSelectedStaff('all');
+    setFilterStatus('all');
+    setReconcileFilter('all');
+    setFaceFilter('all');
+    setSearchTerm('');
+  };
 
   // Modals
   const [detailModal, setDetailModal] = useState({ show: false, shift: null });
@@ -291,33 +366,51 @@ const TicketAttendanceMonitoringPage = () => {
     }
   };
 
-  // Filtered shifts for Monitoring
+  // Filtered shifts for Monitoring (Đa tiêu chí: Ngày, Điểm bán, Nhân viên, Quỹ, Face ID, Trạng thái)
   const filteredShifts = useMemo(() => {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
-
     return shifts.filter(s => {
+      // 1. Trạng thái ca trực (đang mở bán / đã đóng ca)
       const matchesStatus = filterStatus === 'all' || s.status === filterStatus;
+
+      // 2. Nhân viên bán vé phụ trách
       const sUserId = s.userId?._id || s.userId;
       const matchesStaff = selectedStaff === 'all' || sUserId === selectedStaff;
 
-      const shiftDate = new Date(s.startTime);
+      // 3. Điểm bán vé (Quầy / Văn phòng / Chi nhánh)
+      const matchesCounter = selectedCounter === 'all' || (s.counterNumber && s.counterNumber.trim() === selectedCounter);
+
+      // 4. Lọc theo khoảng ngày (startTime)
+      const shiftDateStr = s.startTime ? formatDateToISO(new Date(s.startTime)) : '';
       let matchesDate = true;
-      if (dateFilter === 'today') {
-        matchesDate = shiftDate >= todayStart;
-      } else if (dateFilter === 'week') {
-        matchesDate = shiftDate >= weekAgo;
+      if (startDate && shiftDateStr && shiftDateStr < startDate) matchesDate = false;
+      if (endDate && shiftDateStr && shiftDateStr > endDate) matchesDate = false;
+
+      // 5. Trạng thái nộp quỹ tiền mặt
+      let matchesReconcile = true;
+      if (reconcileFilter === 'verified') {
+        matchesReconcile = s.reconciliationStatus === 'verified';
+      } else if (reconcileFilter === 'pending') {
+        matchesReconcile = s.reconciliationStatus !== 'verified' && (s.cashRevenue > 0);
       }
 
+      // 6. Xác thực sinh trắc học Face ID
+      let matchesFace = true;
+      if (faceFilter === 'verified') {
+        matchesFace = Boolean(s.faceVerified);
+      } else if (faceFilter === 'not-verified') {
+        matchesFace = !s.faceVerified;
+      }
+
+      // 7. Tìm kiếm từ khóa tự do
       const matchesSearch = !searchTerm.trim() ||
         (s.counterNumber && s.counterNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (s.userId?.name && s.userId.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (s.userId?.phone && s.userId.phone.includes(searchTerm.trim()));
+        (s.userId?.phone && s.userId.phone.includes(searchTerm.trim())) ||
+        (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      return matchesStatus && matchesStaff && matchesDate && matchesSearch;
+      return matchesStatus && matchesStaff && matchesCounter && matchesDate && matchesReconcile && matchesFace && matchesSearch;
     });
-  }, [shifts, filterStatus, selectedStaff, dateFilter, searchTerm]);
+  }, [shifts, filterStatus, selectedStaff, selectedCounter, startDate, endDate, reconcileFilter, faceFilter, searchTerm]);
 
   // Manager personal shifts history
   const managerShiftsHistory = useMemo(() => {
@@ -373,7 +466,7 @@ const TicketAttendanceMonitoringPage = () => {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Chấm Công Ca Trực &amp; Đối Soát Quỹ Quầy Vé
+                Chấm Công Ca Trực & Đối Soát Quỹ Quầy Vé
               </h1>
               <span style={{
                 background: '#eff6ff', color: '#1e40af', border: '1px solid #bfdbfe',
@@ -496,49 +589,123 @@ const TicketAttendanceMonitoringPage = () => {
 
           {/* Filter Bar & Shifts Table */}
           <div className="panel" style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <div style={{ flex: '1 1 260px' }}>
-                <input
-                  type="text"
-                  placeholder="Tìm kiếm theo quầy, bến xe, tên nhân viên, SĐT..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', outline: 'none' }}
-                />
+            {/* Filter Tier 1: Bộ Lọc Thời Gian (Nút chọn nhanh 1-Click + Khoảng ngày tùy chọn + Đặt lại) */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', paddingBottom: '1rem', borderBottom: '1px solid #f1f5f9', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Khoảng ngày:
+                </span>
+
+                {/* Preset buttons */}
+                {[
+                  { key: 'all', label: 'Tất cả' },
+                  { key: 'today', label: 'Hôm nay' },
+                  { key: 'yesterday', label: 'Hôm qua' },
+                  { key: '7days', label: '7 ngày qua' },
+                  { key: 'this-month', label: 'Tháng này' },
+                  { key: 'last-month', label: 'Tháng trước' },
+                ].map(preset => {
+                  const isSelected = datePreset === preset.key;
+                  return (
+                    <button
+                      key={preset.key}
+                      onClick={() => applyDatePreset(preset.key)}
+                      type="button"
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '20px',
+                        fontSize: '0.74rem',
+                        fontWeight: isSelected ? '700' : '600',
+                        border: isSelected ? '1px solid #2563eb' : '1px solid #e2e8f0',
+                        backgroundColor: isSelected ? '#eff6ff' : '#ffffff',
+                        color: isSelected ? '#2563eb' : '#64748b',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+
+                {/* Custom Date Inputs */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }}
+                    style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.75rem', color: '#1e293b' }}
+                  />
+                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>đến</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }}
+                    style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.75rem', color: '#1e293b' }}
+                  />
+                </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Thời gian:</span>
-                <select
-                  value={dateFilter}
-                  onChange={(e) => setDateFilter(e.target.value)}
-                  style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff' }}
+              {/* Reset filter button & counter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>
+                  Hiển thị: <strong style={{ color: '#2563eb' }}>{filteredShifts.length}</strong> / {shifts.length} ca
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    fontSize: '0.74rem',
+                    fontWeight: '600',
+                    border: '1px solid #e2e8f0',
+                    background: '#f8fafc',
+                    color: '#64748b',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Khôi phục tất cả bộ lọc về mặc định"
                 >
-                  <option value="all">Tất cả thời gian</option>
-                  <option value="today">Hôm nay ({new Date().toLocaleDateString('vi-VN')})</option>
-                  <option value="week">7 ngày qua</option>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  Đặt lại bộ lọc
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Tier 2: Chi tiết nghiệp vụ (Điểm bán vé, Nhân viên, Ca trực, Nộp quỹ, Face ID, Tìm kiếm) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem', alignItems: 'center', marginBottom: '1.25rem' }}>
+              {/* 1. Điểm bán vé (Quầy / Văn phòng / Chi nhánh) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>
+                  ĐIỂM BÁN VÉ / QUẦY:
+                </label>
+                <select
+                  value={selectedCounter}
+                  onChange={(e) => setSelectedCounter(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff', color: '#1e293b' }}
+                >
+                  <option value="all">Tất cả điểm bán vé ({availableCounters.length})</option>
+                  {availableCounters.map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Trạng thái:</span>
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff' }}
-                >
-                  <option value="all">Tất cả ca</option>
-                  <option value="active">Đang mở bán ({activeShifts})</option>
-                  <option value="closed">Đã đóng ca</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Nhân viên:</span>
+              {/* 2. Nhân viên bán vé */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>
+                  NHÂN VIÊN PHỤ TRÁCH:
+                </label>
                 <select
                   value={selectedStaff}
                   onChange={(e) => setSelectedStaff(e.target.value)}
-                  style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff' }}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff', color: '#1e293b' }}
                 >
                   <option value="all">Tất cả nhân viên</option>
                   {staffList.filter(s => s.role === 'ticket_agent' || s.role === 'ticket_manager').map(ag => (
@@ -547,6 +714,73 @@ const TicketAttendanceMonitoringPage = () => {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* 3. Trạng thái ca trực */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>
+                  TRẠNG THÁI CA:
+                </label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff', color: '#1e293b' }}
+                >
+                  <option value="all">Tất cả ca</option>
+                  <option value="active">Đang mở bán ({activeShifts})</option>
+                  <option value="closed">Đã đóng ca</option>
+                </select>
+              </div>
+
+              {/* 4. Trạng thái nộp quỹ tiền mặt */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>
+                  NỘP QUỸ TIỀN MẶT:
+                </label>
+                <select
+                  value={reconcileFilter}
+                  onChange={(e) => setReconcileFilter(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff', color: '#1e293b' }}
+                >
+                  <option value="all">Tất cả trạng thái quỹ</option>
+                  <option value="verified">Đã nộp quỹ tiền mặt</option>
+                  <option value="pending">Chờ nộp quỹ (còn nợ quỹ)</option>
+                </select>
+              </div>
+
+              {/* 5. Sinh trắc Face ID */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>
+                  XÁC THỰC FACE ID:
+                </label>
+                <select
+                  value={faceFilter}
+                  onChange={(e) => setFaceFilter(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', background: '#ffffff', color: '#1e293b' }}
+                >
+                  <option value="all">Tất cả Face ID</option>
+                  <option value="verified">Đạt Face ID hợp lệ</option>
+                  <option value="not-verified">Chưa quét Face ID</option>
+                </select>
+              </div>
+
+              {/* 6. Ô tìm kiếm từ khóa */}
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: '700', color: '#64748b', marginBottom: '4px' }}>
+                  TÌM KIẾM TỪ KHÓA:
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Tìm theo quầy, tên nhân viên, SĐT, ghi chú ca..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{ width: '100%', padding: '0.5rem 0.85rem 0.5rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', outline: 'none' }}
+                  />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)' }}>
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                </div>
               </div>
             </div>
 
@@ -560,22 +794,22 @@ const TicketAttendanceMonitoringPage = () => {
                 Không tìm thấy phiên ca trực nào phù hợp với bộ lọc hiện tại.
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
+              <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch', border: '1px solid #f1f5f9', borderRadius: '8px' }}>
+                <table style={{ width: '100%', minWidth: '1350px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
-                      <th style={{ padding: '10px 12px' }}>STT</th>
-                      <th style={{ padding: '10px 12px' }}>Quầy / Văn phòng trực</th>
-                      <th style={{ padding: '10px 12px' }}>Nhân viên phụ trách</th>
-                      <th style={{ padding: '10px 12px' }}>Giờ vào ca</th>
-                      <th style={{ padding: '10px 12px' }}>Giờ ra ca</th>
-                      <th style={{ padding: '10px 12px' }}>Tiền đầu ca</th>
-                      <th style={{ padding: '10px 12px' }}>Tiền mặt thu</th>
-                      <th style={{ padding: '10px 12px' }}>QR / POS thu</th>
-                      <th style={{ padding: '10px 12px' }}>Vé bán</th>
-                      <th style={{ padding: '10px 12px' }}>Face ID</th>
-                      <th style={{ padding: '10px 12px' }}>Trạng thái</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>Thao tác</th>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>STT</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Quầy / Văn phòng trực</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Nhân viên phụ trách</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Giờ vào ca</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Giờ ra ca</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Tiền đầu ca</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Tiền mặt thu</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>QR / POS thu</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Vé bán</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Face ID</th>
+                      <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Trạng thái</th>
+                      <th style={{ padding: '12px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -585,16 +819,22 @@ const TicketAttendanceMonitoringPage = () => {
                       const staffPhone = s.userId?.phone || '';
                       const isManagerRole = s.userId?.role === 'ticket_manager';
 
+                      const startTimeStr = s.startTime ? new Date(s.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--';
+                      const startDateStr = s.startTime ? new Date(s.startTime).toLocaleDateString('vi-VN') : '';
+
+                      const endTimeStr = s.endTime ? new Date(s.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--';
+                      const endDateStr = s.endTime ? new Date(s.endTime).toLocaleDateString('vi-VN') : '';
+
                       return (
-                        <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9', background: isActive ? '#f8fdf9' : 'transparent' }}>
-                          <td style={{ padding: '10px 12px', color: '#64748b' }}>{index + 1}</td>
-                          <td style={{ padding: '10px 12px', fontWeight: '700', color: '#0f172a' }}>
+                        <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9', background: isActive ? '#f8fdf9' : 'transparent', whiteSpace: 'nowrap' }}>
+                          <td style={{ padding: '12px 14px', color: '#64748b', whiteSpace: 'nowrap' }}>{index + 1}</td>
+                          <td style={{ padding: '12px 14px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>
                             {s.counterNumber || 'Quầy vé'}
                           </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
                               <div style={{
-                                width: '28px', height: '28px', borderRadius: '50%',
+                                width: '28px', height: '28px', minWidth: '28px', borderRadius: '50%',
                                 backgroundColor: isManagerRole ? '#eff6ff' : '#f1f5f9',
                                 color: isManagerRole ? '#2563eb' : '#475569',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -602,59 +842,55 @@ const TicketAttendanceMonitoringPage = () => {
                               }}>
                                 {staffName.charAt(0)}
                               </div>
-                              <div>
-                                <div style={{ fontWeight: '700', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  {staffName}
+                              <div style={{ whiteSpace: 'nowrap' }}>
+                                <div style={{ fontWeight: '700', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                                  <span>{staffName}</span>
                                   {isManagerRole && (
-                                    <span style={{ fontSize: '0.62rem', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '8px', fontWeight: '600' }}>
+                                    <span style={{ fontSize: '0.62rem', background: '#dbeafe', color: '#1e40af', padding: '1px 6px', borderRadius: '8px', fontWeight: '600', whiteSpace: 'nowrap' }}>
                                       Quản lý
                                     </span>
                                   )}
                                 </div>
-                                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{staffPhone}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap' }}>{staffPhone}</div>
                               </div>
                             </div>
                           </td>
-                          <td style={{ padding: '10px 12px', color: '#334155' }}>
-                            {s.startTime ? new Date(s.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--'}
-                            <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                              {s.startTime ? new Date(s.startTime).toLocaleDateString('vi-VN') : ''}
-                            </div>
+                          <td style={{ padding: '12px 14px', color: '#334155', whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: '700', color: '#0f172a' }}>{startTimeStr}</span>
+                            {startDateStr && <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: '6px' }}>({startDateStr})</span>}
                           </td>
-                          <td style={{ padding: '10px 12px', color: '#334155' }}>
+                          <td style={{ padding: '12px 14px', color: '#334155', whiteSpace: 'nowrap' }}>
                             {s.endTime ? (
                               <>
-                                {new Date(s.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                                  {new Date(s.endTime).toLocaleDateString('vi-VN')}
-                                </div>
+                                <span style={{ fontWeight: '700', color: '#0f172a' }}>{endTimeStr}</span>
+                                {endDateStr && <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: '6px' }}>({endDateStr})</span>}
                               </>
                             ) : (
-                              <span style={{ color: '#16a34a', fontWeight: '700', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ color: '#16a34a', fontWeight: '700', fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
                                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#16a34a' }}></span>
                                 Đang trực ca
                               </span>
                             )}
                           </td>
-                          <td style={{ padding: '10px 12px', color: '#64748b' }}>
-                            {(s.initialCash || 0).toLocaleString('vi-VN')} đ
+                          <td style={{ padding: '12px 14px', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                            {(s.initialCash || 0).toLocaleString('vi-VN')}&nbsp;₫
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: '700', color: '#2563eb' }}>
-                            {(s.cashRevenue || 0).toLocaleString('vi-VN')} đ
+                          <td style={{ padding: '12px 14px', fontWeight: '700', color: '#2563eb', whiteSpace: 'nowrap' }}>
+                            {(s.cashRevenue || 0).toLocaleString('vi-VN')}&nbsp;₫
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: '700', color: '#059669' }}>
-                            {(s.cashlessRevenue || 0).toLocaleString('vi-VN')} đ
+                          <td style={{ padding: '12px 14px', fontWeight: '700', color: '#059669', whiteSpace: 'nowrap' }}>
+                            {(s.cashlessRevenue || 0).toLocaleString('vi-VN')}&nbsp;₫
                           </td>
-                          <td style={{ padding: '10px 12px', fontWeight: '800', color: '#0f172a' }}>
+                          <td style={{ padding: '12px 14px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
                             <span style={{
-                              background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px',
-                              fontSize: '0.75rem', fontWeight: '700'
+                              background: '#f1f5f9', padding: '3px 10px', borderRadius: '12px',
+                              fontSize: '0.75rem', fontWeight: '700', whiteSpace: 'nowrap', display: 'inline-block'
                             }}>
-                              {s.ticketsSold?.length || 0} vé
+                              {s.ticketsSold?.length || 0}&nbsp;vé
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                               {s.checkInPhoto && (
                                 <img
                                   src={s.checkInPhoto}
@@ -666,30 +902,32 @@ const TicketAttendanceMonitoringPage = () => {
                                 background: s.faceVerified ? '#ecfdf5' : '#f1f5f9',
                                 color: s.faceVerified ? '#059669' : '#64748b',
                                 border: `1px solid ${s.faceVerified ? '#a7f3d0' : '#cbd5e1'}`,
-                                padding: '2px 6px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: '700',
-                                whiteSpace: 'nowrap'
+                                padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '700',
+                                whiteSpace: 'nowrap', display: 'inline-block'
                               }}>
                                 {s.faceVerified ? 'Đạt Face ID' : 'Chưa quét'}
                               </span>
                             </div>
                           </td>
-                          <td style={{ padding: '10px 12px' }}>
+                          <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                             <span style={{
                               background: isActive ? '#dcfce7' : '#f1f5f9',
                               color: isActive ? '#15803d' : '#475569',
                               border: `1px solid ${isActive ? '#bbf7d0' : '#cbd5e1'}`,
-                              padding: '2px 8px', borderRadius: '12px', fontSize: '0.68rem', fontWeight: '700'
+                              padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700',
+                              whiteSpace: 'nowrap', display: 'inline-block'
                             }}>
                               {isActive ? 'ĐANG MỞ BÁN' : 'ĐÃ ĐÓNG CA'}
                             </span>
                           </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <td style={{ padding: '12px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
                               <button
                                 onClick={() => setDetailModal({ show: true, shift: s })}
                                 style={{
                                   padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
-                                  border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', cursor: 'pointer'
+                                  border: '1px solid #bfdbfe', background: '#eff6ff', color: '#2563eb', cursor: 'pointer',
+                                  whiteSpace: 'nowrap'
                                 }}
                               >
                                 Chi tiết vé ({s.ticketsSold?.length || 0})
@@ -698,7 +936,8 @@ const TicketAttendanceMonitoringPage = () => {
                                 s.reconciliationStatus === 'verified' ? (
                                   <span style={{
                                     padding: '5px 8px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: '700',
-                                    border: '1px solid #a7f3d0', background: '#ecfdf5', color: '#047857', display: 'inline-flex', alignItems: 'center'
+                                    border: '1px solid #a7f3d0', background: '#ecfdf5', color: '#047857', display: 'inline-flex', alignItems: 'center',
+                                    whiteSpace: 'nowrap'
                                   }}>
                                     Đã nộp tiền
                                   </span>
@@ -707,7 +946,8 @@ const TicketAttendanceMonitoringPage = () => {
                                     onClick={() => handleVerifyCash(s._id)}
                                     style={{
                                       padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
-                                      border: '1px solid #bbf7d0', background: '#dcfce7', color: '#15803d', cursor: 'pointer'
+                                      border: '1px solid #bbf7d0', background: '#dcfce7', color: '#15803d', cursor: 'pointer',
+                                      whiteSpace: 'nowrap'
                                     }}
                                     title="Xác nhận đã nhận đủ tiền mặt từ nhân viên bán vé"
                                   >
@@ -720,7 +960,8 @@ const TicketAttendanceMonitoringPage = () => {
                                   onClick={() => setCloseShiftModal({ show: true, shift: s, notes: '' })}
                                   style={{
                                     padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700',
-                                    border: '1px solid #fecaca', background: '#fff1f2', color: '#e11d48', cursor: 'pointer'
+                                    border: '1px solid #fecaca', background: '#fff1f2', color: '#e11d48', cursor: 'pointer',
+                                    whiteSpace: 'nowrap'
                                   }}
                                   title="Quản lý đóng ca hộ thu ngân"
                                 >
@@ -830,7 +1071,7 @@ const TicketAttendanceMonitoringPage = () => {
               {/* Close shift form */}
               <form onSubmit={handleEndManagerShift} style={{ marginTop: '1.5rem', background: '#fffaf0', border: '1px solid #fde68a', borderRadius: '12px', padding: '1.25rem' }}>
                 <h3 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#92400e', margin: '0 0 0.5rem 0' }}>
-                  Chốt Ca &amp; Bàn Giao Quỹ Trực Quản Lý
+                  Chốt Ca & Bàn Giao Quỹ Trực Quản Lý
                 </h3>
                 <p style={{ fontSize: '0.78rem', color: '#78350f', margin: '0 0 0.75rem 0' }}>
                   Khi hoàn thành phiên làm việc, vui lòng kiểm kê tiền két, xác nhận đối soát với thủ quỹ và ghi chú bàn giao trước khi đóng ca.
@@ -887,9 +1128,12 @@ const TicketAttendanceMonitoringPage = () => {
                       onChange={(e) => setManagerLocation(e.target.value)}
                       style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#ffffff' }}
                     >
-                      {branchOffices.map((office, idx) => (
-                        <option key={idx} value={office}>{office}</option>
-                      ))}
+                      {branchOffices.map((office, idx) => {
+                        const officeLabel = typeof office === 'object' && office !== null ? (office.name || office.id) : String(office);
+                        return (
+                          <option key={idx} value={officeLabel}>{officeLabel}</option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -903,8 +1147,8 @@ const TicketAttendanceMonitoringPage = () => {
                       style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem', background: '#ffffff' }}
                     >
                       <option value="Quầy Giám Sát Ca Trực">Quầy Giám Sát Ca Trực</option>
-                      <option value="Quầy Trực Điều Hành &amp; Bàn Giao">Quầy Trực Điều Hành &amp; Bàn Giao</option>
-                      <option value="Quầy Vé VIP &amp; Khiếu Nại Hành Khách">Quầy Vé VIP &amp; Khiếu Nại Hành Khách</option>
+                      <option value="Quầy Trực Điều Hành & Bàn Giao">Quầy Trực Điều Hành & Bàn Giao</option>
+                      <option value="Quầy Vé VIP & Khiếu Nại Hành Khách">Quầy Vé VIP & Khiếu Nại Hành Khách</option>
                       <option value="Quầy Tổng Hợp Bến Xe">Quầy Tổng Hợp Bến Xe</option>
                     </select>
                   </div>
@@ -925,7 +1169,7 @@ const TicketAttendanceMonitoringPage = () => {
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
-                    Ghi chú bàn giao &amp; Nhiệm vụ trọng tâm ca trực
+                    Ghi chú bàn giao & Nhiệm vụ trọng tâm ca trực
                   </label>
                   <textarea
                     rows="2"
@@ -966,41 +1210,42 @@ const TicketAttendanceMonitoringPage = () => {
                 Chưa có phiên ca trực quản lý nào được ghi nhận.
               </div>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
+              <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch', border: '1px solid #f1f5f9', borderRadius: '8px' }}>
+                <table style={{ width: '100%', minWidth: '950px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
-                      <th style={{ padding: '8px 10px' }}>STT</th>
-                      <th style={{ padding: '8px 10px' }}>Vị trí trực</th>
-                      <th style={{ padding: '8px 10px' }}>Giờ vào ca</th>
-                      <th style={{ padding: '8px 10px' }}>Giờ ra ca</th>
-                      <th style={{ padding: '8px 10px' }}>Tiền đầu ca</th>
-                      <th style={{ padding: '8px 10px' }}>Doanh thu thu được</th>
-                      <th style={{ padding: '8px 10px' }}>Trạng thái</th>
-                      <th style={{ padding: '8px 10px' }}>Ghi chú ca</th>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>STT</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Vị trí trực</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Giờ vào ca</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Giờ ra ca</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Tiền đầu ca</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Doanh thu thu được</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Trạng thái</th>
+                      <th style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>Ghi chú ca</th>
                     </tr>
                   </thead>
                   <tbody>
                     {managerShiftsHistory.map((s, idx) => (
-                      <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '8px 10px', color: '#64748b' }}>{idx + 1}</td>
-                        <td style={{ padding: '8px 10px', fontWeight: '700', color: '#0f172a' }}>{s.counterNumber}</td>
-                        <td style={{ padding: '8px 10px' }}>{new Date(s.startTime).toLocaleString('vi-VN')}</td>
-                        <td style={{ padding: '8px 10px' }}>{s.endTime ? new Date(s.endTime).toLocaleString('vi-VN') : 'Đang trực'}</td>
-                        <td style={{ padding: '8px 10px' }}>{(s.initialCash || 0).toLocaleString('vi-VN')} đ</td>
-                        <td style={{ padding: '8px 10px', fontWeight: '700', color: '#2563eb' }}>
-                          {((s.cashRevenue || 0) + (s.cashlessRevenue || 0)).toLocaleString('vi-VN')} đ
+                      <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '10px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>{s.counterNumber}</td>
+                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{new Date(s.startTime).toLocaleString('vi-VN')}</td>
+                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{s.endTime ? new Date(s.endTime).toLocaleString('vi-VN') : 'Đang trực'}</td>
+                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{(s.initialCash || 0).toLocaleString('vi-VN')}&nbsp;₫</td>
+                        <td style={{ padding: '10px 12px', fontWeight: '700', color: '#2563eb', whiteSpace: 'nowrap' }}>
+                          {((s.cashRevenue || 0) + (s.cashlessRevenue || 0)).toLocaleString('vi-VN')}&nbsp;₫
                         </td>
-                        <td style={{ padding: '8px 10px' }}>
+                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                           <span style={{
                             background: s.status === 'active' ? '#dcfce7' : '#f1f5f9',
                             color: s.status === 'active' ? '#15803d' : '#475569',
-                            padding: '2px 8px', borderRadius: '10px', fontSize: '0.68rem', fontWeight: '700'
+                            padding: '3px 10px', borderRadius: '12px', fontSize: '0.72rem', fontWeight: '700',
+                            whiteSpace: 'nowrap', display: 'inline-block'
                           }}>
-                            {s.status === 'active' ? 'Đang trực' : 'Đã đóng ca'}
+                            {s.status === 'active' ? 'ĐANG MỞ BÁN' : 'ĐÃ ĐÓNG CA'}
                           </span>
                         </td>
-                        <td style={{ padding: '8px 10px', fontSize: '0.75rem', color: '#64748b', maxWidth: '250px' }}>
+                        <td style={{ padding: '10px 12px', fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
                           {s.notes || '--'}
                         </td>
                       </tr>
@@ -1027,7 +1272,7 @@ const TicketAttendanceMonitoringPage = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '1rem', marginBottom: '1rem' }}>
               <div>
                 <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                  Chi Tiết Ca Trực &amp; Bảng Đối Soát Vé Thật
+                  Chi Tiết Ca Trực & Bảng Đối Soát Vé Thật
                 </h2>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
                   Quầy: <strong>{detailModal.shift.counterNumber}</strong> | Nhân viên: <strong>{detailModal.shift.userId?.name}</strong> ({detailModal.shift.userId?.phone})
@@ -1073,7 +1318,7 @@ const TicketAttendanceMonitoringPage = () => {
             <div style={{ background: '#f8fafc', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase' }}>
-                  Đối Soát Sinh Trắc Học Face ID &amp; Ảnh Điểm Danh
+                  Đối Soát Sinh Trắc Học Face ID & Ảnh Điểm Danh
                 </div>
                 <span style={{
                   padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: '800',

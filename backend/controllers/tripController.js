@@ -270,7 +270,18 @@ exports.updateBus = async (req, res) => {
     const { id } = req.params;
     const { plateNumber, type, totalSeats, amenities, images, status, seatLayout, activeStatus, maintenanceInfo } = req.body;
 
-    const bus = await tripService.updateBus(id, { plateNumber, type, totalSeats, amenities, images, status, seatLayout, activeStatus, maintenanceInfo });
+    const bus = await tripService.updateBus(id, {
+      plateNumber,
+      type,
+      totalSeats,
+      amenities,
+      images,
+      status,
+      seatLayout,
+      activeStatus,
+      maintenanceInfo,
+      proposedBy: req.user?.id
+    });
 
     res.status(200).json({
       success: true,
@@ -935,6 +946,62 @@ exports.createMaintenanceRecord = async (req, res) => {
   }
 };
 
+// @desc    Lấy danh sách đề xuất bảo trì chi phí lớn chờ Giám đốc duyệt
+// @route   GET /api/v1/trips/fleet/maintenance-approvals
+// @access  Private (General Manager, Fleet Manager, Admin)
+exports.getMaintenanceApprovals = async (req, res) => {
+  try {
+    const buses = await tripService.getMaintenanceApprovals();
+    res.status(200).json({
+      success: true,
+      count: buses.length,
+      buses
+    });
+  } catch (error) {
+    console.error('Lỗi lấy danh sách duyệt bảo trì:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi máy chủ khi lấy danh sách phê duyệt bảo dưỡng xe.'
+    });
+  }
+};
+
+// @desc    Giám đốc phê duyệt hoặc từ chối chi phí bảo trì lớn
+// @route   PATCH /api/v1/trips/fleet/maintenance-approvals/:id
+// @access  Private (General Manager, Admin)
+exports.reviewMaintenanceApproval = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, approvalNote, rejectionReason } = req.body;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trạng thái phê duyệt không hợp lệ (chỉ chấp nhận approved hoặc rejected).'
+      });
+    }
+
+    const bus = await tripService.reviewMaintenanceApproval(id, {
+      status,
+      approvalNote,
+      rejectionReason,
+      reviewerId: req.user.id
+    });
+
+    res.status(200).json({
+      success: true,
+      message: status === 'approved' ? 'Phê duyệt chi phí bảo trì thành công!' : 'Đã từ chối đề xuất chi phí bảo trì.',
+      bus
+    });
+  } catch (error) {
+    console.error('Lỗi phê duyệt bảo trì xe:', error);
+    res.status(error.statusCode || 400).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi phê duyệt bảo trì phương tiện.'
+    });
+  }
+};
+
 // ==========================================
 // OPS REPORTING & PUNCTUALITY CONTROLLERS
 // ==========================================
@@ -1126,7 +1193,7 @@ exports.updateTripPunctuality = async (req, res) => {
 exports.updateLiveGps = async (req, res) => {
   try {
     const { id } = req.params;
-    const { lat, lng, speed, heading, status, currentStopIndex } = req.body;
+    const { lat, lng, speed, heading, status, currentStopIndex, isOffRoute, offRouteDistance, rerouteCoords } = req.body;
 
     const trip = await Trip.findById(id);
     if (!trip) {
@@ -1162,6 +1229,9 @@ exports.updateLiveGps = async (req, res) => {
       speed: Number(speed) || 0,
       heading: Number(heading) || 0,
       status: status || 'moving',
+      isOffRoute: Boolean(isOffRoute),
+      offRouteDistance: Number(offRouteDistance) || 0,
+      rerouteCoords: Array.isArray(rerouteCoords) ? rerouteCoords : [],
       lastUpdated: new Date()
     };
 

@@ -40,6 +40,11 @@ app.use('/api/v1/targets', targetRoutes);
 app.use('/api/v1/promotions', promotionRoutes);
 app.use('/api/v1/attendance', attendanceRoutes);
 
+// Direct payOS Webhook Endpoint
+const { payosWebhook } = require('./controllers/bookingController');
+app.post('/api/v1/payment/webhook', payosWebhook);
+app.post('/payment/webhook', payosWebhook);
+
 
 // Health check endpoint
 app.get('/health', (req, res) => {

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import MonthlyFleetExpenseReportModal from '../../components/MonthlyFleetExpenseReportModal';
+import MonthlyAreaRevenueReportModal from '../../components/MonthlyAreaRevenueReportModal';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80';
@@ -177,17 +179,71 @@ const ManagerApprovalsPage = () => {
 
   // Detailed Modal state
   const [selectedBus, setSelectedBus] = useState(null);
+  const [selectedMaintenance, setSelectedMaintenance] = useState(null);
+  const [selectedFleetExpenseReport, setSelectedFleetExpenseReport] = useState(null);
+  const [actionLoadingExpense, setActionLoadingExpense] = useState(false);
+  const [selectedAreaRevenueReport, setSelectedAreaRevenueReport] = useState(null);
+  const [actionLoadingAreaRev, setActionLoadingAreaRev] = useState(false);
+  const [maintenanceNote, setMaintenanceNote] = useState('');
+  const [maintenanceRejectionReason, setMaintenanceRejectionReason] = useState('');
+  const [isSubmittingMaint, setIsSubmittingMaint] = useState(false);
+
+  const formatCurrency = (val) => {
+    if (!val && val !== 0) return '0 ₫';
+    return Number(val).toLocaleString('vi-VN') + ' ₫';
+  };
 
   const fetchApprovals = async () => {
     setLoading(true);
     setError('');
+
+    const mapMaintenanceBus = (bus) => {
+      const mInfo = bus.maintenanceInfo || {};
+      let effectiveStatus = 'pending';
+      if (mInfo.approvalStatus === 'approved') effectiveStatus = 'approved';
+      else if (mInfo.approvalStatus === 'rejected') effectiveStatus = 'rejected';
+      else effectiveStatus = 'pending';
+
+      const sender = (mInfo.proposedBy && typeof mInfo.proposedBy === 'object') ? {
+        name: mInfo.proposedBy.name || 'Quản lý Đội xe',
+        role: mInfo.proposedBy.role || 'fleet_manager',
+        phone: mInfo.proposedBy.phone || '0988888888'
+      } : {
+        name: 'Quản lý Đội xe',
+        role: 'fleet_manager',
+        phone: '0988888888'
+      };
+
+      const costFormatted = Number(mInfo.estimatedCost || 0).toLocaleString('vi-VN') + ' ₫';
+
+      return {
+        id: bus._id,
+        sender,
+        type: 'maintenance',
+        typeName: 'Chi phí bảo trì xe',
+        details: `Đề xuất phê duyệt ngân sách bảo trì xe ${bus.plateNumber}: ${costFormatted} (Gara: ${mInfo.garage || 'N/A'}). Hạng mục: ${mInfo.description || 'Không có mô tả chi tiết'}`,
+        createdAt: bus.updatedAt || bus.createdAt,
+        status: effectiveStatus,
+        plateNumber: bus.plateNumber,
+        rawBus: bus,
+        maintenanceInfo: mInfo,
+        cost: mInfo.estimatedCost
+      };
+    };
+
     try {
       if (user?.role === 'fleet_manager') {
         const res = await fetch(`${API_BASE}/trips/fleet/buses`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
+
+        const maintRes = await fetch(`${API_BASE}/trips/fleet/maintenance-approvals`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const maintData = await maintRes.json();
         
+        let merged = [];
         if (res.ok && data.success) {
           const mappedBuses = (data.buses || []).map(bus => ({
             id: bus._id,
@@ -200,10 +256,52 @@ const ManagerApprovalsPage = () => {
             plateNumber: bus.plateNumber,
             rawBus: bus
           }));
-          setApprovals(mappedBuses);
-        } else {
-          setError(data.message || 'Không thể tải danh sách yêu cầu phê duyệt xe.');
+          merged = [...merged, ...mappedBuses];
         }
+
+        if (maintRes.ok && maintData.success) {
+          const mappedMaint = (maintData.buses || []).map(mapMaintenanceBus);
+          merged = [...merged, ...mappedMaint];
+        }
+
+        const expenseRes = await fetch(`${API_BASE}/trips/fleet-expense-reports`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const expenseData = await expenseRes.json();
+        if (expenseRes.ok && expenseData.success) {
+          const mappedExpenses = (expenseData.reports || []).map(rep => ({
+            id: rep._id,
+            sender: rep.fleetManagerId || { name: 'Phạm Minh Tuấn', role: 'fleet_manager', phone: '0988888888' },
+            type: 'fleet_expense',
+            typeName: 'Chi tiêu đội xe',
+            details: `Báo cáo chi tiêu Đội xe Tháng ${rep.month}/${rep.year} (${rep.reportCode}) - Tổng chi phí quyết toán: ${formatCurrency(rep.summary?.totalExpenses)}. Tiền bảo trì: ${formatCurrency(rep.summary?.totalMaintenanceCost)}, Tiền dầu: ${formatCurrency(rep.summary?.totalFuelCost)}`,
+            createdAt: rep.submittedAt || rep.createdAt,
+            status: rep.status || 'pending',
+            rawReport: rep
+          }));
+          merged = [...merged, ...mappedExpenses];
+        }
+
+        const areaRevRes = await fetch(`${API_BASE}/users/area-revenue-reports`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const areaRevData = await areaRevRes.json();
+        if (areaRevRes.ok && areaRevData.success) {
+          const mappedAreaRev = (areaRevData.reports || []).map(rep => ({
+            id: rep._id,
+            sender: rep.ticketManagerId || { name: 'Lê Trọng Nghĩa', role: 'ticket_manager', phone: '0977888999' },
+            type: 'area_revenue',
+            typeName: 'Doanh thu khu vực',
+            details: `Báo cáo doanh thu ${rep.branchName || 'Chi nhánh'} Tháng ${rep.month}/${rep.year} (${rep.reportCode}) - Tổng thực thu: ${formatCurrency(rep.summary?.totalRevenue)}. Tiền mặt quầy: ${formatCurrency(rep.summary?.cashRevenue)}, VietQR/CK: ${formatCurrency(rep.summary?.cashlessRevenue)}`,
+            createdAt: rep.submittedAt || rep.createdAt,
+            status: rep.status || 'pending',
+            rawReport: rep
+          }));
+          merged = [...merged, ...mappedAreaRev];
+        }
+
+        merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        setApprovals(merged);
       } else {
         const leaveRes = await fetch(`${API_BASE}/users/admin/leaves`, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -219,6 +317,11 @@ const ManagerApprovalsPage = () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const routeData = await routeRes.json();
+
+        const maintRes = await fetch(`${API_BASE}/trips/fleet/maintenance-approvals`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const maintData = await maintRes.json();
 
         let merged = [];
 
@@ -277,6 +380,47 @@ const ManagerApprovalsPage = () => {
           merged = [...merged, ...mappedRoutes];
         }
 
+        if (maintRes.ok && maintData.success) {
+          const mappedMaint = (maintData.buses || []).map(mapMaintenanceBus);
+          merged = [...merged, ...mappedMaint];
+        }
+
+        const expenseRes = await fetch(`${API_BASE}/trips/fleet-expense-reports`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const expenseData = await expenseRes.json();
+        if (expenseRes.ok && expenseData.success) {
+          const mappedExpenses = (expenseData.reports || []).map(rep => ({
+            id: rep._id,
+            sender: rep.fleetManagerId || { name: 'Phạm Minh Tuấn', role: 'fleet_manager', phone: '0988888888' },
+            type: 'fleet_expense',
+            typeName: 'Chi tiêu đội xe',
+            details: `Báo cáo chi tiêu Đội xe Tháng ${rep.month}/${rep.year} (${rep.reportCode}) - Tổng chi phí quyết toán: ${formatCurrency(rep.summary?.totalExpenses)}. Tiền bảo trì: ${formatCurrency(rep.summary?.totalMaintenanceCost)}, Tiền dầu: ${formatCurrency(rep.summary?.totalFuelCost)}`,
+            createdAt: rep.submittedAt || rep.createdAt,
+            status: rep.status || 'pending',
+            rawReport: rep
+          }));
+          merged = [...merged, ...mappedExpenses];
+        }
+
+        const areaRevRes = await fetch(`${API_BASE}/users/area-revenue-reports`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const areaRevData = await areaRevRes.json();
+        if (areaRevRes.ok && areaRevData.success) {
+          const mappedAreaRev = (areaRevData.reports || []).map(rep => ({
+            id: rep._id,
+            sender: rep.ticketManagerId || { name: 'Lê Trọng Nghĩa', role: 'ticket_manager', phone: '0977888999' },
+            type: 'area_revenue',
+            typeName: 'Doanh thu khu vực',
+            details: `Báo cáo doanh thu ${rep.branchName || 'Chi nhánh'} Tháng ${rep.month}/${rep.year} (${rep.reportCode}) - Tổng thực thu: ${formatCurrency(rep.summary?.totalRevenue)}. Tiền mặt quầy: ${formatCurrency(rep.summary?.cashRevenue)}, VietQR/CK: ${formatCurrency(rep.summary?.cashlessRevenue)}`,
+            createdAt: rep.submittedAt || rep.createdAt,
+            status: rep.status || 'pending',
+            rawReport: rep
+          }));
+          merged = [...merged, ...mappedAreaRev];
+        }
+
         merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         setApprovals(merged);
       }
@@ -322,6 +466,27 @@ const ManagerApprovalsPage = () => {
           },
           body: JSON.stringify({ status })
         });
+      } else if (item.type === 'maintenance') {
+        let note = '';
+        let reason = '';
+        if (status === 'rejected') {
+          reason = window.prompt('Nhập lý do từ chối duyệt ngân sách bảo trì (tùy chọn):', 'Chi phí chưa phù hợp') || '';
+        } else {
+          note = window.prompt('Nhập ý kiến chỉ đạo của Giám đốc (tùy chọn):', 'Đồng ý cấp ngân sách bảo trì') || '';
+        }
+
+        res = await fetch(`${API_BASE}/trips/fleet/maintenance-approvals/${item.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            status,
+            approvalNote: note,
+            rejectionReason: reason
+          })
+        });
       } else {
         res = await fetch(`${API_BASE}/users/admin/leaves/${item.id}`, {
           method: 'PATCH',
@@ -343,6 +508,154 @@ const ManagerApprovalsPage = () => {
       }
     } catch (err) {
       setError('Lỗi kết nối máy chủ khi cập nhật trạng thái phê duyệt.');
+    }
+  };
+
+  const handleMaintenanceModalUpdate = async (status) => {
+    if (!selectedMaintenance) return;
+    setIsSubmittingMaint(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const res = await fetch(`${API_BASE}/trips/fleet/maintenance-approvals/${selectedMaintenance.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          status,
+          approvalNote: maintenanceNote.trim(),
+          rejectionReason: maintenanceRejectionReason.trim()
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess(status === 'approved' 
+          ? `Đã phê duyệt ngân sách bảo trì cho xe ${selectedMaintenance.plateNumber}.` 
+          : `Đã từ chối đề xuất ngân sách bảo trì cho xe ${selectedMaintenance.plateNumber}.`
+        );
+        setSelectedMaintenance(null);
+        setMaintenanceNote('');
+        setMaintenanceRejectionReason('');
+        fetchApprovals();
+      } else {
+        setError(data.message || 'Lỗi khi xử lý phê duyệt chi phí bảo trì.');
+      }
+    } catch (err) {
+      setError('Lỗi kết nối máy chủ khi xử lý phê duyệt bảo dưỡng.');
+    } finally {
+      setIsSubmittingMaint(false);
+    }
+  };
+
+  const handleApproveFleetExpense = async (directorNotes) => {
+    if (!selectedFleetExpenseReport) return;
+    setActionLoadingExpense(true);
+    try {
+      const res = await fetch(`${API_BASE}/trips/fleet-expense-reports/${selectedFleetExpenseReport._id}/approve`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ directorNotes })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess(`Đã phê duyệt và ký số báo cáo chi tiêu ${selectedFleetExpenseReport.reportCode} thành công!`);
+        setSelectedFleetExpenseReport(null);
+        fetchApprovals();
+      } else {
+        alert(data.message || 'Lỗi khi phê duyệt báo cáo chi tiêu.');
+      }
+    } catch (err) {
+      alert('Lỗi máy chủ khi duyệt báo cáo chi tiêu.');
+    } finally {
+      setActionLoadingExpense(false);
+    }
+  };
+
+  const handleRejectFleetExpense = async (rejectionReason) => {
+    if (!selectedFleetExpenseReport) return;
+    setActionLoadingExpense(true);
+    try {
+      const res = await fetch(`${API_BASE}/trips/fleet-expense-reports/${selectedFleetExpenseReport._id}/reject`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ rejectionReason })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess(`Đã gửi yêu cầu hiệu chỉnh báo cáo chi tiêu ${selectedFleetExpenseReport.reportCode}.`);
+        setSelectedFleetExpenseReport(null);
+        fetchApprovals();
+      } else {
+        alert(data.message || 'Lỗi khi từ chối báo cáo.');
+      }
+    } catch (err) {
+      alert('Lỗi máy chủ khi từ chối báo cáo.');
+    } finally {
+      setActionLoadingExpense(false);
+    }
+  };
+
+  const handleApproveAreaRevenue = async (directorNotes) => {
+    if (!selectedAreaRevenueReport) return;
+    setActionLoadingAreaRev(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/area-revenue-reports/${selectedAreaRevenueReport._id}/approve`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ directorNotes })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess(`Đã phê duyệt và ký số báo cáo doanh thu ${selectedAreaRevenueReport.reportCode} thành công!`);
+        setSelectedAreaRevenueReport(null);
+        fetchApprovals();
+      } else {
+        alert(data.message || 'Lỗi khi phê duyệt báo cáo doanh thu.');
+      }
+    } catch (err) {
+      alert('Lỗi máy chủ khi duyệt báo cáo doanh thu.');
+    } finally {
+      setActionLoadingAreaRev(false);
+    }
+  };
+
+  const handleRejectAreaRevenue = async (rejectionReason) => {
+    if (!selectedAreaRevenueReport) return;
+    setActionLoadingAreaRev(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/area-revenue-reports/${selectedAreaRevenueReport._id}/reject`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ rejectionReason })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess(`Đã gửi yêu cầu hiệu chỉnh báo cáo doanh thu ${selectedAreaRevenueReport.reportCode}.`);
+        setSelectedAreaRevenueReport(null);
+        fetchApprovals();
+      } else {
+        alert(data.message || 'Lỗi khi từ chối báo cáo.');
+      }
+    } catch (err) {
+      alert('Lỗi máy chủ khi từ chối báo cáo.');
+    } finally {
+      setActionLoadingAreaRev(false);
     }
   };
 
@@ -416,6 +729,12 @@ const ManagerApprovalsPage = () => {
         return <span style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Thêm xe mới</span>;
       case 'route':
         return <span style={{ background: '#f5f3ff', color: '#5b21b6', border: '1px solid #ddd6fe', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Thêm tuyến mới</span>;
+      case 'maintenance':
+        return <span style={{ background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Chi phí bảo trì xe</span>;
+      case 'fleet_expense':
+        return <span style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '800', whiteSpace: 'nowrap' }}>Chi tiêu đội xe</span>;
+      case 'area_revenue':
+        return <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '800', whiteSpace: 'nowrap' }}>Doanh thu khu vực</span>;
       default:
         return <span style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: '700', whiteSpace: 'nowrap' }}>Khác</span>;
     }
@@ -742,25 +1061,26 @@ const ManagerApprovalsPage = () => {
           </div>
 
           {/* Type Filter */}
-          {user?.role !== 'fleet_manager' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap' }}>Loại hồ sơ:</span>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                style={{
-                  padding: '6px 12px', fontSize: '0.78rem', border: '1px solid #cbd5e1',
-                  borderRadius: '6px', background: '#ffffff', color: '#0f172a',
-                  fontWeight: '600', outline: 'none', cursor: 'pointer'
-                }}
-              >
-                <option value="all">Tất cả loại hồ sơ</option>
-                <option value="leave">Đơn xin nghỉ phép</option>
-                <option value="bus">Thêm xe mới</option>
-                <option value="route">Yêu cầu thêm tuyến</option>
-              </select>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap' }}>Loại hồ sơ:</span>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              style={{
+                padding: '6px 12px', fontSize: '0.78rem', border: '1px solid #cbd5e1',
+                borderRadius: '6px', background: '#ffffff', color: '#0f172a',
+                fontWeight: '600', outline: 'none', cursor: 'pointer'
+              }}
+            >
+              <option value="all">Tất cả loại hồ sơ</option>
+              {user?.role !== 'fleet_manager' && <option value="leave">Đơn xin nghỉ phép</option>}
+              <option value="bus">Thêm xe mới</option>
+              {user?.role !== 'fleet_manager' && <option value="route">Yêu cầu thêm tuyến</option>}
+              <option value="maintenance">Chi phí bảo trì xe (≥ 10tr)</option>
+              <option value="fleet_expense">Chi tiêu đội xe hàng tháng</option>
+              <option value="area_revenue">Doanh thu khu vực hàng tháng</option>
+            </select>
+          </div>
         </div>
 
         {/* Filter Bar Row 2: Search Input */}
@@ -882,6 +1202,59 @@ const ManagerApprovalsPage = () => {
                             Xem sơ đồ ghế & thông tin chi tiết xe
                           </button>
                         )}
+                        {item.type === 'maintenance' && (
+                          <div style={{ marginTop: '3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              color: '#b91c1c',
+                              fontWeight: '800',
+                              fontSize: '0.75rem'
+                            }}>
+                              Dự toán: {formatCurrency(item.cost)}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setSelectedMaintenance(item);
+                                setMaintenanceNote(item.maintenanceInfo?.approvalNote || '');
+                                setMaintenanceRejectionReason(item.maintenanceInfo?.rejectionReason || '');
+                              }}
+                              style={{
+                                background: 'none', border: 'none', color: '#ea580c',
+                                fontWeight: '700', padding: 0, textDecoration: 'underline',
+                                cursor: 'pointer', fontSize: '0.72rem'
+                              }}
+                            >
+                              Xem dự toán chi tiết & phê duyệt ngân sách
+                            </button>
+                          </div>
+                        )}
+                        {item.type === 'fleet_expense' && item.rawReport && (
+                          <div style={{ marginTop: '3px' }}>
+                            <button
+                              onClick={() => setSelectedFleetExpenseReport(item.rawReport)}
+                              style={{
+                                background: 'none', border: 'none', color: '#059669',
+                                fontWeight: '700', padding: 0, textDecoration: 'underline',
+                                cursor: 'pointer', fontSize: '0.72rem', display: 'block'
+                              }}
+                            >
+                              Xem toàn bộ bảng kê chi phí &amp; phiếu in Crystal Report
+                            </button>
+                          </div>
+                        )}
+                        {item.type === 'area_revenue' && item.rawReport && (
+                          <div style={{ marginTop: '3px' }}>
+                            <button
+                              onClick={() => setSelectedAreaRevenueReport(item.rawReport)}
+                              style={{
+                                background: 'none', border: 'none', color: '#1d4ed8',
+                                fontWeight: '700', padding: 0, textDecoration: 'underline',
+                                cursor: 'pointer', fontSize: '0.72rem', display: 'block'
+                              }}
+                            >
+                              Xem toàn bộ bảng kê doanh thu &amp; phiếu in Crystal Report
+                            </button>
+                          </div>
+                        )}
                       </td>
 
                       {/* 4. THỜI GIAN GỬI */}
@@ -919,34 +1292,110 @@ const ManagerApprovalsPage = () => {
                                 Chi tiết
                               </button>
                             )}
+                            {item.type === 'maintenance' && (
+                              <button
+                                onClick={() => {
+                                  setSelectedMaintenance(item);
+                                  setMaintenanceNote(item.maintenanceInfo?.approvalNote || '');
+                                  setMaintenanceRejectionReason(item.maintenanceInfo?.rejectionReason || '');
+                                }}
+                                style={{
+                                  background: '#fff7ed', border: '1px solid #fed7aa',
+                                  borderRadius: '4px', padding: '3px 8px', fontSize: '0.7rem',
+                                  fontWeight: '700', color: '#c2410c', cursor: 'pointer'
+                                }}
+                              >
+                                Chi tiết
+                              </button>
+                            )}
+                            {item.type === 'fleet_expense' && item.rawReport && (
+                              <button
+                                onClick={() => setSelectedFleetExpenseReport(item.rawReport)}
+                                style={{
+                                  background: '#ecfdf5', border: '1px solid #a7f3d0',
+                                  borderRadius: '4px', padding: '3px 8px', fontSize: '0.7rem',
+                                  fontWeight: '700', color: '#047857', cursor: 'pointer'
+                                }}
+                              >
+                                Chi tiết
+                              </button>
+                            )}
                           </div>
                         ) : item.status === 'pending' ? (
                           <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
-                            <button
-                              onClick={() => handleStatusUpdate(item, 'approved')}
-                              style={{
-                                border: 'none', backgroundColor: '#16a34a', color: '#ffffff',
-                                fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
-                                borderRadius: '4px', cursor: 'pointer'
-                              }}
-                            >
-                              Duyệt
-                            </button>
-                            <button
-                              onClick={() => handleStatusUpdate(item, 'rejected')}
-                              style={{
-                                border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#dc2626',
-                                fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
-                                borderRadius: '4px', cursor: 'pointer'
-                              }}
-                            >
-                              Từ chối
-                            </button>
+                            {item.type === 'area_revenue' ? (
+                              <button
+                                onClick={() => setSelectedAreaRevenueReport(item.rawReport)}
+                                style={{
+                                  border: 'none', backgroundColor: '#1d4ed8', color: '#ffffff',
+                                  fontSize: '0.72rem', fontWeight: '800', padding: '4px 12px',
+                                  borderRadius: '4px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(29,78,216,0.25)'
+                                }}
+                              >
+                                Xem &amp; Duyệt
+                              </button>
+                            ) : item.type === 'fleet_expense' ? (
+                              <button
+                                onClick={() => setSelectedFleetExpenseReport(item.rawReport)}
+                                style={{
+                                  border: 'none', backgroundColor: '#059669', color: '#ffffff',
+                                  fontSize: '0.72rem', fontWeight: '800', padding: '4px 12px',
+                                  borderRadius: '4px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(5,150,105,0.25)'
+                                }}
+                              >
+                                Xem &amp; Duyệt
+                              </button>
+                            ) : item.type === 'maintenance' ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedMaintenance(item);
+                                  setMaintenanceNote('');
+                                  setMaintenanceRejectionReason('');
+                                }}
+                                style={{
+                                  border: 'none', backgroundColor: '#ea580c', color: '#ffffff',
+                                  fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
+                                  borderRadius: '4px', cursor: 'pointer'
+                                }}
+                              >
+                                Xem & Duyệt
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => handleStatusUpdate(item, 'approved')}
+                                  style={{
+                                    border: 'none', backgroundColor: '#16a34a', color: '#ffffff',
+                                    fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
+                                    borderRadius: '4px', cursor: 'pointer'
+                                  }}
+                                >
+                                  Duyệt
+                                </button>
+                                <button
+                                  onClick={() => handleStatusUpdate(item, 'rejected')}
+                                  style={{
+                                    border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#dc2626',
+                                    fontSize: '0.72rem', fontWeight: '700', padding: '4px 10px',
+                                    borderRadius: '4px', cursor: 'pointer'
+                                  }}
+                                >
+                                  Từ chối
+                                </button>
+                              </>
+                            )}
                           </div>
                         ) : (
                           <button
                             onClick={() => {
-                              if (item.type === 'bus' && item.rawBus) setSelectedBus(item.rawBus);
+                              if (item.type === 'area_revenue' && item.rawReport) setSelectedAreaRevenueReport(item.rawReport);
+                              else if (item.type === 'fleet_expense' && item.rawReport) setSelectedFleetExpenseReport(item.rawReport);
+                              else if (item.type === 'bus' && item.rawBus) setSelectedBus(item.rawBus);
+                              else if (item.type === 'maintenance') {
+                                setSelectedMaintenance(item);
+                                setMaintenanceNote(item.maintenanceInfo?.approvalNote || '');
+                                setMaintenanceRejectionReason(item.maintenanceInfo?.rejectionReason || '');
+                              }
                               else alert(`Hồ sơ "${item.typeName}" đã được xử lý ở trạng thái: ${item.status === 'approved' ? 'Đã duyệt' : 'Từ chối'}`);
                             }}
                             style={{
@@ -955,7 +1404,7 @@ const ManagerApprovalsPage = () => {
                               fontWeight: '700', color: '#475569', cursor: 'pointer'
                             }}
                           >
-                            {item.type === 'bus' ? 'Chi tiết' : 'Xem lại'}
+                            {(item.type === 'area_revenue' || item.type === 'fleet_expense') ? 'Bản in' : (item.type === 'bus' || item.type === 'maintenance' ? 'Chi tiết' : 'Xem lại')}
                           </button>
                         )}
                       </td>
@@ -1092,6 +1541,271 @@ const ManagerApprovalsPage = () => {
           </div>
         </div>
       )}
+
+      {/* Detail Modal for Maintenance Approval */}
+      {selectedMaintenance && (
+        <div 
+          style={{
+            position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundColor: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)',
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            zIndex: 1200
+          }}
+        >
+          <div 
+            style={{
+              background: '#ffffff', borderRadius: '14px', width: '90%',
+              maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15)', padding: '1.5rem',
+              display: 'flex', flexDirection: 'column', gap: '1rem',
+              border: '1px solid #e2e8f0'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="plate-box-mini">{selectedMaintenance.plateNumber}</div>
+                <div>
+                  <h2 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                    Hồ Sơ Duyệt Ngân Sách Bảo Trì & Sửa Chữa
+                  </h2>
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Quy trình kiểm soát chi phí đại tu đội xe (Hạn mức ≥ 10.000.000 ₫)
+                  </span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedMaintenance(null)}
+                style={{ background: 'none', border: 'none', fontSize: '1.35rem', cursor: 'pointer', color: '#64748b' }}
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Cost Highlight Box */}
+              <div style={{
+                background: '#fff7ed',
+                border: '1.5px solid #fed7aa',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#c2410c', textTransform: 'uppercase' }}>
+                    Dự toán chi phí đề xuất
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#9a3412', marginTop: '2px' }}>
+                    {formatCurrency(selectedMaintenance.cost)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: '700',
+                    backgroundColor: '#ea580c',
+                    color: '#ffffff',
+                    padding: '3px 8px',
+                    borderRadius: '6px'
+                  }}>
+                    Vượt định mức cơ sở
+                  </span>
+                  <div style={{ fontSize: '0.7rem', color: '#7c2d12', marginTop: '4px' }}>
+                    Quy định: Hạn mức ≥ 10tr cần Giám đốc duyệt
+                  </div>
+                </div>
+              </div>
+
+              {/* Maintenance Specs Grid */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '10px',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '12px',
+                fontSize: '0.78rem'
+              }}>
+                <div>
+                  <strong>Phương tiện:</strong> {selectedMaintenance.rawBus?.type || 'Xe khách'} ({selectedMaintenance.rawBus?.totalSeats || 0} chỗ)
+                </div>
+                <div>
+                  <strong>Garage tiếp nhận:</strong> {selectedMaintenance.maintenanceInfo?.garage || 'Chưa ghi nhận'}
+                </div>
+                <div>
+                  <strong>Ngày đưa xe vào gara:</strong> {formatDate(selectedMaintenance.createdAt)}
+                </div>
+                <div>
+                  <strong>Người đề xuất:</strong> {selectedMaintenance.sender?.name} ({getRoleLabel(selectedMaintenance.sender?.role)})
+                </div>
+              </div>
+
+              {/* Description & Work Details */}
+              <div style={{ fontSize: '0.8rem' }}>
+                <div style={{ fontWeight: '700', color: '#0f172a', marginBottom: '4px' }}>
+                  Hạng mục kỹ thuật / Nội dung hư hỏng cần sửa chữa & thay thế:
+                </div>
+                <div style={{
+                  padding: '10px 12px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  color: '#334155',
+                  lineHeight: '1.4'
+                }}>
+                  {selectedMaintenance.maintenanceInfo?.description || 'Không có mô tả chi tiết từ Đội xe.'}
+                </div>
+              </div>
+
+              {/* Reviewer Note / Decision result */}
+              {selectedMaintenance.status === 'pending' && user?.role !== 'fleet_manager' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>
+                      Ý kiến chỉ đạo của Giám đốc (lưu hồ sơ và phản hồi đến Đội xe):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="VD: Đồng ý duyệt ngân sách, yêu cầu gara bảo hành phụ tùng 12 tháng..."
+                      value={maintenanceNote}
+                      onChange={(e) => setMaintenanceNote(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        fontSize: '0.78rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: '700', color: '#991b1b', marginBottom: '3px' }}>
+                      Lý do từ chối (chỉ nhập khi Giám đốc quyết định từ chối cấp tiền):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="VD: Báo giá quá cao so với mặt bằng chung, yêu cầu khảo sát gara khác..."
+                      value={maintenanceRejectionReason}
+                      onChange={(e) => setMaintenanceRejectionReason(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        fontSize: '0.78rem',
+                        border: '1px solid #fecaca',
+                        borderRadius: '6px',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        backgroundColor: '#fef2f2'
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: '6px',
+                  backgroundColor: selectedMaintenance.status === 'approved' ? '#f0fdf4' : selectedMaintenance.status === 'rejected' ? '#fef2f2' : '#fffbeb',
+                  border: `1px solid ${selectedMaintenance.status === 'approved' ? '#bbf7d0' : selectedMaintenance.status === 'rejected' ? '#fecaca' : '#fde68a'}`,
+                  fontSize: '0.78rem'
+                }}>
+                  <div style={{ fontWeight: '700', color: selectedMaintenance.status === 'approved' ? '#166534' : selectedMaintenance.status === 'rejected' ? '#991b1b' : '#b45309' }}>
+                    {selectedMaintenance.status === 'approved' && '✓ GIÁM ĐỐC ĐÃ PHÊ DUYỆT NGÂN SÁCH'}
+                    {selectedMaintenance.status === 'rejected' && '✕ GIÁM ĐỐC ĐÃ TỪ CHỐI NGÂN SÁCH'}
+                    {selectedMaintenance.status === 'pending' && '⏳ HỒ SƠ ĐANG CHỜ GIÁM ĐỐC PHÊ DUYỆT'}
+                  </div>
+                  {selectedMaintenance.maintenanceInfo?.approvedAt && (
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                      Thời gian quyết định: {formatDate(selectedMaintenance.maintenanceInfo.approvedAt)}
+                    </div>
+                  )}
+                  {selectedMaintenance.maintenanceInfo?.approvalNote && (
+                    <div style={{ marginTop: '4px', color: '#166534' }}>
+                      <strong>Chỉ đạo:</strong> {selectedMaintenance.maintenanceInfo.approvalNote}
+                    </div>
+                  )}
+                  {selectedMaintenance.maintenanceInfo?.rejectionReason && (
+                    <div style={{ marginTop: '4px', color: '#991b1b' }}>
+                      <strong>Lý do từ chối:</strong> {selectedMaintenance.maintenanceInfo.rejectionReason}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid #f1f5f9', paddingTop: '0.85rem' }}>
+              <button 
+                onClick={() => setSelectedMaintenance(null)} 
+                disabled={isSubmittingMaint}
+                style={{
+                  padding: '7px 14px', fontSize: '0.78rem', fontWeight: '700',
+                  border: '1px solid #cbd5e1', borderRadius: '6px',
+                  backgroundColor: '#ffffff', color: '#475569', cursor: 'pointer'
+                }}
+              >
+                Đóng
+              </button>
+              
+              {user?.role !== 'fleet_manager' && selectedMaintenance.status === 'pending' && (
+                <>
+                  <button 
+                    onClick={() => handleMaintenanceModalUpdate('rejected')} 
+                    disabled={isSubmittingMaint}
+                    style={{
+                      padding: '7px 14px', fontSize: '0.78rem', fontWeight: '700',
+                      border: '1px solid #cbd5e1', borderRadius: '6px',
+                      backgroundColor: '#ffffff', color: '#dc2626', cursor: isSubmittingMaint ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {isSubmittingMaint ? 'Đang xử lý...' : 'Từ chối ngân sách'}
+                  </button>
+                  <button 
+                    onClick={() => handleMaintenanceModalUpdate('approved')} 
+                    disabled={isSubmittingMaint}
+                    style={{
+                      padding: '7px 16px', fontSize: '0.78rem', fontWeight: '700',
+                      border: 'none', borderRadius: '6px',
+                      backgroundColor: '#16a34a', color: '#ffffff', cursor: isSubmittingMaint ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {isSubmittingMaint ? 'Đang duyệt...' : 'Phê Duyệt Ngân Sách'}
+                  </button>
+                </>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Báo Cáo Chi Tiêu Đội Xe (Crystal Report) */}
+      <MonthlyFleetExpenseReportModal
+        isOpen={Boolean(selectedFleetExpenseReport)}
+        onClose={() => setSelectedFleetExpenseReport(null)}
+        report={selectedFleetExpenseReport}
+        canApprove={user?.role !== 'fleet_manager'}
+        onApprove={handleApproveFleetExpense}
+        onReject={handleRejectFleetExpense}
+        actionLoading={actionLoadingExpense}
+      />
+
+      {/* Modal Báo Cáo Doanh Thu Khu Vực (Crystal Report) */}
+      <MonthlyAreaRevenueReportModal
+        isOpen={Boolean(selectedAreaRevenueReport)}
+        onClose={() => setSelectedAreaRevenueReport(null)}
+        report={selectedAreaRevenueReport}
+        canApprove={user?.role !== 'ticket_manager'}
+        onApprove={handleApproveAreaRevenue}
+        onReject={handleRejectAreaRevenue}
+        actionLoading={actionLoadingAreaRev}
+      />
 
     </div>
   );

@@ -87,10 +87,10 @@ exports.registerFace = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy nhân viên.' });
     }
 
-    if (!['driver', 'attendant', 'ticket_agent', 'ticket_manager'].includes(user.role)) {
+    if (!['driver', 'attendant', 'ticket_agent', 'ticket_manager', 'ops_manager', 'fleet_manager', 'general_manager', 'admin'].includes(user.role)) {
       return res.status(403).json({
         success: false,
-        message: 'Chỉ có thể đăng ký khuôn mặt cho Tài xế, Phụ xe, Nhân viên bán vé hoặc Quản lý phòng vé.'
+        message: 'Chỉ có thể đăng ký khuôn mặt cho nhân sự thuộc hệ thống nhà xe.'
       });
     }
 
@@ -154,7 +154,7 @@ exports.checkIn = async (req, res) => {
     if (bestDistance > THRESHOLD || avgDistance > 0.42) {
       return res.status(401).json({
         success: false,
-        message: `Khuôn mặt trước camera không trùng khớp với tài xế ${user.name} (sai số: ${bestDistance.toFixed(4)}, ngưỡng cho phép: ${THRESHOLD}). Vui lòng không điểm danh hộ!`,
+        message: `Khuôn mặt trước camera không trùng khớp với nhân sự ${user.name} (sai số: ${bestDistance.toFixed(4)}, ngưỡng cho phép: ${THRESHOLD}). Vui lòng không điểm danh hộ!`,
         faceDistance: bestDistance
       });
     }
@@ -162,38 +162,42 @@ exports.checkIn = async (req, res) => {
     const now = new Date();
     const { dayStart, dayEnd } = getDayRangeVN();
 
-    // Xác định chuyến xe cần Check-in
+    // Xác định chuyến xe cần Check-in (chỉ áp dụng cho Tài xế và Phụ xe)
     let targetTrip = null;
-    if (tripId) {
-      targetTrip = await Trip.findById(tripId).populate('routeId').populate('busId');
-    }
+    const isCrewRole = ['driver', 'attendant'].includes(user.role);
 
-    if (!targetTrip) {
-      // Tìm chuyến xe phân công cho nhân viên này trong hôm nay
-      const query = {
-        departureTime: { $gte: new Date(now.getTime() - 4 * 3600 * 1000), $lte: dayEnd },
-        journeyStatus: { $ne: 'cancelled' }
-      };
-      if (user.role === 'driver') {
-        query['driver.phone'] = user.phone;
-      } else {
-        query['assistant.phone'] = user.phone;
+    if (isCrewRole) {
+      if (tripId) {
+        targetTrip = await Trip.findById(tripId).populate('routeId').populate('busId');
       }
 
-      const assignedTrips = await Trip.find(query)
-        .sort({ departureTime: 1 })
-        .populate('routeId')
-        .populate('busId');
-
-      if (assignedTrips.length > 0) {
-        for (const t of assignedTrips) {
-          const existingForTrip = await Attendance.findOne({ userId, tripId: t._id });
-          if (!existingForTrip || existingForTrip.status !== 'closed') {
-            targetTrip = t;
-            break;
-          }
+      if (!targetTrip) {
+        // Tìm chuyến xe phân công cho nhân viên này trong hôm nay
+        const query = {
+          departureTime: { $gte: new Date(now.getTime() - 4 * 3600 * 1000), $lte: dayEnd },
+          journeyStatus: { $ne: 'cancelled' }
+        };
+        if (user.role === 'driver') {
+          query['driver.phone'] = user.phone;
+        } else {
+          query['assistant.phone'] = user.phone;
         }
-        if (!targetTrip) targetTrip = assignedTrips[assignedTrips.length - 1];
+
+        const assignedTrips = await Trip.find(query)
+          .sort({ departureTime: 1 })
+          .populate('routeId')
+          .populate('busId');
+
+        if (assignedTrips.length > 0) {
+          for (const t of assignedTrips) {
+            const existingForTrip = await Attendance.findOne({ userId, tripId: t._id });
+            if (!existingForTrip || existingForTrip.status !== 'closed') {
+              targetTrip = t;
+              break;
+            }
+          }
+          if (!targetTrip) targetTrip = assignedTrips[assignedTrips.length - 1];
+        }
       }
     }
 
@@ -215,9 +219,41 @@ exports.checkIn = async (req, res) => {
           });
         }
       }
+    } else if (!isCrewRole) {
+      // Đối với nhân sự văn phòng / Quản lý vận tải / Quản lý đội xe / Quản lý phòng vé
+      const existingToday = await Attendance.findOne({ userId, date: dayStart });
+      if (existingToday) {
+        if (existingToday.status === 'active') {
+          return res.status(400).json({
+            success: false,
+            message: `Bạn đã bắt đầu ca làm việc hôm nay từ ${formatTime(existingToday.checkInTime)}. Hãy chọn 'Tan ca' (Check-out) khi hoàn thành ngày làm việc!`,
+            data: existingToday
+          });
+        }
+        if (existingToday.status === 'closed') {
+          return res.status(400).json({
+            success: false,
+            message: `Bạn đã hoàn thành ca làm việc hôm nay (Vào ca: ${formatTime(existingToday.checkInTime)} — Tan ca: ${formatTime(existingToday.checkOutTime)}).`
+          });
+        }
+      }
     }
 
-    const routeName = targetTrip?.routeId?.name || (targetTrip?.routeId?.startPoint ? `${targetTrip.routeId.startPoint} -> ${targetTrip.routeId.endPoint}` : 'Theo lịch phân công');
+    const defaultRoleTitle = 
+      user.role === 'ops_manager' ? 'Ca trực Điều hành Vận tải' :
+      user.role === 'fleet_manager' ? 'Ca trực Quản lý Đội xe' :
+      user.role === 'ticket_manager' ? 'Ca trực Quản lý Phòng vé' :
+      user.role === 'ticket_agent' ? 'Ca trực Quầy vé' :
+      'Ca làm việc tiêu chuẩn';
+
+    const defaultOfficeLocation = 
+      user.role === 'ops_manager' ? 'Trung tâm Điều hành Vận tải' :
+      user.role === 'fleet_manager' ? 'Trạm Quản lý Đội xe' :
+      user.role === 'ticket_manager' ? 'Văn phòng Quản lý Phòng vé' :
+      user.role === 'ticket_agent' ? 'Quầy vé bến xe' :
+      'Trụ sở văn phòng';
+
+    const routeName = targetTrip?.routeId?.name || (targetTrip?.routeId?.startPoint ? `${targetTrip.routeId.startPoint} -> ${targetTrip.routeId.endPoint}` : defaultRoleTitle);
     const plateNumber = targetTrip?.busId?.plateNumber || '--';
     const scheduledDepTime = targetTrip?.departureTime || null;
 
@@ -241,18 +277,59 @@ exports.checkIn = async (req, res) => {
           faceDistance: parseFloat(bestDistance.toFixed(4)),
           isLiveVerified: Boolean(isLiveVerified),
           checkInPhoto: checkInPhoto || null,
-          location: location || 'Tại bến xuất bến',
+          location: location || (targetTrip ? 'Tại bến xuất bến' : defaultOfficeLocation),
           gpsLat: gpsLat || null,
           gpsLng: gpsLng || null,
-          note: `Đã check-in thành công`
+          note: `Đã check-in thành công ca làm việc`
         }
       },
       { upsert: true, new: true }
     );
 
+    // Đồng bộ mở ShiftSession nếu có
+    if (!targetTrip) {
+      try {
+        await ShiftSession.findOneAndUpdate(
+          { userId, status: 'active' },
+          {
+            $setOnInsert: {
+              userId,
+              counterNumber: location || defaultOfficeLocation,
+              initialCash: 0,
+              startTime: now,
+              status: 'active',
+              faceVerified: true,
+              faceDistance: parseFloat(bestDistance.toFixed(4)),
+              isLiveVerified: Boolean(isLiveVerified),
+              checkInPhoto: checkInPhoto || null,
+              location: location || defaultOfficeLocation,
+              gpsLat: gpsLat || null,
+              gpsLng: gpsLng || null
+            }
+          },
+          { upsert: true }
+        );
+      } catch (e) {
+        // bỏ qua nếu lỗi shift session
+      }
+    }
+
+    const roleGreeting = 
+      user.role === 'ops_manager' ? 'Quản lý Vận tải' :
+      user.role === 'fleet_manager' ? 'Quản lý Đội xe' :
+      user.role === 'ticket_manager' ? 'Quản lý Phòng vé' :
+      user.role === 'driver' ? 'Tài xế' :
+      user.role === 'attendant' ? 'Phụ xe' :
+      user.role === 'ticket_agent' ? 'Nhân viên Bán vé' :
+      'Nhân viên';
+
+    const successMessage = targetTrip
+      ? `Check-in thành công chuyến ${routeName} (${plateNumber})! Xin chào ${roleGreeting} ${user.name} — Chúc bạn một chuyến đi thượng lộ bình an.`
+      : `Check-in thành công ca làm việc! Xin chào ${roleGreeting} ${user.name} — Chúc bạn một ngày làm việc hiệu quả và thành công.`;
+
     return res.status(200).json({
       success: true,
-      message: `Check-in thành công chuyến ${routeName} (${plateNumber})! Xin chào ${user.name} — Chúc bạn một chuyến đi thượng lộ bình an.`,
+      message: successMessage,
       data: {
         tripId: targetTrip?._id || null,
         tripRoute: routeName,
@@ -297,7 +374,7 @@ exports.checkOut = async (req, res) => {
     if (bestDistance > THRESHOLD || avgDistance > 0.42) {
       return res.status(401).json({
         success: false,
-        message: `Khuôn mặt không trùng khớp với tài xế ${user.name} khi tan ca (sai số: ${bestDistance.toFixed(4)}, ngưỡng: ${THRESHOLD}).`,
+        message: `Khuôn mặt không trùng khớp với ${user.name} khi tan ca (sai số: ${bestDistance.toFixed(4)}, ngưỡng: ${THRESHOLD}).`,
         faceDistance: bestDistance
       });
     }
@@ -312,7 +389,7 @@ exports.checkOut = async (req, res) => {
     if (!attendance) {
       return res.status(400).json({
         success: false,
-        message: 'Bạn chưa có chuyến xe nào đang trực ca để tan ca. Vui lòng check-in trước khi chạy chuyến!'
+        message: 'Bạn chưa có ca làm việc nào đang mở để tan ca. Vui lòng check-in vào ca trước!'
       });
     }
 
@@ -325,13 +402,27 @@ exports.checkOut = async (req, res) => {
     }
     await attendance.save();
 
+    // Đồng bộ đóng ShiftSession nếu có
+    try {
+      await ShiftSession.findOneAndUpdate(
+        { userId, status: 'active' },
+        {
+          $set: {
+            status: 'closed',
+            endTime: now,
+            checkOutPhoto: checkOutPhoto || null
+          }
+        }
+      );
+    } catch (e) {}
+
     const diffMs = now - (attendance.checkInTime || now);
     const totalHours = Math.floor(diffMs / 3_600_000);
     const totalMinutes = Math.floor((diffMs % 3_600_000) / 60_000);
 
     return res.status(200).json({
       success: true,
-      message: `Tan ca thành công cho chuyến ${attendance.tripRoute || ''}! Thời gian thực hiện: ${totalHours} giờ ${totalMinutes} phút.`,
+      message: `Tan ca thành công (${attendance.tripRoute || 'Ca làm việc'})! Thời gian thực hiện: ${totalHours} giờ ${totalMinutes} phút. Chúc bạn nghỉ ngơi vui vẻ!`,
       data: {
         tripId: attendance.tripId,
         tripRoute: attendance.tripRoute,
@@ -365,8 +456,8 @@ exports.getMyAttendance = async (req, res) => {
 
     const { dayStart, dayEnd } = getDayRangeVN();
 
-    // ── Đối với Nhân viên Bán vé / Quản lý phòng vé: lấy dữ liệu từ ShiftSession ──
-    if (user && ['ticket_agent', 'ticket_manager'].includes(user.role)) {
+    // ── Đối với Nhân viên Bán vé / Quản lý / Điều hành: lấy dữ liệu từ ShiftSession & Attendance ──
+    if (user && ['ticket_agent', 'ticket_manager', 'ops_manager', 'fleet_manager', 'general_manager', 'admin'].includes(user.role)) {
       const activeShift = await ShiftSession.findOne({ userId, status: 'active' }).lean();
       const latestShift = activeShift || (await ShiftSession.findOne({ userId }).sort({ startTime: -1 }).lean());
 
@@ -412,8 +503,8 @@ exports.getMyAttendance = async (req, res) => {
         .limit(limit)
         .lean();
 
-      // Kết hợp thêm các bản ghi chấm công từ collection 'Attendance' của nhân viên bán vé
-      const attTicketQuery = { userId, role: { $in: ['ticket_agent', 'ticket_manager'] } };
+      // Kết hợp thêm các bản ghi chấm công từ collection 'Attendance' của nhân viên
+      const attTicketQuery = { userId };
       if (req.query.fromDate && req.query.toDate) {
         const from = new Date(req.query.fromDate);
         from.setHours(0, 0, 0, 0);
@@ -589,6 +680,24 @@ exports.getMyAttendance = async (req, res) => {
         attendanceRate
       };
 
+      const todayAttRecord = await Attendance.findOne({ userId, date: dayStart }).sort({ createdAt: -1 });
+      let currentTodayStatus = 'not_checked';
+      let currentTodayRecord = null;
+
+      if (activeShift) {
+        currentTodayStatus = 'active';
+        currentTodayRecord = activeShift;
+      } else if (todayAttRecord && todayAttRecord.status === 'active') {
+        currentTodayStatus = 'active';
+        currentTodayRecord = todayAttRecord;
+      } else if (todayAttRecord && todayAttRecord.status === 'closed') {
+        currentTodayStatus = 'closed';
+        currentTodayRecord = todayAttRecord;
+      } else if (latestShift && new Date(latestShift.startTime) >= dayStart) {
+        currentTodayStatus = latestShift.status;
+        currentTodayRecord = latestShift;
+      }
+
       return res.status(200).json({
         success: true,
         faceRegistered: Boolean(user.faceRegistered),
@@ -596,8 +705,8 @@ exports.getMyAttendance = async (req, res) => {
         faceDescriptors: Array.isArray(user.faceDescriptors) ? user.faceDescriptors : [],
         todayDuties: [],
         activeTrip: null,
-        todayStatus: activeShift ? 'active' : latestShift && new Date(latestShift.startTime) >= dayStart ? latestShift.status : 'not_checked',
-        todayRecord: activeShift || (latestShift && new Date(latestShift.startTime) >= dayStart ? latestShift : null),
+        todayStatus: currentTodayStatus,
+        todayRecord: currentTodayRecord,
         history: combinedHistory,
         summary
       });
@@ -1023,11 +1132,14 @@ exports.getTodayAttendance = async (req, res) => {
       .populate('busId', 'plateNumber type')
       .lean();
 
-    // 2. Lấy thông tin tài khoản của toàn bộ Tài xế & Phụ xe đang hoạt động
+    // 2. Lấy thông tin tài khoản của toàn bộ nhân viên & quản lý đang hoạt động
+    const roleFilter = req.query.role;
+    const allStaffRoles = ['driver', 'attendant', 'ticket_agent', 'ticket_manager', 'ops_manager', 'fleet_manager'];
+
     const allStaff = await User.find({
-      role: { $in: ['driver', 'attendant'] },
+      role: { $in: allStaffRoles },
       status: 'active'
-    }).select('_id name phone role faceRegistered facePhoto').lean();
+    }).select('_id name phone role faceRegistered facePhoto branch').lean();
 
     const staffByPhone = {};
     const staffByName = {};
@@ -1228,9 +1340,63 @@ exports.getTodayAttendance = async (req, res) => {
       }
     }
 
+    // 4.3. Bổ sung nhân sự Quản lý & Văn phòng (ops_manager, fleet_manager, ticket_manager, ticket_agent)
+    const officeStaff = allStaff.filter(s => ['ticket_agent', 'ticket_manager', 'ops_manager', 'fleet_manager'].includes(s.role));
+    for (const staff of officeStaff) {
+      staffAssignedMap[staff._id.toString()] = true;
+      const rec = attMap[`${staff._id}`] || attMap[`${staff.phone}`];
+      let status = 'scheduled';
+      let note = '';
+      if (rec) {
+        status = rec.status;
+        note = rec.note || '';
+      }
+
+      const roleRouteName = 
+        staff.role === 'ops_manager' ? 'Điều hành & Giám sát Vận tải' :
+        staff.role === 'fleet_manager' ? 'Quản lý & Bảo dưỡng Đội xe' :
+        staff.role === 'ticket_manager' ? 'Quản lý & Giám sát Phòng vé' :
+        'Trực ca quầy vé & CSKH';
+
+      const roleLocation = 
+        staff.role === 'ops_manager' ? 'Trung tâm Điều hành Vận tải TP.HCM' :
+        staff.role === 'fleet_manager' ? 'Trạm Quản lý Đội xe' :
+        staff.role === 'ticket_manager' ? 'Văn phòng Quản lý Phòng vé' :
+        'Quầy vé bến xe';
+
+      duties.push({
+        id: rec?._id || `duty_${staff._id}_${staff.role}`,
+        dutyId: `duty_${staff._id}_${staff.role}`,
+        tripId: null,
+        tripRoute: roleRouteName,
+        busPlateNumber: roleLocation,
+        scheduledDepartureTime: null,
+        departureTimeStr: '07:30',
+        userId: staff._id.toString(),
+        name: staff.name,
+        phone: staff.phone,
+        role: staff.role,
+        faceRegistered: Boolean(staff.faceRegistered),
+        facePhoto: staff.facePhoto || null,
+        status,
+        isPastDeparture: false,
+        overdueMinutes: 0,
+        note: note || (status === 'scheduled' ? 'Chờ nhận ca làm việc' : ''),
+        checkInTime: formatTime(rec?.checkInTime),
+        checkOutTime: formatTime(rec?.checkOutTime),
+        faceVerified: rec ? rec.faceVerified : false,
+        faceDistance: rec?.faceDistance !== undefined ? rec.faceDistance : null,
+        isLiveVerified: rec ? Boolean(rec.isLiveVerified) : false,
+        checkInPhoto: rec?.checkInPhoto || null,
+        checkOutPhoto: rec?.checkOutPhoto || null,
+        location: rec?.location || roleLocation,
+        gps: rec?.gpsLat && rec?.gpsLng ? `${rec.gpsLat.toFixed(4)}°N, ${rec.gpsLng.toFixed(4)}°E` : '--'
+      });
+    }
+
     // 5. Thêm các nhân viên đội xe KHÔNG có chuyến nào hôm nay (để Quản lý nắm thông tin)
     const unassignedStaff = allStaff
-      .filter(s => !staffAssignedMap[s._id.toString()])
+      .filter(s => ['driver', 'attendant'].includes(s.role) && !staffAssignedMap[s._id.toString()])
       .map(s => ({
         id: `unassigned_${s._id}`,
         dutyId: `unassigned_${s._id}`,
@@ -1260,12 +1426,23 @@ exports.getTodayAttendance = async (req, res) => {
         gps: '--'
       }));
 
-    // 6. Tính toán các chỉ số KPI thống kê
+    // 6. Tính toán các chỉ số KPI thống kê & phân bổ theo vai trò
     const activeDirect = duties.filter(d => d.status === 'active').length;
     const closedShift = duties.filter(d => d.status === 'closed').length;
     const absent = duties.filter(d => d.status === 'absent').length;
     const scheduled = duties.filter(d => d.status === 'scheduled').length;
     const faceRegisteredCount = allStaff.filter(s => s.faceRegistered).length;
+
+    const roleStats = {};
+    allStaffRoles.forEach(r => { roleStats[r] = 0; });
+    allStaff.forEach(s => {
+      roleStats[s.role] = (roleStats[s.role] || 0) + 1;
+    });
+
+    let finalDuties = duties;
+    if (roleFilter && roleFilter !== 'all') {
+      finalDuties = duties.filter(d => d.role === roleFilter);
+    }
 
     const stats = {
       totalTrips: trips.length,
@@ -1276,7 +1453,8 @@ exports.getTodayAttendance = async (req, res) => {
       scheduled,
       unassignedCount: unassignedStaff.length,
       totalStaff: allStaff.length,
-      faceRegisteredCount
+      faceRegisteredCount,
+      roleStats
     };
 
     return res.status(200).json({
@@ -1284,7 +1462,7 @@ exports.getTodayAttendance = async (req, res) => {
       date: dateStr,
       stats,
       tripsCount: trips.length,
-      attendance: duties,
+      attendance: finalDuties,
       unassignedStaff
     });
   } catch (err) {

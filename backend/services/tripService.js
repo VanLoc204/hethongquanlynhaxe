@@ -394,7 +394,28 @@ class TripService {
     }
     if (activeStatus) bus.activeStatus = activeStatus;
     if (maintenanceInfo) {
-      bus.maintenanceInfo = maintenanceInfo;
+      const costNum = Number(maintenanceInfo.estimatedCost) || 0;
+      const isMajor = costNum >= 10000000;
+      let approvalStatus = 'auto_approved';
+      if (isMajor) {
+        if (maintenanceInfo.approvalStatus) {
+          approvalStatus = maintenanceInfo.approvalStatus;
+        } else if (bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus === 'approved' && bus.maintenanceInfo?.estimatedCost === costNum) {
+          approvalStatus = 'approved';
+        } else {
+          approvalStatus = 'pending_approval';
+        }
+      }
+
+      bus.maintenanceInfo = {
+        ...maintenanceInfo,
+        estimatedCost: costNum,
+        isMajor,
+        approvalStatus,
+        proposedBy: busData.proposedBy || bus.maintenanceInfo?.proposedBy,
+        approvalNote: bus.maintenanceInfo?.approvalNote || '',
+        rejectionReason: bus.maintenanceInfo?.rejectionReason || ''
+      };
       bus.markModified('maintenanceInfo');
     }
 
@@ -891,6 +912,15 @@ class TripService {
   async createMaintenanceRecord(recordData) {
     const { busId, plateNumber, type, description, garage, cost, startDate, endDate } = recordData;
 
+    const bus = await busRepository.findById(busId);
+    if (bus && bus.maintenanceInfo) {
+      if (bus.maintenanceInfo.isMajor && bus.maintenanceInfo.approvalStatus !== 'approved') {
+        const err = new Error('Khoản chi phí bảo dưỡng này vượt hạn mức (≥ 10.000.000 ₫) và chưa được Giám đốc nhà xe phê duyệt.');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
     const record = await maintenanceRepository.create({
       busId,
       plateNumber,
@@ -898,18 +928,64 @@ class TripService {
       description,
       garage,
       cost: Number(cost),
+      estimatedCost: bus?.maintenanceInfo?.estimatedCost || Number(cost),
+      isMajor: bus?.maintenanceInfo?.isMajor || Number(cost) >= 10000000,
+      approvalStatus: bus?.maintenanceInfo?.approvalStatus || (Number(cost) >= 10000000 ? 'pending_approval' : 'auto_approved'),
+      proposedBy: bus?.maintenanceInfo?.proposedBy,
+      approvedBy: bus?.maintenanceInfo?.approvedBy,
+      approvedAt: bus?.maintenanceInfo?.approvedAt,
+      approvalNote: bus?.maintenanceInfo?.approvalNote || '',
+      rejectionReason: bus?.maintenanceInfo?.rejectionReason || '',
       startDate: startDate || new Date(),
       endDate: endDate || new Date()
     });
 
-    const bus = await busRepository.findById(busId);
     if (bus) {
       bus.activeStatus = 'ready';
-      bus.maintenanceInfo = null;
+      bus.maintenanceInfo = undefined;
       await busRepository.save(bus);
     }
 
     return record;
+  }
+
+  async getMaintenanceApprovals() {
+    const Bus = require('../models/Bus');
+    return await Bus.find({
+      activeStatus: { $in: ['maintenance', 'repairing'] },
+      $or: [
+        { 'maintenanceInfo.isMajor': true },
+        { 'maintenanceInfo.approvalStatus': 'pending_approval' }
+      ]
+    })
+    .populate('maintenanceInfo.proposedBy', 'name role phone email')
+    .populate('maintenanceInfo.approvedBy', 'name role email')
+    .sort({ updatedAt: -1 });
+  }
+
+  async reviewMaintenanceApproval(busId, { status, approvalNote, rejectionReason, reviewerId }) {
+    const bus = await busRepository.findById(busId);
+    if (!bus) {
+      const err = new Error('Không tìm thấy phương tiện.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!bus.maintenanceInfo) {
+      const err = new Error('Phương tiện này hiện không có hồ sơ bảo dưỡng cần duyệt.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    bus.maintenanceInfo.approvalStatus = status === 'approved' ? 'approved' : 'rejected';
+    bus.maintenanceInfo.approvedBy = reviewerId;
+    bus.maintenanceInfo.approvedAt = new Date();
+    if (approvalNote) bus.maintenanceInfo.approvalNote = approvalNote;
+    if (rejectionReason) bus.maintenanceInfo.rejectionReason = rejectionReason;
+
+    bus.markModified('maintenanceInfo');
+    await busRepository.save(bus);
+    return bus;
   }
 }
 

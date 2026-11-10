@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
+import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute, getDistanceMeters } from '../../utils/mapRoutingUtils';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -37,6 +38,10 @@ const DriverMapPage = ({ setActiveTab }) => {
   const [routeCoordinates, setRouteCoordinates] = useState([]);
   const [simIndex, setSimIndex] = useState(initialGpsState.simIndex || 0);
 
+  // Dynamic Re-routing State
+  const [offRouteInfo, setOffRouteInfo] = useState({ isOffRoute: false, distance: 0 });
+  const [isDetourDemo, setIsDetourDemo] = useState(false);
+
   // Chế độ Toàn màn hình (Web Fullscreen)
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -45,6 +50,7 @@ const DriverMapPage = ({ setActiveTab }) => {
   const mapInstanceRef = useRef(null);
   const busMarkerRef = useRef(null);
   const polylineRef = useRef(null);
+  const reroutePolylineRef = useRef(null);
   const layerGroupRef = useRef(null);
   const wakeLockRef = useRef(null);
   const geoWatchIdRef = useRef(null);
@@ -298,44 +304,63 @@ const DriverMapPage = ({ setActiveTab }) => {
     return assignedTrips.find(t => t._id === selectedTripId) || assignedTrips[0] || null;
   }, [assignedTrips, selectedTripId]);
 
-  // Danh sách các điểm dừng (đón + trả)
+  // Danh sách các điểm dừng (đón + trả) tuần tự theo lộ trình thực tế
   const allStops = useMemo(() => {
     if (!activeTrip) return [];
-    const pickups = (activeTrip.pickupPoints || []).map(p => ({ ...p, type: 'pickup' }));
-    const dropoffs = (activeTrip.dropoffPoints || []).map(d => ({ ...d, type: 'dropoff' }));
-    return [...pickups, ...dropoffs].filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+
+    // Ưu tiên 1: Lấy danh sách trạm từ Tuyến đường gốc (Route) nếu có
+    if (activeTrip.routeId && Array.isArray(activeTrip.routeId.stops) && activeTrip.routeId.stops.length > 0) {
+      return activeTrip.routeId.stops
+        .filter(s => typeof s.lat === 'number' && typeof s.lng === 'number')
+        .map((s, idx, arr) => ({
+          ...s,
+          name: s.name || s.location,
+          location: s.name || s.location,
+          type: idx === 0 ? 'start' : idx === arr.length - 1 ? 'end' : (s.type === 'both' ? 'pickup' : (s.type || 'pickup'))
+        }));
+    }
+
+    // Ưu tiên 2: Khử trùng lặp giữa pickupPoints và dropoffPoints theo thứ tự địa lý
+    const combined = [...(activeTrip.pickupPoints || []), ...(activeTrip.dropoffPoints || [])];
+    const seen = new Set();
+    const unique = [];
+    for (const s of combined) {
+      if (typeof s.lat !== 'number' || typeof s.lng !== 'number') continue;
+      const key = `${s.name || s.location || ''}_${s.lat.toFixed(4)}_${s.lng.toFixed(4)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push({
+          ...s,
+          name: s.name || s.location,
+          location: s.name || s.location
+        });
+      }
+    }
+    return unique;
   }, [activeTrip]);
 
-  // 3. Tải đường uốn lượn OSRM kết nối các trạm dừng
+  // 3. TẢI ĐƯỜNG UỐN LƯỢN OSRM KẾT NỐI CÁC TRẠM DỪNG (SIÊU TỐC VỚI CACHE & SAMPLE)
   useEffect(() => {
     if (!activeTrip || allStops.length < 2) return;
 
+    // Vẽ tức thì đường trực tiếp (0ms)
+    const directFallback = allStops.map(s => [s.lat, s.lng]);
+    setRouteCoordinates(directFallback);
+    if (!currentCoord && directFallback.length > 0) {
+      setCurrentCoord({ lat: directFallback[0][0], lng: directFallback[0][1] });
+    }
+
     const fetchOSRM = async () => {
       try {
-        const waypointsStr = allStops.map(s => `${s.lng},${s.lat}`).join(';');
-        const url = `https://router.project-osrm.org/route/v1/driving/${waypointsStr}?overview=full&geometries=geojson`;
-        const res = await fetch(url);
-        const data = await res.json();
-
-        if (data.code === 'Ok' && data.routes && data.routes[0]) {
-          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+        const coords = await fetchFastHighwayRoute(allStops, activeTrip._id);
+        if (coords && coords.length > 0) {
           setRouteCoordinates(coords);
-          if (!currentCoord && coords.length > 0) {
+          if (!currentCoord) {
             setCurrentCoord({ lat: coords[0][0], lng: coords[0][1] });
           }
-        } else {
-          const fallback = allStops.map(s => [s.lat, s.lng]);
-          setRouteCoordinates(fallback);
-          if (!currentCoord && fallback.length > 0) {
-            setCurrentCoord({ lat: fallback[0][0], lng: fallback[0][1] });
-          }
         }
-      } catch {
-        const fallback = allStops.map(s => [s.lat, s.lng]);
-        setRouteCoordinates(fallback);
-        if (!currentCoord && fallback.length > 0) {
-          setCurrentCoord({ lat: fallback[0][0], lng: fallback[0][1] });
-        }
+      } catch (err) {
+        console.warn('Lỗi lấy OSRM tài xế:', err);
       }
     };
 
@@ -380,8 +405,11 @@ const DriverMapPage = ({ setActiveTab }) => {
 
     // Vẽ các điểm dừng
     allStops.forEach((stop, idx) => {
-      const isPickup = stop.type === 'pickup';
-      const markerColor = isPickup ? '#10b981' : '#ef4444';
+      const isPickup = stop.type === 'pickup' || stop.type === 'start';
+      const isFirst = idx === 0;
+      const isLast = idx === allStops.length - 1;
+      const markerColor = isFirst ? '#059669' : isLast ? '#dc2626' : (isPickup ? '#10b981' : '#f97316');
+      const stationName = stop.name || stop.location || 'Trạm dừng';
 
       const stopIcon = L.divIcon({
         className: 'driver-station-pin',
@@ -398,7 +426,7 @@ const DriverMapPage = ({ setActiveTab }) => {
             white-space: nowrap;
             font-family: system-ui;
           ">
-            <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stop.location}</span>
+            <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stationName}</span>
           </div>
         `,
         iconSize: [110, 24],
@@ -408,9 +436,9 @@ const DriverMapPage = ({ setActiveTab }) => {
       const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(layerGroup);
       marker.bindPopup(`
         <div style="font-family: system-ui; padding: 4px;">
-          <div style="font-weight: 800; font-size: 0.85rem;">${stop.location}</div>
+          <div style="font-weight: 800; font-size: 0.85rem;">${stationName}</div>
           <div style="font-size: 0.72rem; color: ${isPickup ? '#047857' : '#b91c1c'}; font-weight: 700;">
-            ${isPickup ? 'Điểm đón khách' : 'Điểm trả khách'} (${stop.time || 'N/A'})
+            ${isFirst ? 'Điểm xuất phát' : isLast ? 'Điểm kết thúc' : (isPickup ? 'Điểm đón khách' : 'Điểm trả khách')} (${stop.time || 'N/A'})
           </div>
           <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">${stop.address || ''}</div>
         </div>
@@ -421,17 +449,20 @@ const DriverMapPage = ({ setActiveTab }) => {
     if (routeCoordinates.length > 1) {
       if (polylineRef.current) polylineRef.current.remove();
       polylineRef.current = L.polyline(routeCoordinates, {
-        color: '#2563eb',
-        weight: 6,
-        opacity: 0.85,
+        color: offRouteInfo.isOffRoute ? '#94a3b8' : '#2563eb',
+        weight: offRouteInfo.isOffRoute ? 4 : 6,
+        opacity: offRouteInfo.isOffRoute ? 0.45 : 0.88,
+        dashArray: offRouteInfo.isOffRoute ? '6, 8' : null,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(layerGroup);
 
       // Tự động căn chỉnh bản đồ vừa vặn lúc ban đầu
-      map.fitBounds(routeCoordinates, { padding: [40, 40], maxZoom: 12 });
+      if (!busMarkerRef.current) {
+        map.fitBounds(routeCoordinates, { padding: [40, 40], maxZoom: 12 });
+      }
     }
-  }, [mapLoaded, allStops, routeCoordinates]);
+  }, [mapLoaded, allStops, routeCoordinates, offRouteInfo.isOffRoute]);
 
   // 5. Cập nhật Marker vị trí xe trên bản đồ với Mũi tên định vị xoay theo góc heading
   useEffect(() => {
@@ -518,7 +549,91 @@ const DriverMapPage = ({ setActiveTab }) => {
     if (isFollowMode) {
       map.panTo([currentCoord.lat, currentCoord.lng], { animate: true, duration: 0.8 });
     }
-  }, [mapLoaded, currentCoord, currentHeading, isTracking, activeTrip, isFollowMode]);
+
+    // KIỂM TRA LỆCH TUYẾN & TỰ ĐỘNG ĐỊNH TUYẾN LẠI DẪN ĐƯỜNG (DYNAMIC RE-ROUTING)
+    if (routeCoordinates && routeCoordinates.length > 1) {
+      const offCheck = checkOffRouteStatus(currentCoord, routeCoordinates, 160);
+      const isDetour = isDetourDemo || offCheck.isOffRoute;
+      const detourDist = isDetourDemo ? 380 : offCheck.distance;
+
+      if (isDetour) {
+        setOffRouteInfo({ isOffRoute: true, distance: detourDist });
+
+        // 1. Làm mờ lộ trình gốc thành nét đứt xám nhạt
+        if (polylineRef.current) {
+          polylineRef.current.setStyle({
+            color: '#94a3b8',
+            weight: 3.5,
+            opacity: 0.45,
+            dashArray: '6, 8'
+          });
+        }
+
+        // 2. Hàm vẽ Polyline đường rẽ mới bằng màu CAM ĐẬM (#ea580c)
+        const applyReroute = (coords) => {
+          if (!coords || coords.length < 2 || !mapInstanceRef.current) return;
+          if (reroutePolylineRef.current) {
+            reroutePolylineRef.current.setLatLngs(coords);
+          } else {
+            reroutePolylineRef.current = L.polyline(coords, {
+              color: '#ea580c', // CAM ĐẬM NỔI BẬT KHÁC BIỆT HOÀN TOÀN ĐƯỜNG GỐC
+              weight: 6.5,
+              opacity: 0.95,
+              lineCap: 'round',
+              lineJoin: 'round'
+            }).addTo(mapInstanceRef.current);
+          }
+        };
+
+        // Lấy tọa độ đường rẽ từ service nếu có
+        const serviceReroute = (driverGpsService?.rerouteCoords && driverGpsService.rerouteCoords.length > 1)
+          ? driverGpsService.rerouteCoords
+          : null;
+
+        if (serviceReroute) {
+          applyReroute(serviceReroute);
+        } else {
+          // Tính toán đường dẫn mới tới các trạm tiếp theo
+          const aheadStops = allStops.filter(s => {
+            const d = getDistanceMeters(currentCoord.lat, currentCoord.lng, s.lat, s.lng);
+            return d > 350;
+          });
+          const targetStops = aheadStops.length > 0 ? aheadStops : allStops;
+          fetchDynamicReroute(currentCoord, targetStops).then(newCoords => {
+            if (newCoords && newCoords.length > 1) {
+              applyReroute(newCoords);
+              if (isTracking) {
+                driverGpsService.sendGpsToBackend(
+                  currentCoord.lat,
+                  currentCoord.lng,
+                  currentSpeed,
+                  currentHeading,
+                  true,
+                  detourDist,
+                  newCoords
+                );
+              }
+            }
+          });
+        }
+      } else {
+        setOffRouteInfo({ isOffRoute: false, distance: 0 });
+        // Khôi phục lại đường gốc màu xanh đậm đặc
+        if (polylineRef.current) {
+          polylineRef.current.setStyle({
+            color: '#2563eb',
+            weight: 6,
+            opacity: 0.88,
+            dashArray: null
+          });
+        }
+        if (reroutePolylineRef.current) {
+          reroutePolylineRef.current.remove();
+          reroutePolylineRef.current = null;
+        }
+      }
+    }
+  }, [mapLoaded, currentCoord, currentHeading, currentSpeed, isFollowMode, activeTrip, routeCoordinates, isDetourDemo, isTracking, allStops]);
 
   // Cập nhật lại kích thước bản đồ khi xoay, đổi chế độ hoặc thay đổi kích cỡ khung nhìn
   useEffect(() => {
@@ -885,7 +1000,59 @@ const DriverMapPage = ({ setActiveTab }) => {
               </svg>
               <span>{isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
             </button>
+
+            {/* Nút Test Rẽ Đường Khác (Mô phỏng xe đi lệch lộ trình & tự động vẽ lại đường mới) */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isDetourDemo;
+                setIsDetourDemo(next);
+                if (driverGpsService && driverGpsService.simulateDetour) {
+                  driverGpsService.simulateDetour(next);
+                }
+              }}
+              style={{
+                backgroundColor: isDetourDemo ? '#ea580c' : 'rgba(245, 158, 11, 0.2)',
+                color: isDetourDemo ? '#ffffff' : '#fbbf24',
+                border: `1px solid ${isDetourDemo ? '#ea580c' : '#f59e0b'}`,
+                padding: '5px 9px',
+                borderRadius: '6px',
+                fontSize: '0.72rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
+              }}
+              title="Thử nghiệm tính năng xe đi lệch lộ trình & tự động vẽ lại đường mới"
+            >
+              <span>{isDetourDemo ? '↩ Về lộ trình chuẩn' : '🔀 Thử rẽ đường khác'}</span>
+            </button>
           </div>
+
+          {/* CẢNH BÁO XE LỆCH LỘ TRÌNH DÀNH CHO TÀI XẾ */}
+          {offRouteInfo.isOffRoute && (
+            <div style={{
+              backgroundColor: 'rgba(234, 88, 12, 0.25)',
+              border: '1px solid #ea580c',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              fontSize: '0.72rem',
+              color: '#fdba74',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '6px',
+              marginTop: '4px'
+            }}>
+              <span>⚠️ <strong>ĐANG ĐI LỆCH LỘ TRÌNH (+{offRouteInfo.distance}m):</strong> Đang tự động dẫn đường theo hướng rẽ mới (đường xanh đậm). Lộ trình cũ đã mờ.</span>
+              <span style={{ backgroundColor: '#ea580c', color: '#ffffff', padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '800' }}>
+                Đã đồng bộ Realtime
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Panel danh sách trạm dừng trượt ra (ngay dưới thanh top bar) */}

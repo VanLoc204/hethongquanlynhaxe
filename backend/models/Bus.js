@@ -44,7 +44,18 @@ const busSchema = new mongoose.Schema(
       description: { type: String },
       garage: { type: String },
       estimatedCompletion: { type: Date },
-      estimatedCost: { type: Number }
+      estimatedCost: { type: Number },
+      isMajor: { type: Boolean, default: false },
+      approvalStatus: {
+        type: String,
+        enum: ['auto_approved', 'pending_approval', 'approved', 'rejected', null],
+        default: 'auto_approved'
+      },
+      proposedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      approvedAt: { type: Date },
+      approvalNote: { type: String, default: '' },
+      rejectionReason: { type: String, default: '' }
     }
   },
   {
