@@ -361,6 +361,12 @@ const AgentShiftSummaryPage = () => {
                 <strong style={{ color: '#0f172a' }}>{formatCurrency(activeShift.cashlessRevenue || 0)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.45rem' }}>
+                <span style={{ color: '#64748b' }}>Tiền mặt đã chi hoàn trả vé:</span>
+                <strong style={{ color: (activeShift.refundCash || 0) > 0 ? '#dc2626' : '#64748b' }}>
+                  {(activeShift.refundCash || 0) > 0 ? `-${formatCurrency(activeShift.refundCash)}` : '0 đ'}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '0.45rem' }}>
                 <span style={{ color: '#64748b' }}>Tiền mặt vốn lẻ nhận đầu ca:</span>
                 <strong style={{ color: '#64748b' }}>{formatCurrency(activeShift.initialCash)}</strong>
               </div>
@@ -389,11 +395,11 @@ const AgentShiftSummaryPage = () => {
                     Thực Tế Két Tiền Mặt Bàn Giao
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#065f46', marginTop: '2px' }}>
-                    (Bao gồm: Vốn lẻ nhận đầu ca + Doanh thu tiền mặt)
+                    (Vốn đầu ca + Tiền mặt bán vé - Tiền mặt đã chi hoàn vé)
                   </div>
                 </div>
                 <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#047857' }}>
-                  {formatCurrency(activeShift.initialCash + (activeShift.cashRevenue || 0))}
+                  {formatCurrency((activeShift.initialCash || 0) + (activeShift.cashRevenue || 0) - (activeShift.refundCash || 0))}
                 </div>
               </div>
             </div>
@@ -560,6 +566,88 @@ const AgentShiftSummaryPage = () => {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* KHỐI 3B: CHI TIẾT CÁC VÉ ĐÃ HỦY VÀ HOÀN TIỀN TRONG CA    */}
+      {/* ========================================================= */}
+      {activeShift && activeShift.ticketsRefunded && activeShift.ticketsRefunded.length > 0 && (
+        <div className="shift-panel-box" style={{ padding: '0', overflow: 'hidden', borderLeft: '4px solid #dc2626' }}>
+          <div style={{ padding: '0.95rem 1.25rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', backgroundColor: '#fef2f2' }}>
+            <div>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#dc2626', margin: 0 }}>
+                Chi Tiết Vé Hủy &amp; Đã Hoàn Tiền Trong Ca
+              </h2>
+              <div style={{ fontSize: '0.74rem', color: '#991b1b', marginTop: '2px' }}>
+                Tổng cộng {activeShift.ticketsRefunded.length} vé đã hủy, tổng tiền mặt đã hoàn: {formatCurrency(activeShift.refundCash || 0)}
+              </div>
+            </div>
+
+            <span style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: '700' }}>
+              Trích xuất từ két quầy: {activeShift.counterNumber}
+            </span>
+          </div>
+
+          <div className="shift-table-wrap">
+            <table className="shift-table">
+              <colgroup>
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '22%' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '12%' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Mã Vé Hủy</th>
+                  <th>Hành Khách</th>
+                  <th>Tuyến Đường</th>
+                  <th>Ghế Giải Phóng</th>
+                  <th>Phí Phạt Giữ Lại</th>
+                  <th style={{ textAlign: 'right' }}>Tiền Mặt Đã Hoàn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeShift.ticketsRefunded.map((ticket, idx) => (
+                  <tr key={ticket._id || idx}>
+                    <td>
+                      <strong style={{ color: '#dc2626', fontWeight: '800' }}>
+                        #{ticket.orderCode || (ticket._id ? ticket._id.slice(-6).toUpperCase() : idx + 1)}
+                      </strong>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: '700', color: '#0f172a' }}>{ticket.customerName}</div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{ticket.customerPhone}</div>
+                    </td>
+                    <td>
+                      {ticket.tripId?.routeId ? (
+                        <div>
+                          <strong style={{ color: '#0f172a' }}>
+                            {ticket.tripId.routeId.startPoint} ⇄ {ticket.tripId.routeId.endPoint}
+                          </strong>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#94a3b8' }}>Chưa có thông tin tuyến</span>
+                      )}
+                    </td>
+                    <td>
+                      <strong style={{ color: '#64748b' }}>{ticket.seats?.join(', ')}</strong>
+                    </td>
+                    <td>
+                      <span style={{ color: '#047857', fontWeight: '700' }}>
+                        +{formatCurrency(ticket.cancellationFee || 0)}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: '800', color: '#dc2626' }}>
+                      -{formatCurrency(ticket.refundAmount || 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

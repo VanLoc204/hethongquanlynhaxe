@@ -534,6 +534,23 @@ const FleetStatusPage = () => {
                         {isMaint && bus.maintenanceInfo?.garage && (
                           <div style={{ fontSize: '0.65rem', color: '#c2410c', fontWeight: '600', marginTop: '2px' }}>
                             Garage: {bus.maintenanceInfo.garage} • {bus.maintenanceInfo.description || 'Đang bảo dưỡng'}
+                            {bus.maintenanceInfo.isMajor && (
+                              <div style={{ marginTop: '2px' }}>
+                                {bus.maintenanceInfo.approvalStatus === 'approved' ? (
+                                  <span style={{ color: '#15803d', background: '#dcfce7', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                                    ✓ Giám đốc đã duyệt chi phí ({Number(bus.maintenanceInfo.estimatedCost).toLocaleString()} ₫)
+                                  </span>
+                                ) : bus.maintenanceInfo.approvalStatus === 'rejected' ? (
+                                  <span style={{ color: '#b91c1c', background: '#fee2e2', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                                    ✕ Giám đốc từ chối chi phí ({bus.maintenanceInfo.rejectionReason || 'Vui lòng kiểm tra lại'})
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#c2410c', background: '#ffedd5', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                                    ⏳ Chờ Giám đốc duyệt ({Number(bus.maintenanceInfo.estimatedCost).toLocaleString()} ₫)
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -716,6 +733,22 @@ const FleetStatusPage = () => {
                           }}
                         />
                       </div>
+
+                      {Number(estimatedCost) >= 10000000 && (
+                        <div style={{
+                          gridColumn: 'span 2',
+                          backgroundColor: '#fef2f2',
+                          border: '1px solid #fecaca',
+                          borderRadius: '6px',
+                          padding: '7px 10px',
+                          fontSize: '0.72rem',
+                          color: '#991b1b',
+                          fontWeight: '600',
+                          lineHeight: '1.4'
+                        }}>
+                          ⚠️ <strong>Chi phí lớn (≥ 10.000.000 ₫):</strong> Hồ sơ bảo dưỡng này sẽ tự động chuyển sang <strong>Giám đốc nhà xe phê duyệt</strong> trước khi xưởng được xuất hóa đơn và nghiệm thu hoàn tất.
+                        </div>
+                      )}
 
                       <div>
                         <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '600', color: '#431407', marginBottom: '2px' }}>

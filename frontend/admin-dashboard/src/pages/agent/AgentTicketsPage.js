@@ -44,6 +44,46 @@ const AgentTicketsPage = () => {
   const [cancelling, setCancelling] = useState(false);
   const [printTarget, setPrintTarget] = useState(null);
 
+  // States gửi lại hóa đơn vé qua Email (Hotline / Khách yêu cầu)
+  const [resendEmail, setResendEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendFeedback, setResendFeedback] = useState({ type: '', text: '' });
+
+  const handleOpenDetail = (booking) => {
+    setDetailTarget(booking);
+    setResendEmail(booking.customerEmail || '');
+    setResendFeedback({ type: '', text: '' });
+  };
+
+  const handleResendNotification = async () => {
+    if (!detailTarget) return;
+    setResending(true);
+    setResendFeedback({ type: '', text: '' });
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/users/agent/resend-ticket/${detailTarget._id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ customEmail: resendEmail })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResendFeedback({ type: 'success', text: data.message });
+        if (resendEmail) {
+          setDetailTarget(prev => ({ ...prev, customerEmail: resendEmail }));
+        }
+      } else {
+        setResendFeedback({ type: 'error', text: data.message || 'Gửi thất bại.' });
+      }
+    } catch (err) {
+      setResendFeedback({ type: 'error', text: 'Lỗi kết nối máy chủ.' });
+    } finally {
+      setResending(false);
+    }
+  };
+
   // Lấy thông tin ca trực quầy hiện tại
   const fetchShiftStatus = async () => {
     try {
@@ -941,7 +981,7 @@ const AgentTicketsPage = () => {
                           <button
                             type="button"
                             className="btn-action btn-action-detail"
-                            onClick={() => setDetailTarget(booking)}
+                            onClick={() => handleOpenDetail(booking)}
                             title="Xem chi tiết đón trả và thanh toán"
                           >
                             Chi Tiết
@@ -1134,6 +1174,58 @@ const AgentTicketsPage = () => {
                   <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '6px' }}>
                     Chữ ký bảo mật: {detailTarget.qrSignature}
                   </div>
+                </div>
+              )}
+
+              {/* Kênh liên lạc & Gửi lại hóa đơn điện tử qua Email (Hotline / Khách yêu cầu) */}
+              {detailTarget.status !== 'cancelled' && (
+                <div style={{ background: '#f0f9ff', padding: '0.85rem 1rem', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                  <div style={{ fontWeight: '700', color: '#0369a1', marginBottom: '4px', fontSize: '0.82rem' }}>
+                    Gửi Lại Hóa Đơn Điện Tử (Email & Mã QR)
+                  </div>
+                  <div style={{ fontSize: '0.73rem', color: '#475569', marginBottom: '8px' }}>
+                    Nhập hoặc cập nhật địa chỉ Email khách hàng để gửi lại hóa đơn vé xe điện tử kèm mã QR soát vé:
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="email"
+                      placeholder="Nhập email khách nhận vé (Hotline / KH yêu cầu)..."
+                      value={resendEmail}
+                      onChange={(e) => setResendEmail(e.target.value)}
+                      style={{ flex: 1, padding: '0.45rem 0.65rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.78rem' }}
+                    />
+                    <button
+                      type="button"
+                      disabled={resending}
+                      onClick={handleResendNotification}
+                      style={{
+                        padding: '0.45rem 0.95rem',
+                        backgroundColor: resending ? '#94a3b8' : '#0284c7',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '0.78rem',
+                        fontWeight: '700',
+                        cursor: resending ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {resending ? 'Đang gửi...' : 'Gửi Email Vé'}
+                    </button>
+                  </div>
+                  {resendFeedback.text && (
+                    <div style={{
+                      marginTop: '8px',
+                      fontSize: '0.74rem',
+                      padding: '0.45rem 0.65rem',
+                      borderRadius: '6px',
+                      backgroundColor: resendFeedback.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                      color: resendFeedback.type === 'success' ? '#15803d' : '#b91c1c',
+                      border: `1px solid ${resendFeedback.type === 'success' ? '#bbf7d0' : '#fecaca'}`
+                    }}>
+                      {resendFeedback.text}
+                    </div>
+                  )}
                 </div>
               )}
 

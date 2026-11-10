@@ -106,6 +106,9 @@ const tripSchema = new mongoose.Schema(
       speed: { type: Number, default: 0 },
       heading: { type: Number, default: 0 },
       status: { type: String, default: 'moving' }, // 'moving', 'stopped', 'arrived'
+      isOffRoute: { type: Boolean, default: false },
+      offRouteDistance: { type: Number, default: 0 },
+      rerouteCoords: { type: Array, default: [] },
       lastUpdated: { type: Date }
     }
   },

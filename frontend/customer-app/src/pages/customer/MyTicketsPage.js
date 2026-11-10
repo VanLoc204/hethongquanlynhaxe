@@ -455,10 +455,27 @@ const MyTicketsPage = () => {
             {/* Right: E-Ticket QR Code or VietQR PayOS panel */}
             <div className="ticket-details-col-right">
               {t.status === 'cancelled' || isExpired ? (
-                <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#ef4444' }}>
-                  <XCircle size={56} style={{ margin: '0 auto 10px auto', opacity: 0.8 }} />
+                <div style={{ textAlign: 'center', padding: '1.25rem 0.5rem', color: '#ef4444' }}>
+                  <XCircle size={52} style={{ margin: '0 auto 8px auto', opacity: 0.8 }} />
                   <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>VÉ ĐÃ BỊ HỦY</div>
-                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px' }}>Vé này không còn giá trị sử dụng</p>
+                  <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '3px' }}>Vé này không còn giá trị sử dụng</p>
+                  
+                  {t.refundAmount !== undefined && t.refundAmount > 0 && (
+                    <div style={{ marginTop: '12px', padding: '10px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0', textAlign: 'left', fontSize: '0.78rem' }}>
+                      <div style={{ color: '#166534', fontWeight: '800', marginBottom: '4px', textTransform: 'uppercase' }}>Thông Tin Hoàn Tiền</div>
+                      <div style={{ color: '#15803d', fontWeight: '800', fontSize: '0.92rem', marginBottom: '4px' }}>
+                        Đã hoàn: {formatCurrency(t.refundAmount)}
+                      </div>
+                      <div style={{ color: '#475569', fontSize: '0.74rem' }}>
+                        Hình thức: <strong>{t.refundMethod === 'payos_payout' ? 'Bắn về STK (payOS Payout)' : 'Tiền mặt'}</strong>
+                      </div>
+                      {t.bankInfo?.accountNumber && (
+                        <div style={{ color: '#475569', fontSize: '0.74rem', marginTop: '2px' }}>
+                          STK nhận: <strong>{t.bankInfo.bankCode} - {t.bankInfo.accountNumber}</strong> ({t.bankInfo.accountHolder})
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>

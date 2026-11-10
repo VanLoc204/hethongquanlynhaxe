@@ -2,9 +2,34 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 /**
- * Send an email using Brevo's Transactional API
+ * Send an email using Gmail SMTP (if configured) or Brevo Transactional API
  */
 const sendEmail = async (toEmail, toName, subject, htmlContent) => {
+  // 1. Ưu tiên gửi qua Gmail SMTP nếu được cấu hình GMAIL_USER và GMAIL_APP_PASSWORD
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD
+        }
+      });
+      const info = await transporter.sendMail({
+        from: `"An Bình Lines" <${process.env.GMAIL_USER}>`,
+        to: `"${toName}" <${toEmail}>`,
+        subject: subject,
+        html: htmlContent
+      });
+      console.log('[Gmail SMTP] Email hóa đơn điện tử đã gửi thành công tới:', toEmail, info.messageId);
+      return { success: true, provider: 'gmail_smtp', messageId: info.messageId };
+    } catch (gmailErr) {
+      console.error('[Gmail SMTP Error]:', gmailErr.message);
+    }
+  }
+
+  // 2. Gửi qua Brevo Transactional REST API
   const apiKey = process.env.BREVO_API_KEY;
 
   if (!apiKey || apiKey === 'fake-key') {
@@ -27,7 +52,7 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
       body: JSON.stringify({
         sender: {
           name: 'An Bình Lines',
-          email: 'hovanloc.lv@gmail.com'
+          email: process.env.SENDER_EMAIL || 'hovanloc.lv@gmail.com'
         },
         to: [
           {
@@ -41,7 +66,19 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
     });
 
     const data = await response.json();
-    console.log('[Brevo API Response]:', data);
+    if (!response.ok) {
+      console.error('\n======================================================');
+      console.error('⚠️ [Brevo API Error]:', data.message || data);
+      if (data.code === 'unauthorized' && data.message?.includes('unrecognised IP address')) {
+        console.error('👉 LƯU Ý BẢO MẬT BREVO: IP hiện tại của bạn chưa được cấp phép!');
+        console.error('   Vui lòng truy cập https://app.brevo.com/security/authorised_ips');
+        console.error('   để thêm địa chỉ IP hiển thị trong thông báo lỗi trên.');
+      }
+      console.error('======================================================\n');
+      return { success: false, error: data.message, code: data.code, data };
+    }
+
+    console.log('[Brevo API Response]: Email gửi thành công:', data);
     return { success: true, data };
   } catch (err) {
     console.error('[Brevo SMTP Error]:', err);

@@ -77,6 +77,41 @@ const bookingSchema = new mongoose.Schema(
     totalAmount: {
       type: Number,
       default: 0
+    },
+    // ─── Thông tin Hủy vé & Hoàn tiền (payOS Payout / Tiền mặt) ───────────────
+    cancellationFee: {
+      type: Number,
+      default: 0
+    },
+    refundAmount: {
+      type: Number,
+      default: 0
+    },
+    refundMethod: {
+      type: String,
+      enum: ['payos_payout', 'bank_transfer', 'cash', 'account_balance', null],
+      default: null
+    },
+    bankInfo: {
+      bankCode: { type: String, default: '' },
+      bankName: { type: String, default: '' },
+      accountNumber: { type: String, default: '' },
+      accountHolder: { type: String, default: '' },
+      transactionCode: { type: String, default: '' },
+      payoutStatus: { type: String, default: '' }
+    },
+    cancelledAt: {
+      type: Date,
+      default: null
+    },
+    cancelledBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    cancellationReason: {
+      type: String,
+      default: ''
     }
   },
   {

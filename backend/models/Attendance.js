@@ -19,7 +19,16 @@ const attendanceSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['driver', 'attendant', 'ticket_agent', 'ticket_manager'],
+      enum: [
+        'driver',
+        'attendant',
+        'ticket_agent',
+        'ticket_manager',
+        'ops_manager',
+        'fleet_manager',
+        'general_manager',
+        'admin'
+      ],
       required: true
     },
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
+import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute } from '../../utils/mapRoutingUtils';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -36,9 +37,13 @@ const OpsTrackingPage = () => {
   const mapInstanceRef = useRef(null);
   const stopsLayerRef = useRef(null);
   const routePolylineRef = useRef(null);
+  const reroutePolylineRef = useRef(null);
   const busMarkerRef = useRef(null);
   const lastFittedTripIdRef = useRef(null);
   const lastRenderedRouteTripIdRef = useRef(null);
+
+  // Trạng thái phát hiện xe lệch đường & định tuyến lại (Realtime)
+  const [offRouteInfo, setOffRouteInfo] = useState({ isOffRoute: false, distance: 0 });
 
   // 1. Dynamically load Leaflet library if not already present
   useEffect(() => {
@@ -121,15 +126,42 @@ const OpsTrackingPage = () => {
     return allTrips.find(t => t._id === selectedTripId) || filteredTrips[0] || null;
   }, [allTrips, filteredTrips, selectedTripId]);
 
-  // Normalized stops with GPS coordinates for active trip
+  // Chuẩn bị danh sách tất cả các trạm dừng tuần tự của chuyến xe được chọn
   const activeStops = useMemo(() => {
     if (!activeTrip) return [];
-    const pickups = (activeTrip.pickupPoints || []).map(p => ({ ...p, type: 'pickup' }));
-    const dropoffs = (activeTrip.dropoffPoints || []).map(d => ({ ...d, type: 'dropoff' }));
-    return [...pickups, ...dropoffs].filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+
+    // Ưu tiên 1: Lấy danh sách trạm từ Tuyến đường gốc (Route) nếu có
+    if (activeTrip.routeId && Array.isArray(activeTrip.routeId.stops) && activeTrip.routeId.stops.length > 0) {
+      return activeTrip.routeId.stops
+        .filter(s => typeof s.lat === 'number' && typeof s.lng === 'number')
+        .map((s, idx, arr) => ({
+          ...s,
+          name: s.name || s.location,
+          location: s.name || s.location,
+          type: idx === 0 ? 'start' : idx === arr.length - 1 ? 'end' : (s.type === 'both' ? 'pickup' : (s.type || 'pickup'))
+        }));
+    }
+
+    // Ưu tiên 2: Khử trùng lặp giữa pickupPoints và dropoffPoints theo thứ tự địa lý
+    const combined = [...(activeTrip.pickupPoints || []), ...(activeTrip.dropoffPoints || [])];
+    const seen = new Set();
+    const unique = [];
+    for (const s of combined) {
+      if (typeof s.lat !== 'number' || typeof s.lng !== 'number') continue;
+      const key = `${s.name || s.location || ''}_${s.lat.toFixed(4)}_${s.lng.toFixed(4)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push({
+          ...s,
+          name: s.name || s.location,
+          location: s.name || s.location
+        });
+      }
+    }
+    return unique;
   }, [activeTrip]);
 
-  // 4. TẢI ĐƯỜNG UỐN LƯỢN QUỐC LỘ THỰC TẾ (OSRM HIGHWAY ROUTE - TRIỆT TIÊU ĐƯỜNG CHIM BAY)
+  // 4. TẢI ĐƯỜNG UỐN LƯỢN QUỐC LỘ THỰC TẾ (SIÊU TỐC VỚI SAMPLE WAYPOINTS & CACHE)
   useEffect(() => {
     if (!activeTrip || activeStops.length < 2) return;
     const tripKey = activeTrip._id;
@@ -139,15 +171,9 @@ const OpsTrackingPage = () => {
     const fetchOSRM = async () => {
       try {
         setFetchingOsrm(true);
-        const waypointsStr = activeStops.map(s => `${s.lng},${s.lat}`).join(';');
-        const url = `https://router.project-osrm.org/route/v1/driving/${waypointsStr}?overview=full&geometries=geojson`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === 'Ok' && data.routes && data.routes[0]) {
-          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          if (isMounted) {
-            setOsrmPaths(prev => ({ ...prev, [tripKey]: coords }));
-          }
+        const coords = await fetchFastHighwayRoute(activeStops, tripKey);
+        if (isMounted && coords && coords.length > 0) {
+          setOsrmPaths(prev => ({ ...prev, [tripKey]: coords }));
         }
       } catch (err) {
         console.warn('Lỗi lấy tọa độ OSRM:', err);
@@ -197,17 +223,22 @@ const OpsTrackingPage = () => {
     if (isNewTrip) {
       stopsLayer.clearLayers();
       routePolylineRef.current = null;
+      if (reroutePolylineRef.current) {
+        reroutePolylineRef.current.remove();
+        reroutePolylineRef.current = null;
+      }
       lastRenderedRouteTripIdRef.current = tripId;
 
       const latLngs = [];
 
       // Render Trạm đón & trả
       activeStops.forEach((stop, idx) => {
-        const isPickup = stop.type === 'pickup';
+        const isPickup = stop.type === 'pickup' || stop.type === 'start';
         const isFirst = idx === 0;
         const isLast = idx === activeStops.length - 1;
-        const markerColor = isPickup ? '#10b981' : '#ef4444';
+        const markerColor = isFirst ? '#059669' : isLast ? '#dc2626' : (isPickup ? '#10b981' : '#f97316');
         const badgeText = isFirst ? 'Khởi hành (Đón)' : isLast ? 'Điểm đích (Trả)' : isPickup ? 'Điểm đón' : 'Điểm trả';
+        const stationName = stop.name || stop.location || 'Trạm dừng';
 
         const stopIcon = L.divIcon({
           className: 'custom-station-pin',
@@ -227,7 +258,7 @@ const OpsTrackingPage = () => {
               gap: 4px;
               font-family: system-ui, -apple-system, sans-serif;
             ">
-              <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stop.location}</span>
+              <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stationName}</span>
             </div>
           `,
           iconSize: [110, 24],
@@ -237,7 +268,7 @@ const OpsTrackingPage = () => {
         const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(stopsLayer);
         marker.bindPopup(`
           <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
-            <div style="font-weight: 800; color: #0f172a; font-size: 0.88rem;">${stop.location}</div>
+            <div style="font-weight: 800; color: #0f172a; font-size: 0.88rem;">${stationName}</div>
             <div style="font-size: 0.72rem; color: ${isPickup ? '#047857' : '#b91c1c'}; font-weight: 700; margin: 4px 0;">
               ${badgeText} (${stop.time || 'N/A'})
             </div>
@@ -248,6 +279,16 @@ const OpsTrackingPage = () => {
 
         latLngs.push([stop.lat, stop.lng]);
       });
+
+      // VẼ TỨC THÌ ĐƯỜNG NỐI TRẠM (0ms - Không bao giờ để bản đồ trắng trơn chờ OSRM)
+      if (latLngs.length > 1) {
+        routePolylineRef.current = L.polyline(latLngs, {
+          color: '#2563eb',
+          weight: 4.5,
+          opacity: 0.75,
+          dashArray: '4, 6'
+        }).addTo(stopsLayer);
+      }
 
       // Fit bounds 1 LẦN DUY NHẤT khi chọn chuyến mới
       if (latLngs.length > 0 && lastFittedTripIdRef.current !== tripId) {
@@ -274,20 +315,25 @@ const OpsTrackingPage = () => {
 
     if (cachedPath && cachedPath.length > 1) {
       if (routePolylineRef.current) {
-        // Cập nhật tọa độ uốn lượn đường quốc lộ thực tế
         routePolylineRef.current.setLatLngs(cachedPath);
+        routePolylineRef.current.setStyle({
+          color: offRouteInfo.isOffRoute ? '#94a3b8' : '#2563eb',
+          weight: offRouteInfo.isOffRoute ? 3.5 : 5.5,
+          opacity: offRouteInfo.isOffRoute ? 0.45 : 0.88,
+          dashArray: offRouteInfo.isOffRoute ? '6, 8' : null
+        });
       } else {
-        // Tạo mới đường lộ trình cao tốc màu xanh đậm
         routePolylineRef.current = L.polyline(cachedPath, {
-          color: '#2563eb',
-          weight: 5.5,
-          opacity: 0.88,
+          color: offRouteInfo.isOffRoute ? '#94a3b8' : '#2563eb',
+          weight: offRouteInfo.isOffRoute ? 3.5 : 5.5,
+          opacity: offRouteInfo.isOffRoute ? 0.45 : 0.88,
+          dashArray: offRouteInfo.isOffRoute ? '6, 8' : null,
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(stopsLayer);
       }
     }
-  }, [mapLoaded, activeTrip, osrmPaths]);
+  }, [mapLoaded, activeTrip, osrmPaths, offRouteInfo.isOffRoute]);
 
   // 8. ĐỒNG BỘ GPS THỰC TẾ TỪ TÀI XẾ (MƯỢT MÀ, KHÔNG RESET ZOOM CỦA NGƯỜI DÙNG)
   useEffect(() => {
@@ -410,6 +456,73 @@ const OpsTrackingPage = () => {
     newBusMarker._tripId = activeTrip._id;
     newBusMarker.bindPopup(popupHtml);
     busMarkerRef.current = newBusMarker;
+
+    // 2. KIỂM TRA LỆCH TUYẾN & TỰ ĐỘNG ĐỊNH TUYẾN LẠI (DYNAMIC RE-ROUTING REALTIME)
+    const tripPath = osrmPaths[activeTrip._id] || activeStops.map(s => [s.lat, s.lng]);
+    const offCheck = checkOffRouteStatus({ lat: busLat, lng: busLng }, tripPath, 180);
+    const isDetour = Boolean(activeTrip.liveGps?.isOffRoute || (localGpsState.isTracking && localGpsState.trip?._id === activeTrip._id && localGpsState.isOffRoute) || offCheck.isOffRoute);
+    const detourDist = activeTrip.liveGps?.offRouteDistance || localGpsState.offRouteDistance || offCheck.distance;
+
+    if (isDetour && tripPath.length > 1) {
+      setOffRouteInfo({ isOffRoute: true, distance: detourDist });
+
+      // Làm mờ lộ trình chuẩn ban đầu thành nét đứt xám
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setStyle({
+          color: '#94a3b8',
+          weight: 3.5,
+          opacity: 0.45,
+          dashArray: '6, 8'
+        });
+      }
+
+      // Vẽ đường rẽ mới (Màu cam đậm nổi bật)
+      const backendReroute = activeTrip.liveGps?.rerouteCoords || (localGpsState.isTracking && localGpsState.rerouteCoords);
+      if (Array.isArray(backendReroute) && backendReroute.length > 1) {
+        if (reroutePolylineRef.current) {
+          reroutePolylineRef.current.setLatLngs(backendReroute);
+        } else if (stopsLayerRef.current) {
+          reroutePolylineRef.current = L.polyline(backendReroute, {
+            color: '#ea580c',
+            weight: 6,
+            opacity: 0.95,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(stopsLayerRef.current);
+        }
+      } else {
+        const remainingStops = activeStops.slice(1);
+        fetchDynamicReroute({ lat: busLat, lng: busLng }, remainingStops).then(newCoords => {
+          if (newCoords && newCoords.length > 1 && stopsLayerRef.current) {
+            if (reroutePolylineRef.current) {
+              reroutePolylineRef.current.setLatLngs(newCoords);
+            } else {
+              reroutePolylineRef.current = L.polyline(newCoords, {
+                color: '#ea580c',
+                weight: 6,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }).addTo(stopsLayerRef.current);
+            }
+          }
+        });
+      }
+    } else {
+      setOffRouteInfo({ isOffRoute: false, distance: 0 });
+      if (routePolylineRef.current) {
+        routePolylineRef.current.setStyle({
+          color: '#2563eb',
+          weight: 5.5,
+          opacity: 0.88,
+          dashArray: null
+        });
+      }
+      if (reroutePolylineRef.current) {
+        reroutePolylineRef.current.remove();
+        reroutePolylineRef.current = null;
+      }
+    }
   }, [mapLoaded, activeTrip, activeStops, localGpsState]);
 
   // Hành động người dùng: Căn chỉnh lại toàn lộ trình
@@ -642,6 +755,34 @@ const OpsTrackingPage = () => {
         
         {/* --- CỘT TRÁI: BẢN ĐỒ LEAFLET --- */}
         <div className="ops-panel-box" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+          
+          {/* CẢNH BÁO XE LỆCH LỘ TRÌNH REALTIME */}
+          {offRouteInfo.isOffRoute && (
+            <div style={{
+              padding: '8px 16px',
+              backgroundColor: '#fff7ed',
+              borderBottom: '1.5px solid #fdba74',
+              color: '#c2410c',
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              boxShadow: '0 2px 4px rgba(234,88,12,0.1)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1rem' }}>⚠️</span>
+                <span>
+                  <strong>CẢNH BÁO XE LỆCH TUYẾN (+{offRouteInfo.distance}m):</strong> Xe đang rẽ hướng khác. Bản đồ đã tự động vẽ lại đường đi mới (nét liền màu cam), lộ trình quy chuẩn chuyển sang nét đứt mờ.
+                </span>
+              </div>
+              <span style={{ backgroundColor: '#ffedd5', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', color: '#9a3412', border: '1px solid #fdba74', whiteSpace: 'nowrap' }}>
+                Đồng bộ Realtime
+              </span>
+            </div>
+          )}
+
           {/* Header thanh trạng thái bản đồ */}
           <div style={{
             padding: '10px 16px',
@@ -669,8 +810,16 @@ const OpsTrackingPage = () => {
               )}
             </div>
 
-            {/* Chú thích màu điểm dừng */}
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '0.7rem', fontWeight: '700' }}>
+            {/* Chú thích màu điểm dừng & đường lộ trình */}
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', fontSize: '0.7rem', fontWeight: '700', flexWrap: 'wrap' }}>
+              {offRouteInfo.isOffRoute && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#ea580c' }}>
+                  <span style={{ width: '12px', height: '3px', backgroundColor: '#ea580c', borderRadius: '2px' }}></span> Hướng rẽ mới
+                </span>
+              )}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: offRouteInfo.isOffRoute ? '#94a3b8' : '#2563eb' }}>
+                <span style={{ width: '12px', height: '3px', backgroundColor: offRouteInfo.isOffRoute ? '#94a3b8' : '#2563eb', borderRadius: '2px' }}></span> {offRouteInfo.isOffRoute ? 'Đường gốc (mờ)' : 'Lộ trình chuẩn'}
+              </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#047857' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></span> Điểm đón
               </span>

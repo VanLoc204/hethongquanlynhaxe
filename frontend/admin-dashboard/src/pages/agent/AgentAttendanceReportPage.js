@@ -20,10 +20,10 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-  // Bộ lọc thời gian (Khoảng ngày tùy chọn Từ ngày -> Đến ngày)
-  const [startDate, setStartDate] = useState(formatDateToISO(firstDayOfMonth));
-  const [endDate, setEndDate] = useState(formatDateToISO(lastDayOfMonth));
-  const [activeDatePreset, setActiveDatePreset] = useState('this-month'); // 'today' | '7days' | 'this-month' | 'last-month' | 'all' | 'custom'
+  // Bộ lọc thời gian (Mặc định 'all' để nạp toàn bộ ca trực thật từ database)
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [activeDatePreset, setActiveDatePreset] = useState('all'); // 'today' | '7days' | 'this-month' | 'last-month' | 'all' | 'custom'
 
   // Các tiêu chí lọc nghiệp vụ đầy đủ
   const [shiftTypeFilter, setShiftTypeFilter] = useState('all'); // all | morning | afternoon
@@ -76,7 +76,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
 
   // 2. Đặt lại toàn bộ bộ lọc về mặc định
   const handleResetFilters = () => {
-    applyDatePreset('this-month');
+    applyDatePreset('all');
     setShiftTypeFilter('all');
     setCounterFilter('all');
     setReconciliationFilter('all');

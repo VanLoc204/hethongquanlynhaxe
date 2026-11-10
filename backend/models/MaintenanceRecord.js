@@ -29,6 +29,38 @@ const maintenanceRecordSchema = new mongoose.Schema(
       required: [true, 'Chi phí là bắt buộc.'],
       min: [0, 'Chi phí không thể âm.']
     },
+    estimatedCost: {
+      type: Number,
+      default: 0
+    },
+    isMajor: {
+      type: Boolean,
+      default: false
+    },
+    approvalStatus: {
+      type: String,
+      enum: ['auto_approved', 'pending_approval', 'approved', 'rejected'],
+      default: 'auto_approved'
+    },
+    proposedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    approvedAt: {
+      type: Date
+    },
+    approvalNote: {
+      type: String,
+      default: ''
+    },
+    rejectionReason: {
+      type: String,
+      default: ''
+    },
     startDate: {
       type: Date,
       default: Date.now

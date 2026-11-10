@@ -54,6 +54,20 @@ const payrollSchema = new mongoose.Schema(
       default: 0,
       min: 0
     },
+    incidentReimbursement: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    incidentItems: [
+      {
+        incidentCode: { type: String },
+        title: { type: String },
+        amount: { type: Number, default: 0 },
+        status: { type: String },
+        approvedAt: { type: Date }
+      }
+    ],
     netSalary: {
       type: Number,
       required: [true, 'Thực lĩnh là bắt buộc.'],

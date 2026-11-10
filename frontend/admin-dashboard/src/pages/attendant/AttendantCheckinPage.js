@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import TripReportModal from '../../components/TripReportModal';
 
 const AttendantCheckinPage = () => {
   const { token, user } = useContext(AuthContext);
@@ -8,11 +9,21 @@ const AttendantCheckinPage = () => {
   const [passengers, setPassengers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'pending', 'boarded'
+  const [pickupFilter, setPickupFilter] = useState('all');
+  const [dropoffFilter, setDropoffFilter] = useState('all');
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [loadingPassengers, setLoadingPassengers] = useState(false);
   const [actionLoading, setActionLoading] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Trip Report states
+  const [currentReport, setCurrentReport] = useState(null);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [reportNotes, setReportNotes] = useState('');
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
 
   // QR verification State
   const [showQRModal, setShowQRModal] = useState(false);
@@ -163,11 +174,13 @@ const AttendantCheckinPage = () => {
           if (!selectedTrip) {
             setSelectedTrip(data.trips[0]);
             fetchPassengers(data.trips[0]._id);
+            fetchTripReportStatus(data.trips[0]._id);
           } else {
             // Cập nhật lại thông tin chuyến đang chọn
             const refreshed = data.trips.find(t => t._id === selectedTrip._id) || data.trips[0];
             setSelectedTrip(refreshed);
             fetchPassengers(refreshed._id);
+            fetchTripReportStatus(refreshed._id);
           }
         }
       } else {
@@ -177,6 +190,62 @@ const AttendantCheckinPage = () => {
       setError('Lỗi kết nối máy chủ khi tải lịch trình.');
     } finally {
       setLoadingSchedule(false);
+    }
+  };
+
+  const fetchTripReportStatus = async (tripId) => {
+    setLoadingReport(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/users/attendant/trip-reports/by-trip/${tripId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.hasReport) {
+        setCurrentReport(data.report);
+        if (data.report?.notes) {
+          setReportNotes(data.report.notes);
+        }
+      } else {
+        setCurrentReport(null);
+        setReportNotes('');
+      }
+    } catch (err) {
+      console.error('Lỗi khi nạp trạng thái báo cáo:', err);
+      setCurrentReport(null);
+    } finally {
+      setLoadingReport(false);
+    }
+  };
+
+  const handleSubmitTripReport = async () => {
+    if (!selectedTrip) return;
+    setSubmittingReport(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/users/attendant/trip-reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          tripId: selectedTrip._id,
+          notes: reportNotes
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess('Gửi báo cáo thống kê hành khách chuyến đi thành công! Chờ Quản lý vận tải ký duyệt.');
+        setCurrentReport(data.report);
+        setShowSubmitModal(false);
+      } else {
+        setError(data.message || 'Gửi báo cáo chuyến đi thất bại.');
+      }
+    } catch (err) {
+      setError('Lỗi khi gửi báo cáo: ' + err.message);
+    } finally {
+      setSubmittingReport(false);
     }
   };
 
@@ -203,7 +272,10 @@ const AttendantCheckinPage = () => {
 
   const handleSelectTrip = (trip) => {
     setSelectedTrip(trip);
+    setPickupFilter('all');
+    setDropoffFilter('all');
     fetchPassengers(trip._id);
+    fetchTripReportStatus(trip._id);
   };
 
   const handleManualCheckIn = async (bookingId) => {
@@ -283,24 +355,42 @@ const AttendantCheckinPage = () => {
     }
   };
 
-  // Bộ lọc danh sách hành khách
+  // Bộ lọc danh sách hành khách đa chiều: tìm kiếm, trạng thái, điểm đón, điểm trả
   const filteredPassengers = passengers.filter(p => {
     const term = searchQuery.toLowerCase().trim();
     const matchSearch = (
-      p.customerName.toLowerCase().includes(term) ||
-      p.customerPhone.includes(term) ||
-      p.seats.some(seat => seat.toLowerCase().includes(term))
+      p.customerName?.toLowerCase().includes(term) ||
+      p.customerPhone?.includes(term) ||
+      p.seats?.some(seat => seat.toLowerCase().includes(term))
     );
 
     if (!matchSearch) return false;
 
-    if (statusFilter === 'pending') return !p.boarded;
-    if (statusFilter === 'boarded') return p.boarded;
+    if (statusFilter === 'pending') {
+      if (p.boarded) return false;
+    } else if (statusFilter === 'boarded') {
+      if (!p.boarded) return false;
+    }
+
+    if (pickupFilter !== 'all' && p.pickup !== pickupFilter) return false;
+    if (dropoffFilter !== 'all' && p.dropoff !== dropoffFilter) return false;
+
     return true;
   });
 
   const boardedCount = passengers.filter(p => p.boarded).length;
   const pendingCount = passengers.filter(p => !p.boarded).length;
+  const totalBusSeats = selectedTrip?.busId?.capacity || 16;
+  const occupancyRate = totalBusSeats > 0 ? Math.round((boardedCount / totalBusSeats) * 100) : 0;
+
+  // Lấy danh sách điểm đón / trả chuẩn từ chuyến xe trong MongoDB (kết hợp với dữ liệu vé)
+  const tripPickups = selectedTrip?.pickupPoints?.map(p => p.location) || [];
+  const passengerPickups = passengers.map(p => p.pickup).filter(Boolean);
+  const uniquePickups = Array.from(new Set([...tripPickups, ...passengerPickups]));
+
+  const tripDropoffs = selectedTrip?.dropoffPoints?.map(p => p.location) || [];
+  const passengerDropoffs = passengers.map(p => p.dropoff).filter(Boolean);
+  const uniqueDropoffs = Array.from(new Set([...tripDropoffs, ...passengerDropoffs]));
 
   const formatTime = (timeStr) => {
     if (!timeStr) return '--:--';
@@ -743,14 +833,14 @@ const AttendantCheckinPage = () => {
           
           {selectedTrip ? (
             <>
-              {/* Thẻ tóm tắt thông tin chuyến xe đang chọn */}
-              <div className="checkin-panel-box" style={{ background: '#f8fafc', padding: '1rem 1.25rem' }}>
+              {/* Thẻ tóm tắt thông tin chuyến xe đang chọn & Báo cáo chốt chuyến */}
+              <div className="checkin-panel-box" style={{ background: '#f8fafc', padding: '1.15rem 1.25rem', gap: '0.85rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div>
                     <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#2563eb', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                       Chuyến Đang Chọn
                     </span>
-                    <h2 style={{ fontSize: '1.1rem', fontWeight: '900', color: '#0f172a', margin: '2px 0 4px 0' }}>
+                    <h2 style={{ fontSize: '1.15rem', fontWeight: '900', color: '#0f172a', margin: '2px 0 4px 0' }}>
                       {selectedTrip.routeId?.startPoint} ➔ {selectedTrip.routeId?.endPoint}
                     </h2>
                     <div style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -759,23 +849,138 @@ const AttendantCheckinPage = () => {
                       <span>Biển số: <strong style={{ color: '#0f172a' }}>{selectedTrip.busId?.plateNumber}</strong></span>
                       <span>•</span>
                       <span>Dòng xe: {selectedTrip.busId?.type}</span>
+                      {selectedTrip.driver?.name && (
+                        <>
+                          <span>•</span>
+                          <span>Tài xế: <strong>{selectedTrip.driver.name}</strong></span>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* 3 chỉ số tóm tắt của chuyến */}
+                  {/* 4 chỉ số tóm tắt của chuyến (Sức chứa, Vé đã đặt, Thực tế lên, Chờ soát) */}
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.65rem', color: '#64748b', fontWeight: '700' }}>TỔNG VÉ</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: '900', color: '#0f172a' }}>{passengers.length}</div>
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
+                      <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700' }}>SỨC CHỨA</div>
+                      <div style={{ fontSize: '1rem', fontWeight: '900', color: '#0f172a' }}>{totalBusSeats}</div>
                     </div>
-                    <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '6px 12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.65rem', color: '#15803d', fontWeight: '700' }}>ĐÃ LÊN XE</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: '900', color: '#15803d' }}>{boardedCount}</div>
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
+                      <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700' }}>VÉ ĐÃ ĐẶT</div>
+                      <div style={{ fontSize: '1rem', fontWeight: '900', color: '#2563eb' }}>{passengers.length}</div>
                     </div>
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '6px 12px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.65rem', color: '#b45309', fontWeight: '700' }}>CHỜ SOÁT VÉ</div>
-                      <div style={{ fontSize: '1.1rem', fontWeight: '900', color: '#b45309' }}>{pendingCount}</div>
+                    <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center', minWidth: '85px' }}>
+                      <div style={{ fontSize: '0.62rem', color: '#15803d', fontWeight: '700' }}>ĐÃ LÊN XE</div>
+                      <div style={{ fontSize: '1rem', fontWeight: '900', color: '#15803d' }}>
+                        {boardedCount} <span style={{ fontSize: '0.72rem', fontWeight: '700' }}>({occupancyRate}%)</span>
+                      </div>
                     </div>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '6px 10px', textAlign: 'center', minWidth: '75px' }}>
+                      <div style={{ fontSize: '0.62rem', color: '#b45309', fontWeight: '700' }}>CHỜ / VẮNG</div>
+                      <div style={{ fontSize: '1rem', fontWeight: '900', color: '#b45309' }}>{pendingCount}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DÒNG TIỆN ÍCH BÁO CÁO CHUYẾN XE (GỬI BÁO CÁO CHO QUẢN LÝ VẬN TẢI / IN PHIẾU) */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '0.65rem 1rem'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#334155' }}>
+                      Báo Cáo Chuyến Xe:
+                    </span>
+                    {!currentReport ? (
+                      <span style={{
+                        backgroundColor: '#fffbeb',
+                        color: '#b45309',
+                        border: '1px solid #fde68a',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: '800'
+                      }}>
+                        Chưa nộp báo cáo
+                      </span>
+                    ) : currentReport.approvalStatus === 'approved' ? (
+                      <span style={{
+                        backgroundColor: '#dcfce7',
+                        color: '#15803d',
+                        border: '1px solid #bbf7d0',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: '800'
+                      }}>
+                        Đã ký duyệt điện tử ({currentReport.digitalSignature?.certificateCode || 'Hợp lệ'})
+                      </span>
+                    ) : (
+                      <span style={{
+                        backgroundColor: '#fef3c7',
+                        color: '#92400e',
+                        border: '1px solid #fcd34d',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.7rem',
+                        fontWeight: '800'
+                      }}>
+                        Đã gửi - Chờ Quản lý ký duyệt ({currentReport.reportCode})
+                      </span>
+                    )}
+                    <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                      (Quy định: Nộp báo cáo sau chuyến, tự động chốt lúc 00:00)
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {currentReport && (
+                      <button
+                        type="button"
+                        onClick={() => setShowVoucherModal(true)}
+                        style={{
+                          backgroundColor: '#f1f5f9',
+                          color: '#1e293b',
+                          border: '1px solid #cbd5e1',
+                          padding: '5px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Xem / In Báo Cáo (A4)
+                      </button>
+                    )}
+
+                    {(!currentReport || currentReport.approvalStatus !== 'approved') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReportNotes(currentReport?.notes || '');
+                          setShowSubmitModal(true);
+                        }}
+                        style={{
+                          backgroundColor: currentReport ? '#ffffff' : '#1e3a8a',
+                          color: currentReport ? '#1e3a8a' : '#ffffff',
+                          border: currentReport ? '1px solid #1e3a8a' : 'none',
+                          padding: '5px 14px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          boxShadow: currentReport ? 'none' : '0 2px 4px rgba(30,58,138,0.25)'
+                        }}
+                      >
+                        {currentReport ? 'Cập Nhật Lại Báo Cáo' : 'Chốt & Gửi Báo Cáo Chuyến Xe'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -840,8 +1045,8 @@ const AttendantCheckinPage = () => {
                   </div>
                 </div>
 
-                {/* Thanh tìm kiếm hành khách */}
-                <div style={{ display: 'flex', gap: '8px' }}>
+                {/* Thanh tìm kiếm & bộ lọc điểm đón / điểm trả */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <input
                     type="text"
                     placeholder="Tìm theo tên hành khách, số điện thoại, vị trí ghế..."
@@ -849,23 +1054,70 @@ const AttendantCheckinPage = () => {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     style={{
                       flex: 1,
-                      padding: '0.55rem 0.85rem',
+                      minWidth: '220px',
+                      padding: '0.5rem 0.85rem',
                       border: '1px solid #cbd5e1',
                       borderRadius: '8px',
-                      fontSize: '0.8rem',
+                      fontSize: '0.78rem',
                       outline: 'none',
                       backgroundColor: '#ffffff'
                     }}
                   />
+
+                  {/* Lọc điểm đón */}
+                  <select
+                    value={pickupFilter}
+                    onChange={(e) => setPickupFilter(e.target.value)}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      backgroundColor: '#f8fafc',
+                      color: '#334155',
+                      outline: 'none',
+                      fontWeight: '600'
+                    }}
+                  >
+                    <option value="all">Tất cả điểm đón</option>
+                    {uniquePickups.map(pt => (
+                      <option key={pt} value={pt}>Đón: {pt}</option>
+                    ))}
+                  </select>
+
+                  {/* Lọc điểm trả */}
+                  <select
+                    value={dropoffFilter}
+                    onChange={(e) => setDropoffFilter(e.target.value)}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      backgroundColor: '#f8fafc',
+                      color: '#334155',
+                      outline: 'none',
+                      fontWeight: '600'
+                    }}
+                  >
+                    <option value="all">Tất cả điểm trả</option>
+                    {uniqueDropoffs.map(pt => (
+                      <option key={pt} value={pt}>Trả: {pt}</option>
+                    ))}
+                  </select>
+
                   <button
-                    onClick={() => fetchPassengers(selectedTrip._id)}
+                    onClick={() => {
+                      fetchPassengers(selectedTrip._id);
+                      fetchTripReportStatus(selectedTrip._id);
+                    }}
                     disabled={loadingPassengers}
                     style={{
-                      padding: '0.55rem 1rem',
+                      padding: '0.5rem 0.85rem',
                       border: '1px solid #cbd5e1',
                       backgroundColor: '#f8fafc',
                       borderRadius: '8px',
-                      fontSize: '0.78rem',
+                      fontSize: '0.75rem',
                       fontWeight: '700',
                       color: '#334155',
                       cursor: 'pointer'
@@ -1102,8 +1354,176 @@ const AttendantCheckinPage = () => {
       </div>
 
       {/* ========================================================= */}
-      {/* MODAL MÁY QUÉT CAMERA QR (RESPONSIVE & KHÔNG DÙNG ICON)  */}
+      {/* MODAL NỘP BÁO CÁO THỐNG KÊ HÀNH KHÁCH CHUYẾN XE (PHỤ XE)   */}
       {/* ========================================================= */}
+      {showSubmitModal && selectedTrip && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.75)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1150,
+          padding: '1rem',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            width: '100%',
+            maxWidth: '560px',
+            borderRadius: '14px',
+            padding: '1.5rem',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem'
+          }}>
+            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>
+                  Chốt &amp; Gửi Báo Cáo Chuyến Xe
+                </h3>
+                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                  Gửi dữ liệu hành khách thực tế lên xe đến Quản lý Vận tải ký duyệt
+                </span>
+              </div>
+              <button
+                onClick={() => setShowSubmitModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.25rem',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  fontWeight: '700'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Khối tóm tắt thông số chốt */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '0.85rem 1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              fontSize: '0.8rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Tuyến đường:</span>
+                <strong style={{ color: '#0f172a' }}>{selectedTrip.routeId?.startPoint} ➔ {selectedTrip.routeId?.endPoint}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Biển kiểm soát:</span>
+                <strong>{selectedTrip.busId?.plateNumber} ({selectedTrip.busId?.type})</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Tổng vé đã đặt:</span>
+                <strong>{passengers.length} vé ({totalBusSeats} ghế)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#166534', fontWeight: '700' }}>Khách thực tế lên xe:</span>
+                <strong style={{ color: '#166534' }}>{boardedCount} khách ({occupancyRate}%)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#b45309', fontWeight: '700' }}>Khách vắng mặt (No-show):</span>
+                <strong style={{ color: '#b45309' }}>{pendingCount} khách</strong>
+              </div>
+            </div>
+
+            {/* Ô ghi chú phụ xe */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                Ghi chú của Phụ xe (tình hình hành khách, hành lý, phát sinh trên đường):
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Nhập ghi chú chuyến xe (ví dụ: Chuyến xe đúng giờ, 2 khách vắng mặt gọi không nghe máy, không có hành lý thất lạc...)"
+                value={reportNotes}
+                onChange={(e) => setReportNotes(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '0.65rem 0.85rem',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+
+            {/* Nhắc nhở quy chế */}
+            <div style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '8px',
+              padding: '0.65rem 0.85rem',
+              fontSize: '0.72rem',
+              color: '#1e40af',
+              lineHeight: '1.4'
+            }}>
+              Lưu ý quy chế: Báo cáo sau khi gửi sẽ chuyển đến Quản lý Vận tải để thẩm định và đóng dấu chữ ký điện tử. Trường hợp phụ xe không nộp trước 00:00 đêm, hệ thống sẽ tự động chốt danh sách để đối soát.
+            </div>
+
+            {/* Thao tác nút */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowSubmitModal(false)}
+                style={{
+                  padding: '0.55rem 1rem',
+                  border: '1px solid #cbd5e1',
+                  background: '#f8fafc',
+                  color: '#334155',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitTripReport}
+                disabled={submittingReport}
+                style={{
+                  padding: '0.55rem 1.4rem',
+                  border: 'none',
+                  background: '#1e3a8a',
+                  color: '#ffffff',
+                  borderRadius: '6px',
+                  fontSize: '0.78rem',
+                  fontWeight: '800',
+                  cursor: submittingReport ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 6px rgba(30,58,138,0.25)'
+                }}
+              >
+                {submittingReport ? 'Đang gửi báo cáo...' : 'Xác Nhận & Gửi Báo Cáo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL XEM & IN BẢNG BÁO CÁO CHUYẾN XE (ERP CRYSTAL FORMAT) */}
+      {/* ========================================================= */}
+      <TripReportModal
+        isOpen={showVoucherModal}
+        onClose={() => setShowVoucherModal(false)}
+        report={currentReport}
+        canSign={false}
+      />
       {showQRModal && (
         <div style={{
           position: 'fixed',

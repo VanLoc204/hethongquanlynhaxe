@@ -86,6 +86,14 @@ const FleetMaintenancePage = () => {
   }, [token]);
 
   const handleOpenComplete = (bus) => {
+    if (bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus !== 'approved') {
+      alert(
+        bus.maintenanceInfo?.approvalStatus === 'rejected'
+          ? `Khoản chi phí bảo dưỡng xe ${bus.plateNumber} đã bị Giám đốc TỪ CHỐI DUYỆT (Lý do: "${bus.maintenanceInfo?.rejectionReason || 'Ngân sách không phù hợp'}"). Vui lòng kiểm tra lại báo giá từ gara!`
+          : `Khoản chi phí bảo dưỡng xe ${bus.plateNumber} là ${formatCurrency(bus.maintenanceInfo?.estimatedCost)} (≥ 10.000.000 ₫ - Chi phí lớn) đang CHỜ GIÁM ĐỐC DUYỆT NGÂN SÁCH. Chưa thể nghiệm thu xe xuất xưởng!`
+      );
+      return;
+    }
     setCompletingBus(bus);
     setActualCost(bus.maintenanceInfo?.estimatedCost || '');
     setFinalDescription(bus.maintenanceInfo?.description || '');
@@ -508,7 +516,7 @@ const FleetMaintenancePage = () => {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: 'auto' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <span style={{
                           fontSize: '0.7rem',
                           fontWeight: '700',
@@ -522,18 +530,48 @@ const FleetMaintenancePage = () => {
                           {isMaint ? 'Bảo dưỡng' : 'Sửa chữa'}
                         </span>
 
+                        {bus.maintenanceInfo?.isMajor && (
+                          <span style={{
+                            fontSize: '0.68rem',
+                            fontWeight: '700',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            backgroundColor:
+                              bus.maintenanceInfo?.approvalStatus === 'approved' ? '#dcfce7' :
+                              bus.maintenanceInfo?.approvalStatus === 'rejected' ? '#fee2e2' : '#fef3c7',
+                            color:
+                              bus.maintenanceInfo?.approvalStatus === 'approved' ? '#166534' :
+                              bus.maintenanceInfo?.approvalStatus === 'rejected' ? '#991b1b' : '#9a3412',
+                            border: `1px solid ${
+                              bus.maintenanceInfo?.approvalStatus === 'approved' ? '#86efac' :
+                              bus.maintenanceInfo?.approvalStatus === 'rejected' ? '#fca5a5' : '#fde047'
+                            }`,
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {bus.maintenanceInfo?.approvalStatus === 'approved' ? '✓ GĐ Đã duyệt' :
+                             bus.maintenanceInfo?.approvalStatus === 'rejected' ? '✕ GĐ Từ chối' : '⏳ Chờ GĐ duyệt'}
+                          </span>
+                        )}
+
                         <button
                           onClick={() => handleOpenComplete(bus)}
+                          disabled={bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus !== 'approved'}
+                          title={
+                            bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus !== 'approved'
+                              ? 'Chi phí lớn cần được Giám đốc phê duyệt trước khi nghiệm thu xuất xưởng'
+                              : 'Nghiệm thu hoàn tất xuất xưởng'
+                          }
                           style={{
-                            backgroundColor: '#16a34a',
+                            backgroundColor: (bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus !== 'approved') ? '#94a3b8' : '#16a34a',
                             color: '#ffffff',
                             border: 'none',
                             borderRadius: '6px',
                             padding: '4px 10px',
                             fontSize: '0.72rem',
                             fontWeight: '700',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
+                            cursor: (bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus !== 'approved') ? 'not-allowed' : 'pointer',
+                            whiteSpace: 'nowrap',
+                            opacity: (bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus !== 'approved') ? 0.75 : 1
                           }}
                         >
                           Nghiệm thu
@@ -579,11 +617,47 @@ const FleetMaintenancePage = () => {
                         color: '#334155',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '4px'
+                        gap: '5px'
                       }}>
                         <div><strong>Nội dung:</strong> {bus.maintenanceInfo?.description || 'Không có mô tả chi tiết'}</div>
-                        <div><strong>Dự toán chi phí:</strong> {formatCurrency(bus.maintenanceInfo?.estimatedCost)}</div>
+                        <div>
+                          <strong>Dự toán chi phí:</strong>{' '}
+                          <span style={{ fontWeight: '700', color: bus.maintenanceInfo?.isMajor ? '#b91c1c' : '#0f172a' }}>
+                            {formatCurrency(bus.maintenanceInfo?.estimatedCost)}
+                          </span>
+                          {bus.maintenanceInfo?.isMajor && (
+                            <span style={{ marginLeft: '6px', color: '#b91c1c', fontSize: '0.68rem', fontWeight: '700' }}>
+                              (Hạn mức lớn ≥ 10.000.000 ₫)
+                            </span>
+                          )}
+                        </div>
                         <div><strong>Hạn dự kiến xong:</strong> {formatDate(bus.maintenanceInfo?.estimatedCompletion)}</div>
+                        
+                        {bus.maintenanceInfo?.isMajor && (
+                          <div style={{
+                            marginTop: '4px',
+                            padding: '6px 8px',
+                            borderRadius: '6px',
+                            backgroundColor: bus.maintenanceInfo?.approvalStatus === 'approved' ? '#f0fdf4' : bus.maintenanceInfo?.approvalStatus === 'rejected' ? '#fef2f2' : '#fffbeb',
+                            border: `1px solid ${bus.maintenanceInfo?.approvalStatus === 'approved' ? '#bbf7d0' : bus.maintenanceInfo?.approvalStatus === 'rejected' ? '#fecaca' : '#fde68a'}`
+                          }}>
+                            <strong>Phê duyệt của Giám đốc: </strong>
+                            {bus.maintenanceInfo?.approvalStatus === 'approved' ? (
+                              <span style={{ color: '#166534', fontWeight: '700' }}>
+                                ĐÃ PHÊ DUYỆT NGÂN SÁCH {bus.maintenanceInfo?.approvedAt ? `(${new Date(bus.maintenanceInfo.approvedAt).toLocaleDateString('vi-VN')})` : ''}
+                                {bus.maintenanceInfo?.approvalNote ? ` - Chỉ đạo: "${bus.maintenanceInfo.approvalNote}"` : ''}
+                              </span>
+                            ) : bus.maintenanceInfo?.approvalStatus === 'rejected' ? (
+                              <span style={{ color: '#991b1b', fontWeight: '700' }}>
+                                TỪ CHỐI DUYỆT {bus.maintenanceInfo?.rejectionReason ? ` - Lý do: "${bus.maintenanceInfo.rejectionReason}"` : ''}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#b45309', fontWeight: '700' }}>
+                                ĐANG CHỜ GIÁM ĐỐC DUYỆT (Hệ thống tạm khóa nghiệm thu xuất xưởng)
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -708,7 +782,23 @@ const FleetMaintenancePage = () => {
                           {formatDate(rec.endDate || rec.createdAt)}
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: '800', color: '#0f172a', fontSize: '0.78rem' }}>
-                          {formatCurrency(rec.cost)}
+                          <div>{formatCurrency(rec.cost)}</div>
+                          {(rec.isMajor || (Number(rec.cost) >= 10000000)) && (
+                            <span style={{
+                              display: 'inline-block',
+                              fontSize: '0.64rem',
+                              fontWeight: '700',
+                              color: '#166534',
+                              backgroundColor: '#dcfce7',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              border: '1px solid #bbf7d0',
+                              marginTop: '2px',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              Đại tu đã duyệt
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

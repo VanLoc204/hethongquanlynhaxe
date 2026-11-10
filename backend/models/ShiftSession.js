@@ -31,7 +31,17 @@ const shiftSessionSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    refundCash: {
+      type: Number,
+      default: 0
+    },
     ticketsSold: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Booking'
+      }
+    ],
+    ticketsRefunded: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Booking'

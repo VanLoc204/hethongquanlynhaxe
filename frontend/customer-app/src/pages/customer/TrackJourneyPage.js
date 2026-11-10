@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import axios from 'axios';
+import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute } from '../../utils/mapRoutingUtils';
 import {
   Map,
   Navigation,
@@ -49,7 +50,10 @@ const TrackJourneyPage = () => {
     speed: 0,
     heading: 0,
     lastUpdated: null,
-    isLive: false
+    isLive: false,
+    isOffRoute: false,
+    offRouteDistance: 0,
+    rerouteCoords: []
   });
 
   // Map References
@@ -57,6 +61,7 @@ const TrackJourneyPage = () => {
   const mapInstanceRef = useRef(null);
   const busMarkerRef = useRef(null);
   const polylineRef = useRef(null);
+  const reroutePolylineRef = useRef(null);
   const stationsLayerRef = useRef(null);
   const lastFittedTripIdRef = useRef(null);
 
@@ -163,6 +168,9 @@ const TrackJourneyPage = () => {
         lng: selectedTrip.liveGps.lng,
         speed: selectedTrip.liveGps.speed || 0,
         heading: selectedTrip.liveGps.heading || 0,
+        isOffRoute: Boolean(selectedTrip.liveGps.isOffRoute),
+        offRouteDistance: Number(selectedTrip.liveGps.offRouteDistance) || 0,
+        rerouteCoords: Array.isArray(selectedTrip.liveGps.rerouteCoords) ? selectedTrip.liveGps.rerouteCoords : [],
         lastUpdated: selectedTrip.liveGps.lastUpdated,
         isLive: diffMs < 60000
       });
@@ -193,6 +201,9 @@ const TrackJourneyPage = () => {
               lng: latestTrip.liveGps.lng,
               speed: latestTrip.liveGps.speed || 0,
               heading: latestTrip.liveGps.heading || 0,
+              isOffRoute: Boolean(latestTrip.liveGps.isOffRoute),
+              offRouteDistance: Number(latestTrip.liveGps.offRouteDistance) || 0,
+              rerouteCoords: Array.isArray(latestTrip.liveGps.rerouteCoords) ? latestTrip.liveGps.rerouteCoords : [],
               lastUpdated: latestTrip.liveGps.lastUpdated,
               isLive: diffMs < 60000
             });
@@ -206,52 +217,60 @@ const TrackJourneyPage = () => {
     return () => clearInterval(interval);
   }, [selectedTrip?._id]);
 
-  // 4. Chuẩn hóa danh sách tất cả các trạm đón và trả có tọa độ GPS
+  // 4. Chuẩn hóa danh sách tất cả các trạm đón và trả có tọa độ GPS tuần tự
   const normalizedStops = useMemo(() => {
     if (!selectedTrip) return [];
-    const pickups = (selectedTrip.pickupPoints || []).map((p, idx) => ({
-      ...p,
-      type: 'pickup',
-      order: idx,
-      badgeText: idx === 0 ? 'Điểm Khởi Hành' : 'Trạm Đón'
-    }));
-    const dropoffs = (selectedTrip.dropoffPoints || []).map((d, idx) => ({
-      ...d,
-      type: 'dropoff',
-      order: pickups.length + idx,
-      badgeText: idx === (selectedTrip.dropoffPoints?.length - 1) ? 'Điểm Đích (Kết Thúc)' : 'Trạm Trả'
-    }));
-    return [...pickups, ...dropoffs].filter(s => typeof s.lat === 'number' && typeof s.lng === 'number');
+
+    // Ưu tiên 1: Tuyến đường gốc (Route)
+    if (selectedTrip.routeId && Array.isArray(selectedTrip.routeId.stops) && selectedTrip.routeId.stops.length > 0) {
+      return selectedTrip.routeId.stops
+        .filter(s => typeof s.lat === 'number' && typeof s.lng === 'number')
+        .map((s, idx, arr) => ({
+          ...s,
+          name: s.name || s.location,
+          location: s.name || s.location,
+          type: idx === 0 ? 'start' : idx === arr.length - 1 ? 'end' : (s.type === 'both' ? 'pickup' : (s.type || 'pickup')),
+          badgeText: idx === 0 ? 'Điểm Khởi Hành' : idx === arr.length - 1 ? 'Điểm Đích (Kết Thúc)' : (s.type === 'both' || s.type === 'pickup' ? 'Trạm Đón' : 'Trạm Trả')
+        }));
+    }
+
+    // Ưu tiên 2: Khử trùng lặp giữa pickupPoints và dropoffPoints
+    const combined = [...(selectedTrip.pickupPoints || []), ...(selectedTrip.dropoffPoints || [])];
+    const seen = new Set();
+    const unique = [];
+    for (const s of combined) {
+      if (typeof s.lat !== 'number' || typeof s.lng !== 'number') continue;
+      const key = `${s.name || s.location || ''}_${s.lat.toFixed(4)}_${s.lng.toFixed(4)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push({
+          ...s,
+          name: s.name || s.location,
+          location: s.name || s.location,
+          badgeText: s.type === 'pickup' ? 'Trạm Đón' : 'Trạm Trả'
+        });
+      }
+    }
+    return unique;
   }, [selectedTrip]);
 
-  // 5. Tải tuyến đường uốn lượn Quốc lộ thực tế (OSRM Highway Polyline)
+  // 5. Tải tuyến đường uốn lượn Quốc lộ thực tế (Siêu tốc với Cache & Sample)
   useEffect(() => {
     if (!selectedTrip || normalizedStops.length < 2) return;
+
+    // Vẽ tức thì đường nối thẳng (0ms - không bao giờ để bản đồ trống)
+    setOsrmCoords(normalizedStops.map(s => [s.lat, s.lng]));
 
     let isMounted = true;
     const fetchOSRM = async () => {
       try {
         setFetchingOsrm(true);
-        const waypointsStr = normalizedStops.map(s => `${s.lng},${s.lat}`).join(';');
-        const url = `https://router.project-osrm.org/route/v1/driving/${waypointsStr}?overview=full&geometries=geojson`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === 'Ok' && data.routes && data.routes[0]) {
-          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          if (isMounted) {
-            setOsrmCoords(coords);
-          }
-        } else {
-          // Fallback đường nối thẳng nếu OSRM quá tải
-          if (isMounted) {
-            setOsrmCoords(normalizedStops.map(s => [s.lat, s.lng]));
-          }
+        const coords = await fetchFastHighwayRoute(normalizedStops, selectedTrip._id);
+        if (isMounted && coords && coords.length > 0) {
+          setOsrmCoords(coords);
         }
       } catch (err) {
-        console.warn('Lỗi lấy OSRM, dùng fallback các trạm:', err);
-        if (isMounted) {
-          setOsrmCoords(normalizedStops.map(s => [s.lat, s.lng]));
-        }
+        console.warn('Lỗi lấy OSRM hành khách:', err);
       } finally {
         if (isMounted) setFetchingOsrm(false);
       }
@@ -306,10 +325,11 @@ const TrackJourneyPage = () => {
     const boundsLatLngs = [];
 
     normalizedStops.forEach((stop, idx) => {
-      const isPickup = stop.type === 'pickup';
+      const isPickup = stop.type === 'pickup' || stop.type === 'start';
       const isFirst = idx === 0;
       const isLast = idx === normalizedStops.length - 1;
-      const markerColor = isPickup ? '#059669' : '#ea580c';
+      const markerColor = isFirst ? '#059669' : isLast ? '#dc2626' : (isPickup ? '#10b981' : '#ea580c');
+      const stationName = stop.name || stop.location || 'Trạm dừng';
 
       const stopIcon = L.divIcon({
         className: 'station-div-pin',
@@ -329,7 +349,7 @@ const TrackJourneyPage = () => {
             gap: 4px;
             font-family: system-ui, sans-serif;
           ">
-            <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stop.location}</span>
+            <span>[${stop.time || (isPickup ? 'Đón' : 'Trả')}] ${stationName}</span>
           </div>
         `,
         iconSize: [110, 24],
@@ -339,7 +359,7 @@ const TrackJourneyPage = () => {
       const marker = L.marker([stop.lat, stop.lng], { icon: stopIcon }).addTo(stationsLayer);
       marker.bindPopup(`
         <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
-          <div style="font-weight: 800; color: #0f172a; font-size: 0.9rem;">${stop.location}</div>
+          <div style="font-weight: 800; color: #0f172a; font-size: 0.9rem;">${stationName}</div>
           <div style="font-size: 0.72rem; color: ${isPickup ? '#047857' : '#c2410c'}; font-weight: 800; margin: 4px 0;">
             ${stop.badgeText} (${stop.time || 'N/A'})
           </div>
@@ -363,24 +383,73 @@ const TrackJourneyPage = () => {
     }
   }, [mapReady, normalizedStops, selectedTrip]);
 
-  // 8. Vẽ đường quốc lộ cao tốc OSRM (Màu xanh đậm uốn lượn thực tế)
+  // 8. Vẽ đường quốc lộ cao tốc OSRM (Đồng bộ Realtime Lộ trình gốc mờ & Hướng rẽ mới)
   useEffect(() => {
     if (!mapReady || !window.L || !mapInstanceRef.current || osrmCoords.length < 2) return;
     const L = window.L;
     const map = mapInstanceRef.current;
 
+    const isDetour = Boolean(liveGpsData.isOffRoute);
+
     if (polylineRef.current) {
       polylineRef.current.setLatLngs(osrmCoords);
+      polylineRef.current.setStyle({
+        color: isDetour ? '#94a3b8' : '#2563eb',
+        weight: isDetour ? 3.5 : 5.5,
+        opacity: isDetour ? 0.45 : 0.88,
+        dashArray: isDetour ? '6, 8' : null
+      });
     } else {
       polylineRef.current = L.polyline(osrmCoords, {
-        color: '#2563eb',
-        weight: 5.5,
-        opacity: 0.85,
+        color: isDetour ? '#94a3b8' : '#2563eb',
+        weight: isDetour ? 3.5 : 5.5,
+        opacity: isDetour ? 0.45 : 0.88,
+        dashArray: isDetour ? '6, 8' : null,
         lineCap: 'round',
         lineJoin: 'round'
       }).addTo(map);
     }
-  }, [mapReady, osrmCoords]);
+
+    // Vẽ hoặc cập nhật đường rẽ mới (Dynamic Re-routing)
+    if (isDetour) {
+      const coords = liveGpsData.rerouteCoords;
+      if (Array.isArray(coords) && coords.length > 1) {
+        if (reroutePolylineRef.current) {
+          reroutePolylineRef.current.setLatLngs(coords);
+        } else {
+          reroutePolylineRef.current = L.polyline(coords, {
+            color: '#ea580c',
+            weight: 6,
+            opacity: 0.95,
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(map);
+        }
+      } else if (typeof liveGpsData.lat === 'number' && typeof liveGpsData.lng === 'number') {
+        const remainingStops = normalizedStops.slice(1);
+        fetchDynamicReroute({ lat: liveGpsData.lat, lng: liveGpsData.lng }, remainingStops).then(newCoords => {
+          if (newCoords && newCoords.length > 1) {
+            if (reroutePolylineRef.current) {
+              reroutePolylineRef.current.setLatLngs(newCoords);
+            } else {
+              reroutePolylineRef.current = L.polyline(newCoords, {
+                color: '#ea580c',
+                weight: 6,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }).addTo(map);
+            }
+          }
+        });
+      }
+    } else {
+      if (reroutePolylineRef.current) {
+        reroutePolylineRef.current.remove();
+        reroutePolylineRef.current = null;
+      }
+    }
+  }, [mapReady, osrmCoords, liveGpsData.isOffRoute, liveGpsData.rerouteCoords, liveGpsData.lat, liveGpsData.lng]);
 
   // 9. Cập nhật vị trí Marker Xe Khách (Live GPS Marker)
   useEffect(() => {
@@ -724,7 +793,6 @@ const TrackJourneyPage = () => {
                     className={`trip-card-item ${isCurrent ? 'selected' : ''}`}
                     onClick={() => {
                       setSelectedTrip(trip);
-                      resetSimulation();
                     }}
                   >
                     <div className="trip-card-top">
@@ -817,6 +885,30 @@ const TrackJourneyPage = () => {
             </div>
           </div>
 
+          {/* THÔNG BÁO LỘ TRÌNH ĐIỀU CHỈNH REALTIME CHO HÀNH KHÁCH */}
+          {liveGpsData.isOffRoute && (
+            <div style={{
+              padding: '8px 16px',
+              backgroundColor: '#eff6ff',
+              borderBottom: '1px solid #bfdbfe',
+              color: '#1d4ed8',
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1rem' }}>ℹ️</span>
+                <span>Xe đang di chuyển theo lộ trình điều chỉnh để tránh ùn tắc / tối ưu thời gian đón trả (đường nét liền cam). Giờ xe đến vẫn được cập nhật liên tục.</span>
+              </div>
+              <span style={{ backgroundColor: '#dbeafe', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', color: '#1e40af', border: '1px solid #93c5fd', whiteSpace: 'nowrap' }}>
+                Đồng bộ Realtime
+              </span>
+            </div>
+          )}
+
           <div className="map-stage-container">
             {/* Div mount Leaflet Map */}
             <div 
@@ -858,19 +950,25 @@ const TrackJourneyPage = () => {
           <div className="map-legends-bar">
             <div className="legend-item">
               <span className="legend-dot-pickup"></span>
-              <span>Trạm đón khách ({normalizedStops.filter(s => s.type === 'pickup').length})</span>
+              <span>Trạm đón ({normalizedStops.filter(s => s.type === 'pickup').length})</span>
             </div>
             <div className="legend-item">
               <span className="legend-dot-dropoff"></span>
-              <span>Trạm trả khách ({normalizedStops.filter(s => s.type === 'dropoff').length})</span>
+              <span>Trạm trả ({normalizedStops.filter(s => s.type === 'dropoff').length})</span>
             </div>
+            {liveGpsData.isOffRoute && (
+              <div className="legend-item">
+                <span style={{ width: '12px', height: '3px', backgroundColor: '#ea580c', borderRadius: '2px', display: 'inline-block' }}></span>
+                <span>Hướng rẽ điều chỉnh mới</span>
+              </div>
+            )}
             <div className="legend-item">
-              <span className="legend-dot-route"></span>
-              <span>Lộ trình Quốc lộ / Cao tốc (OSRM)</span>
+              <span style={{ width: '12px', height: '3px', backgroundColor: liveGpsData.isOffRoute ? '#94a3b8' : '#2563eb', borderRadius: '2px', display: 'inline-block' }}></span>
+              <span>{liveGpsData.isOffRoute ? 'Lộ trình gốc (mờ)' : 'Lộ trình chuẩn (OSRM)'}</span>
             </div>
             <div className="legend-item">
               <span className="legend-dot-bus"></span>
-              <span>Xe Khách An Bình Lines (Live GPS)</span>
+              <span>Xe Khách (Live GPS)</span>
             </div>
           </div>
 

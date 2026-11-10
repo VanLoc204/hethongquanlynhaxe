@@ -10,6 +10,7 @@ import FleetMaintenancePage from './pages/fleet/FleetMaintenancePage';
 import FleetStatusPage from './pages/fleet/FleetStatusPage';
 import FleetReportsPage from './pages/fleet/FleetReportsPage';
 import FleetForecastPage from './pages/fleet/FleetForecastPage';
+import FleetMonthlyExpenseReportPage from './pages/fleet/FleetMonthlyExpenseReportPage';
 
 // Ops Pages
 import OpsRoutesPage from './pages/ops/OpsRoutesPage';
@@ -18,6 +19,8 @@ import OpsStaffPage from './pages/ops/OpsStaffPage';
 import OpsFleetAccountsPage from './pages/ops/OpsFleetAccountsPage';
 import OpsReportsPage from './pages/ops/OpsReportsPage';
 import OpsTrackingPage from './pages/ops/OpsTrackingPage';
+import OpsIncidentsPage from './pages/ops/OpsIncidentsPage';
+import OpsTripReportsPage from './pages/ops/OpsTripReportsPage';
 
 // GM Pages
 import GmStaffPage from './pages/gm/GmStaffPage';
@@ -27,6 +30,7 @@ import GmTargetsPage from './pages/gm/GmTargetsPage';
 import GmPromotionsPage from './pages/gm/GmPromotionsPage';
 import GmAnalysisPage from './pages/gm/GmAnalysisPage';
 import GmAttendancePage from './pages/gm/GmAttendancePage';
+import GmFleetExpenseReviewPage from './pages/gm/GmFleetExpenseReviewPage';
 
 // Shared Employee Pages
 import StaffSchedulePage from './pages/common/StaffSchedulePage';
@@ -36,6 +40,7 @@ import ManagerAttendancePage from './pages/common/ManagerAttendancePage';
 import ManagerLeavesPage from './pages/common/ManagerLeavesPage';
 import StaffSalaryPage from './pages/common/StaffSalaryPage';
 import StaffNotificationsPage from './pages/common/StaffNotificationsPage';
+import StaffAttendancePage from './pages/common/StaffAttendancePage';
 
 // Ticket Agent Pages
 import AgentAttendancePage from './pages/agent/AgentAttendancePage';
@@ -46,6 +51,8 @@ import AgentShiftSummaryPage from './pages/agent/AgentShiftSummaryPage';
 import AgentTripsPage from './pages/agent/AgentTripsPage';
 import AgentAIPage from './pages/agent/AgentAIPage';
 import AgentDashboardPage from './pages/agent/AgentDashboardPage';
+import AgentIncidentPage from './pages/agent/AgentIncidentPage';
+import AgentMonthlyReportPage from './pages/agent/AgentMonthlyReportPage';
 
 // Attendant Pages
 import AttendantAttendancePage from './pages/attendant/AttendantAttendancePage';
@@ -57,6 +64,7 @@ import DriverDashboardPage from './pages/driver/DriverDashboardPage';
 import DriverAttendancePage from './pages/driver/DriverAttendancePage';
 import DriverStatusPage from './pages/driver/DriverStatusPage';
 import DriverMapPage from './pages/driver/DriverMapPage';
+import DriverIncidentPage from './pages/driver/DriverIncidentPage';
 import CrewAttendanceReportPage from './pages/crew/CrewAttendanceReportPage';
 
 // Admin Pages
@@ -69,6 +77,11 @@ import TicketStaffAccountsPage from './pages/ticket/TicketStaffAccountsPage';
 import TicketStaffLeavesPage from './pages/ticket/TicketStaffLeavesPage';
 import TicketAttendanceMonitoringPage from './pages/ticket/TicketAttendanceMonitoringPage';
 import TicketPricingProposalPage from './pages/ticket/TicketPricingProposalPage';
+import TicketRevenueReportPage from './pages/ticket/TicketRevenueReportPage';
+import TicketIncidentsPage from './pages/ticket/TicketIncidentsPage';
+import TicketCustomerFeedbackPage from './pages/ticket/TicketCustomerFeedbackPage';
+import TicketManagerOverview from './pages/ticket/TicketManagerOverview';
+import TicketMonthlyReportsReviewPage from './pages/ticket/TicketMonthlyReportsReviewPage';
 
 function DashboardLayout() {
   const { user } = useContext(AuthContext);
@@ -80,6 +93,9 @@ function DashboardLayout() {
       case 'dashboard':
         if (user?.role === 'ticket_agent') {
           return <AgentDashboardPage setActiveTab={setActiveTab} />;
+        }
+        if (user?.role === 'ticket_manager') {
+          return <TicketManagerOverview setActiveTab={setActiveTab} />;
         }
         if (user?.role === 'driver') {
           return <DriverDashboardPage setActiveTab={setActiveTab} />;
@@ -96,6 +112,8 @@ function DashboardLayout() {
         return <FleetStatusPage />;
       case 'fleet-reports':
         return <FleetReportsPage />;
+      case 'fleet-monthly-expenses':
+        return <FleetMonthlyExpenseReportPage />;
       case 'fleet-forecast':
         return <FleetForecastPage />;
 
@@ -110,8 +128,12 @@ function DashboardLayout() {
         return <OpsFleetAccountsPage setActiveTab={setActiveTab} />;
       case 'ops-reports':
         return <OpsReportsPage />;
+      case 'ops-trip-reports':
+        return <OpsTripReportsPage />;
       case 'ops-tracking':
         return <OpsTrackingPage />;
+      case 'ops-incidents':
+        return <OpsIncidentsPage setActiveTab={setActiveTab} />;
       case 'manager-approvals':
         return <ManagerApprovalsPage />;
       case 'manager-attendance':
@@ -134,6 +156,8 @@ function DashboardLayout() {
         return <GmPromotionsPage />;
       case 'gm-analysis':
         return <GmAnalysisPage />;
+      case 'gm-fleet-expenses':
+        return <GmFleetExpenseReviewPage />;
 
       // Admin views
       case 'admin-users':
@@ -146,6 +170,10 @@ function DashboardLayout() {
       // Shared Employee views
       case 'staff-schedule':
         return <StaffSchedulePage setActiveTab={setActiveTab} />;
+      case 'staff-attendance':
+        return <StaffAttendancePage setActiveTab={setActiveTab} defaultView="checkin" />;
+      case 'staff-attendance-report':
+        return <StaffAttendancePage setActiveTab={setActiveTab} defaultView="history" />;
       case 'staff-leave':
         return <StaffLeavePage />;
       case 'staff-salary':
@@ -165,16 +193,22 @@ function DashboardLayout() {
         return <AgentTicketsPage />;
       case 'agent-shift':
         return <AgentShiftSummaryPage />;
+      case 'agent-monthly-report':
+        return <AgentMonthlyReportPage />;
       case 'agent-trips':
         return <AgentTripsPage setActiveTab={setActiveTab} />;
       case 'agent-ai':
         return <AgentAIPage />;
+      case 'agent-incidents':
+        return <AgentIncidentPage />;
 
       // Attendant views
       case 'attendant-attendance':
         return <AttendantAttendancePage setActiveTab={setActiveTab} />;
       case 'attendant-checkin':
         return <AttendantCheckinPage />;
+      case 'attendant-trip-reports':
+        return <OpsTripReportsPage role="attendant" />;
       case 'attendant-attendance-report':
         return <CrewAttendanceReportPage role="attendant" setActiveTab={setActiveTab} />;
 
@@ -185,6 +219,8 @@ function DashboardLayout() {
         return <DriverStatusPage setActiveTab={setActiveTab} />;
       case 'driver-map':
         return <DriverMapPage setActiveTab={setActiveTab} />;
+      case 'driver-incidents':
+        return <DriverIncidentPage setActiveTab={setActiveTab} />;
       case 'driver-attendance-report':
         return <CrewAttendanceReportPage role="driver" setActiveTab={setActiveTab} />;
 
@@ -197,6 +233,14 @@ function DashboardLayout() {
         return <TicketAttendanceMonitoringPage />;
       case 'ticket-proposals':
         return <TicketPricingProposalPage />;
+      case 'ticket-reports':
+        return <TicketRevenueReportPage />;
+      case 'ticket-monthly-reports':
+        return <TicketMonthlyReportsReviewPage />;
+      case 'ticket-incidents':
+        return <TicketIncidentsPage />;
+      case 'ticket-feedbacks':
+        return <TicketCustomerFeedbackPage />;
 
       default:
         // Generic fallback placeholder for other role views under development
@@ -229,6 +273,8 @@ function DashboardLayout() {
         return 'Cập nhật tình trạng xe';
       case 'fleet-reports':
         return 'Tạo báo cáo đội xe';
+      case 'fleet-monthly-expenses':
+        return 'Báo cáo chi tiêu & chi phí đội xe';
       case 'fleet-forecast':
         return 'Xem dự báo bảo trì';
 
@@ -243,8 +289,12 @@ function DashboardLayout() {
         return 'Quản lý tài khoản đội xe (Tài xế & Phụ xe)';
       case 'ops-reports':
         return 'Xem báo cáo';
+      case 'ops-trip-reports':
+        return 'Báo cáo thống kê hành khách chuyến xe';
       case 'ops-tracking':
         return 'Định vị giám sát lộ trình';
+      case 'ops-incidents':
+        return 'Tiếp nhận & Xử lý sự cố trên tuyến';
       case 'manager-approvals':
         return 'Xem danh sách chờ duyệt';
       case 'manager-attendance':
@@ -263,10 +313,16 @@ function DashboardLayout() {
         return 'Quản lý khuyến mãi';
       case 'gm-analysis':
         return 'Xem phân tích nhu cầu';
+      case 'gm-fleet-expenses':
+        return 'Phê duyệt báo cáo chi tiêu đội xe';
 
       // Shared Employee views
       case 'staff-schedule':
         return 'Lịch làm việc phân công';
+      case 'staff-attendance':
+        return 'Chấm công ca trực nhân sự';
+      case 'staff-attendance-report':
+        return 'Lịch sử chấm công nhân sự';
       case 'staff-leave':
         return 'Đơn xin nghỉ phép';
       case 'staff-salary':
@@ -285,16 +341,22 @@ function DashboardLayout() {
         return 'Tra cứu & Quản lý vé';
       case 'agent-shift':
         return 'Tổng kết ca làm việc';
+      case 'agent-monthly-report':
+        return 'Báo cáo doanh thu bán vé hàng tháng';
       case 'agent-trips':
         return 'Tra cứu bảng giờ xe chạy';
       case 'agent-ai':
         return 'Trợ lý tư vấn dịch vụ AI';
+      case 'agent-incidents':
+        return 'Báo cáo sự cố cho Quản lý phòng vé';
 
       // Attendant views
       case 'attendant-attendance':
         return 'Chấm công số (Phụ xe)';
       case 'attendant-checkin':
         return 'Soát vé & Check-in hành khách';
+      case 'attendant-trip-reports':
+        return 'Lịch sử báo cáo chuyến xe (Phụ xe)';
       case 'attendant-attendance-report':
         return 'Lịch sử chấm công phụ xe';
 
@@ -305,6 +367,8 @@ function DashboardLayout() {
         return 'Cập nhật lộ trình xe chạy';
       case 'driver-map':
         return 'Bản đồ di chuyển GPS';
+      case 'driver-incidents':
+        return 'Báo cáo sự cố trên tuyến (Tài xế)';
       case 'driver-attendance-report':
         return 'Lịch sử chấm công tài xế';
 
@@ -317,6 +381,14 @@ function DashboardLayout() {
         return 'Giám sát ca trực & đối soát quỹ phòng vé';
       case 'ticket-proposals':
         return 'Đề xuất điều chỉnh giá vé';
+      case 'ticket-reports':
+        return 'Báo cáo khu vực';
+      case 'ticket-monthly-reports':
+        return 'Duyệt báo cáo doanh thu bán vé hàng tháng';
+      case 'ticket-incidents':
+        return 'Báo cáo & Giám sát sự cố phòng vé';
+      case 'ticket-feedbacks':
+        return 'Phản hồi & Khiếu nại khách hàng';
 
       default:
         return 'Chức năng đang phát triển';
