@@ -22,6 +22,13 @@ const ShipmentPage = () => {
   const [paymentStep, setPaymentStep] = useState('form');
   const [createdShipment, setCreatedShipment] = useState(null);
 
+  // Tự động cuộn lên đầu khi chuyển bước giao hàng (form -> payment -> success)
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }, [paymentStep]);
+
   // Track Shipment State
   const [searchId, setSearchId] = useState('');
   const [searchResult, setSearchResult] = useState(null);

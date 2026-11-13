@@ -35,6 +35,7 @@ import AIAssistantPage from './pages/customer/AIAssistantPage';
 import NotificationsPage from './pages/customer/NotificationsPage';
 import ProfilePage from './pages/customer/ProfilePage';
 import AIChatbotWidget from './components/AIChatbotWidget';
+import ScrollToTop from './components/ScrollToTop';
 
 // Protected Route - chỉ dành cho khách hàng đã đăng nhập
 const ProtectedRoute = ({ children }) => {
@@ -342,6 +343,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <ScrollToTop />
         <AppContent />
       </Router>
     </AuthProvider>

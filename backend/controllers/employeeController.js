@@ -839,7 +839,7 @@ exports.lookupTickets = async (req, res) => {
 // @access  Private (Ticket Agent)
 exports.createCounterBooking = async (req, res) => {
   try {
-    const { tripId, seats, pickup, dropoff, customerName, customerPhone, customerEmail, paymentMethod } = req.body;
+    const { tripId, seats, pickup, dropoff, customerName, customerPhone, customerEmail, paymentMethod, pointsUsed = 0 } = req.body;
     
     if (!tripId || !seats || !seats.length || !pickup || !dropoff || !customerName || !customerPhone || !paymentMethod) {
       return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ các trường thông tin bắt buộc.' });
@@ -891,7 +891,19 @@ exports.createCounterBooking = async (req, res) => {
       await passenger.save();
     }
 
-    // 5. Generate unique orderCode
+    // 5. Khấu trừ điểm tích lũy thành viên (1 điểm = 1 VNĐ) nếu có yêu cầu
+    const totalPrice = trip.price * seats.length;
+    const availablePoints = passenger.points || 0;
+    const maxPointsCanUse = Math.min(availablePoints, totalPrice);
+    const actualPointsUsed = Math.min(Math.max(0, Number(pointsUsed) || 0), maxPointsCanUse);
+    const finalAmountToPay = Math.max(0, totalPrice - actualPointsUsed);
+
+    if (actualPointsUsed > 0) {
+      passenger.points = Math.max(0, (passenger.points || 0) - actualPointsUsed);
+      console.log(`[Counter Booking] Khách hàng ${passenger.phone} đã sử dụng ${actualPointsUsed} điểm. Còn lại: ${passenger.points} điểm.`);
+    }
+
+    // 6. Generate unique orderCode
     let orderCode = Math.floor(100000 + Math.random() * 900000);
     let orderCodeExists = await Booking.findOne({ orderCode }).lean();
     while (orderCodeExists) {
@@ -899,7 +911,7 @@ exports.createCounterBooking = async (req, res) => {
       orderCodeExists = await Booking.findOne({ orderCode }).lean();
     }
 
-    // 6. Create booking with status PAID
+    // 7. Create booking with status PAID
     const booking = await Booking.create({
       tripId,
       userId: passenger._id.toString(),
@@ -913,32 +925,44 @@ exports.createCounterBooking = async (req, res) => {
       customerCCCD: 'COUNTER_BOOKING',  // Dummy fallback
       status: 'paid',                   // Counter booking is paid immediately
       paymentType: 'immediate',
-      orderCode
+      orderCode,
+      pricePerSeat: trip.price,
+      originalAmount: totalPrice,
+      pointsUsed: actualPointsUsed,
+      discountFromPoints: actualPointsUsed,
+      totalAmount: finalAmountToPay
     });
 
-    // 7. Update Trip bookedSeats map
+    // 8. Update Trip bookedSeats map
     trip.bookedSeats = [...(trip.bookedSeats || []), ...seats];
     await trip.save();
 
-    // 8. Update cashier session sales
-    const totalPrice = trip.price * seats.length;
+    // Giải phóng khóa tạm thời và thông báo thời gian thực
+    const seatLockService = require('../services/seatLockService');
+    seatLockService.unlockSeats(tripId.toString(), seats);
+    seatLockService.broadcast(tripId.toString(), 'BOOKED_SEATS', {
+      tripId: tripId.toString(),
+      bookedSeats: seats
+    });
+
+    // 9. Update cashier session sales
     if (paymentMethod === 'cash') {
-      session.cashRevenue += totalPrice;
+      session.cashRevenue += finalAmountToPay;
     } else {
-      session.cashlessRevenue += totalPrice;
+      session.cashlessRevenue += finalAmountToPay;
     }
     session.ticketsSold.push(booking._id);
     await session.save();
 
-    // 9. Credit Points to Customer
+    // 10. Credit Points to Customer on actual paid amount
     const tier = passenger.membershipTier || 'Bronze';
     let multiplier = 0.01;
     if (tier === 'Silver') multiplier = 0.02;
     else if (tier === 'Gold') multiplier = 0.03;
     else if (tier === 'Platinum') multiplier = 0.05;
 
-    const earnedPoints = Math.floor(totalPrice * multiplier);
-    passenger.points += earnedPoints;
+    const earnedPoints = Math.floor(finalAmountToPay * multiplier);
+    passenger.points = (passenger.points || 0) + earnedPoints;
 
     // Evaluate tier promotions
     if (passenger.points >= 2000) passenger.membershipTier = 'Platinum';
@@ -1058,7 +1082,21 @@ exports.cancelTicketAtCounter = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy chuyến đi liên quan để kiểm tra lịch trình.' });
     }
 
-    // Kiểm tra ca trực nếu hoàn tiền mặt
+    // Kiểm tra quy định hủy vé: Chỉ được hủy trước giờ khởi hành ít nhất 5 ngày
+    const departureTime = new Date(trip.departureTime);
+    const now = new Date();
+    const diffMs = departureTime - now;
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    if (diffDays < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Không thể hủy vé! Chuyến xe đã khởi hành hoặc còn dưới 5 ngày trước giờ xuất bến (chỉ được phép hủy vé trước 5 ngày).'
+      });
+    }
+
+    // Kiểm tra ca trực nếu chọn hoàn tiền mặt
     const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
     if (refundMethod === 'cash' && !session && req.user.role === 'ticket_agent') {
       return res.status(400).json({
@@ -1067,51 +1105,50 @@ exports.cancelTicketAtCounter = async (req, res) => {
       });
     }
 
-    // Tính toán phí hủy đề xuất theo thời gian xuất bến
+    // Tổng tiền vé cần xử lý hoàn trả
     const totalPrice = booking.totalAmount || ((trip.price || 0) * (booking.seats?.length || 1));
     const ticketCount = booking.seats?.length || 1;
-    const departureTime = new Date(trip.departureTime);
-    const now = new Date();
-    const diffMs = departureTime - now;
-    const diffHours = diffMs / (1000 * 60 * 60);
-
     const holiday = isHoliday(trip.departureTime);
-    let feePercent = 1.0;
 
-    if (!holiday) {
-      if (ticketCount >= 1 && ticketCount <= 3) {
-        if (diffHours >= 4) feePercent = 0.1;
-        else if (diffHours >= 0.5 && diffHours < 4) feePercent = 0.3;
-        else feePercent = 1.0;
-      } else if (ticketCount >= 4 && ticketCount <= 9) {
-        feePercent = diffHours >= 24 ? 0.1 : 1.0;
-      } else if (ticketCount >= 10) {
-        feePercent = diffHours >= 48 ? 0.1 : 1.0;
-      }
-    } else {
-      if (ticketCount >= 1 && ticketCount <= 3) {
-        feePercent = diffHours >= 24 ? 0.3 : 1.0;
-      } else if (ticketCount >= 4 && ticketCount <= 9) {
-        feePercent = diffHours >= 48 ? 0.3 : 1.0;
-      } else if (ticketCount >= 10) {
-        feePercent = diffHours >= 72 ? 0.3 : 1.0;
-      }
-    }
-
-    const defaultCancellationFee = totalPrice * feePercent;
-    const defaultRefundAmount = Math.max(0, totalPrice - defaultCancellationFee);
-
-    // Xác định số tiền hoàn trả thực tế
-    let finalRefundAmount = defaultRefundAmount;
-    if (customRefundAmount !== undefined && customRefundAmount !== null && customRefundAmount !== '') {
-      finalRefundAmount = Math.max(0, Math.min(totalPrice, Number(customRefundAmount)));
-    }
+    // Vì hủy trước 5 ngày, áp dụng hoàn 100% (hoặc mức điều chỉnh nếu nhân viên nhập)
+    let finalRefundAmount = (customRefundAmount !== undefined && customRefundAmount !== null && customRefundAmount !== '')
+      ? Math.max(0, Math.min(totalPrice, Number(customRefundAmount)))
+      : totalPrice;
     const finalCancellationFee = Math.max(0, totalPrice - finalRefundAmount);
 
     let payoutResult = null;
 
-    // Xử lý bắn tiền tự động qua payOS (Payout)
-    if (refundMethod === 'payos_payout') {
+    if (refundMethod === 'points') {
+      // Tích điểm vào tài khoản thành viên (1 điểm = 1 VNĐ)
+      let passenger = await User.findOne({ phone: booking.customerPhone, role: 'customer' });
+      if (!passenger && booking.userId && booking.userId.match(/^[0-9a-fA-F]{24}$/)) {
+        passenger = await User.findById(booking.userId);
+      }
+      if (!passenger) {
+        return res.status(400).json({
+          success: false,
+          message: `Số điện thoại ${booking.customerPhone} chưa đăng ký tài khoản thành viên để nhận điểm tích lũy. Vui lòng chọn hoàn tiền mặt tại quầy hoặc hướng dẫn khách đăng ký tài khoản.`
+        });
+      }
+
+      passenger.points = (passenger.points || 0) + finalRefundAmount;
+      if (passenger.points >= 2000) passenger.membershipTier = 'Platinum';
+      else if (passenger.points >= 1000) passenger.membershipTier = 'Gold';
+      else if (passenger.points >= 500) passenger.membershipTier = 'Silver';
+      await passenger.save();
+
+      booking.refundMethod = 'points';
+    } else if (refundMethod === 'cash') {
+      // Hoàn tiền mặt tại quầy: Trích tiền mặt từ két ca trực của nhân viên
+      booking.refundMethod = 'cash';
+      if (session) {
+        session.refundCash = (session.refundCash || 0) + finalRefundAmount;
+        if (!session.ticketsRefunded) session.ticketsRefunded = [];
+        session.ticketsRefunded.push(booking._id);
+        await session.save();
+      }
+    } else if (refundMethod === 'payos_payout') {
+      // Xử lý bắn tiền tự động qua payOS (Payout)
       const { bankCode, accountNumber, accountHolder } = bankDetails;
 
       if (!accountNumber || !accountNumber.trim()) {
@@ -1147,7 +1184,6 @@ exports.cancelTicketAtCounter = async (req, res) => {
         payoutStatus: payoutResult.payoutStatus
       };
 
-      // Lưu lại thông tin STK này cho khách vào DB nếu chọn lưu
       if (saveBankAccount && booking.customerPhone) {
         try {
           await CustomerBankAccount.findOneAndUpdate(
@@ -1169,14 +1205,7 @@ exports.cancelTicketAtCounter = async (req, res) => {
         }
       }
     } else {
-      // Hoàn tiền mặt tại quầy: Trích tiền mặt từ két ca trực của nhân viên
       booking.refundMethod = 'cash';
-      if (session) {
-        session.refundCash = (session.refundCash || 0) + finalRefundAmount;
-        if (!session.ticketsRefunded) session.ticketsRefunded = [];
-        session.ticketsRefunded.push(booking._id);
-        await session.save();
-      }
     }
 
     // Cập nhật trạng thái vé
@@ -1192,18 +1221,27 @@ exports.cancelTicketAtCounter = async (req, res) => {
     trip.bookedSeats = (trip.bookedSeats || []).filter((seat) => !booking.seats.includes(seat));
     await trip.save();
 
+    const seatLockService = require('../services/seatLockService');
+    seatLockService.broadcast(booking.tripId.toString(), 'RELEASED_SEATS', {
+      tripId: booking.tripId.toString(),
+      releasedSeats: booking.seats
+    });
+
     res.status(200).json({
       success: true,
       message:
-        refundMethod === 'payos_payout'
-          ? `Hủy vé thành công! Đã tự động bắn ${finalRefundAmount.toLocaleString('vi-VN')} đ về tài khoản ${booking.bankInfo?.bankName} (STK: ${booking.bankInfo?.accountNumber}) qua cổng payOS.`
-          : `Hủy vé thành công! Đã hoàn trả tiền mặt ${finalRefundAmount.toLocaleString('vi-VN')} đ tại quầy và giải phóng ghế.`,
+        booking.refundMethod === 'points'
+          ? `Hủy vé thành công! Đã tích ${finalRefundAmount.toLocaleString('vi-VN')} điểm vào tài khoản thành viên của khách hàng (${booking.customerPhone}) và giải phóng ghế.`
+          : booking.refundMethod === 'cash'
+          ? `Hủy vé thành công! Đã hoàn trả tiền mặt ${finalRefundAmount.toLocaleString('vi-VN')} đ tại quầy và giải phóng ghế.`
+          : `Hủy vé thành công! Đã xử lý hoàn tiền qua cổng payOS và giải phóng ghế.`,
       refundSummary: {
         totalPrice,
         ticketCount,
         isHoliday: holiday,
+        diffDays: Math.round(diffDays * 10) / 10,
         diffHours: Math.round(diffHours * 10) / 10,
-        feePercent: Math.round(feePercent * 100),
+        feePercent: 0,
         cancellationFee: finalCancellationFee,
         refundAmount: finalRefundAmount,
         refundMethod: booking.refundMethod

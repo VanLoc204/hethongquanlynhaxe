@@ -78,7 +78,32 @@ const bookingSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
-    // ─── Thông tin Hủy vé & Hoàn tiền (payOS Payout / Tiền mặt) ───────────────
+    // Tiền gốc trước khi giảm trừ bằng điểm tích lũy
+    originalAmount: {
+      type: Number,
+      default: 0
+    },
+    // Số điểm tích lũy đã sử dụng cho booking này (1 điểm = 1 VNĐ)
+    pointsUsed: {
+      type: Number,
+      default: 0
+    },
+    // Số tiền giảm trừ từ điểm tích lũy
+    discountFromPoints: {
+      type: Number,
+      default: 0
+    },
+    // Mã khuyến mãi / voucher đã áp dụng
+    voucherCode: {
+      type: String,
+      default: ''
+    },
+    // Số tiền giảm trừ từ voucher
+    voucherDiscount: {
+      type: Number,
+      default: 0
+    },
+    // ─── Thông tin Hủy vé & Hoàn tiền (payOS Payout / Tiền mặt / Tích điểm) ───
     cancellationFee: {
       type: Number,
       default: 0
@@ -89,7 +114,7 @@ const bookingSchema = new mongoose.Schema(
     },
     refundMethod: {
       type: String,
-      enum: ['payos_payout', 'bank_transfer', 'cash', 'account_balance', null],
+      enum: ['payos_payout', 'bank_transfer', 'cash', 'account_balance', 'points', null],
       default: null
     },
     bankInfo: {

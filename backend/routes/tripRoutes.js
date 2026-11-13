@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   searchTrips,
+  getUpcomingTrips,
   getTripById,
   payosWebhook,
   createShipment,
@@ -58,6 +59,7 @@ router.get('/my-bookings/:userId', getMyBookings);
 // ==========================================
 // Search Route
 router.get('/search', searchTrips);
+router.get('/upcoming', getUpcomingTrips);
 
 // Get all routes (public view for search suggestions)
 router.get('/routes', getPublicRoutes);
@@ -113,8 +115,23 @@ router.patch('/ops/trips/:id/punctuality', protect, restrictTo('ops_manager', 'g
 // Driver Live GPS Tracking & Telemetry
 router.put('/:id/live-gps', protect, updateLiveGps);
 
+const {
+  streamSeatLocks,
+  getLockedSeats,
+  lockSeat,
+  unlockSeat,
+  unlockAllMySeats
+} = require('../controllers/seatLockController');
+
 // Driver Journey Updates
 router.patch('/:id/update-journey', protect, updateJourneyStatus);
+
+// Realtime Seat Locking routes (5 phút)
+router.get('/:id/seat-locks/stream', streamSeatLocks);
+router.get('/:id/locked-seats', getLockedSeats);
+router.post('/:id/lock-seat', lockSeat);
+router.post('/:id/unlock-seat', unlockSeat);
+router.post('/:id/unlock-all-my-seats', unlockAllMySeats);
 
 // Get Trip details Route (placed last due to dynamic parameter path)
 router.get('/:id', getTripById);

@@ -6,11 +6,14 @@ class UserRepository {
   }
 
   async findByPhone(phone) {
-    return await User.findOne({ phone });
+    if (!phone) return null;
+    return await User.findOne({ phone: String(phone).trim() });
   }
 
   async findByEmail(email) {
-    return await User.findOne({ email });
+    if (!email) return null;
+    const clean = String(email).trim();
+    return await User.findOne({ email: { $regex: new RegExp(`^${clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
   }
 
   async findById(id) {

@@ -1,5 +1,7 @@
+const path = require('path');
 const dotenv = require('dotenv');
 dotenv.config();
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 /**
  * Send an email using Gmail SMTP (if configured) or Brevo Transactional API
@@ -266,3 +268,59 @@ exports.sendShipmentInvoiceEmail = async (shipment) => {
 
   return await sendEmail(shipment.senderEmail, shipment.senderName, subject, htmlContent);
 };
+
+/**
+ * Send Forgot Password OTP Verification Email
+ * Designed with the exact same template, branding, and high delivery structure as Booking Invoice Email
+ */
+exports.sendForgotPasswordOtpEmail = async (toEmail, userName, otp, expiresInMinutes = 3) => {
+  if (!toEmail) return { success: false, error: 'Email không được để trống' };
+
+  const subject = `[An Bình Lines] Mã xác thực OTP khôi phục mật khẩu - Mã số #${otp}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+      <div style="background-color: #ef4444; color: white; padding: 24px; text-align: center;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 1px;">XÁC THỰC KHÔI PHỤC MẬT KHẨU</h2>
+        <p style="margin: 8px 0 0 0; opacity: 0.9;">Hệ thống vé xe khách trực tuyến An Bình Lines</p>
+      </div>
+      
+      <div style="padding: 24px; color: #334155; line-height: 1.6;">
+        <h3 style="color: #ef4444; border-bottom: 2px dashed #e2e8f0; padding-bottom: 8px; margin-top: 0;">Mã OTP bảo mật của quý khách</h3>
+        
+        <p style="margin: 0 0 16px 0; color: #475569; font-size: 15px;">
+          Xin chào <strong>${userName || 'Quý khách'}</strong>,<br/>
+          Chúng tôi nhận được yêu cầu cấp lại mật khẩu cho tài khoản đăng ký với email này. Vui lòng nhập mã xác thực OTP 6 số dưới đây để tiếp tục thiết lập mật khẩu mới:
+        </p>
+
+        <div style="background-color: #fff1f2; border: 2px dashed #ef4444; border-radius: 10px; padding: 20px; text-align: center; margin: 24px 0;">
+          <span style="display: inline-block; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #b91c1c; font-family: monospace;">
+            ${otp}
+          </span>
+        </div>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 13.5px; color: #dc2626; font-weight: bold;">
+            ⏱️ Mã OTP này có hiệu lực trong vòng ${expiresInMinutes} phút (${expiresInMinutes * 60} giây).
+          </p>
+          <p style="margin: 6px 0 0 0; font-size: 12.5px; color: #64748b;">
+            Vì lý do an toàn thông tin, tuyệt đối không chia sẻ mã xác thực này cho bất kỳ ai, kể cả nhân viên nhà xe.
+          </p>
+        </div>
+
+        <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">
+          Nếu quý khách không gửi yêu cầu này, vui lòng bỏ qua thư hoặc liên hệ hotline <strong>1900 6067</strong> để được hỗ trợ bảo mật tài khoản.
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+        Email này được gửi tự động từ hệ thống An Bình Lines. Vui lòng không trả lời email này.<br>
+        An Bình Lines - Dịch vụ vận tải hành khách chất lượng cao.
+      </div>
+    </div>
+  `;
+
+  return await sendEmail(toEmail, userName || 'Quý khách', subject, htmlContent);
+};
+
+exports.sendEmail = sendEmail;

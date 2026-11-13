@@ -8,15 +8,77 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({ phone: '', password: '' });
+
+  // Kiểm tra độ an toàn mật khẩu theo chuẩn OWASP / NIST
+  const validatePasswordSecurity = (pass) => {
+    if (!pass) return 'Vui lòng nhập mật khẩu truy cập.';
+    if (pass.length < 8) return 'Mật khẩu phải chứa tối thiểu 8 ký tự.';
+    if (!/[A-Z]/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 chữ cái in hoa (A-Z).';
+    if (!/[a-z]/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 chữ cái in thường (a-z).';
+    if (!/\d/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 chữ số (0-9).';
+    if (!/[@$!%*?&#_.-]/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 ký tự đặc biệt.';
+    return null;
+  };
+
+  // Kiểm tra chi tiết định dạng số điện thoại Việt Nam
+  const validatePhoneInput = (rawPhone) => {
+    let clean = (rawPhone || '').trim().replace(/[\s\-\.]/g, '');
+    if (clean.startsWith('+84')) clean = '0' + clean.slice(3);
+    else if (clean.startsWith('84') && clean.length === 11) clean = '0' + clean.slice(2);
+
+    if (!clean) return 'Vui lòng điền Số điện thoại hoặc Email nhân sự.';
+    if (!/^\d+$/.test(clean)) return 'Số điện thoại chỉ được chứa các chữ số.';
+    if (!clean.startsWith('0')) return 'Số điện thoại phải bắt đầu bằng số 0.';
+    if (clean.length !== 10) return 'Số điện thoại phải có đúng 10 chữ số.';
+    if (!/^(0[35789])/.test(clean)) return 'Đầu số không đúng định dạng.';
+    return null;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!phone || !password) {
-      setError('Vui lòng điền đầy đủ số điện thoại hoặc mã nhân viên và mật khẩu.');
+    const newErrors = { phone: '', password: '' };
+    let hasError = false;
+
+    const key = (phone || '').trim();
+
+    // 1. Kiểm tra Số điện thoại / Email
+    if (!key) {
+      newErrors.phone = 'Vui lòng điền Số điện thoại hoặc Email nhân sự.';
+      hasError = true;
+    } else if (/[a-zA-Z]/.test(key) || key.includes('@')) {
+      // Người dùng đang nhập Email (chứa chữ cái hoặc ký tự @)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(key)) {
+        newErrors.phone = 'Email không đúng định dạng.';
+        hasError = true;
+      }
+    } else {
+      // Người dùng đang nhập Số điện thoại
+      const phoneErr = validatePhoneInput(key);
+      if (phoneErr) {
+        newErrors.phone = phoneErr;
+        hasError = true;
+      }
+    }
+
+    // 2. Kiểm tra Mật khẩu form đăng nhập
+    if (!password) {
+      newErrors.password = 'Vui lòng nhập mật khẩu truy cập.';
+      hasError = true;
+    } else if (password.length < 8) {
+      newErrors.password = 'Mật khẩu phải chứa tối thiểu 8 ký tự.';
+      hasError = true;
+    }
+
+    if (hasError) {
+      setFieldErrors(newErrors);
       return;
     }
-    const result = await login(phone, password);
+
+    setFieldErrors({ phone: '', password: '' });
+    const result = await login(key, password);
     if (!result.success) {
       setError(result.message || 'Thông tin tài khoản hoặc mật khẩu không chính xác.');
     }
@@ -26,6 +88,7 @@ const LoginPage = () => {
     setPhone(presetPhone);
     setPassword(presetPass);
     setError('');
+    setFieldErrors({ phone: '', password: '' });
   };
 
   return (
@@ -442,22 +505,33 @@ const LoginPage = () => {
             {/* Login Form */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
 
-              {/* Input 1: Phone */}
+              {/* Input 1: Phone / Email */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#475569', marginBottom: '6px' }}>
-                  Số điện thoại
+                  Số điện thoại hoặc Email
                 </label>
                 <input
                   type="text"
-                  placeholder="Ví dụ: 0912 345 678"
+                  placeholder="Ví dụ: 0955555666 hoặc admin@anbinhlines.vn"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (fieldErrors.phone) setFieldErrors(prev => ({ ...prev, phone: '' }));
+                    if (error) setError('');
+                  }}
                   style={{
                     width: '100%', padding: '0.7rem 1rem', borderRadius: '8px',
-                    border: '1px solid #cbd5e1', fontSize: '0.88rem', background: '#f8fafc',
+                    border: `1px solid ${fieldErrors.phone ? '#ef4444' : '#cbd5e1'}`,
+                    fontSize: '0.88rem',
+                    background: fieldErrors.phone ? '#fef2f2' : '#f8fafc',
                     outline: 'none', transition: 'border-color 0.2s', boxSizing: 'border-box'
                   }}
                 />
+                {fieldErrors.phone && (
+                  <div style={{ color: '#ef4444', fontSize: '0.74rem', marginTop: '4px', fontWeight: '600' }}>
+                    {fieldErrors.phone}
+                  </div>
+                )}
               </div>
 
               {/* Input 2: Password */}
@@ -470,10 +544,16 @@ const LoginPage = () => {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Nhập mật khẩu truy cập..."
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: '' }));
+                      if (error) setError('');
+                    }}
                     style={{
                       width: '100%', padding: '0.7rem 2.5rem 0.7rem 1rem', borderRadius: '8px',
-                      border: '1px solid #cbd5e1', fontSize: '0.88rem', background: '#f8fafc',
+                      border: `1px solid ${fieldErrors.password ? '#ef4444' : '#cbd5e1'}`,
+                      fontSize: '0.88rem',
+                      background: fieldErrors.password ? '#fef2f2' : '#f8fafc',
                       outline: 'none', transition: 'border-color 0.2s', boxSizing: 'border-box'
                     }}
                   />
@@ -488,6 +568,11 @@ const LoginPage = () => {
                     {showPassword ? 'Ẩn' : 'Hiện'}
                   </button>
                 </div>
+                {fieldErrors.password && (
+                  <div style={{ color: '#ef4444', fontSize: '0.74rem', marginTop: '4px', fontWeight: '600' }}>
+                    {fieldErrors.password}
+                  </div>
+                )}
               </div>
 
               {/* Error Alert */}

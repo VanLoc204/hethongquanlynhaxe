@@ -28,7 +28,10 @@ Hệ thống backend được mô đun hóa chuẩn mực xử lý các mảng n
 
 ## 2. Thông Tin Đăng Nhập Thử Nghiệm (Test Accounts)
 
-Tất cả tài khoản hệ thống sử dụng mật khẩu mặc định: **`123456`**
+> [!IMPORTANT]
+> Hệ thống áp dụng **Chuẩn bảo mật mật khẩu quốc tế (OWASP / NIST)** (Tối thiểu 8 ký tự, bắt buộc bao gồm: Chữ hoa, Chữ thường, Chữ số và Ký tự đặc biệt).  
+> **Mật khẩu đăng nhập mặc định đồng bộ cho toàn bộ tài khoản hệ thống:** **`Anbinh@2026`**  
+> *(Ví dụ: Tài khoản khách hàng `hovanloc.lv@gmail.com` hoặc `0829927690` đăng nhập với mật khẩu `Anbinh@2026`)*
 
 ### A. Nhóm Quản Lý & Điều Hành Hệ Thống
 | Vai trò (Role) | Họ tên / Tên hiển thị | Số Điện Thoại (Username) | Email | Chức năng chính |
@@ -557,5 +560,4 @@ Nếu đang khởi chạy mã nguồn trực tiếp bằng `npm run dev` ở 3 t
 Toàn bộ tài liệu chi tiết giải thích cấu trúc dữ liệu, các trường (fields), mục đích thiết kế và ứng dụng thực tế theo từng Actor cho tất cả các bảng (Collections) trong cơ sở dữ liệu `bus_management` được quản lý tại file riêng để đảm bảo tính trực quan và dễ tra cứu:
 
 * Xem chi tiết tài liệu tại: [DATABASE_DICTIONARY.md](./DATABASE_DICTIONARY.md)
-* Xem chi tiết cấu hình Reverse Proxy tại: [NGROK_AND_GATEWAY_DOCS.md](./NGROK_AND_GATEWAY_DOCS.md)
 

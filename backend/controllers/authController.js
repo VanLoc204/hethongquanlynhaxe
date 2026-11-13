@@ -7,10 +7,10 @@ exports.register = async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    if (!name || !phone || !password) {
+    if (!name || !email || !phone || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng điền đầy đủ các thông tin: Họ tên, Số điện thoại, Mật khẩu.'
+        message: 'Vui lòng điền đầy đủ các thông tin: Họ tên, Email, Số điện thoại, Mật khẩu.'
       });
     }
 
@@ -26,7 +26,7 @@ exports.register = async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        points: user.points || 150,
+        points: user.points !== undefined && user.points !== null ? user.points : 0,
         membershipTier: user.membershipTier || 'Bronze'
       }
     });
@@ -66,12 +66,12 @@ exports.login = async (req, res) => {
         phone: user.phone,
         role: user.role,
         branch: user.branch,
-        points: user.points || 150,
+        points: user.points !== undefined && user.points !== null ? user.points : 0,
         membershipTier: user.membershipTier || 'Bronze'
       }
     });
   } catch (error) {
-    console.error('Lỗi đăng nhập:', error);
+    console.warn(`[Auth] Đăng nhập không thành công: ${error.message} (Tài khoản: ${req.body?.loginKey})`);
     res.status(400).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi đăng nhập.'
@@ -95,7 +95,7 @@ exports.getMe = async (req, res) => {
         role: user.role,
         status: user.status,
         branch: user.branch,
-        points: user.points || 150,
+        points: user.points !== undefined && user.points !== null ? user.points : 0,
         membershipTier: user.membershipTier || 'Bronze'
       }
     });
@@ -125,7 +125,7 @@ exports.updateDetails = async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        points: user.points || 150,
+        points: user.points !== undefined && user.points !== null ? user.points : 0,
         membershipTier: user.membershipTier || 'Bronze'
       }
     });
@@ -204,6 +204,86 @@ exports.forgotPassword = async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi phục hồi mật khẩu.'
+    });
+  }
+};
+
+// @desc    Send OTP to email for password recovery
+// @route   POST /api/v1/auth/forgotpassword/send-otp
+// @access  Public
+exports.sendForgotPasswordOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp email của tài khoản.'
+      });
+    }
+
+    const result = await authService.sendForgotPasswordOTP(email);
+    res.status(200).json({
+      success: true,
+      message: 'Mã xác thực đã được gửi đến email của bạn.',
+      expiresIn: result.expiresIn
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Không thể gửi mã xác thực.'
+    });
+  }
+};
+
+// @desc    Verify OTP for password recovery
+// @route   POST /api/v1/auth/forgotpassword/verify-otp
+// @access  Public
+exports.verifyForgotPasswordOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp email và mã xác thực OTP.'
+      });
+    }
+
+    const result = await authService.verifyForgotPasswordOTP(email, otp);
+    res.status(200).json({
+      success: true,
+      message: 'Xác thực mã OTP thành công.',
+      resetToken: result.resetToken
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Xác thực mã OTP thất bại.'
+    });
+  }
+};
+
+// @desc    Reset password with verified resetToken
+// @route   POST /api/v1/auth/forgotpassword/reset
+// @access  Public
+exports.resetForgotPasswordWithToken = async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp đầy đủ thông tin: email, token và mật khẩu mới.'
+      });
+    }
+
+    await authService.resetPasswordWithToken({ email, resetToken, newPassword });
+    res.status(200).json({
+      success: true,
+      message: 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay.'
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Đặt lại mật khẩu thất bại.'
     });
   }
 };

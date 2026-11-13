@@ -20,7 +20,7 @@ const path = require('path');
 const app = express();
 
 // Global Middlewares
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
@@ -34,7 +34,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/trips', tripRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/pricing', pricingRoutes);
-app.use('/api/v1/reviews', chatRoutes);
+app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/system', systemRoutes);
 app.use('/api/v1/targets', targetRoutes);
 app.use('/api/v1/promotions', promotionRoutes);
@@ -44,7 +44,6 @@ app.use('/api/v1/attendance', attendanceRoutes);
 const { payosWebhook } = require('./controllers/bookingController');
 app.post('/api/v1/payment/webhook', payosWebhook);
 app.post('/payment/webhook', payosWebhook);
-
 
 // Health check endpoint
 app.get('/health', (req, res) => {

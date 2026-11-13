@@ -59,6 +59,164 @@ const AgentBookingPage = () => {
   const [showQRModal, setShowQRModal] = useState(null);
   const [lastBooking, setLastBooking] = useState(null);
 
+  // Tra cứu hội viên & sử dụng điểm tích lũy
+  const [memberLoading, setMemberLoading] = useState(false);
+  const [memberData, setMemberData] = useState(null);
+  const [usePoints, setUsePoints] = useState(false);
+  const [pointsInput, setPointsInput] = useState(0);
+
+  // Khóa giữ chỗ ghế Real-time (5 phút)
+  const [lockedSeats, setLockedSeats] = useState({});
+  const [nowTime, setNowTime] = useState(Date.now());
+
+  const getClientId = () => {
+    let cid = sessionStorage.getItem('agent_seat_client_id');
+    if (!cid) {
+      cid = 'agent_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+      sessionStorage.setItem('agent_seat_client_id', cid);
+    }
+    return cid;
+  };
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Tính thời gian đếm ngược 5 phút khi nhân viên chọn ghế
+  const mySeatExpiries = selectedSeats
+    .map(s => lockedSeats[s]?.expiresAt)
+    .filter(exp => typeof exp === 'number');
+
+  const earliestExpiry = mySeatExpiries.length > 0
+    ? Math.min(...mySeatExpiries)
+    : null;
+
+  const remainingSeconds = earliestExpiry
+    ? Math.max(0, Math.ceil((earliestExpiry - nowTime) / 1000))
+    : (selectedSeats.length > 0 ? 300 : 0);
+
+  const timerMins = Math.floor(remainingSeconds / 60);
+  const timerSecs = remainingSeconds % 60;
+  const formattedCountdown = `${String(timerMins).padStart(2, '0')}:${String(timerSecs).padStart(2, '0')}`;
+
+  useEffect(() => {
+    if (selectedSeats.length > 0 && remainingSeconds === 0) {
+      alert('Đã hết thời gian giữ chỗ 5 phút. Các ghế đã chọn vừa được tự động giải phóng.');
+      setSelectedSeats([]);
+    }
+  }, [remainingSeconds, selectedSeats.length]);
+
+  // Lắng nghe sự kiện SSE khóa/mở ghế theo thời gian thực
+  useEffect(() => {
+    if (!selectedTrip?._id) {
+      setLockedSeats({});
+      return;
+    }
+
+    const tripId = selectedTrip._id;
+    const es = new EventSource(`http://localhost:8000/api/v1/trips/${tripId}/seat-locks/stream`);
+
+    es.addEventListener('INITIAL_LOCKS', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const map = {};
+        (data.lockedSeats || []).forEach(l => {
+          map[l.seat] = { lockedBy: l.lockedBy, expiresAt: l.expiresAt };
+        });
+        setLockedSeats(map);
+      } catch (err) { }
+    });
+
+    es.addEventListener('LOCK_SEAT', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setLockedSeats(prev => ({
+          ...prev,
+          [data.seat]: { lockedBy: data.lockedBy, expiresAt: data.expiresAt }
+        }));
+      } catch (err) { }
+    });
+
+    es.addEventListener('UNLOCK_SEAT', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setLockedSeats(prev => {
+          const next = { ...prev };
+          delete next[data.seat];
+          return next;
+        });
+        if (data.reason === 'EXPIRED') {
+          setSelectedSeats(prev => prev.filter(s => s !== data.seat));
+        }
+      } catch (err) { }
+    });
+
+    es.addEventListener('BOOKED_SEATS', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.tripId === tripId && Array.isArray(data.bookedSeats)) {
+          setSelectedTrip(prev => prev ? ({
+            ...prev,
+            bookedSeats: [...new Set([...(prev.bookedSeats || []), ...data.bookedSeats])]
+          }) : prev);
+          setSelectedSeats(prev => prev.filter(s => !data.bookedSeats.includes(s)));
+        }
+      } catch (err) { }
+    });
+
+    es.addEventListener('RELEASED_SEATS', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.tripId === tripId && Array.isArray(data.releasedSeats)) {
+          setSelectedTrip(prev => prev ? ({
+            ...prev,
+            bookedSeats: (prev.bookedSeats || []).filter(s => !data.releasedSeats.includes(s))
+          }) : prev);
+        }
+      } catch (err) { }
+    });
+
+    return () => {
+      es.close();
+    };
+  }, [selectedTrip?._id]);
+
+  useEffect(() => {
+    const cleanPhone = customerPhone.trim();
+    if (cleanPhone.length >= 10) {
+      let isMounted = true;
+      setMemberLoading(true);
+      fetch(`http://localhost:8000/api/v1/users/member-by-phone/${cleanPhone}`)
+        .then(res => res.json())
+        .then(data => {
+          if (!isMounted) return;
+          if (data && data.success && data.isMember && data.member) {
+            setMemberData(data.member);
+            if (!customerName && data.member.name) {
+              setCustomerName(data.member.name);
+            }
+          } else {
+            setMemberData(null);
+            setUsePoints(false);
+            setPointsInput(0);
+          }
+        })
+        .catch(() => {
+          if (isMounted) setMemberData(null);
+        })
+        .finally(() => {
+          if (isMounted) setMemberLoading(false);
+        });
+      return () => { isMounted = false; };
+    } else {
+      setMemberData(null);
+      setUsePoints(false);
+      setPointsInput(0);
+      setMemberLoading(false);
+    }
+  }, [customerPhone]);
+
   const fetchInitialData = async () => {
     setLoading(true);
     setError('');
@@ -265,12 +423,75 @@ const AgentBookingPage = () => {
   const endSuggestions = (publicLocations.destinations || [])
     .filter(loc => normalizeText(loc.name).includes(normalizeText(endPoint)));
 
-  const handleSeatClick = (seatCode) => {
-    if (selectedSeats.includes(seatCode)) {
-      setSelectedSeats(selectedSeats.filter(s => s !== seatCode));
-    } else {
-      setSelectedSeats([...selectedSeats, seatCode]);
+  const handleSeatClick = async (seatCode) => {
+    if (!selectedTrip?._id) return;
+    const isBooked = (selectedTrip.bookedSeats || []).includes(seatCode);
+    if (isBooked) return;
+
+    const myClientId = getClientId();
+    const lock = lockedSeats[seatCode];
+
+    // Nếu ghế đang bị người khác giữ chỗ (trong vòng 5 phút)
+    if (lock && lock.lockedBy !== myClientId && lock.expiresAt > Date.now()) {
+      const remaining = Math.max(1, Math.round((lock.expiresAt - Date.now()) / 1000));
+      alert(`Ghế ${seatCode} đang được người khác giữ chỗ (còn ${remaining} giây). Vui lòng chọn ghế khác.`);
+      return;
     }
+
+    // Nếu ghế đang được chính mình chọn -> Hủy chọn (Mở khóa)
+    if (selectedSeats.includes(seatCode)) {
+      try {
+        await fetch(`http://localhost:8000/api/v1/trips/${selectedTrip._id}/unlock-seat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ seat: seatCode, clientId: myClientId })
+        });
+      } catch (e) { }
+      setSelectedSeats(prev => prev.filter(s => s !== seatCode));
+      setLockedSeats(prev => {
+        const next = { ...prev };
+        delete next[seatCode];
+        return next;
+      });
+      return;
+    }
+
+    // Tiến hành khóa giữ chỗ ghế trong 5 phút trên server
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/trips/${selectedTrip._id}/lock-seat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seat: seatCode, clientId: myClientId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSelectedSeats(prev => [...prev, seatCode]);
+        if (data.expiresAt) {
+          setLockedSeats(prev => ({
+            ...prev,
+            [seatCode]: { lockedBy: myClientId, expiresAt: data.expiresAt }
+          }));
+        }
+      } else {
+        alert(data.message || `Ghế ${seatCode} vừa được người khác giữ chỗ. Vui lòng chọn ghế khác.`);
+      }
+    } catch (err) {
+      alert('Không thể kết nối máy chủ để giữ chỗ ghế.');
+    }
+  };
+
+  const handleBackToList = async () => {
+    if (selectedTrip && selectedSeats.length > 0) {
+      try {
+        await fetch(`http://localhost:8000/api/v1/trips/${selectedTrip._id}/unlock-all-my-seats`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientId: getClientId(), seats: selectedSeats })
+        });
+      } catch (e) { }
+    }
+    setSelectedTrip(null);
+    setSelectedSeats([]);
   };
 
   const handleCreateBooking = async (e) => {
@@ -290,6 +511,11 @@ const AgentBookingPage = () => {
 
     setSubmitting(true);
     try {
+      const origTotal = (selectedTrip?.price || 0) * selectedSeats.length;
+      const availablePts = memberData ? (memberData.points || 0) : 0;
+      const maxPts = Math.min(availablePts, origTotal);
+      const discountPts = usePoints ? Math.min(Math.max(0, Number(pointsInput) || 0), maxPts) : 0;
+
       const res = await fetch('http://localhost:8000/api/v1/users/agent/book', {
         method: 'POST',
         headers: {
@@ -304,7 +530,8 @@ const AgentBookingPage = () => {
           customerName,
           customerPhone,
           customerEmail: customerEmail.trim(),
-          paymentMethod
+          paymentMethod,
+          pointsUsed: discountPts
         })
       });
       const data = await res.json();
@@ -332,6 +559,9 @@ const AgentBookingPage = () => {
         setCustomerEmail('');
         setSelectedPickup('');
         setSelectedDropoff('');
+        setMemberData(null);
+        setUsePoints(false);
+        setPointsInput(0);
         fetchInitialData();
       } else {
         setError(data.message || 'Xuất vé tại quầy thất bại.');
@@ -1072,22 +1302,50 @@ const AgentBookingPage = () => {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedTrip(null)}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                padding: '6px 14px',
-                borderRadius: '6px',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                color: '#334155',
-                cursor: 'pointer'
-              }}
-            >
-              Quay Lại Danh Sách
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {selectedSeats.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: remainingSeconds <= 60 ? '#fef2f2' : '#eff6ff',
+                  border: `1px solid ${remainingSeconds <= 60 ? '#fca5a5' : '#bfdbfe'}`,
+                  padding: '5px 12px',
+                  borderRadius: '8px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
+                }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: remainingSeconds <= 60 ? '#dc2626' : '#1e40af' }}>
+                    Giữ chỗ:
+                  </span>
+                  <span style={{
+                    fontSize: '1.15rem',
+                    fontWeight: '800',
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.5px',
+                    color: remainingSeconds <= 60 ? '#b91c1c' : '#1d4ed8'
+                  }}>
+                    {formattedCountdown}
+                  </span>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleBackToList}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: '700',
+                  color: '#334155',
+                  cursor: 'pointer'
+                }}
+              >
+                Quay Lại Danh Sách
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleCreateBooking}>
@@ -1178,6 +1436,24 @@ const AgentBookingPage = () => {
                         KHU VỰC TÀI XẾ &amp; CỬA LÊN
                       </div>
 
+                      {selectedSeats.length > 0 && (
+                        <div style={{
+                          padding: '6px 10px',
+                          backgroundColor: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          borderRadius: '6px',
+                          marginBottom: '8px',
+                          fontSize: '0.73rem',
+                          color: '#1d4ed8',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <span>Đang giữ: <strong>{selectedSeats.join(', ')}</strong></span>
+                          <span>Khóa tạm thời <strong>5 phút</strong></span>
+                        </div>
+                      )}
+
                       {/* Lưới ghế */}
                       <div style={{
                         display: 'grid',
@@ -1195,35 +1471,48 @@ const AgentBookingPage = () => {
 
                           const isBooked = (selectedTrip.bookedSeats || []).includes(seat);
                           const isSelected = selectedSeats.includes(seat);
+                          const myClientId = getClientId();
+                          const lock = lockedSeats[seat];
+                          const isLockedByOther = !isBooked && !isSelected && lock && lock.lockedBy !== myClientId && lock.expiresAt > nowTime;
 
                           let seatBg = 'rgba(37, 99, 235, 0.06)';
                           let seatBorder = '#bfdbfe';
                           let seatColor = '#2563eb';
+                          let seatTitle = 'Ghế trống - Nhấn để giữ chỗ';
 
                           if (isBooked) {
                             seatBg = '#f1f5f9';
                             seatBorder = '#cbd5e1';
                             seatColor = '#94a3b8';
+                            seatTitle = 'Ghế đã bán';
+                          } else if (isLockedByOther) {
+                            const remainingSec = Math.max(1, Math.round((lock.expiresAt - nowTime) / 1000));
+                            seatBg = '#fef3c7';
+                            seatBorder = '#f59e0b';
+                            seatColor = '#b45309';
+                            seatTitle = `Đang được người khác giữ chỗ (còn ${remainingSec}s)`;
                           } else if (isSelected) {
                             seatBg = '#2563eb';
                             seatBorder = '#2563eb';
                             seatColor = '#ffffff';
+                            seatTitle = 'Đang chọn (Giữ chỗ 5 phút)';
                           }
 
                           return (
                             <button
                               key={seat}
                               type="button"
-                              disabled={isBooked}
+                              disabled={isBooked || isLockedByOther}
+                              title={seatTitle}
                               style={{
-                                height: '40px',
+                                height: '42px',
                                 borderRadius: '6px',
                                 border: `2px solid ${seatBorder}`,
                                 backgroundColor: seatBg,
                                 color: seatColor,
                                 fontWeight: '800',
-                                fontSize: '0.8rem',
-                                cursor: isBooked ? 'not-allowed' : 'pointer',
+                                fontSize: '0.85rem',
+                                cursor: (isBooked || isLockedByOther) ? 'not-allowed' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -1231,14 +1520,14 @@ const AgentBookingPage = () => {
                               }}
                               onClick={() => handleSeatClick(seat)}
                             >
-                              {seat}
+                              <span>{seat}</span>
                             </button>
                           );
                         })}
                       </div>
 
                       {/* Chú thích màu ghế */}
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '0.85rem', fontSize: '0.72rem', color: '#64748b' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '0.85rem', fontSize: '0.72rem', color: '#64748b', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <span style={{ width: '10px', height: '10px', border: '2px solid #bfdbfe', backgroundColor: 'rgba(37, 99, 235, 0.08)', borderRadius: '2px' }}></span>
                           <span>Trống</span>
@@ -1246,6 +1535,10 @@ const AgentBookingPage = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <span style={{ width: '10px', height: '10px', backgroundColor: '#2563eb', borderRadius: '2px' }}></span>
                           <span>Đang chọn</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ width: '10px', height: '10px', backgroundColor: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '2px' }}></span>
+                          <span>Đang giữ (5p)</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <span style={{ width: '10px', height: '10px', backgroundColor: '#cbd5e1', borderRadius: '2px' }}></span>
@@ -1345,6 +1638,84 @@ const AgentBookingPage = () => {
                   </div>
                 </div>
 
+                {/* Thông tin Hội viên & Sử dụng Điểm Tích Lũy (Chuyên nghiệp, Không dùng Icon) */}
+                {memberLoading && (
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', backgroundColor: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    Đang kiểm tra tài khoản hội viên...
+                  </div>
+                )}
+
+                {memberData && !memberLoading && (
+                  <div style={{
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '8px',
+                    padding: '0.85rem 1rem',
+                    fontSize: '0.8rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                      <span style={{ fontWeight: '700', color: '#166534' }}>
+                        Hội viên: {memberData.name} ({memberData.membershipTier})
+                      </span>
+                      <span style={{ color: '#15803d', fontWeight: '700' }}>
+                        Điểm tích lũy: {memberData.points.toLocaleString('vi-VN')} điểm
+                      </span>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #dcfce7', paddingTop: '6px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '700', color: '#1e293b' }}>
+                        <input
+                          type="checkbox"
+                          checked={usePoints}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUsePoints(checked);
+                            if (checked) {
+                              const origPrice = (selectedTrip?.price || 0) * selectedSeats.length;
+                              setPointsInput(Math.min(memberData.points || 0, origPrice));
+                            } else {
+                              setPointsInput(0);
+                            }
+                          }}
+                          style={{ accentColor: '#16a34a' }}
+                        />
+                        Sử dụng điểm tích lũy (Bạn có: {memberData.points.toLocaleString('vi-VN')} điểm)
+                      </label>
+
+                      {usePoints && (
+                        <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.75rem', color: '#475569' }}>Số điểm muốn dùng:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={Math.min(memberData.points || 0, (selectedTrip?.price || 0) * selectedSeats.length)}
+                            value={pointsInput}
+                            onChange={(e) => {
+                              const maxLimit = Math.min(memberData.points || 0, (selectedTrip?.price || 0) * selectedSeats.length);
+                              const val = Math.max(0, Math.min(Number(e.target.value) || 0, maxLimit));
+                              setPointsInput(val);
+                            }}
+                            className="agent-form-control"
+                            style={{ width: '130px', padding: '4px 8px', fontSize: '0.8rem', fontWeight: '700' }}
+                          />
+                          <span style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: '700' }}>
+                            Trừ tiền vé: -{Number(pointsInput || 0).toLocaleString('vi-VN')} đ
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {customerPhone.trim().length >= 10 && !memberData && !memberLoading && (
+                  <div style={{ fontSize: '0.73rem', color: '#64748b', backgroundColor: '#f8fafc', padding: '0.6rem 0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                    Khách hàng chưa đăng ký thành viên. Hệ thống sẽ tự động tạo tài khoản và tích điểm cho khách sau khi xuất vé.
+                  </div>
+                )}
+
                 {customerEmail && (
                   <div style={{ fontSize: '0.73rem', color: '#0369a1', backgroundColor: '#f0f9ff', padding: '0.55rem 0.85rem', borderRadius: '6px', border: '1px solid #bae6fd', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span>
@@ -1384,21 +1755,66 @@ const AgentBookingPage = () => {
                 </div>
 
                 {/* Hộp tóm tắt tổng tiền */}
-                <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
-                    <span>Vị trí ghế đã chọn:</span>
-                    <strong style={{ color: '#0f172a' }}>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế'}</strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
-                    <span>Đơn giá vé:</span>
-                    <strong style={{ color: '#0f172a' }}>{formatCurrency(selectedTrip.price)}</strong>
-                  </div>
-                  <div style={{ borderTop: '1px dashed #cbd5e1', margin: '0.6rem 0' }}></div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '1.15rem', color: '#2563eb' }}>
-                    <span>Tổng Tiền Thu Khách:</span>
-                    <span>{formatCurrency(selectedTrip.price * selectedSeats.length)}</span>
-                  </div>
-                </div>
+                {(() => {
+                  const origTotal = (selectedTrip?.price || 0) * selectedSeats.length;
+                  const availablePts = memberData ? (memberData.points || 0) : 0;
+                  const maxPts = Math.min(availablePts, origTotal);
+                  const discountPts = usePoints ? Math.min(Math.max(0, Number(pointsInput) || 0), maxPts) : 0;
+                  const finalToCollect = Math.max(0, origTotal - discountPts);
+
+                  return (
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      {selectedSeats.length > 0 && (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          marginBottom: '0.65rem',
+                          paddingBottom: '0.65rem',
+                          borderBottom: '1px solid #e2e8f0'
+                        }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: '700', color: remainingSeconds <= 60 ? '#dc2626' : '#2563eb' }}>
+                            Thời gian giữ chỗ còn lại:
+                          </span>
+                          <span style={{
+                            fontSize: '0.95rem',
+                            fontWeight: '800',
+                            fontFamily: 'monospace',
+                            color: remainingSeconds <= 60 ? '#dc2626' : '#1d4ed8',
+                            backgroundColor: remainingSeconds <= 60 ? '#fee2e2' : '#dbeafe',
+                            padding: '2px 8px',
+                            borderRadius: '4px'
+                          }}>
+                            {formattedCountdown}
+                          </span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
+                        <span>Vị trí ghế đã chọn:</span>
+                        <strong style={{ color: '#0f172a' }}>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế'}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
+                        <span>Đơn giá vé:</span>
+                        <strong style={{ color: '#0f172a' }}>{formatCurrency(selectedTrip.price)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
+                        <span>Tổng tiền vé gốc:</span>
+                        <strong style={{ color: '#0f172a' }}>{formatCurrency(origTotal)}</strong>
+                      </div>
+                      {discountPts > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#15803d', fontWeight: '700' }}>
+                          <span>Khấu trừ điểm tích lũy:</span>
+                          <span>-{formatCurrency(discountPts)} ({discountPts.toLocaleString('vi-VN')} điểm)</span>
+                        </div>
+                      )}
+                      <div style={{ borderTop: '1px dashed #cbd5e1', margin: '0.6rem 0' }}></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '1.15rem', color: '#2563eb' }}>
+                        <span>Tổng Tiền Thu Khách:</span>
+                        <span>{formatCurrency(finalToCollect)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <button
                   type="submit"
@@ -1463,9 +1879,19 @@ const AgentBookingPage = () => {
                 </>
               )}
               <div style={{ margin: '4px 0', borderTop: '1px dashed #000000' }}></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <span>Tiền vé gốc:</span>
+                <span>{formatCurrency(printTarget.originalAmount || ((printTarget.tripId?.price || 0) * (printTarget.seats?.length || 1)))}</span>
+              </div>
+              {printTarget.pointsUsed > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#15803d' }}>
+                  <span>Trừ điểm tích lũy:</span>
+                  <span>-{formatCurrency(printTarget.pointsUsed)} ({printTarget.pointsUsed.toLocaleString('vi-VN')} điểm)</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: '800' }}>
-                <span>TỔNG TIỀN:</span>
-                <span>{formatCurrency((printTarget.tripId?.price || 0) * (printTarget.seats?.length || 1))}</span>
+                <span>THỰC THU TẠI QUẦY:</span>
+                <span>{formatCurrency(printTarget.totalAmount !== undefined ? printTarget.totalAmount : ((printTarget.tripId?.price || 0) * (printTarget.seats?.length || 1)))}</span>
               </div>
               <div style={{ fontSize: '0.72rem', marginTop: '2px' }}>
                 Trạng thái: ĐÃ THANH TOÁN TẠI QUẦY

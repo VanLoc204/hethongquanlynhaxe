@@ -40,17 +40,119 @@ const AuthPage = ({ initialMode = 'login' }) => {
 
   // Common error state
   const [validationError, setValidationError] = useState('');
+  const [loginErrors, setLoginErrors] = useState({ key: '', password: '' });
+  const [regErrors, setRegErrors] = useState({ name: '', phone: '', email: '', password: '', confirmPassword: '' });
 
-  // Forgot password modal state
+  // Kiểm tra chi tiết định dạng Họ và tên
+  const validateNameInput = (rawName) => {
+    const name = (rawName || '').trim();
+    if (!name) return 'Vui lòng nhập Họ và tên.';
+    if (name.length < 2) return 'Họ và tên phải có tối thiểu 2 ký tự.';
+    if (name.length > 50) return 'Họ và tên không được vượt quá 50 ký tự.';
+    if (/\d/.test(name)) return 'Họ và tên không được chứa chữ số.';
+    const vietnameseNameRegex = /^[a-zA-ZàáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệđìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵÀÁẢÃẠÂẦẤẨẪẬĂẰẮẲẴẶÈÉẺẼẸÊỀẾỂỄỆĐÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴ\s]+$/;
+    if (!vietnameseNameRegex.test(name)) {
+      return 'Họ và tên chỉ được chứa chữ cái và khoảng trắng.';
+    }
+    return null;
+  };
+
+  // Kiểm tra chi tiết định dạng Email (Bắt buộc để nhận OTP)
+  const validateEmailInput = (rawEmail) => {
+    const email = (rawEmail || '').trim();
+    if (!email) return 'Vui lòng nhập Email.';
+    if (email.length > 100) return 'Email không được vượt quá 100 ký tự.';
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      return 'Email không đúng định dạng.';
+    }
+    return null;
+  };
+
+  // Kiểm tra độ an toàn mật khẩu theo chuẩn OWASP / NIST
+  const validatePasswordSecurity = (pass) => {
+    if (!pass) return 'Vui lòng nhập mật khẩu.';
+    if (pass.length < 8) return 'Mật khẩu phải chứa tối thiểu 8 ký tự.';
+    if (!/[A-Z]/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 chữ cái in hoa (A-Z).';
+    if (!/[a-z]/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 chữ cái in thường (a-z).';
+    if (!/\d/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 chữ số (0-9).';
+    if (!/[@$!%*?&#_.-]/.test(pass)) return 'Mật khẩu phải chứa ít nhất 1 ký tự đặc biệt.';
+    return null;
+  };
+
+  // Kiểm tra chi tiết định dạng số điện thoại Việt Nam
+  const validatePhoneInput = (rawPhone) => {
+    let clean = (rawPhone || '').trim().replace(/[\s\-\.]/g, '');
+    if (clean.startsWith('+84')) clean = '0' + clean.slice(3);
+    else if (clean.startsWith('84') && clean.length === 11) clean = '0' + clean.slice(2);
+
+    if (!clean) return 'Vui lòng nhập Số điện thoại.';
+    if (!/^\d+$/.test(clean)) return 'Số điện thoại chỉ được chứa các chữ số.';
+    if (!clean.startsWith('0')) return 'Số điện thoại phải bắt đầu bằng số 0.';
+    if (clean.length !== 10) return 'Số điện thoại phải có đúng 10 chữ số.';
+    if (!/^(0[35789])/.test(clean)) return 'Đầu số không đúng định dạng.';
+    return null;
+  };
+
+  // Forgot password modal state (3-step OTP recovery)
   const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1: Email, 2: OTP, 3: New Password
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotResetToken, setForgotResetToken] = useState('');
   const [forgotNewPass, setForgotNewPass] = useState('');
   const [forgotConfirmPass, setForgotConfirmPass] = useState('');
   const [showForgotNewPass, setShowForgotNewPass] = useState(false);
+  const [showForgotConfirmPass, setShowForgotConfirmPass] = useState(false);
   const [modalError, setModalError] = useState('');
   const [modalSuccess, setModalSuccess] = useState('');
+  const [forgotTimer, setForgotTimer] = useState(0); // 180s = 3 phút
+  const [isSubmittingForgot, setIsSubmittingForgot] = useState(false);
 
-  const { login, register, forgotPassword, isAuthenticated, error, setError, loading } = useContext(AuthContext);
+  const {
+    login,
+    register,
+    sendForgotOtp,
+    verifyForgotOtp,
+    resetForgotPass,
+    isAuthenticated,
+    error,
+    setError,
+    loading
+  } = useContext(AuthContext);
+
+  // Bộ đếm ngược 3 phút (180s) cho mã OTP và nút gửi lại
+  useEffect(() => {
+    let interval = null;
+    if (forgotTimer > 0) {
+      interval = setInterval(() => {
+        setForgotTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [forgotTimer]);
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const closeForgotModal = () => {
+    setShowForgotModal(false);
+    setForgotStep(1);
+    setForgotEmail('');
+    setForgotOtp('');
+    setForgotResetToken('');
+    setForgotNewPass('');
+    setForgotConfirmPass('');
+    setShowForgotNewPass(false);
+    setShowForgotConfirmPass(false);
+    setModalError('');
+    setModalSuccess('');
+    setForgotTimer(0);
+    setIsSubmittingForgot(false);
+  };
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -67,6 +169,8 @@ const AuthPage = ({ initialMode = 'login' }) => {
   useEffect(() => {
     setError(null);
     setValidationError('');
+    setLoginErrors({ key: '', password: '' });
+    setRegErrors({ name: '', phone: '', email: '', password: '', confirmPassword: '' });
   }, [mode, setError]);
 
   // Redirect if already logged in
@@ -100,13 +204,48 @@ const AuthPage = ({ initialMode = 'login' }) => {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setValidationError('');
+    setError(null);
 
-    if (!loginKey || !loginPassword) {
-      setValidationError('Vui lòng nhập Email/Số điện thoại và Mật khẩu.');
+    const key = (loginKey || '').trim();
+    const newErrors = { key: '', password: '' };
+    let hasError = false;
+
+    // 1. Kiểm tra Email hoặc Số điện thoại
+    if (!key) {
+      newErrors.key = 'Vui lòng nhập Email hoặc Số điện thoại.';
+      hasError = true;
+    } else if (/[a-zA-Z]/.test(key) || key.includes('@')) {
+      // Người dùng đang nhập Email (chứa chữ cái hoặc ký tự @)
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(key)) {
+        newErrors.key = 'Email không đúng định dạng.';
+        hasError = true;
+      }
+    } else {
+      // Người dùng đang nhập Số điện thoại
+      const phoneErr = validatePhoneInput(key);
+      if (phoneErr) {
+        newErrors.key = phoneErr;
+        hasError = true;
+      }
+    }
+
+    // 2. Kiểm tra Mật khẩu form đăng nhập
+    if (!loginPassword) {
+      newErrors.password = 'Vui lòng nhập mật khẩu.';
+      hasError = true;
+    } else if (loginPassword.length < 8) {
+      newErrors.password = 'Mật khẩu phải chứa tối thiểu 8 ký tự.';
+      hasError = true;
+    }
+
+    if (hasError) {
+      setLoginErrors(newErrors);
       return;
     }
 
-    const res = await login(loginKey, loginPassword);
+    setLoginErrors({ key: '', password: '' });
+    const res = await login(key, loginPassword);
     if (res && res.success) {
       navigate('/');
     }
@@ -116,65 +255,163 @@ const AuthPage = ({ initialMode = 'login' }) => {
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setValidationError('');
+    setError(null);
 
-    if (!regName.trim()) {
-      setValidationError('Vui lòng nhập Họ và tên.');
-      return;
-    }
-    if (!regPhone.trim()) {
-      setValidationError('Vui lòng nhập Số điện thoại.');
-      return;
-    }
-    if (!regPassword) {
-      setValidationError('Vui lòng nhập Mật khẩu.');
-      return;
-    }
-    if (regPassword.length < 6) {
-      setValidationError('Mật khẩu phải chứa ít nhất 6 ký tự.');
-      return;
-    }
-    if (regPassword !== regConfirmPassword) {
-      setValidationError('Xác nhận mật khẩu không trùng khớp.');
-      return;
+    const newErrors = { name: '', phone: '', email: '', password: '', confirmPassword: '' };
+    let hasError = false;
+
+    const name = regName.trim();
+    const phone = regPhone.trim().replace(/[\s\-\.]/g, '').replace(/^\+84/, '0');
+    const email = regEmail.trim();
+
+    const nameErr = validateNameInput(regName);
+    if (nameErr) {
+      newErrors.name = nameErr;
+      hasError = true;
     }
 
-    const res = await register(regName.trim(), regEmail.trim(), regPhone.trim(), regPassword);
+    const phoneErr = validatePhoneInput(regPhone);
+    if (phoneErr) {
+      newErrors.phone = phoneErr;
+      hasError = true;
+    }
+
+    const emailErr = validateEmailInput(regEmail);
+    if (emailErr) {
+      newErrors.email = emailErr;
+      hasError = true;
+    }
+
+    const passError = validatePasswordSecurity(regPassword);
+    if (passError) {
+      newErrors.password = passError;
+      hasError = true;
+    }
+
+    if (!regConfirmPassword) {
+      newErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu.';
+      hasError = true;
+    } else if (regPassword !== regConfirmPassword) {
+      newErrors.confirmPassword = 'Xác nhận mật khẩu không trùng khớp.';
+      hasError = true;
+    }
+
+    if (hasError) {
+      setRegErrors(newErrors);
+      return;
+    }
+
+    setRegErrors({ name: '', phone: '', email: '', password: '', confirmPassword: '' });
+    const res = await register(name, email, phone, regPassword);
     if (res && res.success) {
       navigate('/');
     }
   };
 
-  // Submit Forgot Password
-  const handleForgotSubmit = async (e) => {
+  // ================= QUY TRÌNH KHÔI PHỤC MẬT KHẨU 3 BƯỚC =================
+  // Bước 1: Gửi mã OTP xác thực qua Email
+  const handleSendForgotOtp = async (e) => {
     e.preventDefault();
     setModalError('');
     setModalSuccess('');
 
-    if (!forgotPhone || !forgotNewPass || !forgotConfirmPass) {
+    const email = (forgotEmail || '').trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      setModalError('Email không đúng định dạng.');
+      return;
+    }
+
+    setIsSubmittingForgot(true);
+    const res = await sendForgotOtp(email);
+    setIsSubmittingForgot(false);
+
+    if (res && res.success) {
+      setForgotTimer(180); // 3 phút theo yêu cầu
+      setForgotStep(2);
+      setModalSuccess('Mã xác thực OTP đã được gửi đến email của bạn. Mã có hiệu lực trong 3 phút.');
+    } else {
+      setModalError(res.message || 'Không thể gửi mã xác thực. Vui lòng kiểm tra lại email.');
+    }
+  };
+
+  // Gửi lại mã OTP (chỉ bấm được khi hết 3 phút)
+  const handleResendForgotOtp = async () => {
+    if (forgotTimer > 0 || isSubmittingForgot) return;
+    setModalError('');
+    setModalSuccess('');
+
+    setIsSubmittingForgot(true);
+    const res = await sendForgotOtp(forgotEmail);
+    setIsSubmittingForgot(false);
+
+    if (res && res.success) {
+      setForgotTimer(180);
+      setModalSuccess('Mã xác thực mới đã được gửi lại đến email của bạn.');
+    } else {
+      setModalError(res.message || 'Không thể gửi lại mã xác thực.');
+    }
+  };
+
+  // Bước 2: Xác thực mã OTP 6 số
+  const handleVerifyForgotOtp = async (e) => {
+    e.preventDefault();
+    setModalError('');
+    setModalSuccess('');
+
+    const cleanOtp = (forgotOtp || '').trim();
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setModalError('Vui lòng nhập đủ 6 chữ số mã xác thực OTP.');
+      return;
+    }
+
+    setIsSubmittingForgot(true);
+    const res = await verifyForgotOtp(forgotEmail, cleanOtp);
+    setIsSubmittingForgot(false);
+
+    if (res && res.success) {
+      setForgotResetToken(res.resetToken);
+      setForgotStep(3);
+      setModalSuccess('Xác thực OTP thành công! Vui lòng thiết lập mật khẩu mới.');
+    } else {
+      setModalError(res.message || 'Mã xác thực không chính xác hoặc đã hết hạn.');
+    }
+  };
+
+  // Bước 3: Đặt lại mật khẩu mới
+  const handleResetForgotPass = async (e) => {
+    e.preventDefault();
+    setModalError('');
+    setModalSuccess('');
+
+    if (!forgotNewPass || !forgotConfirmPass) {
       setModalError('Vui lòng điền đầy đủ các thông tin yêu cầu.');
       return;
     }
-    if (forgotNewPass.length < 6) {
-      setModalError('Mật khẩu mới phải có ít nhất 6 ký tự.');
+
+    const passError = validatePasswordSecurity(forgotNewPass);
+    if (passError) {
+      setModalError(passError);
       return;
     }
+
     if (forgotNewPass !== forgotConfirmPass) {
       setModalError('Xác nhận mật khẩu mới không trùng khớp.');
       return;
     }
 
-    const res = await forgotPassword(forgotPhone, forgotNewPass);
+    setIsSubmittingForgot(true);
+    const res = await resetForgotPass(forgotEmail, forgotResetToken, forgotNewPass);
+    setIsSubmittingForgot(false);
+
     if (res && res.success) {
       setModalSuccess('Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay.');
       setTimeout(() => {
-        setShowForgotModal(false);
-        setForgotPhone('');
-        setForgotNewPass('');
-        setForgotConfirmPass('');
-        setModalSuccess('');
+        closeForgotModal();
+        setMode('login');
       }, 1500);
     } else {
-      setModalError(res.message || 'Có lỗi xảy ra, vui lòng thử lại.');
+      setModalError(res.message || 'Đặt lại mật khẩu thất bại. Vui lòng thử lại.');
     }
   };
 
@@ -275,14 +512,22 @@ const AuthPage = ({ initialMode = 'login' }) => {
                   <Mail size={16} className="auth-input-icon" />
                   <input
                     type="text"
-                    className="auth-input"
+                    className={`auth-input ${loginErrors.key ? 'has-error' : ''}`}
                     placeholder="09xxx hoặc email@example.com"
                     value={loginKey}
-                    onChange={(e) => setLoginKey(e.target.value)}
+                    onChange={(e) => {
+                      setLoginKey(e.target.value);
+                      if (loginErrors.key) setLoginErrors(prev => ({ ...prev, key: '' }));
+                      if (validationError) setValidationError('');
+                      if (error) setError(null);
+                    }}
                     disabled={loading}
                     autoComplete="username"
                   />
                 </div>
+                {loginErrors.key && (
+                  <span className="auth-field-error">{loginErrors.key}</span>
+                )}
               </div>
 
               <div className="auth-form-group">
@@ -299,10 +544,15 @@ const AuthPage = ({ initialMode = 'login' }) => {
                   <Lock size={16} className="auth-input-icon" />
                   <input
                     type={showLoginPassword ? 'text' : 'password'}
-                    className="auth-input"
-                    placeholder="••••••••"
+                    className={`auth-input ${loginErrors.password ? 'has-error' : ''}`}
+                    placeholder="Nhập mật khẩu..."
                     value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
+                    onChange={(e) => {
+                      setLoginPassword(e.target.value);
+                      if (loginErrors.password) setLoginErrors(prev => ({ ...prev, password: '' }));
+                      if (validationError) setValidationError('');
+                      if (error) setError(null);
+                    }}
                     disabled={loading}
                     autoComplete="current-password"
                   />
@@ -315,6 +565,9 @@ const AuthPage = ({ initialMode = 'login' }) => {
                     {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {loginErrors.password && (
+                  <span className="auth-field-error">{loginErrors.password}</span>
+                )}
               </div>
 
               <button
@@ -350,13 +603,20 @@ const AuthPage = ({ initialMode = 'login' }) => {
                     <User size={15} className="auth-input-icon" />
                     <input
                       type="text"
-                      className="auth-input"
+                      className={`auth-input ${regErrors.name ? 'has-error' : ''}`}
                       placeholder="Nguyễn Văn A"
                       value={regName}
-                      onChange={(e) => setRegName(e.target.value)}
+                      onChange={(e) => {
+                        setRegName(e.target.value);
+                        if (regErrors.name) setRegErrors(prev => ({ ...prev, name: '' }));
+                        if (validationError) setValidationError('');
+                      }}
                       disabled={loading}
                     />
                   </div>
+                  {regErrors.name && (
+                    <span className="auth-field-error">{regErrors.name}</span>
+                  )}
                 </div>
 
                 <div className="auth-form-group">
@@ -365,30 +625,44 @@ const AuthPage = ({ initialMode = 'login' }) => {
                     <Phone size={15} className="auth-input-icon" />
                     <input
                       type="tel"
-                      className="auth-input"
+                      className={`auth-input ${regErrors.phone ? 'has-error' : ''}`}
                       placeholder="0901 234 567"
                       value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value)}
+                      onChange={(e) => {
+                        setRegPhone(e.target.value);
+                        if (regErrors.phone) setRegErrors(prev => ({ ...prev, phone: '' }));
+                        if (validationError) setValidationError('');
+                      }}
                       disabled={loading}
                     />
                   </div>
+                  {regErrors.phone && (
+                    <span className="auth-field-error">{regErrors.phone}</span>
+                  )}
                 </div>
               </div>
 
               {/* Hàng 2: Email (1 cột) */}
               <div className="auth-form-group">
-                <label className="auth-form-label">Email (nhận vé điện tử)</label>
+                <label className="auth-form-label">Email *</label>
                 <div className="auth-input-wrapper">
                   <Mail size={15} className="auth-input-icon" />
                   <input
                     type="email"
-                    className="auth-input"
+                    className={`auth-input ${regErrors.email ? 'has-error' : ''}`}
                     placeholder="email@example.com"
                     value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
+                    onChange={(e) => {
+                      setRegEmail(e.target.value);
+                      if (regErrors.email) setRegErrors(prev => ({ ...prev, email: '' }));
+                      if (validationError) setValidationError('');
+                    }}
                     disabled={loading}
                   />
                 </div>
+                {regErrors.email && (
+                  <span className="auth-field-error">{regErrors.email}</span>
+                )}
               </div>
 
               {/* Hàng 3: Mật khẩu + Xác nhận mật khẩu (2 cột) */}
@@ -399,10 +673,14 @@ const AuthPage = ({ initialMode = 'login' }) => {
                     <Lock size={15} className="auth-input-icon" />
                     <input
                       type={showRegPassword ? 'text' : 'password'}
-                      className="auth-input"
-                      placeholder="Tối thiểu 6 ký tự"
+                      className={`auth-input ${regErrors.password ? 'has-error' : ''}`}
+                      placeholder="Tối thiểu 8 ký tự"
                       value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
+                      onChange={(e) => {
+                        setRegPassword(e.target.value);
+                        if (regErrors.password) setRegErrors(prev => ({ ...prev, password: '' }));
+                        if (validationError) setValidationError('');
+                      }}
                       disabled={loading}
                     />
                     <button
@@ -414,6 +692,9 @@ const AuthPage = ({ initialMode = 'login' }) => {
                       {showRegPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
+                  {regErrors.password && (
+                    <span className="auth-field-error">{regErrors.password}</span>
+                  )}
                 </div>
 
                 <div className="auth-form-group">
@@ -422,10 +703,14 @@ const AuthPage = ({ initialMode = 'login' }) => {
                     <KeyRound size={15} className="auth-input-icon" />
                     <input
                       type={showRegConfirmPassword ? 'text' : 'password'}
-                      className="auth-input"
+                      className={`auth-input ${regErrors.confirmPassword ? 'has-error' : ''}`}
                       placeholder="Nhập lại mật khẩu"
                       value={regConfirmPassword}
-                      onChange={(e) => setRegConfirmPassword(e.target.value)}
+                      onChange={(e) => {
+                        setRegConfirmPassword(e.target.value);
+                        if (regErrors.confirmPassword) setRegErrors(prev => ({ ...prev, confirmPassword: '' }));
+                        if (validationError) setValidationError('');
+                      }}
                       disabled={loading}
                     />
                     <button
@@ -437,6 +722,9 @@ const AuthPage = ({ initialMode = 'login' }) => {
                       {showRegConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
+                  {regErrors.confirmPassword && (
+                    <span className="auth-field-error">{regErrors.confirmPassword}</span>
+                  )}
                 </div>
               </div>
 
@@ -483,26 +771,29 @@ const AuthPage = ({ initialMode = 'login' }) => {
         </div>
       </footer>
 
-      {/* Modal Quên Mật Khẩu */}
+      {/* Modal Quên Mật Khẩu (3 Bước chuẩn bảo mật qua Email OTP) */}
       {showForgotModal && (
-        <div className="auth-modal-backdrop" onClick={() => setShowForgotModal(false)}>
+        <div className="auth-modal-backdrop" onClick={closeForgotModal}>
           <div className="auth-modal-box" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
                 Khôi phục mật khẩu
               </h3>
               <button
                 type="button"
-                onClick={() => setShowForgotModal(false)}
+                onClick={closeForgotModal}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '14px' }}>
-              Nhập số điện thoại đã đăng ký để thiết lập lại mật khẩu mới.
-            </p>
+            {/* Bước chỉ dẫn */}
+            <div style={{ fontSize: '0.8rem', color: '#2563eb', fontWeight: '700', marginBottom: '12px' }}>
+              {forgotStep === 1 && 'Bước 1/3: Nhập email tài khoản để nhận mã OTP.'}
+              {forgotStep === 2 && `Bước 2/3: Nhập mã xác thực đã gửi tới ${forgotEmail}.`}
+              {forgotStep === 3 && 'Bước 3/3: Thiết lập mật khẩu mới chuẩn an ninh.'}
+            </div>
 
             {modalError && (
               <div className="auth-alert-banner" style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }}>
@@ -518,70 +809,203 @@ const AuthPage = ({ initialMode = 'login' }) => {
               </div>
             )}
 
-            <form onSubmit={handleForgotSubmit}>
-              <div className="auth-form-group">
-                <label className="auth-form-label" style={{ color: '#334155' }}>Số điện thoại</label>
-                <div className="auth-input-wrapper">
-                  <Phone size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
-                  <input
-                    type="tel"
-                    className="auth-input"
-                    style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a' }}
-                    placeholder="0901234567"
-                    value={forgotPhone}
-                    onChange={(e) => setForgotPhone(e.target.value)}
-                  />
+            {/* ================= BƯỚC 1: NHẬP EMAIL ================= */}
+            {forgotStep === 1 && (
+              <form onSubmit={handleSendForgotOtp}>
+                <div className="auth-form-group">
+                  <label className="auth-form-label" style={{ color: '#334155' }}>Email đã đăng ký</label>
+                  <div className="auth-input-wrapper">
+                    <Mail size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
+                    <input
+                      type="email"
+                      className="auth-input"
+                      style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a' }}
+                      placeholder="name@example.com"
+                      value={forgotEmail}
+                      onChange={(e) => {
+                        setForgotEmail(e.target.value);
+                        if (modalError) setModalError('');
+                      }}
+                      disabled={isSubmittingForgot}
+                      autoFocus
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="auth-form-group">
-                <label className="auth-form-label" style={{ color: '#334155' }}>Mật khẩu mới</label>
-                <div className="auth-input-wrapper">
-                  <Lock size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
-                  <input
-                    type={showForgotNewPass ? 'text' : 'password'}
-                    className="auth-input"
-                    style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a' }}
-                    placeholder="Tối thiểu 6 ký tự"
-                    value={forgotNewPass}
-                    onChange={(e) => setForgotNewPass(e.target.value)}
-                  />
+                <button
+                  type="submit"
+                  className="auth-submit-btn"
+                  style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', marginTop: '14px' }}
+                  disabled={isSubmittingForgot}
+                >
+                  <span>{isSubmittingForgot ? 'Đang gửi mã...' : 'Gửi mã xác thực'}</span>
+                  {!isSubmittingForgot && <ArrowRight size={15} />}
+                </button>
+              </form>
+            )}
+
+            {/* ================= BƯỚC 2: NHẬP MÃ OTP (3 PHÚT) ================= */}
+            {forgotStep === 2 && (
+              <form onSubmit={handleVerifyForgotOtp}>
+                <div className="auth-form-group">
+                  <label className="auth-form-label" style={{ color: '#334155' }}>
+                    Mã xác thực OTP (6 chữ số)
+                  </label>
+                  <div className="auth-input-wrapper">
+                    <KeyRound size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
+                    <input
+                      type="text"
+                      maxLength="6"
+                      className="auth-input"
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #cbd5e1',
+                        color: '#0f172a',
+                        letterSpacing: '6px',
+                        fontSize: '1.25rem',
+                        fontWeight: '700',
+                        textAlign: 'center'
+                      }}
+                      placeholder="------"
+                      value={forgotOtp}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setForgotOtp(val);
+                        if (modalError) setModalError('');
+                      }}
+                      disabled={isSubmittingForgot}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                {/* Đồng hồ đếm ngược 3 phút (180s) và nút Gửi lại mã */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', fontSize: '0.8rem' }}>
+                  {forgotTimer > 0 ? (
+                    <span style={{ color: '#64748b' }}>
+                      Mã có hiệu lực: <strong style={{ color: '#dc2626' }}>{formatTimer(forgotTimer)}</strong>
+                    </span>
+                  ) : (
+                    <span style={{ color: '#dc2626', fontWeight: '700' }}>
+                      Mã OTP đã hết hạn!
+                    </span>
+                  )}
+
                   <button
                     type="button"
-                    className="auth-password-toggle"
-                    onClick={() => setShowForgotNewPass(!showForgotNewPass)}
-                    tabIndex="-1"
+                    onClick={handleResendForgotOtp}
+                    disabled={forgotTimer > 0 || isSubmittingForgot}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: forgotTimer > 0 ? '#94a3b8' : '#2563eb',
+                      cursor: forgotTimer > 0 ? 'not-allowed' : 'pointer',
+                      fontWeight: '700',
+                      textDecoration: forgotTimer > 0 ? 'none' : 'underline'
+                    }}
                   >
-                    {showForgotNewPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                    {forgotTimer > 0 ? `Gửi lại sau (${formatTimer(forgotTimer)})` : 'Gửi lại mã OTP'}
                   </button>
                 </div>
-              </div>
 
-              <div className="auth-form-group">
-                <label className="auth-form-label" style={{ color: '#334155' }}>Xác nhận mật khẩu mới</label>
-                <div className="auth-input-wrapper">
-                  <KeyRound size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
-                  <input
-                    type="password"
-                    className="auth-input"
-                    style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a' }}
-                    placeholder="Nhập lại mật khẩu mới"
-                    value={forgotConfirmPass}
-                    onChange={(e) => setForgotConfirmPass(e.target.value)}
-                  />
+                <button
+                  type="submit"
+                  className="auth-submit-btn"
+                  style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', marginTop: '14px' }}
+                  disabled={isSubmittingForgot}
+                >
+                  <span>{isSubmittingForgot ? 'Đang xác thực...' : 'Xác thực mã OTP'}</span>
+                  {!isSubmittingForgot && <ArrowRight size={15} />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setForgotStep(1); setModalError(''); setModalSuccess(''); }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    marginTop: '12px',
+                    width: '100%',
+                    textAlign: 'center'
+                  }}
+                >
+                  ← Đổi địa chỉ email khác
+                </button>
+              </form>
+            )}
+
+            {/* ================= BƯỚC 3: THIẾT LẬP MẬT KHẨU MỚI ================= */}
+            {forgotStep === 3 && (
+              <form onSubmit={handleResetForgotPass}>
+                <div className="auth-form-group">
+                  <label className="auth-form-label" style={{ color: '#334155' }}>Mật khẩu mới *</label>
+                  <div className="auth-input-wrapper">
+                    <Lock size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
+                    <input
+                      type={showForgotNewPass ? 'text' : 'password'}
+                      className="auth-input"
+                      style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a' }}
+                      placeholder="Tối thiểu 8 ký tự"
+                      value={forgotNewPass}
+                      onChange={(e) => {
+                        setForgotNewPass(e.target.value);
+                        if (modalError) setModalError('');
+                      }}
+                      disabled={isSubmittingForgot}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="auth-password-toggle"
+                      onClick={() => setShowForgotNewPass(!showForgotNewPass)}
+                      tabIndex="-1"
+                    >
+                      {showForgotNewPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="submit"
-                className="auth-submit-btn"
-                style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', marginTop: '14px' }}
-                disabled={loading}
-              >
-                <span>Đặt lại mật khẩu</span>
-                <ArrowRight size={15} />
-              </button>
-            </form>
+                <div className="auth-form-group">
+                  <label className="auth-form-label" style={{ color: '#334155' }}>Xác nhận mật khẩu mới *</label>
+                  <div className="auth-input-wrapper">
+                    <KeyRound size={15} className="auth-input-icon" style={{ color: '#94a3b8' }} />
+                    <input
+                      type={showForgotConfirmPass ? 'text' : 'password'}
+                      className="auth-input"
+                      style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a' }}
+                      placeholder="Nhập lại mật khẩu mới"
+                      value={forgotConfirmPass}
+                      onChange={(e) => {
+                        setForgotConfirmPass(e.target.value);
+                        if (modalError) setModalError('');
+                      }}
+                      disabled={isSubmittingForgot}
+                    />
+                    <button
+                      type="button"
+                      className="auth-password-toggle"
+                      onClick={() => setShowForgotConfirmPass(!showForgotConfirmPass)}
+                      tabIndex="-1"
+                    >
+                      {showForgotConfirmPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="auth-submit-btn"
+                  style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', marginTop: '14px' }}
+                  disabled={isSubmittingForgot}
+                >
+                  <span>{isSubmittingForgot ? 'Đang lưu...' : 'Đặt lại mật khẩu'}</span>
+                  {!isSubmittingForgot && <ArrowRight size={15} />}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
