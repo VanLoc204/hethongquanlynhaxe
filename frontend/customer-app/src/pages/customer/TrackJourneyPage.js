@@ -777,7 +777,7 @@ const TrackJourneyPage = () => {
             </div>
 
             <div className="trip-selector-list">
-              {activeTrips.map(trip => {
+              {activeTrips.map((trip, idx) => {
                 const isCurrent = selectedTrip?._id === trip._id;
                 const rFrom = trip.routeId?.startPoint || 'Đà Lạt';
                 const rTo = trip.routeId?.endPoint || 'Hồ Chí Minh';
@@ -789,7 +789,7 @@ const TrackJourneyPage = () => {
 
                 return (
                   <div 
-                    key={trip._id} 
+                    key={`${trip._id}-${idx}`} 
                     className={`trip-card-item ${isCurrent ? 'selected' : ''}`}
                     onClick={() => {
                       setSelectedTrip(trip);

@@ -1,5 +1,5 @@
 const express = require('express');
-const { getStaff, createStaff, updateStaff, deleteStaff, updateUserPoints, getUserById } = require('../controllers/userController');
+const { getStaff, createStaff, updateStaff, deleteStaff, updateUserPoints, getUserById, getMemberByPhone } = require('../controllers/userController');
 const { protect, restrictTo } = require('../middlewares/authMiddleware');
 const { 
   getMySchedule, 
@@ -90,6 +90,7 @@ router.post('/agent/book', protect, createCounterBooking);
 router.post('/agent/cancel-ticket/:id', protect, cancelTicketAtCounter);
 router.post('/agent/resend-ticket/:id', protect, resendTicketNotification);
 router.get('/customer-bank-account/:phone', protect, getCustomerBankAccount);
+router.get('/member-by-phone/:phone', getMemberByPhone);
 router.get('/banks-list', protect, getBanksList);
 router.post('/agent/verify-ticket-qr', protect, verifyTicketQR);
 

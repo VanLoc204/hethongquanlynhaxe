@@ -42,6 +42,8 @@ const AgentTicketsPage = () => {
   const [detailTarget, setDetailTarget] = useState(null);
   const [cancellationTarget, setCancellationTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
+  const [cancellationMethod, setCancellationMethod] = useState('cash'); // 'cash' | 'points'
+  const [memberInfo, setMemberInfo] = useState({ isMember: false, member: null, loading: false });
   const [printTarget, setPrintTarget] = useState(null);
 
   // States gửi lại hóa đơn vé qua Email (Hotline / Khách yêu cầu)
@@ -180,13 +182,39 @@ const AgentTicketsPage = () => {
   // Mở modal xác nhận hủy vé
   const handleOpenCancelConfirmation = (booking) => {
     setCancellationTarget(booking);
+    setCancellationMethod('cash');
+    setMemberInfo({ isMember: false, member: null, loading: true });
     setError('');
     setSuccess('');
+
+    if (booking.customerPhone) {
+      fetch(`http://localhost:8000/api/v1/users/member-by-phone/${booking.customerPhone.trim()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.success && data.isMember) {
+            setMemberInfo({ isMember: true, member: data.member, loading: false });
+          } else {
+            setMemberInfo({ isMember: false, member: null, loading: false });
+          }
+        })
+        .catch(() => {
+          setMemberInfo({ isMember: false, member: null, loading: false });
+        });
+    } else {
+      setMemberInfo({ isMember: false, member: null, loading: false });
+    }
   };
 
   // Thực thi hủy vé và hoàn tiền
   const handleExecuteCancellation = async () => {
     if (!cancellationTarget) return;
+
+    if (cancellationMethod === 'points' && !memberInfo.isMember) {
+      setError('Khách hàng chưa đăng ký thành viên, không thể hoàn điểm.');
+      return;
+    }
 
     setCancelling(true);
     setError('');
@@ -194,11 +222,17 @@ const AgentTicketsPage = () => {
     try {
       const res = await fetch(`http://localhost:8000/api/v1/users/agent/cancel-ticket/${cancellationTarget._id}`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          refundMethod: cancellationMethod
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccess(`Hủy vé thành công! Mã vé ${cancellationTarget.orderCode} đã giải phóng ghế. Phí hủy: ${formatCurrency(data.refundSummary?.cancellationFee || 0)}, tiền hoàn trả: ${formatCurrency(data.refundSummary?.refundAmount || 0)}.`);
+        setSuccess(data.message || `Hủy vé thành công! Mã vé ${cancellationTarget.orderCode} đã được giải phóng ghế.`);
         setCancellationTarget(null);
         fetchBookings(searchQuery, departureDate, dateType, statusFilter);
       } else {
@@ -987,17 +1021,44 @@ const AgentTicketsPage = () => {
                             Chi Tiết
                           </button>
 
-                          {booking.status !== 'cancelled' && (
-                            <button
-                              type="button"
-                              className="btn-action btn-action-danger"
-                              disabled={!activeShift}
-                              onClick={() => handleOpenCancelConfirmation(booking)}
-                              title={!activeShift ? 'Vui lòng mở ca trực để thực hiện hủy vé' : 'Hủy vé và hoàn tiền theo quy định'}
-                            >
-                              Hủy Vé
-                            </button>
-                          )}
+                          {booking.status !== 'cancelled' && (() => {
+                            const departureDate = booking.tripId?.departureTime ? new Date(booking.tripId.departureTime) : null;
+                            const diffDays = departureDate ? (departureDate - new Date()) / (1000 * 60 * 60 * 24) : -1;
+                            const canCancel = diffDays >= 5;
+
+                            if (!canCancel) {
+                              return (
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    padding: '4px 8px',
+                                    fontSize: '0.72rem',
+                                    color: '#94a3b8',
+                                    backgroundColor: '#f1f5f9',
+                                    borderRadius: '4px',
+                                    border: '1px solid #e2e8f0',
+                                    cursor: 'not-allowed',
+                                    fontWeight: '600'
+                                  }}
+                                  title="Quá hạn hủy vé: Chỉ được phép hủy vé trước giờ khởi hành ít nhất 5 ngày"
+                                >
+                                  Hết hạn hủy
+                                </span>
+                              );
+                            }
+
+                            return (
+                              <button
+                                type="button"
+                                className="btn-action btn-action-danger"
+                                disabled={!activeShift}
+                                onClick={() => handleOpenCancelConfirmation(booking)}
+                                title={!activeShift ? 'Vui lòng mở ca trực để thực hiện hủy vé' : 'Hủy vé và hoàn tiền theo quy định (trước 5 ngày)'}
+                              >
+                                Hủy Vé
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
 
@@ -1278,13 +1339,13 @@ const AgentTicketsPage = () => {
 
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.82rem' }}>
               <div style={{ backgroundColor: '#fff1f2', color: '#be123c', padding: '0.75rem', borderRadius: '6px', fontWeight: '600', fontSize: '0.78rem', border: '1px solid #fecdd3' }}>
-                Lưu ý quan trọng: Yêu cầu này sẽ hủy vé đã chọn và giải phóng ghế ngồi tương ứng trở về sơ đồ chuyến xe.
+                Quy định hủy vé: Vé chỉ được hủy trước giờ khởi hành ít nhất 5 ngày. Hệ thống sẽ giải phóng ghế ngồi và hoàn trả 100% giá trị vé.
               </div>
 
               <div>
                 <label style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '700' }}>Mã vé hủy:</label>
                 <div style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
-                  #{cancellationTarget.orderCode || cancellationTarget._id.slice(-6).toUpperCase()} (Khách hàng: {cancellationTarget.customerName})
+                  #{cancellationTarget.orderCode || cancellationTarget._id.slice(-6).toUpperCase()} (Khách hàng: {cancellationTarget.customerName} - {cancellationTarget.customerPhone})
                 </div>
               </div>
 
@@ -1301,15 +1362,108 @@ const AgentTicketsPage = () => {
                   <strong>{cancellationTarget.seats?.length} vé ({cancellationTarget.seats?.join(', ')})</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Tổng tiền thanh toán:</span>
+                  <span>Số tiền hoàn trả (100%):</span>
                   <strong style={{ color: '#047857' }}>
                     {formatCurrency(cancellationTarget.totalAmount || ((cancellationTarget.tripId?.price || 0) * (cancellationTarget.seats?.length || 0)))}
                   </strong>
                 </div>
               </div>
 
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#1e293b', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  Hình Thức Hoàn Trả *
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${cancellationMethod === 'cash' ? '#2563eb' : '#cbd5e1'}`,
+                    backgroundColor: cancellationMethod === 'cash' ? '#eff6ff' : '#ffffff',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="cancelMethod"
+                      value="cash"
+                      checked={cancellationMethod === 'cash'}
+                      onChange={() => setCancellationMethod('cash')}
+                      style={{ marginTop: '2px', accentColor: '#2563eb' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '700', color: '#1e293b' }}>Trả tiền mặt tại quầy</div>
+                      <div style={{ fontSize: '0.73rem', color: '#64748b' }}>Trừ trực tiếp từ két tiền mặt ca trực của nhân viên bán vé</div>
+                    </div>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${cancellationMethod === 'points' ? '#2563eb' : '#cbd5e1'}`,
+                    backgroundColor: cancellationMethod === 'points' ? '#eff6ff' : '#ffffff',
+                    cursor: 'pointer'
+                  }}>
+                    <input
+                      type="radio"
+                      name="cancelMethod"
+                      value="points"
+                      checked={cancellationMethod === 'points'}
+                      onChange={() => setCancellationMethod('points')}
+                      style={{ marginTop: '2px', accentColor: '#2563eb' }}
+                    />
+                    <div>
+                      <div style={{ fontWeight: '700', color: '#1e293b' }}>Tích điểm cho khách hàng (1 VNĐ = 1 Điểm)</div>
+                      <div style={{ fontSize: '0.73rem', color: '#64748b' }}>Cộng điểm tích lũy vào tài khoản thành viên theo số điện thoại khách</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {cancellationMethod === 'points' && (
+                <div style={{
+                  padding: '0.75rem',
+                  borderRadius: '6px',
+                  border: `1px solid ${memberInfo.isMember ? '#bbf7d0' : '#fecdd3'}`,
+                  backgroundColor: memberInfo.isMember ? '#f0fdf4' : '#fff1f2',
+                  fontSize: '0.75rem'
+                }}>
+                  {memberInfo.loading ? (
+                    <div style={{ color: '#64748b' }}>Đang tra cứu tài khoản thành viên của khách hàng...</div>
+                  ) : memberInfo.isMember ? (
+                    <div>
+                      <div style={{ fontWeight: '700', color: '#15803d', marginBottom: '4px' }}>
+                        Tài khoản thành viên: {memberInfo.member.name} ({memberInfo.member.membershipTier})
+                      </div>
+                      <div style={{ color: '#166534' }}>
+                        Điểm hiện tại: <strong>{memberInfo.member.points.toLocaleString('vi-VN')} điểm</strong>
+                      </div>
+                      <div style={{ color: '#166534' }}>
+                        Điểm được tích lũy thêm: <strong>+{(cancellationTarget.totalAmount || 0).toLocaleString('vi-VN')} điểm</strong>
+                      </div>
+                      <div style={{ color: '#166534', marginTop: '2px' }}>
+                        Tổng điểm sau khi hủy: <strong>{(memberInfo.member.points + (cancellationTarget.totalAmount || 0)).toLocaleString('vi-VN')} điểm</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontWeight: '700', color: '#b91c1c', marginBottom: '2px' }}>
+                        Chưa có tài khoản thành viên
+                      </div>
+                      <div style={{ color: '#991b1b' }}>
+                        Số điện thoại {cancellationTarget.customerPhone} chưa đăng ký tài khoản thành viên. Để tích điểm, khách hàng cần đăng ký tài khoản thành viên trước. Vui lòng chọn Trả tiền mặt tại quầy.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic' }}>
-                * Mức khấu trừ phí phạt và số tiền hoàn trả cho khách được hệ thống tự động tính dựa trên thời gian hủy so với giờ xuất bến theo quy định nhà xe.
+                * Sau khi xác nhận, toàn bộ số ghế đã chọn sẽ lập tức được giải phóng trở về trạng thái trống trên hệ thống.
               </div>
             </div>
 
@@ -1326,18 +1480,18 @@ const AgentTicketsPage = () => {
                 type="button"
                 style={{
                   padding: '0.45rem 1.15rem',
-                  backgroundColor: '#dc2626',
+                  backgroundColor: (cancellationMethod === 'points' && !memberInfo.isMember) ? '#94a3b8' : '#dc2626',
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '6px',
                   fontSize: '0.78rem',
                   fontWeight: '700',
-                  cursor: 'pointer'
+                  cursor: (cancellationMethod === 'points' && !memberInfo.isMember) ? 'not-allowed' : 'pointer'
                 }}
                 onClick={handleExecuteCancellation}
-                disabled={cancelling}
+                disabled={cancelling || (cancellationMethod === 'points' && !memberInfo.isMember)}
               >
-                {cancelling ? 'Đang xử lý...' : 'Xác Nhận Hủy & Hoàn Tiền'}
+                {cancelling ? 'Đang xử lý...' : 'Xác Nhận Hủy Vé'}
               </button>
             </div>
 

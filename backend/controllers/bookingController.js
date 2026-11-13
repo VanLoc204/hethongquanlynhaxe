@@ -6,7 +6,7 @@ const payosPaymentService = require('../services/payosPaymentService');
 // @access  Public
 exports.createBooking = async (req, res) => {
   try {
-    const { 
+    let { 
       tripId, 
       userId, 
       seats, 
@@ -17,10 +17,15 @@ exports.createBooking = async (req, res) => {
       customerBirthYear,
       customerCCCD,
       customerEmail,
-      paymentType
+      paymentType,
+      pointsUsed = 0,
+      voucherCode = ''
     } = req.body;
 
-    if (!tripId || !userId || !seats || !seats.length || !pickup || !dropoff || 
+    const isGuest = !userId || userId === 'user_guest' || userId === 'guest';
+    const finalUserId = isGuest ? 'user_guest' : userId;
+
+    if (!tripId || !seats || !seats.length || !pickup || !dropoff || 
         !customerName || !customerPhone || !customerBirthYear || !customerCCCD) {
       return res.status(400).json({
         success: false,
@@ -28,15 +33,34 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    // Phân quyền bảo mật: Khách vãng lai (Guest - Không đăng nhập)
+    // 1. KHÔNG ĐƯỢC dùng Voucher và Điểm thưởng
+    // 2. KHÔNG ĐƯỢC phép thanh toán sau (bắt buộc thanh toán ngay)
+    if (isGuest) {
+      pointsUsed = 0;
+      voucherCode = '';
+      paymentType = 'immediate';
+    }
+
     const booking = await bookingService.createBooking({
-      tripId, userId, seats, pickup, dropoff,
-      customerName, customerPhone, customerBirthYear,
-      customerCCCD, customerEmail, paymentType
+      tripId, 
+      userId: finalUserId, 
+      seats, 
+      pickup, 
+      dropoff,
+      customerName, 
+      customerPhone, 
+      customerBirthYear,
+      customerCCCD, 
+      customerEmail, 
+      paymentType, 
+      pointsUsed, 
+      voucherCode
     });
 
-    // Tạo liên kết thanh toán payOS trực tiếp nếu thanh toán ngay
+    // Tạo liên kết thanh toán payOS trực tiếp nếu thanh toán ngay và còn số tiền cần thanh toán
     let payosData = null;
-    if (booking.paymentType === 'immediate') {
+    if (booking.paymentType === 'immediate' && booking.totalAmount > 0) {
       try {
         const linkRes = await payosPaymentService.createPaymentLink({
           orderCode: booking.orderCode,
@@ -104,6 +128,23 @@ exports.payosWebhook = async (req, res) => {
   } catch (error) {
     console.error('[PayOS Webhook Error in booking-service]:', error);
     res.status(500).json({ success: false, message: 'Lỗi xử lý webhook' });
+  }
+};
+
+// @desc    Get booking by orderCode
+// @route   GET /order/:orderCode
+// @access  Public
+exports.getBookingByOrderCode = async (req, res) => {
+  try {
+    const { orderCode } = req.params;
+    const booking = await bookingService.getBookingByOrderCode(orderCode);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy vé.' });
+    }
+    res.status(200).json({ success: true, booking });
+  } catch (error) {
+    console.error('Lỗi lấy trạng thái vé theo mã:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tra cứu mã vé.' });
   }
 };
 

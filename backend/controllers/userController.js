@@ -324,3 +324,40 @@ exports.getUserById = async (req, res) => {
     });
   }
 };
+
+// @desc    Get member loyalty points and tier by phone
+// @route   GET /api/v1/users/member-by-phone/:phone
+// @access  Public / Protected
+exports.getMemberByPhone = async (req, res) => {
+  try {
+    const { phone } = req.params;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số điện thoại.' });
+    }
+    const cleanPhone = phone.trim();
+    const user = await User.findOne({ phone: cleanPhone, role: 'customer' }).select('name phone points membershipTier email');
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        isMember: false,
+        message: 'Khách hàng chưa đăng ký thành viên.',
+        member: null
+      });
+    }
+    return res.status(200).json({
+      success: true,
+      isMember: true,
+      member: {
+        _id: user._id,
+        name: user.name,
+        phone: user.phone,
+        email: user.email || '',
+        points: user.points !== undefined && user.points !== null ? user.points : 0,
+        membershipTier: user.membershipTier || 'Bronze'
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi tra cứu thành viên theo SĐT:', error);
+    res.status(500).json({ success: false, message: 'Lỗi tra cứu thông tin thành viên.' });
+  }
+};

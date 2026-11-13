@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const ChatLog = require('../models/ChatLog');
+const Trip = require('../models/Trip');
 const { getChatResponse } = require('../services/geminiService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026';
@@ -22,7 +24,7 @@ const handleChat = async (req, res) => {
       });
     }
 
-    // 1. Check if user is authenticated (Optional - Guests can also use the chatbot)
+    // 1. Kiểm tra xác thực người dùng (nếu có đăng nhập)
     let userId = null;
     let userName = 'Khách vãng lai';
 
@@ -37,22 +39,65 @@ const handleChat = async (req, res) => {
       }
     }
 
-    // 2. Prepare message history context for Gemini
-    // Clean inputs (basic sanitization)
+    // 2. Làm sạch câu hỏi
     const cleanedMessage = message.trim().replace(/[<>]/g, '');
 
-    // 3. Get AI Response from Gemini (with fallback)
-    const aiResponseText = await getChatResponse(history || [], cleanedMessage);
+    // 3. Lấy phản hồi thông minh từ Gemini AI (kèm danh sách suggestedTripIds nếu có)
+    const aiResult = await getChatResponse(history || [], cleanedMessage);
 
-    // 4. Asynchronously log the conversation in MongoDB (non-blocking for client response speed)
-    logConversation(sessionId, userId, userName, cleanedMessage, aiResponseText).catch(err => {
+    const replyText = typeof aiResult === 'object' && aiResult !== null
+      ? (aiResult.reply || 'Dạ, An Bình AI luôn sẵn sàng hỗ trợ quý khách!')
+      : String(aiResult);
+
+    const suggestedTripIds = (typeof aiResult === 'object' && Array.isArray(aiResult?.suggestedTripIds))
+      ? aiResult.suggestedTripIds
+      : [];
+
+    // 4. Nếu có chuyến xe được AI gợi ý, truy vấn chi tiết từ DB để tạo Thẻ Đặt Vé Trực Tiếp
+    let tripCards = [];
+    if (suggestedTripIds.length > 0) {
+      try {
+        const validIds = suggestedTripIds
+          .filter(id => id && mongoose.Types.ObjectId.isValid(String(id)))
+          .map(id => new mongoose.Types.ObjectId(String(id)));
+
+        if (validIds.length > 0) {
+          const trips = await Trip.find({ _id: { $in: validIds } })
+            .populate('routeId busId')
+            .lean();
+
+          // Sắp xếp chuyến theo thứ tự gợi ý của AI hoặc giờ khởi hành
+          tripCards = trips.map(t => {
+            const totalSeats = t.busId?.totalSeats || 29;
+            const bookedCount = (t.bookedSeats || []).length;
+            const remaining = Math.max(0, totalSeats - bookedCount);
+            return {
+              _id: t._id,
+              departureTime: t.departureTime,
+              busType: t.busId?.type || 'Xe Limousine cao cấp',
+              price: t.price || 220000,
+              priceFormatted: `${(t.price || 220000).toLocaleString('vi-VN')} đ`,
+              seatsAvailable: remaining > 0 ? `Còn ${remaining} chỗ trống` : 'Hết chỗ',
+              rawTrip: t
+            };
+          });
+        }
+      } catch (tripErr) {
+        console.warn('[ChatController] Lỗi truy vấn chuyến xe gợi ý:', tripErr.message);
+      }
+    }
+
+    // 5. Lưu lịch sử hội thoại bất đồng bộ vào MongoDB
+    logConversation(sessionId, userId, userName, cleanedMessage, replyText).catch(err => {
       console.error('[ChatController] Error logging conversation to DB:', err.message);
     });
 
-    // 5. Response to client
+    // 6. Trả phản hồi về cho khách hàng
     return res.status(200).json({
       success: true,
-      text: aiResponseText,
+      text: replyText,
+      tripCards,
+      suggestedTripIds,
       timestamp: new Date()
     });
 
@@ -67,26 +112,22 @@ const handleChat = async (req, res) => {
 };
 
 /**
- * Handles saving conversation transcripts to MongoDB asynchronously
+ * Lưu lịch sử chat vào MongoDB
  */
 async function logConversation(sessionId, userId, userName, userMessage, aiResponse) {
   const userMsgObj = { sender: 'user', text: userMessage, timestamp: new Date() };
   const aiMsgObj = { sender: 'assistant', text: aiResponse, timestamp: new Date() };
 
-  // Try to find existing chat session
   let chatSession = await ChatLog.findOne({ sessionId });
 
   if (chatSession) {
-    // Session exists, push new messages
     chatSession.messages.push(userMsgObj, aiMsgObj);
-    // Update userId/userName if user recently logged in mid-session
     if (userId && !chatSession.userId) {
       chatSession.userId = userId;
       chatSession.userName = userName;
     }
     await chatSession.save();
   } else {
-    // Create new session log
     await ChatLog.create({
       sessionId,
       userId,

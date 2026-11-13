@@ -11,7 +11,7 @@ import './MyTicketsPage.css';
 
 const BOOKING_API = 'http://localhost:8000/api/v1/trips';
 const TRIP_API = 'http://localhost:8000/api/v1/trips';
-const CANCEL_HOURS_LIMIT = 24; // Must cancel at least 24h before departure
+const CANCEL_HOURS_LIMIT = 120; // Must cancel at least 5 days (120h) before departure
 
 const MyTicketsPage = () => {
   const navigate = useNavigate();
@@ -27,6 +27,13 @@ const MyTicketsPage = () => {
   const [activeTab, setActiveTab] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Tự động cuộn lên đầu khi chuyển tab, bộ lọc hoặc trang
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }, [activeTab, statusFilter, currentPage]);
 
   // 1-second clock for countdown
   useEffect(() => {
@@ -93,24 +100,24 @@ const MyTicketsPage = () => {
     });
   }, [now, tripDetails]); // re-check when time or trip info changes
 
-  // Cancel a ticket (with 24h policy)
+  // Cancel a ticket (with 5-day / 120h policy, refunded as points)
   const handleCancelTicket = async (ticket) => {
     const trip = tripDetails[ticket.tripId];
     if (trip) {
       const hoursUntilDeparture = (new Date(trip.departureTime) - now) / (1000 * 60 * 60);
       if (hoursUntilDeparture < CANCEL_HOURS_LIMIT) {
-        alert(`Không thể hủy vé! Chỉ được hủy trước giờ khởi hành ít nhất ${CANCEL_HOURS_LIMIT} giờ.\nChuyến xe khởi hành lúc: ${formatDateTime(trip.departureTime)}`);
+        alert(`Không thể hủy vé! Quy định nhà xe chỉ cho phép hủy vé trước giờ khởi hành ít nhất 5 ngày (120 giờ).\nChuyến xe khởi hành lúc: ${formatDateTime(trip.departureTime)}`);
         return;
       }
     }
-    if (!window.confirm('Bạn có chắc muốn hủy vé này?\nTheo chính sách, hủy trước 24 giờ được hoàn 100% tiền vé.')) return;
+    if (!window.confirm('Bạn có chắc muốn hủy vé này?\nTheo chính sách của nhà xe, hủy trước 5 ngày được hoàn 100% giá trị vé thành Điểm Tích Lũy vào tài khoản hội viên của bạn (1 VNĐ = 1 Điểm) để sử dụng cho lần đặt vé kế tiếp.')) return;
     try {
       const id = ticket._id;
       await axios.patch(`${BOOKING_API}/book/${id}/cancel`);
       setTickets(prev => prev.map(t => t._id === id ? { ...t, status: 'cancelled' } : t));
-      alert('Vé đã được hủy thành công. Tiền sẽ được hoàn trả theo quy định.');
+      alert('Vé đã được hủy thành công! Toàn bộ số tiền vé đã được quy đổi thành Điểm Tích Lũy và cộng trực tiếp vào ví hội viên của bạn.');
     } catch (err) {
-      alert('Có lỗi xảy ra khi hủy vé. Vui lòng thử lại.');
+      alert(err.response?.data?.message || 'Có lỗi xảy ra khi hủy vé. Vui lòng thử lại.');
     }
   };
 
@@ -337,7 +344,7 @@ const MyTicketsPage = () => {
             {t.status !== 'cancelled' && !isExpired && trip && hoursUntilDep < CANCEL_HOURS_LIMIT && hoursUntilDep > 0 && (
               <div className="ticket-notice-pill warning">
                 <Info size={14} />
-                <span>Đã quá thời hạn hủy vé (cần hủy trước {CANCEL_HOURS_LIMIT}h khởi hành)</span>
+                <span>Đã quá hạn hủy vé (quy định chỉ được hủy trước 5 ngày khởi hành)</span>
               </div>
             )}
           </div>
@@ -443,10 +450,10 @@ const MyTicketsPage = () => {
                     className="ticket-drawer-cancel-btn"
                   >
                     <XCircle size={15} />
-                    <span>{t.status === 'paid' ? 'Yêu cầu hủy vé & hoàn tiền' : 'Hủy đặt chỗ này'}</span>
+                    <span>{t.status === 'paid' ? 'Yêu cầu hủy vé & tích điểm' : 'Hủy đặt chỗ này'}</span>
                   </button>
                   <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '6px' }}>
-                    * Còn hơn {Math.floor(hoursUntilDep)}h đến giờ xuất bến. Hủy trước {CANCEL_HOURS_LIMIT}h được hoàn 100% tiền vé.
+                    * Còn hơn {Math.floor(hoursUntilDep / 24)} ngày {Math.floor(hoursUntilDep % 24)}h đến giờ xuất bến. Hủy trước 5 ngày được hoàn 100% thành điểm tích lũy.
                   </p>
                 </div>
               )}

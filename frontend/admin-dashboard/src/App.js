@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 
@@ -87,6 +87,13 @@ function DashboardLayout() {
   const { user } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Tự động cuộn lên đầu mỗi khi chuyển tab / tính năng trên sidebar
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const mainEl = document.querySelector('.main-content');
+    if (mainEl) mainEl.scrollTop = 0;
+  }, [activeTab]);
 
   const renderContent = () => {
     switch (activeTab) {

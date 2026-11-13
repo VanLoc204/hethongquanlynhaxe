@@ -33,6 +33,49 @@ exports.searchTrips = async (req, res) => {
   }
 };
 
+// @desc    Get upcoming trips that have not departed yet (departureTime > now)
+// @route   GET /api/v1/trips/upcoming
+// @access  Public
+exports.getUpcomingTrips = async (req, res) => {
+  try {
+    const { from, to, limit = 5 } = req.query;
+    const now = new Date();
+
+    let routeFilter = {};
+    if (from || to) {
+      const Route = require('../models/Route');
+      const conditions = [];
+      if (from) conditions.push({ startPoint: new RegExp(from.trim(), 'i') });
+      if (to) conditions.push({ endPoint: new RegExp(to.trim(), 'i') });
+      const matchedRoutes = await Route.find({ $and: conditions }).select('_id');
+      routeFilter = { routeId: { $in: matchedRoutes.map(r => r._id) } };
+    }
+
+    const Trip = require('../models/Trip');
+    const trips = await Trip.find({
+      ...routeFilter,
+      departureTime: { $gt: now }
+    })
+      .populate('routeId')
+      .populate('busId')
+      .sort({ departureTime: 1 })
+      .limit(Number(limit))
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: trips.length,
+      trips
+    });
+  } catch (error) {
+    console.error('Lỗi lấy chuyến sắp đi:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi lấy danh sách chuyến xe sắp đi.'
+    });
+  }
+};
+
 // @desc    Get all routes (public view for home search dropdown)
 // @route   GET /api/v1/trips/routes
 // @access  Public

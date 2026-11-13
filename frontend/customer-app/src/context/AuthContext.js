@@ -134,7 +134,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Forgot Password
+  // Forgot Password (Legacy)
   const forgotPassword = async (phone, newPassword) => {
     setLoading(true);
     setError(null);
@@ -152,6 +152,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // 1. Gửi mã OTP khôi phục mật khẩu qua Email (3 phút hiệu lực)
+  const sendForgotOtp = async (email) => {
+    setError(null);
+    try {
+      const res = await axios.post(`${API_URL}/forgotpassword/send-otp`, { email });
+      return { 
+        success: true, 
+        message: res.data.message, 
+        expiresIn: res.data.expiresIn || 180
+      };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Không thể gửi mã xác thực. Vui lòng thử lại.';
+      return { success: false, message: errMsg };
+    }
+  };
+
+  // 2. Xác thực mã OTP
+  const verifyForgotOtp = async (email, otp) => {
+    setError(null);
+    try {
+      const res = await axios.post(`${API_URL}/forgotpassword/verify-otp`, { email, otp });
+      return { success: true, resetToken: res.data.resetToken };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Mã xác thực không chính xác hoặc đã hết hạn.';
+      return { success: false, message: errMsg };
+    }
+  };
+
+  // 3. Đặt lại mật khẩu mới với resetToken
+  const resetForgotPass = async (email, resetToken, newPassword) => {
+    setError(null);
+    try {
+      const res = await axios.post(`${API_URL}/forgotpassword/reset`, { email, resetToken, newPassword });
+      return { success: true, message: res.data.message };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Đặt lại mật khẩu thất bại.';
+      return { success: false, message: errMsg };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -166,7 +206,10 @@ export const AuthProvider = ({ children }) => {
         setError,
         updateProfile,
         changePassword,
-        forgotPassword
+        forgotPassword,
+        sendForgotOtp,
+        verifyForgotOtp,
+        resetForgotPass
       }}
     >
       {children}

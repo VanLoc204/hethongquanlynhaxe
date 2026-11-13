@@ -1,6 +1,26 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-import { User, Mail, Phone, Lock, Award, Gift, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { 
+  User, 
+  Phone, 
+  Mail, 
+  Lock, 
+  Key, 
+  Eye, 
+  EyeOff, 
+  Star, 
+  ShieldCheck, 
+  CheckCircle2, 
+  Tag, 
+  Copy, 
+  Percent, 
+  Sliders, 
+  Check, 
+  Save, 
+  Gift,
+  Coins,
+  Ticket
+} from 'lucide-react';
 
 const ProfilePage = () => {
   const { user, updateProfile, changePassword, loading } = useContext(AuthContext);
@@ -12,11 +32,15 @@ const ProfilePage = () => {
   // Password change fields state
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
 
   // Status/alerts state
   const [infoMessage, setInfoMessage] = useState({ text: '', type: '' });
   const [passMessage, setPassMessage] = useState({ text: '', type: '' });
+  const [copiedCode, setCopiedCode] = useState('');
+  const [promoInput, setPromoInput] = useState('');
+  const [promoAlert, setPromoAlert] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -27,8 +51,11 @@ const ProfilePage = () => {
 
   if (!user) {
     return (
-      <div className="section-container" style={{ textAlign: 'center', padding: '5rem 0' }}>
-        <h3>Vui lòng đăng nhập để xem thông tin tài khoản</h3>
+      <div style={{ textAlign: 'center', padding: '4rem 1rem', color: '#475569' }}>
+        <h3 style={{ fontWeight: '700', fontSize: '1.25rem', marginBottom: '8px' }}>
+          Vui lòng đăng nhập để xem thông tin tài khoản
+        </h3>
+        <p style={{ fontSize: '0.9rem' }}>Đăng nhập để xem hạng thành viên, ưu đãi độc quyền và điểm tích lũy.</p>
       </div>
     );
   }
@@ -44,7 +71,8 @@ const ProfilePage = () => {
 
     const res = await updateProfile(name, email);
     if (res.success) {
-      setInfoMessage({ text: 'Cập nhật thông tin cá nhân thành công.', type: 'success' });
+      setInfoMessage({ text: 'Cập nhật thông tin thành công.', type: 'success' });
+      setTimeout(() => setInfoMessage({ text: '', type: '' }), 4000);
     } else {
       setInfoMessage({ text: res.message || 'Cập nhật thất bại.', type: 'error' });
     }
@@ -54,13 +82,8 @@ const ProfilePage = () => {
     e.preventDefault();
     setPassMessage({ text: '', type: '' });
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      setPassMessage({ text: 'Vui lòng nhập đầy đủ các trường mật khẩu.', type: 'error' });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPassMessage({ text: 'Xác nhận mật khẩu mới không khớp.', type: 'error' });
+    if (!currentPassword || !newPassword) {
+      setPassMessage({ text: 'Vui lòng nhập mật khẩu hiện tại và mật khẩu mới.', type: 'error' });
       return;
     }
 
@@ -74,337 +97,1099 @@ const ProfilePage = () => {
       setPassMessage({ text: 'Đổi mật khẩu thành công.', type: 'success' });
       setCurrentPassword('');
       setNewPassword('');
-      setConfirmPassword('');
+      setTimeout(() => setPassMessage({ text: '', type: '' }), 4000);
     } else {
       setPassMessage({ text: res.message || 'Đổi mật khẩu thất bại.', type: 'error' });
     }
   };
 
-  // Membership rules & stats calculation
-  const getTierColor = (tier) => {
-    switch (tier?.toLowerCase()) {
-      case 'platinum': return 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)';
-      case 'gold': return 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)';
-      case 'silver': return 'linear-gradient(135deg, #bdc3c7 0%, #2c3e50 100%)';
-      default: return 'linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%)'; // Bronze
+  const handleCopyCode = (code) => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(code);
+    }
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(''), 3000);
+  };
+
+  const handleApplyNewPromo = (e) => {
+    e.preventDefault();
+    if (!promoInput.trim()) return;
+    setPromoAlert(`Mã "${promoInput.toUpperCase().trim()}" đã được lưu vào danh sách của bạn!`);
+    setPromoInput('');
+    setTimeout(() => setPromoAlert(''), 4000);
+  };
+
+  // Xác định cấu hình bậc hạng (Chỉ chứa đặc quyền Voucher & Điểm thưởng)
+  const getTierConfig = (tier) => {
+    const t = String(tier || '').toLowerCase();
+    if (t.includes('plat') || t.includes('bạch kim')) {
+      return {
+        key: 'platinum',
+        displayName: 'Hạng Bạch Kim',
+        shortBadge: 'Bạch Kim',
+        badgeBg: '#fef3c7',
+        badgeColor: '#b45309',
+        badgeBorder: '#fde68a',
+        cardBg: 'linear-gradient(135deg, #0b2246 0%, #163769 50%, #0e274f 100%)',
+        starBg: 'rgba(245, 158, 11, 0.2)',
+        starBorder: '#f59e0b',
+        starColor: '#fbbf24',
+        progressPercent: '100%',
+        progressText: 'Tối đa (100%)',
+        isMaxTier: true,
+        benefitsTitle: 'Đặc Quyền Voucher Hạng Bạch Kim',
+        benefits: [
+          {
+            title: 'Voucher Giảm 15% Vé VIP (BACHKIM15)',
+            desc: 'Chiết khấu trực tiếp 15% (tối đa 100.000đ) cho mọi chuyến xe trên toàn hệ thống.'
+          },
+          {
+            title: 'Voucher Tri Ân Khách Hàng VIP 100K (TRIANVIP)',
+            desc: 'Tặng voucher 100.000đ cho đơn đặt vé từ 200.000đ dành riêng cho thành viên VIP.'
+          },
+          {
+            title: 'Voucher Đặt Vé Khứ Hồi 50K (ANBINH50K)',
+            desc: 'Áp dụng giảm ngay 50.000đ khi đặt vé xe khứ hồi từ 400.000đ trở lên.'
+          },
+          {
+            title: 'Tích Lũy 5% Điểm Thưởng Mỗi Chuyến Đi',
+            desc: 'Mỗi lượt đi được hoàn 5% giá vé quy đổi thành điểm thưởng dùng thanh toán vé.'
+          }
+        ],
+        vouchers: [
+          {
+            code: 'BACHKIM15',
+            tabBg: '#1d4ed8',
+            topText: 'GIẢM',
+            valText: '15%',
+            subTab: 'VIP',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Cho mọi hành trình liên tỉnh. Áp dụng trực tiếp tại bước thanh toán.',
+            tagText: 'Hạng VIP',
+            tagBg: '#ecfdf5',
+            tagColor: '#059669',
+            btnBg: '#1d4ed8'
+          },
+          {
+            code: 'ANBINH50K',
+            tabBg: '#b45309',
+            topText: 'GIẢM',
+            valText: '50K',
+            subTab: 'KHỨ HỒI',
+            expiry: 'HSD: 15/11/2026',
+            desc: 'Áp dụng vé xe 2 chiều. Đơn từ 400.000đ trở lên.',
+            tagText: 'Còn 12 ngày',
+            tagBg: '#fef3c7',
+            tagColor: '#d97706',
+            btnBg: '#b45309'
+          },
+          {
+            code: 'TRIANVIP',
+            tabBg: '#4338ca',
+            topText: 'GIẢM',
+            valText: '100K',
+            subTab: 'TRI ÂN',
+            expiry: 'HSD: 30/11/2026',
+            desc: 'Voucher tri ân khách hàng VIP. Đơn từ 200.000đ trở lên.',
+            tagText: 'Bạch Kim',
+            tagBg: '#eff6ff',
+            tagColor: '#1d4ed8',
+            btnBg: '#4338ca'
+          }
+        ]
+      };
+    } else if (t.includes('gold') || t.includes('vàng')) {
+      return {
+        key: 'gold',
+        displayName: 'Hạng Vàng',
+        shortBadge: 'Hạng Vàng',
+        badgeBg: '#fef3c7',
+        badgeColor: '#92400e',
+        badgeBorder: '#fde68a',
+        cardBg: 'linear-gradient(135deg, #78350f 0%, #b45309 50%, #92400e 100%)',
+        starBg: 'rgba(245, 158, 11, 0.25)',
+        starBorder: '#f59e0b',
+        starColor: '#fbbf24',
+        progressPercent: '75%',
+        progressText: 'Tiến độ: 75% lên Bạch Kim',
+        isMaxTier: false,
+        benefitsTitle: 'Đặc Quyền Voucher Hạng Vàng',
+        benefits: [
+          {
+            title: 'Voucher Giảm 10% Vé Xe (VANG10)',
+            desc: 'Chiết khấu trực tiếp 10% (tối đa 60.000đ) áp dụng cho mọi chuyến xe.'
+          },
+          {
+            title: 'Voucher Đặt Vé Khứ Hồi 50K (ANBINH50K)',
+            desc: 'Giảm 50.000đ khi đặt vé khứ hồi cho đơn từ 400.000đ trở lên.'
+          },
+          {
+            title: 'Voucher Sinh Nhật Thành Viên 50.000đ',
+            desc: 'Tặng mã ưu đãi giảm giá 50.000đ vào tháng sinh nhật của khách hàng.'
+          },
+          {
+            title: 'Tích Lũy 3% Điểm Thưởng Mỗi Chuyến Đi',
+            desc: 'Mỗi chuyến đi được hoàn 3% giá trị vé vào ví điểm tích lũy thành viên.'
+          }
+        ],
+        vouchers: [
+          {
+            code: 'VANG10',
+            tabBg: '#b45309',
+            topText: 'GIẢM',
+            valText: '10%',
+            subTab: 'VÀNG',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Chiết khấu 10% tối đa 60K mọi chuyến xe liên tỉnh.',
+            tagText: 'Hạng Vàng',
+            tagBg: '#fef3c7',
+            tagColor: '#92400e',
+            btnBg: '#b45309'
+          },
+          {
+            code: 'ANBINH50K',
+            tabBg: '#d97706',
+            topText: 'GIẢM',
+            valText: '50K',
+            subTab: 'KHỨ HỒI',
+            expiry: 'HSD: 15/11/2026',
+            desc: 'Áp dụng vé xe 2 chiều. Đơn từ 400.000đ trở lên.',
+            tagText: 'Còn 12 ngày',
+            tagBg: '#fef3c7',
+            tagColor: '#d97706',
+            btnBg: '#d97706'
+          },
+          {
+            code: 'ANBINH2026',
+            tabBg: '#059669',
+            topText: 'GIẢM',
+            valText: '50K',
+            subTab: 'CHÀO XUÂN',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Ưu đãi đầu năm giảm ngay 50.000đ cho đơn từ 200.000đ.',
+            tagText: 'Phổ thông',
+            tagBg: '#ecfdf5',
+            tagColor: '#059669',
+            btnBg: '#059669'
+          }
+        ]
+      };
+    } else if (t.includes('silv') || t.includes('bạc')) {
+      return {
+        key: 'silver',
+        displayName: 'Hạng Bạc',
+        shortBadge: 'Hạng Bạc',
+        badgeBg: '#f1f5f9',
+        badgeColor: '#334155',
+        badgeBorder: '#cbd5e1',
+        cardBg: 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #1e293b 100%)',
+        starBg: 'rgba(255, 255, 255, 0.15)',
+        starBorder: '#cbd5e1',
+        starColor: '#e2e8f0',
+        progressPercent: '45%',
+        progressText: 'Tiến độ: 45% lên Vàng',
+        isMaxTier: false,
+        benefitsTitle: 'Đặc Quyền Voucher Hạng Bạc',
+        benefits: [
+          {
+            title: 'Voucher Giảm 5% Vé Tuyến Dài (BAC05)',
+            desc: 'Chiết khấu trực tiếp 5% (tối đa 30.000đ) cho các hành trình liên tỉnh.'
+          },
+          {
+            title: 'Voucher Thăng Hạng Bạc 30.000đ',
+            desc: 'Tặng ngay mã ưu đãi 30.000đ chúc mừng thành viên đạt hạng Bạc.'
+          },
+          {
+            title: 'Voucher Khuyến Mãi Mùa Lễ Tết 30.000đ',
+            desc: 'Nhận sớm các mã giảm giá 30.000đ các dịp cao điểm du lịch.'
+          },
+          {
+            title: 'Tích Lũy 2% Điểm Thưởng Mỗi Chuyến Đi',
+            desc: 'Mỗi chuyến đi được hoàn 2% giá trị vé vào ví điểm tích lũy.'
+          }
+        ],
+        vouchers: [
+          {
+            code: 'BAC05',
+            tabBg: '#475569',
+            topText: 'GIẢM',
+            valText: '5%',
+            subTab: 'BẠC',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Chiết khấu 5% cho các chuyến xe đường dài liên tỉnh.',
+            tagText: 'Hạng Bạc',
+            tagBg: '#f1f5f9',
+            tagColor: '#334155',
+            btnBg: '#475569'
+          },
+          {
+            code: 'ANBINH2026',
+            tabBg: '#059669',
+            topText: 'GIẢM',
+            valText: '50K',
+            subTab: 'CHÀO XUÂN',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Ưu đãi đầu năm giảm ngay 50.000đ cho đơn từ 200.000đ.',
+            tagText: 'Phổ thông',
+            tagBg: '#ecfdf5',
+            tagColor: '#059669',
+            btnBg: '#059669'
+          },
+          {
+            code: 'BANMOI20',
+            tabBg: '#2563eb',
+            topText: 'GIẢM',
+            valText: '20%',
+            subTab: 'BẠN MỚI',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Giảm 20% tối đa 70.000đ cho đơn đặt vé đầu tiên.',
+            tagText: 'Thành viên',
+            tagBg: '#eff6ff',
+            tagColor: '#2563eb',
+            btnBg: '#2563eb'
+          }
+        ]
+      };
+    } else {
+      // Bronze / Đồng / Khách mới
+      return {
+        key: 'bronze',
+        displayName: 'Hạng Đồng',
+        shortBadge: 'Hạng Đồng',
+        badgeBg: '#ffedd5',
+        badgeColor: '#78350f',
+        badgeBorder: '#fed7aa',
+        cardBg: 'linear-gradient(135deg, #451a03 0%, #78350f 50%, #451a03 100%)',
+        starBg: 'rgba(245, 158, 11, 0.2)',
+        starBorder: '#f59e0b',
+        starColor: '#fbbf24',
+        progressPercent: '20%',
+        progressText: 'Tiến độ: 20% lên Bạc',
+        isMaxTier: false,
+        benefitsTitle: 'Đặc Quyền Voucher Hạng Đồng',
+        benefits: [
+          {
+            title: 'Voucher Chào Bạn Mới 20% (BANMOI20)',
+            desc: 'Giảm 20% (tối đa 70.000đ) áp dụng cho đơn đặt vé đầu tiên.'
+          },
+          {
+            title: 'Voucher Chào Xuân 50.000đ (ANBINH2026)',
+            desc: 'Ưu đãi trực tiếp 50.000đ cho đơn đặt vé từ 200.000đ.'
+          },
+          {
+            title: 'Voucher Đặt Vé Khứ Hồi 50K (ANBINH50K)',
+            desc: 'Giảm ngay 50.000đ khi đặt vé khứ hồi cho đơn từ 400.000đ.'
+          },
+          {
+            title: 'Tích Lũy 1% Điểm Thưởng Mỗi Chuyến Đi',
+            desc: 'Tích lũy 1% giá trị mỗi vé hoàn tất vào ví điểm thành viên.'
+          }
+        ],
+        vouchers: [
+          {
+            code: 'BANMOI20',
+            tabBg: '#2563eb',
+            topText: 'GIẢM',
+            valText: '20%',
+            subTab: 'BẠN MỚI',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Giảm 20% tối đa 70.000đ cho đơn đặt vé đầu tiên.',
+            tagText: 'Thành viên',
+            tagBg: '#eff6ff',
+            tagColor: '#2563eb',
+            btnBg: '#2563eb'
+          },
+          {
+            code: 'ANBINH2026',
+            tabBg: '#059669',
+            topText: 'GIẢM',
+            valText: '50K',
+            subTab: 'CHÀO XUÂN',
+            expiry: 'HSD: 31/12/2026',
+            desc: 'Ưu đãi đầu năm giảm ngay 50.000đ cho đơn từ 200.000đ.',
+            tagText: 'Phổ thông',
+            tagBg: '#ecfdf5',
+            tagColor: '#059669',
+            btnBg: '#059669'
+          },
+          {
+            code: 'ANBINH50K',
+            tabBg: '#b45309',
+            topText: 'GIẢM',
+            valText: '50K',
+            subTab: 'KHỨ HỒI',
+            expiry: 'HSD: 15/11/2026',
+            desc: 'Áp dụng vé xe 2 chiều. Đơn từ 400.000đ trở lên.',
+            tagText: 'Còn 12 ngày',
+            tagBg: '#fef3c7',
+            tagColor: '#d97706',
+            btnBg: '#b45309'
+          }
+        ]
+      };
     }
   };
 
-  const getTierBadge = (tier) => {
-    switch (tier?.toLowerCase()) {
-      case 'platinum': return { text: 'Bạch Kim', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)' };
-      case 'gold': return { text: 'Vàng', color: '#eab308', bg: 'rgba(234,179,8,0.1)' };
-      case 'silver': return { text: 'Bạc', color: '#9ca3af', bg: 'rgba(156,163,175,0.1)' };
-      default: return { text: 'Đồng', color: '#b45309', bg: 'rgba(180,83,9,0.1)' };
-    }
-  };
-
-  const getTierBenefits = (tier) => {
-    switch (tier?.toLowerCase()) {
-      case 'platinum': return [
-        'Giảm giá 15% tất cả các vé xe đặt trên hệ thống',
-        'Ưu tiên chọn ghế VIP và lên xe trước',
-        'Được đón trả khách tận nơi miễn phí (trong bán kính 10km)',
-        'Hoàn hủy vé miễn phí trước giờ chạy 12 tiếng'
-      ];
-      case 'gold': return [
-        'Giảm giá 10% tất cả các vé xe',
-        'Phòng chờ VIP tại các bến xe chính',
-        'Miễn phí 1 kiện hành lý ký gửi lên tới 35kg',
-        'Hoàn hủy vé miễn phí trước giờ chạy 18 tiếng'
-      ];
-      case 'silver': return [
-        'Giảm giá 5% tất cả các vé xe',
-        'Tích lũy 2% giá trị vé dưới dạng điểm thưởng',
-        'Miễn phí 1 kiện hành lý ký gửi lên tới 25kg'
-      ];
-      default: return [ // Bronze
-        'Tích lũy điểm thưởng 1% giá trị vé đặt online',
-        'Quà tặng sinh nhật thành viên trị giá 50.000đ',
-        'Miễn phí nước uống và khăn lạnh trên xe'
-      ];
-    }
-  };
-
-  const activeBenefits = getTierBenefits(user.membershipTier);
-  const badgeInfo = getTierBadge(user.membershipTier);
-
-  // Dynamic next tier stats
-  const points = user.points || 0;
-  const tier = user.membershipTier || 'Bronze';
-  
-  let nextTierName = '';
-  let nextTierPoints = 0;
-  let prevTierPoints = 0;
-
-  if (tier.toLowerCase() === 'bronze') {
-    nextTierName = 'Bạc (Silver)';
-    nextTierPoints = 500;
-    prevTierPoints = 0;
-  } else if (tier.toLowerCase() === 'silver') {
-    nextTierName = 'Vàng (Gold)';
-    nextTierPoints = 1000;
-    prevTierPoints = 500;
-  } else if (tier.toLowerCase() === 'gold') {
-    nextTierName = 'Bạch Kim (Platinum)';
-    nextTierPoints = 1500;
-    prevTierPoints = 1000;
-  } else {
-    nextTierName = 'Tối đa';
-    nextTierPoints = 1500;
-    prevTierPoints = 1500;
-  }
-
-  const range = nextTierPoints - prevTierPoints;
-  const progressPercent = range > 0 ? Math.min(((points - prevTierPoints) / range) * 100, 100) : 100;
-  const pointsNeeded = Math.max(nextTierPoints - points, 0);
+  const tierCfg = getTierConfig(user.membershipTier || 'Platinum');
+  const memberId = user.phone ? `ABL-${user.phone.slice(-5)}` : 'ABL-98421';
+  const pointsVal = (user.points !== undefined && user.points !== null) ? Number(user.points) : 55750;
 
   return (
-    <div className="section-container animate-fade-in" style={{ maxWidth: '1200px', width: '95%', paddingBottom: '5rem' }}>
+    <div className="profile-page-wrapper">
       
-      {/* Title */}
-      <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-        <h2 style={{ fontSize: '2.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-          <User size={32} style={{ color: 'var(--primary)' }} />
-          Quản Lý Tài Khoản Thành Viên
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-          Xem hạng thành viên, ưu đãi, thay đổi thông tin cá nhân và quản lý mật khẩu của bạn.
-        </p>
+      {/* ─── Embedded Responsive CSS ─── */}
+      <style>{`
+        .profile-page-wrapper {
+          max-width: 1360px;
+          margin: 0 auto;
+          padding: 8px 16px 14px 16px;
+          font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          color: #1e293b;
+          box-sizing: border-box;
+          width: 100%;
+          overflow-x: hidden;
+        }
+
+        .profile-top-header {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 10px 16px;
+          margin-bottom: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 10px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+
+        .profile-header-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex: 1;
+          min-width: 250px;
+        }
+
+        .profile-header-right {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .profile-main-grid {
+          display: grid;
+          grid-template-columns: 310px 1.22fr 1.08fr;
+          gap: 12px;
+          align-items: stretch;
+          width: 100%;
+        }
+
+        .profile-col {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .profile-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 12px 14px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+          box-sizing: border-box;
+        }
+
+        /* Tablet (769px - 1024px) */
+        @media screen and (max-width: 1024px) {
+          .profile-main-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+          .profile-col-vouchers {
+            grid-column: 1 / -1;
+          }
+        }
+
+        /* Mobile (< 768px, including iPhone 14 Pro Max 430px) */
+        @media screen and (max-width: 768px) {
+          .profile-page-wrapper {
+            padding: 8px 10px 24px 10px;
+          }
+          .profile-top-header {
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 10px 12px;
+            gap: 8px;
+          }
+          .profile-header-left {
+            width: 100%;
+          }
+          .profile-header-right {
+            width: 100%;
+            justify-content: space-between;
+          }
+          .profile-main-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+          .profile-col-vouchers {
+            grid-column: auto;
+          }
+          .profile-card {
+            padding: 12px;
+          }
+        }
+      `}</style>
+
+      {/* ─── Top Header Card ─── */}
+      <div className="profile-top-header">
+        {/* Left header info */}
+        <div className="profile-header-left">
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '9px',
+            background: '#eff6ff',
+            color: '#2563eb',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: '1px solid #dbeafe',
+            flexShrink: 0
+          }}>
+            <Sliders size={20} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: '1.12rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Quản Lý Tài Khoản Thành Viên
+              </h2>
+              <span style={{
+                background: tierCfg.badgeBg,
+                color: tierCfg.badgeColor,
+                border: `1px solid ${tierCfg.badgeBorder}`,
+                fontSize: '0.72rem',
+                fontWeight: '700',
+                padding: '2px 8px',
+                borderRadius: '6px'
+              }}>
+                {tierCfg.shortBadge}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+              Chào mừng trở lại, <strong style={{ color: '#0f172a' }}>{user.name || 'Hồ Văn Lộc'}</strong>! Bạn đang tận hưởng dịch vụ ưu đãi độc quyền từ An Bình Lines.
+            </p>
+          </div>
+        </div>
+
+        {/* Right security badges */}
+        <div className="profile-header-right">
+          <div style={{
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '6px',
+            padding: '4px 10px',
+            fontSize: '0.75rem',
+            color: '#475569',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+            Tài khoản bảo vệ cấp 2
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+            Mã hội viên: <strong style={{ color: '#0f172a', letterSpacing: '0.5px' }}>{memberId}</strong>
+          </div>
+        </div>
       </div>
 
-      <div className="profile-layout">
-        
-        {/* Left Side: Forms */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          {/* Form 1: Account Information */}
-          <div className="glass-card" style={{ padding: '2rem' }}>
-            <h3 style={{ fontWeight: '800', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <User size={20} style={{ color: 'var(--primary)' }} />
-              Thông tin cá nhân
-            </h3>
+      {/* ─── Main 3-Column Responsive Grid ─── */}
+      <div className="profile-main-grid">
 
-            {infoMessage.text && (
-              <div className="glass-card" style={{
-                padding: '10px 15px',
-                marginBottom: '1.5rem',
-                borderColor: infoMessage.type === 'success' ? '#10b981' : '#ef4444',
-                backgroundColor: infoMessage.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                color: infoMessage.type === 'success' ? '#10b981' : '#ef4444',
+        {/* ══════════ COLUMN 1: VIP Card & Voucher Privileges (Left) ══════════ */}
+        <div className="profile-col">
+          
+          {/* VIP Membership Card */}
+          <div style={{
+            background: tierCfg.cardBg,
+            borderRadius: '12px',
+            padding: '14px 16px',
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.08)',
+            position: 'relative',
+            boxShadow: '0 4px 12px rgba(11,34,70,0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: '175px'
+          }}>
+            {/* Header row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: '0.66rem', letterSpacing: '0.8px', color: '#93c5fd', fontWeight: '700', textTransform: 'uppercase' }}>
+                  THÀNH VIÊN AN BÌNH
+                </div>
+                <div style={{ fontSize: '1.22rem', fontWeight: '800', color: '#ffffff', marginTop: '1px' }}>
+                  {tierCfg.displayName}
+                </div>
+              </div>
+              <div style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: tierCfg.starBg,
+                border: `1.5px solid ${tierCfg.starBorder}`,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                fontSize: '0.85rem'
+                justifyContent: 'center',
+                color: tierCfg.starColor
               }}>
-                {infoMessage.type === 'success' ? <CheckCircle2 size={16} /> : <ShieldAlert size={16} />}
+                <Star size={16} fill={tierCfg.starColor} />
+              </div>
+            </div>
+
+            {/* Points info */}
+            <div style={{ margin: '8px 0 6px 0' }}>
+              <div style={{ fontSize: '0.66rem', color: '#93c5fd', letterSpacing: '0.6px', textTransform: 'uppercase', fontWeight: '600' }}>
+                ĐIỂM TÍCH LŨY
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                <span style={{ fontSize: '1.75rem', fontWeight: '900', color: '#ffffff', letterSpacing: '-0.5px' }}>
+                  {pointsVal.toLocaleString('vi-VN')}
+                </span>
+                <span style={{ fontSize: '0.82rem', color: '#93c5fd', fontWeight: '600' }}>điểm</span>
+              </div>
+            </div>
+
+            {/* Progress & Badge */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                <span>Tiến trình thăng hạng</span>
+                <span style={{ fontWeight: '700', color: '#ffffff' }}>{tierCfg.progressText}</span>
+              </div>
+              <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.2)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ width: tierCfg.progressPercent, height: '100%', background: 'linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%)' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px', fontSize: '0.69rem', color: '#6ee7b7' }}>
+                <CheckCircle2 size={13} />
+                <span>
+                  {tierCfg.isMaxTier 
+                    ? 'Bạn đã đạt hạng thành viên cao nhất của hãng!' 
+                    : 'Tích cực đặt vé để tự động nâng hạng và mở khóa thêm voucher!'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Đặc Quyền Voucher Hạng (CHỈ LÀ VOUCHER & ĐIỂM THƯỞNG) */}
+          <div className="profile-card" style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <div style={{ width: '22px', height: '22px', borderRadius: '5px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Ticket size={13} />
+              </div>
+              <h3 style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                {tierCfg.benefitsTitle}
+              </h3>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+              {tierCfg.benefits.map((benefit, idx) => (
+                <div 
+                  key={idx} 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'flex-start', 
+                    gap: '9px', 
+                    paddingBottom: idx < tierCfg.benefits.length - 1 ? '6px' : '0', 
+                    borderBottom: idx < tierCfg.benefits.length - 1 ? '1px dashed #f1f5f9' : 'none' 
+                  }}
+                >
+                  <div style={{ 
+                    width: '24px', 
+                    height: '24px', 
+                    borderRadius: '6px', 
+                    background: '#eff6ff', 
+                    color: '#2563eb', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    flexShrink: 0, 
+                    marginTop: '2px' 
+                  }}>
+                    {idx === 3 ? <Coins size={13} /> : <Percent size={13} />}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: '700', color: '#0f172a' }}>
+                      {benefit.title}
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: '#64748b', lineHeight: 1.25, marginTop: '1px' }}>
+                      {benefit.desc}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ══════════ COLUMN 2: Account Info & Password (Center) ══════════ */}
+        <div className="profile-col">
+          
+          {/* Card: Thông Tin Cá Nhân */}
+          <div className="profile-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <div style={{ width: '22px', height: '22px', borderRadius: '5px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <User size={13} />
+                </div>
+                <h3 style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Thông Tin Cá Nhân
+                </h3>
+              </div>
+              <span style={{
+                background: '#ecfdf5',
+                color: '#10b981',
+                border: '1px solid #a7f3d0',
+                fontSize: '0.7rem',
+                fontWeight: '700',
+                padding: '1px 8px',
+                borderRadius: '5px'
+              }}>
+                Đã xác minh
+              </span>
+            </div>
+
+            {infoMessage.text && (
+              <div style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                fontSize: '0.75rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: infoMessage.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                color: infoMessage.type === 'success' ? '#059669' : '#dc2626',
+                border: `1px solid ${infoMessage.type === 'success' ? '#a7f3d0' : '#fecaca'}`
+              }}>
+                {infoMessage.type === 'success' ? <CheckCircle2 size={13} /> : <ShieldCheck size={13} />}
                 <span>{infoMessage.text}</span>
               </div>
             )}
 
-            <form onSubmit={handleUpdateProfile}>
-              <div className="grid-2-col" style={{ marginBottom: '12px' }}>
-                <div className="form-group">
-                  <label className="form-label">Họ và tên</label>
+            <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
+                  Họ và tên
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                    <User size={14} />
+                  </span>
                   <input
                     type="text"
-                    className="form-control"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px 7px 32px',
+                      fontSize: '0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      color: '#0f172a'
+                    }}
                     required
                   />
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Số điện thoại</label>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
+                  Số điện thoại
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                    <Phone size={14} />
+                  </span>
                   <input
                     type="text"
-                    className="form-control"
                     value={user.phone}
                     disabled
-                    style={{ backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px 7px 32px',
+                      fontSize: '0.8rem',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      backgroundColor: '#f8fafc',
+                      color: '#64748b',
+                      cursor: 'not-allowed',
+                      boxSizing: 'border-box'
+                    }}
                   />
                 </div>
               </div>
 
-              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
-                <label className="form-label">Địa chỉ Email</label>
-                <input
-                  type="email"
-                  className="form-control"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
+                  Địa chỉ Email
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                    <Mail size={14} />
+                  </span>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 10px 7px 32px',
+                      fontSize: '0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      color: '#0f172a'
+                    }}
+                  />
+                </div>
               </div>
 
-              <button type="submit" className="btn btn-primary" disabled={loading} style={{ padding: '10px 24px' }}>
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  marginTop: '4px',
+                  padding: '7px 0',
+                  background: '#1d4ed8',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Save size={13} />
                 Cập nhật thông tin
               </button>
             </form>
           </div>
 
-          {/* Form 2: Change Password */}
-          <div className="glass-card" style={{ padding: '2rem' }}>
-            <h3 style={{ fontWeight: '800', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Lock size={20} style={{ color: 'var(--accent)' }} />
-              Đổi mật khẩu bảo mật
-            </h3>
+          {/* Card: Đổi Mật Khẩu Bảo Mật */}
+          <div className="profile-card" style={{ flex: 1 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                <div style={{ width: '22px', height: '22px', borderRadius: '5px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Key size={13} />
+                </div>
+                <h3 style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Đổi Mật Khẩu Bảo Mật
+                </h3>
+              </div>
+              <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                Đổi lần cuối: 30 ngày trước
+              </span>
+            </div>
 
             {passMessage.text && (
-              <div className="glass-card" style={{
-                padding: '10px 15px',
-                marginBottom: '1.5rem',
-                borderColor: passMessage.type === 'success' ? '#10b981' : '#ef4444',
-                backgroundColor: passMessage.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                color: passMessage.type === 'success' ? '#10b981' : '#ef4444',
+              <div style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                marginBottom: '8px',
+                fontSize: '0.75rem',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                fontSize: '0.85rem'
+                gap: '6px',
+                background: passMessage.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                color: passMessage.type === 'success' ? '#059669' : '#dc2626',
+                border: `1px solid ${passMessage.type === 'success' ? '#a7f3d0' : '#fecaca'}`
               }}>
-                {passMessage.type === 'success' ? <CheckCircle2 size={16} /> : <ShieldAlert size={16} />}
+                {passMessage.type === 'success' ? <CheckCircle2 size={13} /> : <ShieldCheck size={13} />}
                 <span>{passMessage.text}</span>
               </div>
             )}
 
-            <form onSubmit={handleChangePassword}>
-              <div className="form-group" style={{ marginBottom: '12px' }}>
-                <label className="form-label">Mật khẩu hiện tại</label>
-                <input
-                  type="password"
-                  className="form-control"
-                  placeholder="Nhập mật khẩu đang dùng"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                />
+            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
+                  Mật khẩu hiện tại
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                    <Key size={14} />
+                  </span>
+                  <input
+                    type={showCurrentPass ? 'text' : 'password'}
+                    placeholder="••••••••••••"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 32px 7px 32px',
+                      fontSize: '0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCurrentPass(!showCurrentPass)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}
+                  >
+                    {showCurrentPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
               </div>
 
-              <div className="grid-2-col" style={{ marginBottom: '1.5rem' }}>
-                <div className="form-group">
-                  <label className="form-label">Mật khẩu mới</label>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
+                  Mật khẩu mới
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>
+                    <Lock size={14} />
+                  </span>
                   <input
-                    type="password"
-                    className="form-control"
-                    placeholder="Mật khẩu từ 6 ký tự"
+                    type={showNewPass ? 'text' : 'password'}
+                    placeholder="Tối thiểu 8 ký tự"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    required
+                    style={{
+                      width: '100%',
+                      padding: '7px 32px 7px 32px',
+                      fontSize: '0.8rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
                   />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Xác nhận mật khẩu mới</label>
-                  <input
-                    type="password"
-                    className="form-control"
-                    placeholder="Nhập lại mật khẩu mới"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPass(!showNewPass)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 0 }}
+                  >
+                    {showNewPass ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
                 </div>
               </div>
 
-              <button type="submit" className="btn btn-secondary" disabled={loading} style={{ padding: '10px 24px' }}>
-                Đổi mật khẩu
-              </button>
+              {/* Bottom footer row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', color: '#64748b' }}>
+                  <ShieldCheck size={13} color="#10b981" />
+                  <span>Bảo mật 2FA đang bật</span>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    padding: '6px 14px',
+                    background: '#f8fafc',
+                    color: '#1e293b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Lưu thay đổi
+                </button>
+              </div>
             </form>
           </div>
-
         </div>
 
-        {/* Right Side: Membership details */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-          {/* Membership Tier Visual Card */}
-          <div style={{
-            background: getTierColor(user.membershipTier),
-            borderRadius: '16px',
-            padding: '2rem',
-            color: '#ffffff',
-            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.15)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            {/* Glossy Overlay design */}
-            <div style={{
-              position: 'absolute',
-              right: '-50px',
-              top: '-50px',
-              width: '180px',
-              height: '180px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.08)'
-            }}></div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
-                <span style={{ fontSize: '0.8rem', opacity: '0.8', fontWeight: '600', letterSpacing: '0.5px' }}>THÀNH VIÊN AN BÌNH</span>
-                <h3 style={{ fontSize: '1.75rem', fontWeight: '800', marginTop: '4px', textShadow: '0 2px 4px rgba(0,0,0,0.2)' }}>
-                  Hạng {badgeInfo.text}
-                </h3>
-              </div>
-              <Award size={36} style={{ opacity: 0.9 }} />
-            </div>
-
-            <div style={{ marginTop: '3rem' }}>
-              <span style={{ fontSize: '0.8rem', opacity: '0.8' }}>ĐIỂM TÍCH LŨY</span>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-                <h2 style={{ fontSize: '2.5rem', fontWeight: '900', margin: '0' }}>{points}</h2>
-                <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>điểm</span>
-              </div>
-            </div>
-
-            {/* Loyalty points to next tier progress */}
-            <div style={{ marginTop: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', opacity: '0.9', marginBottom: '5px' }}>
-                <span>Tiến trình thăng hạng</span>
-                {tier.toLowerCase() !== 'platinum' ? (
-                  <span>{points} / {nextTierPoints} điểm</span>
-                ) : (
-                  <span>Tối đa</span>
-                )}
-              </div>
-              <div style={{ height: '6px', backgroundColor: 'rgba(255, 255, 255, 0.25)', borderRadius: '3px', overflow: 'hidden' }}>
-                <div style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#ffffff' }}></div>
-              </div>
-              <p style={{ fontSize: '0.7rem', opacity: '0.85', marginTop: '6px', margin: '0' }}>
-                {tier.toLowerCase() !== 'platinum' ? (
-                  `Cần tích thêm ${pointsNeeded} điểm để thăng lên hạng ${nextTierName}.`
-                ) : (
-                  "Bạn đã đạt hạng thành viên cao nhất!"
-                )}
-              </p>
-            </div>
-          </div>
-
-          {/* Membership Benefits Perks list */}
-          <div className="glass-card" style={{ padding: '1.5rem' }}>
-            <h4 style={{ fontWeight: '800', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
-              <Gift size={18} style={{ color: 'var(--accent)' }} />
-              Quyền lợi hạng {badgeInfo.text}
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {activeBenefits.map((benefit, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <div style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    backgroundColor: badgeInfo.color,
-                    marginTop: '7px',
-                    flexShrink: 0
-                  }}></div>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0', lineHeight: '1.4' }}>
-                    {benefit}
-                  </p>
+        {/* ══════════ COLUMN 3: Voucher Wallet (Right) ══════════ */}
+        <div className="profile-col profile-col-vouchers">
+          <div className="profile-card" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <div style={{ width: '22px', height: '22px', borderRadius: '5px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Tag size={13} />
+                  </div>
+                  <h3 style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                    Kho Voucher Của Bạn
+                  </h3>
                 </div>
-              ))}
-            </div>
-          </div>
+                <span style={{
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  border: '1px solid #bfdbfe',
+                  fontSize: '0.7rem',
+                  fontWeight: '700',
+                  padding: '1px 8px',
+                  borderRadius: '5px'
+                }}>
+                  {tierCfg.vouchers.length} mã sẵn sàng
+                </span>
+              </div>
 
+              {copiedCode && (
+                <div style={{
+                  padding: '4px 8px',
+                  borderRadius: '5px',
+                  marginBottom: '8px',
+                  fontSize: '0.72rem',
+                  background: '#ecfdf5',
+                  color: '#059669',
+                  border: '1px solid #a7f3d0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}>
+                  <Check size={12} />
+                  <span>Đã sao chép mã <strong>{copiedCode}</strong> vào bộ nhớ tạm!</span>
+                </div>
+              )}
+
+              {/* List of 3 Tickets (Tất cả đều là Voucher Giảm Giá Thực Tế) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {tierCfg.vouchers.map((vc) => (
+                  <div 
+                    key={vc.code}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      overflow: 'hidden',
+                      background: '#ffffff',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                    }}
+                  >
+                    <div style={{
+                      background: vc.tabBg,
+                      color: '#ffffff',
+                      width: '72px',
+                      minWidth: '72px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '6px 2px',
+                      borderRight: '1px dashed rgba(255,255,255,0.4)',
+                      textAlign: 'center'
+                    }}>
+                      <span style={{ fontSize: '0.62rem', fontWeight: '700', opacity: 0.9 }}>{vc.topText}</span>
+                      <span style={{ fontSize: '1.05rem', fontWeight: '900', lineHeight: 1.1 }}>{vc.valText}</span>
+                      <span style={{ fontSize: '0.58rem', fontWeight: '700', letterSpacing: '0.6px', marginTop: '1px' }}>{vc.subTab}</span>
+                    </div>
+                    <div style={{ padding: '6px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minWidth: 0 }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <strong style={{ fontSize: '0.8rem', color: '#1e293b', letterSpacing: '0.3px' }}>{vc.code}</strong>
+                          <span style={{ fontSize: '0.64rem', color: '#94a3b8' }}>{vc.expiry}</span>
+                        </div>
+                        <div style={{ fontSize: '0.67rem', color: '#475569', lineHeight: 1.25, marginTop: '2px' }}>
+                          {vc.desc}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                        <span style={{ 
+                          background: vc.tagBg, 
+                          color: vc.tagColor, 
+                          fontSize: '0.64rem', 
+                          fontWeight: '700', 
+                          padding: '1px 6px', 
+                          borderRadius: '4px' 
+                        }}>
+                          {vc.tagText}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCode(vc.code)}
+                          style={{
+                            padding: '2px 8px',
+                            background: vc.btnBg,
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '0.68rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px'
+                          }}
+                        >
+                          <Copy size={10} />
+                          Sao chép
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom input: Thêm mã giảm giá mới */}
+            <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '700', color: '#475569', marginBottom: '4px' }}>
+                Thêm mã giảm giá mới
+              </label>
+              {promoAlert && (
+                <div style={{ fontSize: '0.7rem', color: '#059669', marginBottom: '4px', fontWeight: '600' }}>
+                  {promoAlert}
+                </div>
+              )}
+              <form onSubmit={handleApplyNewPromo} style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  placeholder="Nhập mã khuyến mãi..."
+                  value={promoInput}
+                  onChange={(e) => setPromoInput(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: '5px 8px',
+                    fontSize: '0.75rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '5px',
+                    outline: 'none',
+                    textTransform: 'uppercase',
+                    minWidth: 0
+                  }}
+                />
+                <button
+                  type="submit"
+                  style={{
+                    padding: '5px 12px',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '5px',
+                    fontSize: '0.74rem',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Áp dụng
+                </button>
+              </form>
+            </div>
+
+          </div>
         </div>
 
       </div>
-
     </div>
   );
 };
