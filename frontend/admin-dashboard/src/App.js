@@ -95,6 +95,13 @@ function DashboardLayout() {
     if (mainEl) mainEl.scrollTop = 0;
   }, [activeTab]);
 
+  // Lắng nghe URL hash nếu người dùng truy cập trực tiếp bằng liên kết #/routes hoặc tương tự
+  useEffect(() => {
+    if (window.location.hash && window.location.hash.includes('routes')) {
+      setActiveTab('ops-routes');
+    }
+  }, []);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -162,7 +169,7 @@ function DashboardLayout() {
       case 'gm-promotions':
         return <GmPromotionsPage />;
       case 'gm-analysis':
-        return <GmAnalysisPage />;
+        return <GmAnalysisPage setActiveTab={setActiveTab} />;
       case 'gm-fleet-expenses':
         return <GmFleetExpenseReviewPage />;
 

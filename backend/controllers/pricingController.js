@@ -74,6 +74,127 @@ exports.getDemandAnalytics = async (req, res) => {
   }
 };
 
+// @desc    Lấy thống kê nhu cầu tìm kiếm chưa được đáp ứng (AI Unmet Demand Sensing)
+// @route   GET /api/v1/pricing/unmet-demand
+// @access  Private (General Manager / Admin)
+exports.getUnmetDemandAnalytics = async (req, res) => {
+  try {
+    const RouteDemandLog = require('../models/RouteDemandLog');
+    const { generateUnmetDemandAiAnalysis } = require('../services/geminiService');
+
+    // Aggregation Pipeline gom cụm nhu cầu thực tế theo chặng đường
+    const aggregatePipeline = [
+      {
+        $match: {
+          hasResults: false
+        }
+      },
+      {
+        $group: {
+          _id: {
+            from: '$fromNormalized',
+            to: '$toNormalized'
+          },
+          searchCount: { $sum: 1 },
+          totalPassengers: { $sum: '$passengers' },
+          lastSearched: { $max: '$createdAt' },
+          isRouteExisting: { $max: '$isRouteExistingInSystem' }
+        }
+      },
+      {
+        $sort: { searchCount: -1 }
+      },
+      {
+        $limit: 15
+      }
+    ];
+
+    const results = await RouteDemandLog.aggregate(aggregatePipeline);
+
+    if (results.length === 0) {
+      return res.status(200).json({
+        success: true,
+        kpis: {
+          totalUnmetSearches: 0,
+          topDemandRoute: 'Chưa có',
+          topRouteSearches: 0,
+          urgentRoutesCount: 0,
+          potentialRoutesCount: 0,
+          totalTrackedRoutes: 0
+        },
+        data: []
+      });
+    }
+
+    const baseRoutes = results.map(item => ({
+      from: item._id.from || 'Không xác định',
+      to: item._id.to || 'Không xác định',
+      searchCount: item.searchCount,
+      totalPassengers: item.totalPassengers || item.searchCount,
+      isExistingRoute: Boolean(item.isRouteExisting),
+      lastSearched: item.lastSearched
+    }));
+
+    // Gọi Gemini AI phân tích thông minh các tuyến và tự động đưa ra đề xuất hành động thực tiễn
+    const aiEvaluations = await generateUnmetDemandAiAnalysis(baseRoutes);
+    const aiMap = new Map((aiEvaluations || []).map(e => [`${e.from}_${e.to}`, e]));
+
+    const analyzedRoutes = baseRoutes.map(item => {
+      const aiEval = aiMap.get(`${item.from}_${item.to}`) || {};
+      const urgencyLevel = aiEval.urgencyLevel || (item.searchCount >= 100 ? 'URGENT' : item.searchCount >= 30 ? 'POTENTIAL' : 'MONITORING');
+      const urgencyBadge = aiEval.urgencyBadge || (item.searchCount >= 100 ? 'Nhu cầu Rất Cao' : item.searchCount >= 30 ? 'Tiềm năng' : 'Mới phát hiện');
+      const urgencyColor = aiEval.urgencyColor || (item.searchCount >= 100 ? '#dc2626' : item.searchCount >= 30 ? '#d97706' : '#64748b');
+      const aiSuggestions = aiEval.aiSuggestions && aiEval.aiSuggestions.length > 0
+        ? aiEval.aiSuggestions
+        : [
+            `• Nhu cầu ghi nhận ${item.searchCount} lượt tìm kiếm.`,
+            `• Tiếp tục lưu vết theo dõi xu hướng thị trường.`
+          ];
+
+      return {
+        from: item.from,
+        to: item.to,
+        routeName: `${item.from} ➔ ${item.to}`,
+        searchCount: item.searchCount,
+        totalPassengers: item.totalPassengers,
+        urgencyLevel,
+        urgencyBadge,
+        urgencyColor,
+        aiSuggestions,
+        aiActionText: aiSuggestions.join(' '),
+        isExistingRoute: item.isExistingRoute,
+        lastSearched: item.lastSearched
+      };
+    });
+
+    const totalUnmetSearches = analyzedRoutes.reduce((sum, r) => sum + r.searchCount, 0);
+    const topRoute = analyzedRoutes.length > 0 ? analyzedRoutes[0].routeName : 'Chưa có';
+    const topRouteSearches = analyzedRoutes.length > 0 ? analyzedRoutes[0].searchCount : 0;
+    const urgentRoutesCount = analyzedRoutes.filter(r => r.urgencyLevel === 'URGENT').length;
+    const potentialRoutesCount = analyzedRoutes.filter(r => r.urgencyLevel === 'POTENTIAL').length;
+
+    res.status(200).json({
+      success: true,
+      kpis: {
+        totalUnmetSearches,
+        topDemandRoute: topRoute,
+        topRouteSearches,
+        urgentRoutesCount,
+        potentialRoutesCount,
+        totalTrackedRoutes: analyzedRoutes.length
+      },
+      data: analyzedRoutes
+    });
+  } catch (error) {
+    console.error('Lỗi lấy phân tích nhu cầu chưa đáp ứng:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi phân tích nhu cầu mở tuyến mới.',
+      error: error.message
+    });
+  }
+};
+
 // @desc    Create a pricing rule
 // @route   POST /api/v1/pricing/rules
 // @access  Private (General Manager / Admin)

@@ -34,11 +34,19 @@ const HomePage = () => {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    if (!from || !to || !date) {
-      alert('Vui lòng chọn đầy đủ Điểm đi, Điểm đến và Ngày đi.');
+    const cleanFrom = (from || '').trim();
+    const cleanTo = (to || '').trim();
+
+    if (cleanFrom && cleanTo && cleanFrom.toLowerCase() === cleanTo.toLowerCase()) {
+      alert('Điểm đến không được trùng với điểm xuất phát.');
       return;
     }
-    navigate(`/trips?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${date}&passengers=${passengers}&type=${tripType}`);
+
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const fromQuery = cleanFrom ? encodeURIComponent(cleanFrom) : '';
+    const toQuery = cleanTo ? encodeURIComponent(cleanTo) : '';
+
+    navigate(`/trips?from=${fromQuery}&to=${toQuery}&date=${targetDate}&passengers=${passengers}&type=${tripType}`);
   };
 
   // Các tuyến đường xe hiện có trong hệ thống

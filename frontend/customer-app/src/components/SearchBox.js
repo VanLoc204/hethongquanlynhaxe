@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Calendar, Users, Search, ChevronDown } from 'lucide-react';
+import { MapPin, Calendar, Users, Search, ChevronDown, RotateCcw } from 'lucide-react';
+import '../pages/customer/TripsPage.css';
 
 const SearchBox = ({
   from,
@@ -107,62 +108,42 @@ const SearchBox = ({
     };
   }, []);
 
+  const handleReset = () => {
+    setFrom('');
+    setTo('');
+    const today = new Date().toISOString().split('T')[0];
+    setDate(today);
+    setPassengers(1);
+  };
+
   return (
     <div className="home-search-wrapper">
-      <form onSubmit={onSubmit} className="search-card-main">
-        {/* Top Row: Radio Một chiều / Khứ hồi */}
-        <div className="search-card-top-row">
-          <div className="search-radio-group">
-            <label className="search-radio-label">
-              <input
-                type="radio"
-                name="tripType"
-                value="one-way"
-                checked={tripType === 'one-way'}
-                onChange={() => setTripType('one-way')}
-              />
-              <span>Một chiều</span>
-            </label>
-            <label className="search-radio-label">
-              <input
-                type="radio"
-                name="tripType"
-                value="round-trip"
-                checked={tripType === 'round-trip'}
-                onChange={() => setTripType('round-trip')}
-              />
-              <span>Khứ hồi</span>
-            </label>
-          </div>
-        </div>
-
-        {/* 4-Input Grid */}
-        <div className="search-inputs-grid-4">
+      <form onSubmit={onSubmit} className="trips-search-form">
+        <div className="trips-search-inputs-grid">
           {/* 1. Điểm đi */}
-          <div className="search-field-box" ref={fromRef}>
-            <div className="search-field-label">
+          <div className="trips-search-field" ref={fromRef}>
+            <div className="trips-field-label">
               <MapPin size={13} color="#2563eb" />
               <span>ĐIỂM ĐI</span>
             </div>
-            <div className="search-field-input-wrapper">
+            <div className="trips-field-input-box">
               <input
                 type="text"
-                className="search-field-input"
-                placeholder="Chọn điểm đi (VD: Sài Gòn)"
+                className="trips-field-input"
+                placeholder="Chọn điểm đi"
                 value={from}
                 onChange={(e) => {
                   setFrom(e.target.value);
                   setShowFromSuggestions(true);
                 }}
                 onFocus={() => setShowFromSuggestions(true)}
-                required
               />
-              <ChevronDown size={16} className="search-field-chevron" />
+              <ChevronDown size={14} color="#94a3b8" />
             </div>
 
             {/* Suggestions */}
             {showFromSuggestions && (
-              <div className="search-suggestions-dropdown">
+              <div className="search-suggestions-dropdown" style={{ top: '100%', left: 0, right: 0, zIndex: 100 }}>
                 {filteredFromLocations.map((loc, index) => (
                   <div
                     key={index}
@@ -189,30 +170,29 @@ const SearchBox = ({
           </div>
 
           {/* 2. Điểm đến */}
-          <div className="search-field-box" ref={toRef}>
-            <div className="search-field-label dest">
-              <MapPin size={13} color="#0284c7" />
+          <div className="trips-search-field" ref={toRef}>
+            <div className="trips-field-label">
+              <MapPin size={13} color="#ef4444" />
               <span>ĐIỂM ĐẾN</span>
             </div>
-            <div className="search-field-input-wrapper">
+            <div className="trips-field-input-box">
               <input
                 type="text"
-                className="search-field-input"
-                placeholder="Chọn điểm đến (VD: Nha Trang)"
+                className="trips-field-input"
+                placeholder="Chọn điểm đến"
                 value={to}
                 onChange={(e) => {
                   setTo(e.target.value);
                   setShowToSuggestions(true);
                 }}
                 onFocus={() => setShowToSuggestions(true)}
-                required
               />
-              <ChevronDown size={16} className="search-field-chevron" />
+              <ChevronDown size={14} color="#94a3b8" />
             </div>
 
             {/* Suggestions */}
             {showToSuggestions && (
-              <div className="search-suggestions-dropdown">
+              <div className="search-suggestions-dropdown" style={{ top: '100%', left: 0, right: 0, zIndex: 100 }}>
                 {filteredToLocations.map((loc, index) => (
                   <div
                     key={index}
@@ -239,15 +219,15 @@ const SearchBox = ({
           </div>
 
           {/* 3. Ngày đi */}
-          <div className="search-field-box">
-            <div className="search-field-label">
+          <div className="trips-search-field">
+            <div className="trips-field-label">
               <Calendar size={13} color="#2563eb" />
               <span>NGÀY ĐI</span>
             </div>
-            <div className="search-field-input-wrapper">
+            <div className="trips-field-input-box">
               <input
                 type="date"
-                className="search-field-input"
+                className="trips-field-input"
                 style={{ cursor: 'pointer' }}
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -256,36 +236,45 @@ const SearchBox = ({
             </div>
           </div>
 
-          {/* 4. Số lượng vé */}
-          <div className="search-field-box">
-            <div className="search-field-label">
+          {/* 4. Số vé */}
+          <div className="trips-search-field">
+            <div className="trips-field-label">
               <Users size={13} color="#2563eb" />
-              <span>SỐ LƯỢNG VÉ</span>
+              <span>SỐ VÉ</span>
             </div>
-            <div className="search-field-input-wrapper">
+            <div className="trips-field-input-box">
               <select
-                className="search-field-input"
+                className="trips-field-input"
                 style={{ cursor: 'pointer' }}
                 value={passengers}
                 onChange={(e) => setPassengers(Number(e.target.value))}
               >
-                <option value={1}>1 vé (1 Hành khách)</option>
-                <option value={2}>2 vé (2 Hành khách)</option>
-                <option value={3}>3 vé (3 Hành khách)</option>
-                <option value={4}>4 vé (4 Hành khách)</option>
-                <option value={5}>5 vé (5 Hành khách)</option>
+                <option value={1}>1 vé</option>
+                <option value={2}>2 vé</option>
+                <option value={3}>3 vé</option>
+                <option value={4}>4 vé</option>
+                <option value={5}>5 vé</option>
               </select>
-              <ChevronDown size={16} className="search-field-chevron" />
+              <ChevronDown size={14} color="#94a3b8" />
             </div>
           </div>
-        </div>
 
-        {/* Bottom Row: Search Button */}
-        <div className="search-card-bottom-row" style={{ justifyContent: 'flex-end' }}>
-          <button type="submit" className="search-btn-submit">
-            <Search size={18} />
-            <span>Tìm chuyến xe</span>
-          </button>
+          {/* 5. Search Actions (Tìm xe & Làm mới) */}
+          <div className="trips-search-actions">
+            <button type="submit" className="trips-btn-search">
+              <Search size={17} />
+              <span>Tìm xe</span>
+            </button>
+            <button
+              type="button"
+              className="trips-btn-reset-search"
+              onClick={handleReset}
+              title="Làm mới bộ lọc tìm kiếm và quay về mặc định"
+            >
+              <RotateCcw size={15} />
+              <span>Làm mới</span>
+            </button>
+          </div>
         </div>
       </form>
     </div>

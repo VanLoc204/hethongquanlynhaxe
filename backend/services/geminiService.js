@@ -334,13 +334,47 @@ const getExecutiveAiChatResponse = async (history, newMessage) => {
   const apiKey = process.env.GEMINI_API_KEY;
 
   const EXECUTIVE_SYSTEM_INSTRUCTION = `
-Bạn là Cố vấn Chiến lược Vận tải & Doanh thu AI cấp cao (AI Executive Advisor) phục vụ Ban Giám Đốc Công ty Cổ phần Xe khách An Bình Lines.
-Nhiệm vụ của bạn là phân tích dữ liệu vận tải thời gian thực từ cơ sở dữ liệu MongoDB (Tuyến xe, Chuyến đi, Tỷ lệ lấp đầy ghế, Doanh thu vé, Phương tiện, Mã khuyến mãi) và đưa ra các đánh giá, tư vấn chiến lược cùng khuyến nghị điều hành chính xác, sắc bén cho Ban Giám đốc.
+Bạn là Trợ lý Cố vấn Vận hành & Doanh thu Cấp cao của Ban Giám Đốc Hãng xe An Bình Lines.
+Nhiệm vụ: Cung cấp thông tin tổng hợp nhanh, ngắn gọn, súc tích, chia theo từng nhóm ý để Ban Giám đốc nắm bắt ngay lập tức và ra quyết định điều hành.
 
-Phong cách phản hồi:
-- Chuyên nghiệp, khách quan, tư duy quản trị số liệu chặt chẽ.
-- Có dẫn chứng dữ liệu cụ thể (doanh thu, tỷ lệ %, số lượng vé, khung giờ...).
-- Đưa ra đề xuất hành động rõ ràng (Khuyến nghị 1, 2, 3...) kèm gạch đầu dòng rõ ràng.
+QUY TẮC BẮT BUỘC (TUYỆT ĐỐI TUÂN THỦ):
+1. KHÔNG DÙNG THUẬT NGỮ KỸ THUẬT IT:
+   - CẤM dùng: MongoDB, database, collection, query, server, API, token, JSON, hệ quản trị...
+   - CHỈ dùng thuật ngữ nhà xe: chuyến xe, tuyến đường, dòng xe, tỷ lệ lấp đầy ghế, giờ xuất bến, giá vé, voucher ưu đãi...
+
+2. CỰC KỲ NGẮN GỌN & CHIA THEO TỪNG NHÓM Ý RÕ RÀNG (TUYỆT ĐỐI KHÔNG DÀI DÒNG):
+   - MỖI GẠCH ĐẦU DÒNG (•) TỐI ĐA 10 - 15 TỪ, VỪA VẶN 1 DÒNG DUY NHẤT.
+   - TUYỆT ĐỐI KHÔNG VIẾT ĐOẠN VĂN DÀI, KHÔNG KỂ LỂ LÝ THUYẾT, KHÔNG DÙNG CÂU TỪ RƯỜM RÀ.
+   - Trình bày thông tin chia thành các nhóm rõ ràng với tiêu đề in hoa thuần túy:
+
+   TỔNG QUAN VẬN HÀNH:
+   • 2-3 gạch đầu dòng ngắn về: số chuyến, tỷ lệ lấp đầy %, số chuyến đã chạy hôm nay.
+
+   ĐIỂM CẦN LƯU Ý:
+   • 1-2 gạch đầu dòng ngắn về: chuyến nào/giờ nào còn trống nhiều chỗ, tuyến nào cần lưu tâm.
+
+   ĐỀ XUẤT HÀNH ĐỘNG CHO GIÁM ĐỐC:
+   • 2-3 gạch đầu dòng ngắn về hành động cụ thể: mã giảm giá cần áp dụng (kèm % giảm), phương án điều xe, chính sách giá vé.
+
+3. TUYỆT ĐỐI KHÔNG DÙNG BẤT KỲ BIỂU TƯỢNG (ICON/EMOJI) NÀO:
+   - CẤM dùng emoji hay icon (như 📊, ⚠️, 🎯, 💡, ⚡, ✨...). Chỉ dùng chữ cái và dấu gạch đầu dòng (•).
+
+VÍ DỤ TRẢ LỜI CHUẨN MỰC (CỰC KỲ NGẮN GỌN & DỄ HIỂU):
+Dạ thưa Giám đốc, tổng hợp nhanh tình hình vận tải:
+
+TỔNG QUAN VẬN HÀNH:
+• Tổng 47 chuyến trong 7 ngày tới (chủ lực HCM ⇄ Đà Lạt, Cần Thơ).
+• Hôm nay (14/11): Đã chạy 4 chuyến sáng, còn 2 chuyến tối (16:00, 23:00).
+• Tỷ lệ lấp đầy bình quân: 76.4% công suất.
+
+ĐIỂM CẦN LƯU Ý:
+• Các chuyến chiều tối nay còn nhiều chỗ trống chưa có khách.
+• Tuyến Cần Thơ ➔ HCM cần đẩy mạnh bán vé trước giờ khởi hành.
+
+ĐỀ XUẤT HÀNH ĐỘNG CHO GIÁM ĐỐC:
+• Đẩy mạnh mã BANMOI20 hoặc HEVUI15 giảm 15% kích cầu giờ chót.
+• Giữ nguyên lịch chạy cố định, sẵn sàng xe tăng cường dịp cuối tuần.
+• Duy trì biểu giá vé sàn hiện tại, chưa cần điều chỉnh.
 `;
 
   if (apiKey && apiKey !== 'fake-key' && !apiKey.startsWith('YOUR_')) {
@@ -361,27 +395,383 @@ Phong cách phản hồi:
     try {
       const geminiHistory = sanitizeGeminiHistory(history);
 
-      const promptText = `${dbContext}\n\nYÊU CẦU PHÂN TÍCH TỪ BAN GIÁM ĐỐC: "${newMessage}"`;
+      const promptText = `${dbContext}\n\nCÂU HỎI / YÊU CẦU CỦA BAN GIÁM ĐỐC: "${newMessage}"\n\nYÊU CẦU: Hãy trả lời CỰC KỲ NGẮN GỌN, KHÔNG DÙNG ICON, chia theo từng nhóm ý rõ ràng (TỔNG QUAN, LƯU Ý, ĐỀ XUẤT), mỗi gạch đầu dòng (•) chỉ 10-15 từ vừa đúng 1 dòng, đi thẳng vào thông tin và hành động Giám đốc cần.`;
 
       const chatSession = execModel.startChat({
         history: geminiHistory,
         generationConfig: {
-          maxOutputTokens: 2048,
-          temperature: 0.6,
+          maxOutputTokens: 1024,
+          temperature: 0.2,
         }
       });
 
       const response = await chatSession.sendMessage(promptText);
-      return response.response.text();
+      const rawText = response.response.text();
+      const cleanText = rawText
+        .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+        .replace(/[📊⚠️🎯💡📌⚡✨🚀]/g, '')
+        .trim();
+      return cleanText;
     } catch (error) {
       console.error('[Gemini Service] Exec AI Error:', error.message);
     }
   }
 
-  return `Dạ thưa Ban Giám đốc, qua phân tích tổng thể hệ thống:\n• Hiệu suất lấp đầy bình quân đạt 76.4%, doanh thu duy trì mức tăng trưởng tốt.\n• Về điều hành: Hệ thống khuyến nghị Ban Giám đốc áp dụng "Lịch chạy xe linh hoạt" cho các ngày cao điểm cuối tuần và duy trì biểu giá sàn cố định cho các ngày giữa tuần.`;
+  return `Dạ thưa Ban Giám đốc, tổng hợp nhanh tình hình:\n\nTỔNG QUAN VẬN HÀNH:\n• Hiệu suất lấp đầy bình quân: 76.4% công suất.\n• Hoạt động ổn định trên các tuyến chính HCM ⇄ Đà Lạt, Cần Thơ.\n\nĐIỂM CẦN LƯU Ý:\n• Các chuyến tối cần kích cầu thêm lượt đặt trước.\n\nĐỀ XUẤT HÀNH ĐỘNG CHO GIÁM ĐỐC:\n• Áp dụng mã giảm giá 15% kích cầu giờ chót.\n• Giữ nguyên giá sàn và lịch chạy xe cố định.`;
+};
+
+/**
+ * Phân tích địa danh ngữ nghĩa thông minh bằng Google Gemini AI (Tìm kiếm nền)
+ * Tự động phân tích địa danh/thắng cảnh tự do (VD: 'Chợ Đà Lạt', 'Hồ Xuân Hương', 'Landmark 81', 'Bà Nà Hills')
+ * để xác định Tỉnh/Thành phố và ghép nối với các trạm đón/trả trong hệ thống.
+ */
+const resolveSemanticLocation = async (queryText, availableLocations = []) => {
+  if (!queryText || typeof queryText !== 'string' || queryText.trim().length < 2) {
+    return null;
+  }
+
+  const cleanQuery = queryText.trim();
+
+  // Gọi trực tiếp Gemini AI Flash Lite để phân tích ngữ nghĩa địa lý
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey && apiKey !== 'fake-key' && !apiKey.startsWith('YOUR_')) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const semanticModel = genAI.getGenerativeModel({
+        model: 'gemini-flash-lite-latest',
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+          maxOutputTokens: 1024
+        }
+      });
+
+      const prompt = `
+Bạn là chuyên gia định vị địa lý giao thông Việt Nam cho hệ thống xe khách An Bình Lines.
+Người dùng đang tìm kiếm chặng xe bằng từ khóa: "${cleanQuery}".
+Danh sách các điểm đón/trả và tỉnh thành nhà xe hiện có bến/trạm:
+${availableLocations.length > 0 ? availableLocations.join(', ') : 'Hồ Chí Minh, Đà Lạt, Bảo Lộc, Cần Thơ, Nha Trang, Đà Nẵng, Vũng Tàu, Phan Thiết, Rạch Giá, Long Xuyên, Tây Ninh, Hà Nội'}.
+
+Nhiệm vụ:
+1. Xác định địa điểm "${cleanQuery}" (địa danh, thắng cảnh, bến xe, công viên, bệnh viện...) thuộc Tỉnh/Thành phố hoặc Quận/Huyện nào của Việt Nam.
+2. Tìm điểm đến/điểm đón phù hợp nhất hoặc gần nhất trong danh sách các trạm xe của nhà xe (nếu có).
+3. Nếu nhà xe chưa có tuyến/bến tới tỉnh này, vẫn xác định rõ Tỉnh/Thành phố chuẩn để hệ thống ghi nhận nhu cầu mở tuyến mới.
+4. Trả về đúng định dạng JSON sau:
+{
+  "matchedLandmark": "${cleanQuery}",
+  "province": "<Tên Tỉnh/Thành phố chuẩn, ví dụ: Lâm Đồng, TP. Hồ Chí Minh, Bình Thuận, Khánh Hòa, Cần Thơ...>",
+  "city": "<Tên Thành phố/Thị xã/Huyện, ví dụ: Đà Lạt, Nha Trang, Phan Thiết...>",
+  "canonicalLocation": "<Tên Tỉnh/TP hoặc Trạm xe trong mạng lưới gần nhất>",
+  "nearestStop": "<Tên Trạm đón/trả phù hợp nhất trong hệ thống nếu có>",
+  "confidence": <số thập phân từ 0.7 đến 1.0>,
+  "explanation": "<Giải thích ngắn 1 câu bằng tiếng Việt, ví dụ: 'Chợ Đà Lạt nằm tại TP. Đà Lạt (Lâm Đồng)'>"
+}
+`;
+
+      const response = await semanticModel.generateContent(prompt);
+      const rawText = response.response.text();
+      let parsed = null;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (err) {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+      }
+
+      if (parsed && (parsed.canonicalLocation || parsed.province)) {
+        return {
+          success: true,
+          source: 'gemini-ai',
+          originalQuery: cleanQuery,
+          matchedLandmark: parsed.matchedLandmark || cleanQuery,
+          province: parsed.province || '',
+          city: parsed.city || '',
+          canonicalLocation: parsed.canonicalLocation || parsed.province || cleanQuery,
+          nearestStop: parsed.nearestStop || parsed.canonicalLocation || parsed.province,
+          confidence: parsed.confidence || 0.9,
+          explanation: parsed.explanation || `${cleanQuery} thuộc ${parsed.city ? parsed.city + ', ' : ''}${parsed.province || ''}.`
+        };
+      }
+    } catch (aiErr) {
+      console.warn('[Gemini Service] Semantic resolve error:', aiErr.message);
+    }
+  }
+
+  // Fallback đơn giản nếu không có Gemini API key
+  return {
+    success: false,
+    source: 'fallback',
+    originalQuery: cleanQuery,
+    province: cleanQuery,
+    canonicalLocation: cleanQuery
+  };
+};
+
+// In-memory cache for unmet demand suggestions (TTL 5 minutes)
+let unmetDemandCache = {
+  timestamp: 0,
+  key: '',
+  data: null
+};
+
+// Hàm chuẩn hóa giúp các gạch đầu dòng của AI luôn ngắn gọn, vừa vặn 1 dòng (tối đa 10-14 từ)
+const formatShortBulletList = (suggestions) => {
+  if (!Array.isArray(suggestions)) return [];
+  return suggestions.map(item => {
+    if (typeof item !== 'string') return '';
+    let text = item.trim();
+    if (!text.startsWith('•')) text = `• ${text}`;
+    // Nếu AI vô tình viết câu quá dài (> 80 ký tự), ngắt ở dấu chấm/phẩy đầu tiên để giữ đúng 1 dòng
+    if (text.length > 80) {
+      const firstClause = text.split(/[;,\n]/)[0].trim();
+      if (firstClause.length >= 20) {
+        text = firstClause.endsWith('.') ? firstClause : `${firstClause}.`;
+      }
+    }
+    return text;
+  }).filter(Boolean);
+};
+
+/**
+ * Trợ lý Gemini AI phân tích nhu cầu mở tuyến mới từ các lượt tìm kiếm chưa được đáp ứng
+ */
+const generateUnmetDemandAiAnalysis = async (routes) => {
+  if (!routes || routes.length === 0) return [];
+
+  const cacheKey = routes.map(r => `${r.from}-${r.to}-${r.searchCount}`).join('|');
+  const now = Date.now();
+  if (unmetDemandCache.data && unmetDemandCache.key === cacheKey && (now - unmetDemandCache.timestamp < 5 * 60 * 1000)) {
+    return unmetDemandCache.data;
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey && apiKey !== 'fake-key' && !apiKey.startsWith('YOUR_')) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const aiModel = genAI.getGenerativeModel({
+        model: 'gemini-flash-lite-latest',
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 2048
+        }
+      });
+
+      const prompt = `
+Bạn là Cố vấn Điều hành Vận tải của Hãng Xe khách An Bình Lines.
+Dưới đây là danh sách các chặng đường khách đã tìm kiếm nhưng nhà xe CHƯA CÓ CHUYẾN:
+${JSON.stringify(routes.map(r => ({
+  from: r.from,
+  to: r.to,
+  searchCount: r.searchCount,
+  totalPassengers: r.totalPassengers
+})))}
+
+QUY TẮC BẮT BUỘC VỀ ĐỘ DÀI & ĐỊNH DẠNG (TUYỆT ĐỐI TUÂN THỦ):
+1. VIẾT THEO TỪNG DÒNG VÀ CỰC KỲ NGẮN GỌN (CHỈ TỪ 7 ĐẾN 13 TỪ MỖI GẠCH ĐẦU DÒNG).
+2. TUYỆT ĐỐI KHÔNG VIẾT ĐOẠN VĂN, KHÔNG GIẢI THÍCH DÀI DÒNG, KHÔNG PHÂN TÍCH HÀN LÂM.
+3. Mỗi chặng chỉ đưa ra 2 đến 3 gạch đầu dòng (•), mỗi gạch vừa vặn trong 1 dòng duy nhất trên bảng để người quản lý đọc trong 2 giây.
+
+QUY CHUẨN PHÂN LOẠI MỨC ĐỘ KHẨN CẤP THEO CHUẨN VẬN TẢI THỰC TẾ:
+- "URGENT" (Nhu cầu Rất Cao - màu #dc2626): searchCount >= 100 lượt/tháng VÀ cự ly khả thi (<600km). Đủ ngưỡng hòa vốn mở tuyến hoặc xe chạy thử cuối tuần.
+- "POTENTIAL" (Tiềm năng - màu #d97706): searchCount từ 30 đến 99 lượt/tháng. Đã có tín hiệu thị trường rõ nét, khảo sát liên kết trung chuyển hoặc gom khách.
+- "MONITORING" (Mới phát hiện - màu #64748b): searchCount < 30 lượt/tháng HOẶC cự ly quá xa (>800km) không khả thi chạy xe khách thông thường. Chỉ ghi nhận theo dõi biến động, chưa đầu tư phương tiện.
+
+Ví dụ ngắn gọn chuẩn mực:
+- Tuyến mới phát hiện / quá xa:
+  • Nhu cầu sơ khởi (${1} lượt), cự ly quá xa (>1.400km).
+  • Không khả thi mở tuyến xe khách trực tiếp.
+  • Tiếp tục lưu vết theo dõi, chưa phân bổ xe.
+- Tuyến tiềm năng (30 - 99 lượt):
+  • Nhu cầu tiềm năng (${45} lượt tìm/tháng).
+  • Khảo sát liên kết trung chuyển với đối tác.
+  • Theo dõi tích lũy lưu lượng thêm 2 tuần.
+- Tuyến rất cao (>= 100 lượt):
+  • Nhu cầu rất cao (${120} lượt tìm/tháng).
+  • Khảo sát chạy thử 1-2 chuyến cuối tuần.
+  • Bố trí xe Limousine hoặc Giường nằm.
+
+TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON MẢNG:
+[
+  {
+    "from": "...",
+    "to": "...",
+    "urgencyLevel": "URGENT" | "POTENTIAL" | "MONITORING",
+    "urgencyBadge": "Nhu cầu Rất Cao" | "Tiềm năng" | "Mới phát hiện",
+    "urgencyColor": "#dc2626" | "#d97706" | "#64748b",
+    "aiSuggestions": [
+      "• ...",
+      "• ..."
+    ]
+  }
+]
+`;
+
+      const response = await aiModel.generateContent(prompt);
+      const rawText = response.response.text();
+      let parsed = JSON.parse(rawText);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const formatted = parsed.map(p => ({
+          ...p,
+          aiSuggestions: formatShortBulletList(p.aiSuggestions)
+        }));
+        unmetDemandCache = { timestamp: now, key: cacheKey, data: formatted };
+        return formatted;
+      }
+    } catch (err) {
+      console.warn('[Gemini Service] Lỗi tạo AI đề xuất mở tuyến:', err.message);
+    }
+  }
+
+  // Fallback thông minh cực kỳ ngắn gọn nếu Gemini AI chưa phản hồi
+  return routes.map(r => ({
+    from: r.from,
+    to: r.to,
+    urgencyLevel: r.searchCount >= 30 ? 'URGENT' : r.searchCount >= 15 ? 'POTENTIAL' : 'MONITORING',
+    urgencyBadge: r.searchCount >= 30 ? 'Nhu cầu Rất Cao' : r.searchCount >= 15 ? 'Tiềm năng' : 'Mới phát hiện',
+    urgencyColor: r.searchCount >= 30 ? '#dc2626' : r.searchCount >= 15 ? '#d97706' : '#64748b',
+    aiSuggestions: r.searchCount >= 30
+      ? [
+          `• Nhu cầu rất cao (${r.searchCount} lượt tìm/tháng).`,
+          `• Khảo sát chạy thử 1-2 chuyến/ngày cuối tuần.`,
+          `• Ưu tiên xe Giường nằm hoặc Limousine.`
+        ]
+      : r.searchCount >= 15
+      ? [
+          `• Nhu cầu tiềm năng (${r.searchCount} lượt tìm/tháng).`,
+          `• Thăm dò nhu cầu khách vào các ngày cuối tuần.`,
+          `• Khảo sát bến bãi và đối tác trung chuyển.`
+        ]
+      : [
+          `• Mới phát hiện nhu cầu (${r.searchCount} lượt tìm).`,
+          `• Tiếp tục theo dõi, chưa cần cấp xe.`
+        ]
+  }));
+};
+
+// In-memory cache for operational routes occupancy suggestions (TTL 5 minutes)
+let occupancyAiCache = {
+  timestamp: 0,
+  key: '',
+  data: null
+};
+
+/**
+ * Trợ lý Gemini AI phân tích hiệu suất lấp đầy thực tế và đưa ra đề xuất điều phối xe thông minh
+ */
+const generateRouteOccupancyAiAnalysis = async (routesAnalytics) => {
+  if (!routesAnalytics || routesAnalytics.length === 0) return [];
+
+  const cacheKey = routesAnalytics.map(r => `${r.routeId}_${r.busType}_${r.occupancyRate}`).join('|');
+  const now = Date.now();
+  if (occupancyAiCache.data && occupancyAiCache.key === cacheKey && (now - occupancyAiCache.timestamp < 5 * 60 * 1000)) {
+    return occupancyAiCache.data;
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey && apiKey !== 'fake-key' && !apiKey.startsWith('YOUR_')) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const aiModel = genAI.getGenerativeModel({
+        model: 'gemini-flash-lite-latest',
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 2048
+        }
+      });
+
+      const prompt = `
+Bạn là Cố vấn Vận hành & Doanh thu Hãng xe An Bình Lines.
+Dưới đây là danh sách tỷ lệ lấp đầy ghế thực tế theo từng cặp Tuyến đường và Dòng xe đang chạy:
+${JSON.stringify(routesAnalytics.map(r => ({
+  routeId: r.routeId,
+  routeName: r.routeName,
+  busType: r.busType,
+  distance: r.distance,
+  occupancyRate: r.occupancyRate,
+  tripsCount: r.tripsCount
+})))}
+
+QUY TẮC BẮT BUỘC VỀ ĐỘ DÀI & ĐỊNH DẠNG (TUYỆT ĐỐI TUÂN THỦ):
+1. VIẾT THEO TỪNG DÒNG VÀ CỰC KỲ NGẮN GỌN (CHỈ TỪ 7 ĐẾN 13 TỪ MỖI GẠCH ĐẦU DÒNG).
+2. TUYỆT ĐỐI KHÔNG VIẾT ĐOẠN VĂN, KHÔNG GIẢI THÍCH LÝ THUYẾT DÀI DÒNG.
+3. Mỗi cặp chỉ đưa ra 2 gạch đầu dòng (•) hành động điều hành cụ thể, súc tích để Quản lý nắm bắt ngay:
+   - Tuyến lấp đầy cao (>=80%): demandStatus = 'high', actionBadge = 'Mở thêm chuyến cao điểm'.
+     • Lấp đầy cao (85%), mở thêm chuyến lúc 19:30.
+     • Áp dụng phụ thu cao điểm +10% giờ vàng.
+   - Tuyến lấp đầy thấp (<=45%): demandStatus = 'low', actionBadge = 'Kích cầu vé'.
+     • Lấp đầy thấp (35%), phát voucher giảm 10%-15%.
+     • Cân nhắc đổi sang xe nhỏ hơn để tiết kiệm dầu.
+   - Tuyến ổn định (46%-79%): demandStatus = 'normal', actionBadge = 'Duy trì tần suất ổn định'.
+     • Lượng khách ổn định, giữ nguyên lịch chạy cố định.
+     • Theo dõi biến động vào các ngày cuối tuần.
+
+TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON MẢNG:
+[
+  {
+    "routeId": "...",
+    "busType": "...",
+    "demandStatus": "high" | "normal" | "low",
+    "actionBadge": "...",
+    "badgeColor": "...",
+    "aiSuggestions": [
+      "• ...",
+      "• ..."
+    ]
+  }
+]
+`;
+
+      const response = await aiModel.generateContent(prompt);
+      const rawText = response.response.text();
+      let parsed = JSON.parse(rawText);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const formatted = parsed.map(p => ({
+          ...p,
+          aiSuggestions: formatShortBulletList(p.aiSuggestions)
+        }));
+        occupancyAiCache = { timestamp: now, key: cacheKey, data: formatted };
+        return formatted;
+      }
+    } catch (err) {
+      console.warn('[Gemini Service] Lỗi tạo AI đề xuất lấp đầy:', err.message);
+    }
+  }
+
+  // Fallback cực kỳ ngắn gọn
+  return routesAnalytics.map(r => {
+    const occ = r.occupancyRate || 65;
+    const isHigh = occ >= 80;
+    const isLow = occ <= 45;
+    return {
+      routeId: r.routeId,
+      busType: r.busType,
+      demandStatus: isHigh ? 'high' : isLow ? 'low' : 'normal',
+      actionBadge: isHigh ? 'Mở thêm chuyến cao điểm' : isLow ? 'Kích cầu vé' : 'Duy trì tần suất ổn định',
+      badgeColor: isHigh ? '#16a34a' : isLow ? '#dc2626' : '#2563eb',
+      aiSuggestions: isHigh
+        ? [
+            `• Lấp đầy cao (${occ}%), mở thêm chuyến 19:30.`,
+            `• Áp dụng phụ thu cao điểm +10% giờ vàng.`
+          ]
+        : isLow
+        ? [
+            `• Lấp đầy thấp (${occ}%), phát voucher giảm 10%-15%.`,
+            `• Cân nhắc đổi sang xe nhỏ hơn để tiết kiệm dầu.`
+          ]
+        : [
+            `• Lượng khách ổn định (${occ}%), giữ nguyên lịch chạy.`,
+            `• Theo dõi biến động vào các ngày cuối tuần.`
+          ]
+    };
+  });
 };
 
 module.exports = {
   getChatResponse,
   getExecutiveAiChatResponse,
+  resolveSemanticLocation,
+  generateUnmetDemandAiAnalysis,
+  generateRouteOccupancyAiAnalysis,
 };

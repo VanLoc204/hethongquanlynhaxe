@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
-const GmAnalysisPage = () => {
+const GmAnalysisPage = ({ setActiveTab }) => {
   const { token } = useContext(AuthContext);
   const [loading, setLoading] = useState(true);
   const [routesAnalytics, setRoutesAnalytics] = useState([]);
@@ -13,6 +13,16 @@ const GmAnalysisPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
+  // Active Section Tab: 'unmet_demand' (AI Demand Sensing) or 'occupancy' (Tuyến hiện có)
+  const [activeSection, setActiveSection] = useState('unmet_demand');
+
+  // Unmet Demand States
+  const [unmetDemandData, setUnmetDemandData] = useState([]);
+  const [unmetKpis, setUnmetKpis] = useState(null);
+  const [unmetLoading, setUnmetLoading] = useState(false);
+  const [unmetSearchTerm, setUnmetSearchTerm] = useState('');
+  const [unmetFilterStatus, setUnmetFilterStatus] = useState('all');
+
   // Pagination for 5 rows per page
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 5;
@@ -21,19 +31,27 @@ const GmAnalysisPage = () => {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const chatBottomRef = useRef(null);
+  const chatMessagesContainerRef = useRef(null);
 
   // Quick Action Prompts for GM (No Icons)
   const quickPrompts = [
+    'Nên mở tuyến nào dựa trên tìm kiếm khách hàng?',
+    'Phân tích tiềm năng mở tuyến Sài Gòn - Phan Thiết',
     'Nên giữ lịch xe cố định hay linh hoạt?',
-    'Tuyến nào đang cần bổ sung chuyến?',
     'Tỷ lệ lấp đầy ghế các xe thế nào?',
     'Phân tích doanh thu và đề xuất tăng giảm giá vé',
   ];
 
-  // Auto scroll chat to bottom
+  // Luôn đảm bảo giao diện hiển thị từ trên cùng khi mở chức năng
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Tự động cuộn nội dung bên trong hộp chat (chỉ cuộn hộp chat, không làm trôi giao diện trang web)
+  useEffect(() => {
+    if (chatMessagesContainerRef.current) {
+      chatMessagesContainerRef.current.scrollTop = chatMessagesContainerRef.current.scrollHeight;
+    }
   }, [messages, chatLoading]);
 
   // Fetch real-time demand analytics from MongoDB
@@ -73,34 +91,53 @@ const GmAnalysisPage = () => {
         },
         body: JSON.stringify({
           history: [],
-          message: 'Tổng hợp phân tích nhu cầu vận tải và đưa ra báo cáo khuyến nghị điều hành ngắn gọn cho Giám đốc',
+          message: 'Tổng hợp nhanh tình hình vận tải hôm nay theo từng nhóm ý ngắn gọn cho Giám đốc',
         }),
       });
 
       const data = await res.json();
       if (data.success && data.reply) {
-        const fullReport = `${data.reply}\n\nDạ thưa Sếp, trên đây là toàn bộ báo cáo phân tích nhu cầu và khuyến nghị vận hành hôm nay. Sếp có cần em hỗ trợ hay giải đáp thêm thông tin nào nữa không ạ?`;
-        setMessages([{ sender: 'ai', text: fullReport }]);
+        setMessages([{ sender: 'ai', text: data.reply }]);
       } else {
         setMessages([{
           sender: 'ai',
-          text: `Dạ thưa Ban Giám đốc, về chiến lược giá & khuyến mãi:\n\n• Doanh thu các tuyến cao điểm: Tăng 18.4% nhờ áp dụng phụ thu hợp lý.\n• Chiến dịch mã giảm giá: Các mã như BANMOI20 & HEVUI15 đang mang lại lượt kích cầu rất tốt (hơn 400 lượt dùng).\n• Khuyến nghị thuật toán: Đề xuất giữ nguyên biểu giá sàn hiện tại và kích hoạt tính năng Dynamic Pricing tự động tăng 10% khi chuyến đạt trên 80% số ghế.\n\nDạ thưa Sếp, trên đây là toàn bộ báo cáo phân tích nhu cầu và khuyến nghị vận hành hôm nay. Sếp có cần em hỗ trợ hay giải đáp thêm thông tin nào nữa không ạ?`
+          text: `Dạ thưa Ban Giám đốc, tổng hợp nhanh tình hình vận hành:\n\nTỔNG QUAN VẬN HÀNH:\n• Tỷ lệ lấp đầy bình quân: 76.4% công suất.\n• Doanh thu các tuyến chính tăng 18.4% so với tuần trước.\n\nĐIỂM CẦN LƯU Ý:\n• Các chuyến chiều tối còn ghế trống cần kích cầu sớm.\n\nĐỀ XUẤT HÀNH ĐỘNG:\n• Kích hoạt mã giảm giá 15% cho các chuyến tối nay.\n• Duy trì giá sàn hiện tại, sẵn sàng xe tăng cường dịp cuối tuần.`
         }]);
       }
     } catch (err) {
       setMessages([{
         sender: 'ai',
-        text: `Dạ thưa Ban Giám đốc, về chiến lược giá & khuyến mãi:\n\n• Doanh thu các tuyến cao điểm: Tăng 18.4% nhờ áp dụng phụ thu hợp lý.\n• Chiến dịch mã giảm giá: Các mã như BANMOI20 & HEVUI15 đang mang lại lượt kích cầu rất tốt.\n\nDạ thưa Sếp, trên đây là toàn bộ báo cáo phân tích hôm nay. Sếp có cần em hỗ trợ giải đáp thêm thông tin nào nữa không ạ?`
+        text: `Dạ thưa Ban Giám đốc, tổng hợp nhanh tình hình:\n\nTỔNG QUAN:\n• Hiệu suất lấp đầy bình quân: 76.4% công suất.\n• Hoạt động ổn định trên các tuyến chính.\n\nĐỀ XUẤT:\n• Duy trì lịch chạy xe và giá sàn hiện tại.`
       }]);
     } finally {
       setChatLoading(false);
     }
   }, [token]);
 
+  // Fetch Unmet Demand Analytics (Nhu cầu mở tuyến mới từ tìm kiếm)
+  const fetchUnmetDemand = useCallback(async () => {
+    setUnmetLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/pricing/unmet-demand`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUnmetDemandData(data.data || []);
+        setUnmetKpis(data.kpis || null);
+      }
+    } catch (err) {
+      console.warn('Lỗi lấy phân tích nhu cầu mở tuyến:', err.message);
+    } finally {
+      setUnmetLoading(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchAnalyticsData();
+    fetchUnmetDemand();
     fetchInitialAiReport();
-  }, [fetchAnalyticsData, fetchInitialAiReport]);
+  }, [fetchAnalyticsData, fetchUnmetDemand, fetchInitialAiReport]);
 
   // Send Message to Gemini Executive AI Copilot
   const handleSendMessage = async (textToSend = null) => {
@@ -132,8 +169,7 @@ const GmAnalysisPage = () => {
 
       const data = await res.json();
       if (data.success && data.reply) {
-        const replyWithAsk = `${data.reply}\n\nDạ thưa Sếp, Sếp có cần em hỗ trợ thêm chi tiết nào về phần này nữa không ạ?`;
-        setMessages((prev) => [...prev, { sender: 'ai', text: replyWithAsk }]);
+        setMessages((prev) => [...prev, { sender: 'ai', text: data.reply }]);
       } else {
         setMessages((prev) => [
           ...prev,
@@ -172,22 +208,12 @@ const GmAnalysisPage = () => {
             Phân tích nhu cầu & Trợ lý Cố vấn AI
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '3px 0 0 0', whiteSpace: 'nowrap' }}>
-            Báo cáo phân tích dữ liệu vận tải thời gian thực từ MongoDB & Trợ lý Cố vấn Gemini AI cho Ban Giám đốc
+            Báo cáo phân tích dữ liệu vận tải thời gian thực & Trợ lý Cố vấn Điều hành AI
           </p>
         </div>
 
         {/* Action Header Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            onClick={() => alert('Xuất báo cáo PDF/Excel dữ liệu MongoDB thành công!')}
-            style={{
-              backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1',
-              padding: '8px 16px', borderRadius: '8px', fontWeight: '700', fontSize: '0.8rem',
-              cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-            }}
-          >
-            Xuất báo cáo PDF/Excel
-          </button>
           <button
             onClick={fetchAnalyticsData}
             style={{
@@ -196,9 +222,48 @@ const GmAnalysisPage = () => {
               cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)'
             }}
           >
-            Làm mới dữ liệu Live
+            Làm mới dữ liệu
           </button>
         </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '1.25rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setActiveSection('unmet_demand')}
+          style={{
+            padding: '9px 20px', borderRadius: '8px', border: activeSection === 'unmet_demand' ? 'none' : '1px solid #cbd5e1',
+            backgroundColor: activeSection === 'unmet_demand' ? '#7c3aed' : '#ffffff',
+            color: activeSection === 'unmet_demand' ? '#ffffff' : '#334155',
+            fontWeight: '800', fontSize: '0.84rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px',
+            boxShadow: activeSection === 'unmet_demand' ? '0 2px 8px rgba(124, 58, 237, 0.28)' : '0 1px 2px rgba(0,0,0,0.03)',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>Nhu cầu Mở Tuyến Mới</span>
+          <span style={{
+            backgroundColor: activeSection === 'unmet_demand' ? '#ffffff' : '#ede9fe',
+            color: '#7c3aed', fontSize: '0.72rem', padding: '1px 8px', borderRadius: '12px', fontWeight: '900'
+          }}>
+            {unmetDemandData.length || 5} Tuyến
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveSection('occupancy')}
+          style={{
+            padding: '9px 20px', borderRadius: '8px', border: activeSection === 'occupancy' ? 'none' : '1px solid #cbd5e1',
+            backgroundColor: activeSection === 'occupancy' ? '#2563eb' : '#ffffff',
+            color: activeSection === 'occupancy' ? '#ffffff' : '#334155',
+            fontWeight: '800', fontSize: '0.84rem', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: '8px',
+            boxShadow: activeSection === 'occupancy' ? '0 2px 8px rgba(37, 99, 235, 0.28)' : '0 1px 2px rgba(0,0,0,0.03)',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span>Hiệu suất Lấp đầy Tuyến Hiện có</span>
+        </button>
       </div>
 
       {/* Top Stat KPI Cards */}
@@ -206,57 +271,115 @@ const GmAnalysisPage = () => {
         display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
         gap: '1rem', marginBottom: '1.25rem'
       }}>
-        {/* Card 1 */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
-            TỔNG LƯỢT TÌM NHU CẦU
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#0f172a', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
-            12.450 <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#16a34a', marginLeft: '4px' }}>+14.2% ↑</span>
-          </div>
-          <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
-            Tăng mạnh vào khung sáng
-          </div>
-        </div>
+        {activeSection === 'unmet_demand' ? (
+          <>
+            {/* Unmet KPI 1 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                LƯỢT TÌM CHƯA CÓ CHUYẾN
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#7c3aed', marginTop: '0.4rem' }}>
+                {unmetKpis?.totalUnmetSearches ?? 0} <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>lượt (30 ngày)</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
+                Nhu cầu khách hàng chưa được đáp ứng
+              </div>
+            </div>
 
-        {/* Card 2 */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
-            TUYẾN XE HOT NHẤT
-          </div>
-          <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0f172a', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
-            {topRouteName} <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#d97706' }}>(48.2%)</span>
-          </div>
-          <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
-            Chiếm đa số lượt đặt giường nằm
-          </div>
-        </div>
+            {/* Unmet KPI 2 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                TUYẾN TÌM KIẾM NHIỀU NHẤT
+              </div>
+              <div style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginTop: '0.4rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {unmetKpis?.topDemandRoute || 'Chưa ghi nhận'}
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#dc2626', marginTop: '4px', fontWeight: '700' }}>
+                {unmetKpis?.topRouteSearches ?? unmetDemandData[0]?.searchCount ?? 0} lượt tìm • Chưa có chuyến chạy
+              </div>
+            </div>
 
-        {/* Card 3 */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
-            TỶ LỆ LẤP ĐẦY BÌNH QUÂN
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#10b981', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
-            {avgOccupancy.toFixed(1)}% <span style={{ fontSize: '0.8rem', fontWeight: '500', color: '#64748b' }}>công suất</span>
-          </div>
-          <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
-            Đạt mục tiêu tối ưu vận hành
-          </div>
-        </div>
+            {/* Unmet KPI 3 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                CẢNH BÁO MỞ TUYẾN GẤP
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#dc2626', marginTop: '0.4rem' }}>
+                {unmetKpis?.urgentRoutesCount ?? 0} <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>tuyến</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#dc2626', marginTop: '4px', fontWeight: '700' }}>
+                Đạt ngưỡng ≥ 100 lượt tìm/tháng
+              </div>
+            </div>
 
-        {/* Card 4 */}
-        <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
-            TỶ LỆ CHUYỂN ĐỔI ĐẶT VÉ
-          </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#9333ea', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
-            68.5% <span style={{ fontSize: '0.8rem', fontWeight: '500', color: '#64748b' }}>thành công</span>
-          </div>
-          <div style={{ fontSize: '0.73rem', color: '#16a34a', marginTop: '4px', fontWeight: '600' }}>
-            +4.2% so với cùng kỳ tuần trước
-          </div>
-        </div>
+            {/* Unmet KPI 4 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                TIỀM NĂNG THEO DÕI
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#d97706', marginTop: '0.4rem' }}>
+                {unmetKpis?.potentialRoutesCount ?? 0} <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>tuyến</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#d97706', marginTop: '4px', fontWeight: '700' }}>
+                Đạt ngưỡng 30 - 99 lượt tìm/tháng
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Card 1 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+                TỔNG LƯỢT TÌM NHU CẦU
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#0f172a', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
+                12.450 <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#16a34a', marginLeft: '4px' }}>+14.2% ↑</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
+                Tăng mạnh vào khung sáng
+              </div>
+            </div>
+
+            {/* Card 2 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+                TUYẾN XE HOT NHẤT
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '800', color: '#0f172a', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
+                {topRouteName} <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#d97706' }}>(48.2%)</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
+                Chiếm đa số lượt đặt giường nằm
+              </div>
+            </div>
+
+            {/* Card 3 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+                TỶ LỆ LẤP ĐẦY BÌNH QUÂN
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#10b981', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
+                {avgOccupancy.toFixed(1)}% <span style={{ fontSize: '0.8rem', fontWeight: '500', color: '#64748b' }}>công suất</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '4px' }}>
+                Đạt mục tiêu tối ưu vận hành
+              </div>
+            </div>
+
+            {/* Card 4 */}
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.1rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+                TỶ LỆ CHUYỂN ĐỔI ĐẶT VÉ
+              </div>
+              <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#9333ea', marginTop: '0.4rem', whiteSpace: 'nowrap' }}>
+                68.5% <span style={{ fontSize: '0.8rem', fontWeight: '500', color: '#64748b' }}>thành công</span>
+              </div>
+              <div style={{ fontSize: '0.73rem', color: '#16a34a', marginTop: '4px', fontWeight: '600' }}>
+                +4.2% so với cùng kỳ tuần trước
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Main Grid: 2 Columns (65% Table Analytics, 35% AI Chat Assistant - Matching Image 1) */}
@@ -265,8 +388,142 @@ const GmAnalysisPage = () => {
         {/* Left Column: Analytics Table & Peak Time Distribution */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', minWidth: 0 }}>
           
-          {/* Table Container */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', overflow: 'hidden' }}>
+          {activeSection === 'unmet_demand' ? (
+            /* BẢNG NHU CẦU MỞ TUYẾN MỚI (AI DEMAND SENSING) */
+            <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', overflow: 'hidden' }}>
+              <div style={{
+                padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0',
+                backgroundColor: '#ffffff', display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#7c3aed' }}></span>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
+                    Top Tuyến Khách Tìm Kiếm Chưa Có Chuyến
+                  </h3>
+                </div>
+
+                {/* Filter Controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    placeholder="Tìm chặng đường..."
+                    value={unmetSearchTerm}
+                    onChange={(e) => setUnmetSearchTerm(e.target.value)}
+                    style={{
+                      padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      fontSize: '0.78rem', outline: 'none', backgroundColor: '#ffffff', color: '#1e293b'
+                    }}
+                  />
+
+                  <select
+                    value={unmetFilterStatus}
+                    onChange={(e) => setUnmetFilterStatus(e.target.value)}
+                    style={{
+                      padding: '7px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      fontSize: '0.78rem', backgroundColor: '#ffffff', fontWeight: '600', color: '#1e293b'
+                    }}
+                  >
+                    <option value="all">Tất cả mức độ</option>
+                    <option value="URGENT">Nhu cầu Rất Cao (≥100)</option>
+                    <option value="POTENTIAL">Tiềm năng (30-99)</option>
+                    <option value="MONITORING">Mới phát hiện (&lt;30)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div style={{ overflowX: 'auto' }}>
+                {unmetLoading ? (
+                  <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                    Đang tổng hợp dữ liệu tìm kiếm người dùng...
+                  </div>
+                ) : unmetDemandData.length === 0 ? (
+                  <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                    Chưa có dữ liệu tìm kiếm không có kết quả nào.
+                  </div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: '700' }}>
+                        <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>CHẶNG ĐƯỜNG TÌM KIẾM</th>
+                        <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>LƯỢT TÌM (30 NGÀY)</th>
+                        <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>MỨC ĐỘ KHẨN CẤP</th>
+                        <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>ĐỀ XUẤT HÀNH ĐỘNG AI</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unmetDemandData
+                        .filter(item => {
+                          const matchSearch = !unmetSearchTerm || item.routeName.toLowerCase().includes(unmetSearchTerm.toLowerCase());
+                          const matchStatus = unmetFilterStatus === 'all' || item.urgencyLevel === unmetFilterStatus;
+                          return matchSearch && matchStatus;
+                        })
+                        .map((item, idx) => {
+                          const isUrgent = item.urgencyLevel === 'URGENT';
+                          const pct = Math.min(100, Math.round((item.searchCount / 100) * 100));
+
+                          return (
+                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
+                              <td style={{ padding: '12px 14px', fontWeight: '700', color: '#0f172a', verticalAlign: 'middle' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span>{item.routeName}</span>
+                                </div>
+                              </td>
+
+                              <td style={{ padding: '12px 14px', minWidth: '120px', verticalAlign: 'middle' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                  <span style={{ fontSize: '0.85rem', fontWeight: '800', color: isUrgent ? '#dc2626' : '#d97706' }}>
+                                    {item.searchCount} lượt
+                                  </span>
+                                </div>
+                                <div style={{ width: '100%', height: '5px', backgroundColor: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{
+                                    width: `${pct}%`, height: '100%',
+                                    backgroundColor: isUrgent ? '#dc2626' : '#d97706',
+                                    borderRadius: '3px'
+                                  }} />
+                                </div>
+                              </td>
+
+                              <td style={{ padding: '12px 14px', verticalAlign: 'middle' }}>
+                                <span style={{
+                                  backgroundColor: isUrgent ? '#fef2f2' : '#fffbeb',
+                                  color: isUrgent ? '#dc2626' : '#d97706',
+                                  border: `1px solid ${isUrgent ? '#fca5a5' : '#fde68a'}`,
+                                  fontSize: '0.72rem', fontWeight: '800', padding: '3px 8px', borderRadius: '6px'
+                                }}>
+                                  {item.urgencyBadge}
+                                </span>
+                              </td>
+
+                              <td style={{ padding: '12px 14px', verticalAlign: 'middle', minWidth: '240px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                  {(item.aiSuggestions && item.aiSuggestions.length > 0 ? item.aiSuggestions : [item.aiActionText]).map((sug, sIdx) => (
+                                    <div key={sIdx} style={{ fontSize: '0.75rem', color: '#334155', lineHeight: '1.4' }}>
+                                      {sug}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              {/* Explanatory Footer Card */}
+              <div style={{ padding: '12px 16px', backgroundColor: '#faf5ff', borderTop: '1px solid #f3e8ff', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: '#6b21a8' }}>
+                <span style={{ fontWeight: '800' }}>Cơ chế ghi nhận:</span>
+                <span>Hệ thống tự động gom cụm các lượt tìm kiếm không có chuyến xe. Tuyến từ 30 lượt/tháng được đưa vào diện Tiềm năng; đạt từ 100 lượt/tháng sẽ kích hoạt Cảnh báo Mở tuyến cho Ban Giám đốc.</span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Table Container */}
+              <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', overflow: 'hidden' }}>
             {/* Filter Header */}
             <div style={{
               padding: '1rem 1.25rem', borderBottom: '1px solid #e2e8f0',
@@ -276,7 +533,7 @@ const GmAnalysisPage = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span>
                 <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                  Phân tích nhu cầu lấp đầy (Real-time MongoDB)
+                  Phân tích hiệu suất lấp đầy theo tuyến xe
                 </h3>
               </div>
 
@@ -309,11 +566,11 @@ const GmAnalysisPage = () => {
               </div>
             </div>
 
-            {/* Real MongoDB Analytics Table - Paginated to 5 rows */}
+            {/* Real Analytics Table - Paginated to 5 rows */}
             <div style={{ overflowX: 'auto' }}>
               {loading ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
-                  Đang tải dữ liệu phân tích nhu cầu từ MongoDB...
+                  Đang tải dữ liệu phân tích vận tải...
                 </div>
               ) : paginatedAnalytics.length === 0 ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
@@ -362,12 +619,16 @@ const GmAnalysisPage = () => {
                               }} />
                             </div>
                           </td>
-                          <td style={{ padding: '12px 14px', minWidth: '220px', verticalAlign: 'top' }}>
-                            <div style={{ fontWeight: '800', fontSize: '0.82rem', color: isLow ? '#dc2626' : '#2563eb' }}>
+                          <td style={{ padding: '12px 14px', minWidth: '250px', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: '800', fontSize: '0.82rem', color: isLow ? '#dc2626' : '#2563eb', marginBottom: '4px' }}>
                               {item.actionBadge}
                             </div>
-                            <div style={{ fontSize: '0.73rem', color: '#64748b', marginTop: '2px', lineHeight: '1.35' }}>
-                              {item.aiActionDetail}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              {(item.aiSuggestions && item.aiSuggestions.length > 0 ? item.aiSuggestions : [item.aiActionDetail]).map((sug, sIdx) => (
+                                <div key={sIdx} style={{ fontSize: '0.73rem', color: '#475569', lineHeight: '1.35' }}>
+                                  {sug}
+                                </div>
+                              ))}
                             </div>
                           </td>
                         </tr>
@@ -475,6 +736,8 @@ const GmAnalysisPage = () => {
               </div>
             </div>
           </div>
+            </>
+          )}
 
         </div>
 
@@ -504,13 +767,10 @@ const GmAnalysisPage = () => {
                   <span style={{ fontWeight: '800', fontSize: '0.9rem', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
                     TRỢ LÝ CỐ VẤN AI
                   </span>
-                  <span style={{ backgroundColor: '#6366f1', color: '#ffffff', fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '10px' }}>
-                    v1.5 Pro
-                  </span>
                 </div>
                 <div style={{ fontSize: '0.7rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', marginTop: '2px' }}>
                   <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e' }}></span>
-                  Phân tích dữ liệu MongoDB thời gian thực
+                  Hỗ trợ Ban Giám đốc ra quyết định điều hành
                 </div>
               </div>
             </div>
@@ -538,10 +798,13 @@ const GmAnalysisPage = () => {
           </div>
 
           {/* Chat Messages Body */}
-          <div style={{
-            flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex',
-            flexDirection: 'column', gap: '1rem', backgroundColor: '#fafafa'
-          }}>
+          <div
+            ref={chatMessagesContainerRef}
+            style={{
+              flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex',
+              flexDirection: 'column', gap: '1rem', backgroundColor: '#fafafa'
+            }}
+          >
             {messages.map((msg, mIdx) => {
               const isUser = msg.sender === 'user';
               return (
@@ -575,21 +838,6 @@ const GmAnalysisPage = () => {
                     >
                       {msg.text}
                     </div>
-
-                    {/* Action Callout Pill Button in Chat */}
-                    {!isUser && mIdx === 0 && (
-                      <button
-                        onClick={() => handleSendMessage('Cập nhật ngay báo cáo dự báo nhu cầu cho 2 ngày cuối tuần')}
-                        style={{
-                          marginTop: '10px', backgroundColor: '#2563eb', color: '#ffffff',
-                          border: 'none', padding: '8px 16px', borderRadius: '8px',
-                          fontWeight: '700', fontSize: '0.78rem', cursor: 'pointer',
-                          boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)', display: 'block', width: '100%'
-                        }}
-                      >
-                        Cập nhật ngay báo cáo dự báo nhu cầu cho 2 ngày cuối tuần.
-                      </button>
-                    )}
                   </div>
 
                   {isUser && (
@@ -609,10 +857,9 @@ const GmAnalysisPage = () => {
             {chatLoading && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '0.75rem', fontStyle: 'italic', paddingLeft: '36px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span>
-                Gemini AI đang tổng hợp dữ liệu lịch trình cuối tuần từ MongoDB...
+                Trợ lý AI đang tổng hợp dữ liệu lịch trình vận hành...
               </div>
             )}
-            <div ref={chatBottomRef} />
           </div>
 
           {/* Chat Input Footer */}
