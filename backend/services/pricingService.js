@@ -184,8 +184,121 @@ class PricingService {
     return combinations;
   }
 
+  /**
+   * Lấy danh sách tổ hợp Tuyến đường & Dòng xe THỰC TẾ đang khai thác
+   * Dựa trên dữ liệu chuyến xe (trips) và phương tiện (buses) thực có trong hệ thống,
+   * loại bỏ việc nhân bản giả lập tổ hợp lý thuyết.
+   */
+  async getRealRoutesAnalytics() {
+    const routes = await routeRepository.find({});
+    const allTrips = await tripRepository.findWithPopulate({}) || [];
+    const allBookings = await bookingRepository.find({ status: { $in: ['paid', 'confirmed'] } }) || [];
+    const basePrices = await basePriceRepository.find({});
+
+    const routeMap = new Map(routes.map(r => [r._id.toString(), r]));
+    const comboMap = new Map();
+
+    // 1. Gom nhóm từ các chuyến xe THỰC TẾ đang vận hành
+    for (const t of allTrips) {
+      const rId = t.routeId?._id ? t.routeId._id.toString() : t.routeId?.toString();
+      const route = routeMap.get(rId);
+      if (!route) continue;
+
+      const busType = t.busId?.type || 'Xe Ghế Ngồi';
+      const key = `${rId}_${busType}`;
+
+      if (!comboMap.has(key)) {
+        const startStop = (route.stops && route.stops.find(s => s.type === 'start')?.name) || `Bến xe ${route.startPoint}`;
+        const endStop = (route.stops && route.stops.find(s => s.type === 'end')?.name) || `Bến xe ${route.endPoint}`;
+        const distanceMatch = (route.distance || '').replace(/\s+/g, '').match(/\d+/);
+        const distanceKm = distanceMatch ? parseInt(distanceMatch[0], 10) : 200;
+
+        comboMap.set(key, {
+          routeId: route._id,
+          routeName: `${route.startPoint} → ${route.endPoint}`,
+          startPoint: route.startPoint,
+          endPoint: route.endPoint,
+          startStation: startStop,
+          endStation: endStop,
+          busType: busType,
+          distance: route.distance || `${distanceKm} km`,
+          duration: route.duration,
+          distanceKm,
+          trips: [],
+        });
+      }
+
+      comboMap.get(key).trips.push(t);
+    }
+
+    // 2. Nếu có tuyến trong danh mục routes chưa có chuyến nào chạy, thêm 1 dòng đại diện duy nhất
+    for (const route of routes) {
+      const hasAny = Array.from(comboMap.values()).some(c => c.routeId.toString() === route._id.toString());
+      if (!hasAny) {
+        const key = `${route._id.toString()}_default`;
+        const startStop = (route.stops && route.stops.find(s => s.type === 'start')?.name) || `Bến xe ${route.startPoint}`;
+        const endStop = (route.stops && route.stops.find(s => s.type === 'end')?.name) || `Bến xe ${route.endPoint}`;
+        const distanceMatch = (route.distance || '').replace(/\s+/g, '').match(/\d+/);
+        const distanceKm = distanceMatch ? parseInt(distanceMatch[0], 10) : 200;
+
+        comboMap.set(key, {
+          routeId: route._id,
+          routeName: `${route.startPoint} → ${route.endPoint}`,
+          startPoint: route.startPoint,
+          endPoint: route.endPoint,
+          startStation: startStop,
+          endStation: endStop,
+          busType: 'Xe Giường Nằm 44 Chỗ',
+          distance: route.distance || `${distanceKm} km`,
+          duration: route.duration,
+          distanceKm,
+          trips: [],
+        });
+      }
+    }
+
+    // 3. Tính toán tỷ lệ lấp đầy thực tế từ bookings
+    const combinations = [];
+    for (const item of comboMap.values()) {
+      let totalBookedSeats = 0;
+      let totalCapacity = 0;
+
+      if (item.trips.length > 0) {
+        const tripIdsStr = item.trips.map(t => t._id.toString());
+        const matchingBookings = allBookings.filter(b => b.tripId && tripIdsStr.includes(b.tripId._id ? b.tripId._id.toString() : b.tripId.toString()));
+        matchingBookings.forEach(b => {
+          if (Array.isArray(b.seats)) totalBookedSeats += b.seats.length;
+        });
+        totalCapacity = item.trips.reduce((acc, t) => acc + (t.busId?.capacity || 36), 0);
+      }
+
+      const occupancyRate = totalCapacity > 0 ? Math.min(100, Math.max(0, Math.round((totalBookedSeats / totalCapacity) * 100))) : 65;
+
+      const existingPrice = basePrices.find(
+        bp => bp.routeId.toString() === item.routeId.toString() && bp.busType === item.busType
+      );
+
+      combinations.push({
+        routeId: item.routeId,
+        routeName: item.routeName,
+        startPoint: item.startPoint,
+        endPoint: item.endPoint,
+        startStation: item.startStation,
+        endStation: item.endStation,
+        busType: item.busType,
+        price: existingPrice ? existingPrice.price : null,
+        distance: item.distance,
+        duration: item.duration,
+        tripsCount: item.trips.length,
+        occupancyRate,
+      });
+    }
+
+    return combinations;
+  }
+
   async getDemandAnalytics({ search, status, routeId } = {}) {
-    const combinations = await this.getBasePricesCombinations();
+    const combinations = await this.getRealRoutesAnalytics();
     
     // Filter by search
     let filtered = combinations;
@@ -200,42 +313,49 @@ class PricingService {
       filtered = filtered.filter(item => item.routeId.toString() === routeId);
     }
 
-    // Map demand status & specific AI action suggestions
-    const analytics = filtered.map(item => {
-      const occ = item.occupancyRate || 65;
-      let demandStatus = 'normal'; // 'high' | 'normal' | 'low'
-      let aiActionTitle = '';
-      let aiActionDetail = '';
-      let actionBadge = '';
-      let badgeColor = '';
+    // Tự động để Gemini AI phân tích hiệu suất và đề xuất hành động thông minh dạng LIST (bullet points)
+    const { generateRouteOccupancyAiAnalysis } = require('./geminiService');
+    const aiOccupancyResults = await generateRouteOccupancyAiAnalysis(filtered);
+    const aiMap = new Map((aiOccupancyResults || []).map(r => [`${r.routeId}_${r.busType}`, r]));
 
-      if (occ >= 80) {
-        demandStatus = 'high';
-        actionBadge = 'Mở thêm 2-3 chuyến tăng cường';
-        badgeColor = '#16a34a';
-        aiActionTitle = `🔥 Nhu cầu tuyến ${item.routeName} (${item.busType}) đang tăng đột biến (${occ}%)`;
-        aiActionDetail = `Đề xuất: Khung giờ tối 20h00 - 22h00 sắp cháy vé. Đề xuất mở thêm 2-3 chuyến tăng cường và áp dụng phụ thu +10% tối ưu lợi nhuận.`;
-      } else if (occ <= 45) {
-        demandStatus = 'low';
-        actionBadge = 'Tạo mã Voucher giảm 10% kích cầu';
-        badgeColor = '#dc2626';
-        aiActionTitle = `⚠️ Tỷ lệ ghế lấp đầy tuyến ${item.routeName} (${item.busType}) còn thấp (${occ}%)`;
-        aiActionDetail = `Đề xuất: Lượng khách đặt vé thấp hơn định mức. Đề xuất phát hành mã Voucher kích cầu giảm 10-15% hoặc dồn khách sang chuyến kế tiếp.`;
-      } else {
-        demandStatus = 'normal';
-        actionBadge = 'Duy trì tần suất ổn định';
-        badgeColor = '#2563eb';
-        aiActionTitle = `✓ Tuyến ${item.routeName} (${item.busType}) đạt công suất vận hành tiêu chuẩn (${occ}%)`;
-        aiActionDetail = `Đề xuất: Lượng khách đặt ổn định. Giữ nguyên giá sàn và lịch chạy xe cố định hiện tại.`;
-      }
+    const analytics = filtered.map(item => {
+      const key = `${item.routeId}_${item.busType}`;
+      const aiEval = aiMap.get(key) || {};
+      const occ = item.occupancyRate || 65;
+      const isHigh = occ >= 80;
+      const isLow = occ <= 45;
+
+      const demandStatus = aiEval.demandStatus || (isHigh ? 'high' : isLow ? 'low' : 'normal');
+      const actionBadge = aiEval.actionBadge || (isHigh ? 'Mở thêm chuyến cao điểm' : isLow ? 'Kích cầu vé' : 'Duy trì tần suất ổn định');
+      const badgeColor = aiEval.badgeColor || (isHigh ? '#16a34a' : isLow ? '#dc2626' : '#2563eb');
+      const aiSuggestions = aiEval.aiSuggestions && aiEval.aiSuggestions.length > 0
+        ? aiEval.aiSuggestions
+        : isHigh
+        ? [
+            `• Tuyến có hiệu suất lấp đầy cao (${occ}%).`,
+            `• Mở thêm 1 - 2 chuyến tăng cường vào khung giờ 19:00 - 22:00.`,
+            `• Xem xét áp dụng phụ thu cao điểm +10% để tối ưu lợi nhuận.`
+          ]
+        : isLow
+        ? [
+            `• Tỷ lệ lấp đầy hiện tại còn thấp (${occ}%).`,
+            `• Phát hành mã Voucher kích cầu giảm 10% - 15% cho khách đặt sớm.`,
+            `• Cân nhắc dồn khách hoặc đổi sang xe nhỏ hơn để tiết kiệm chi phí.`
+          ]
+        : [
+            `• Lượng khách đặt vé ổn định (${occ}%).`,
+            `• Giữ nguyên giá sàn và lịch chạy xe cố định hiện tại.`,
+            `• Theo dõi sát nhu cầu vào các ngày cuối tuần.`
+          ];
 
       return {
         ...item,
         demandStatus,
         actionBadge,
         badgeColor,
-        aiActionTitle,
-        aiActionDetail,
+        aiSuggestions,
+        aiActionTitle: `${actionBadge} (${occ}%)`,
+        aiActionDetail: aiSuggestions.join(' ')
       };
     });
 
@@ -259,9 +379,9 @@ class PricingService {
         badge: 'Tăng chuyến xe',
         badgeBg: '#dcfce7',
         badgeColor: '#15803d',
-        title: `Nhu cầu tuyến ${topRoute.routeName} (${topRoute.busType}) tăng 40%`,
-        description: `Tỷ lệ lấp đầy ghế đã đạt ${topRoute.occupancyRate}%. Đề xuất Ban Giám đốc phê duyệt tăng thêm 3 chuyến Limousine/Giường nằm vào khung giờ 20:00 - 22:30.`,
-        suggestedAction: 'Phê duyệt tăng 3 chuyến',
+        title: `Nhu cầu tuyến ${topRoute.routeName} (${topRoute.busType}) tăng cao`,
+        description: `Tỷ lệ lấp đầy ghế đạt ${topRoute.occupancyRate}%. Đề xuất tăng cường thêm chuyến vào khung giờ 20:00 - 22:30.`,
+        suggestedAction: 'Phê duyệt tăng chuyến',
       });
     } else {
       aiStrategicActions.push({
@@ -270,9 +390,9 @@ class PricingService {
         badge: 'Tăng chuyến xe',
         badgeBg: '#dcfce7',
         badgeColor: '#15803d',
-        title: 'Nhu cầu tuyến TP.HCM ➔ Đà Lạt Thứ 6 tới tăng 40%',
-        description: 'Tỷ lệ lấp đầy ghế khung giờ tối 20:00 đã đạt 85.5%. Đề xuất mở thêm 3 chuyến xe Limousine VIP tăng cường đón khách.',
-        suggestedAction: 'Phê duyệt tăng 3 chuyến',
+        title: 'Kế hoạch điều phối xe cuối tuần',
+        description: 'Tỷ lệ lấp đầy ghế khung giờ tối thứ 6 đang tăng. Đề xuất sẵn sàng phương tiện Limousine tăng cường khi đạt trên 80%.',
+        suggestedAction: 'Phê duyệt tăng chuyến',
       });
     }
 
@@ -285,7 +405,7 @@ class PricingService {
         badgeBg: '#fef3c7',
         badgeColor: '#b45309',
         title: `Tỷ lệ ghế tuyến ${lowRoute.routeName} (${lowRoute.busType}) chỉ đạt ${lowRoute.occupancyRate}%`,
-        description: `Khung giờ giữa tuần bị dư thừa chỗ. Đề xuất tự động áp dụng mã Voucher BANMOI20 giảm 10% hoặc dồn ca xe để tiết kiệm chi phí nhiên liệu.`,
+        description: `Khung giờ giữa tuần bị dư thừa chỗ. Đề xuất tự động áp dụng mã Voucher giảm 10% hoặc dồn ca xe để tiết kiệm chi phí nhiên liệu.`,
         suggestedAction: 'Kích hoạt Mã Khuyến Mãi',
       });
     } else {
@@ -296,7 +416,7 @@ class PricingService {
         badgeBg: '#fef3c7',
         badgeColor: '#b45309',
         title: 'Tuyến TP.HCM ➔ Cần Thơ chuyến 13:00 lấp đầy 38%',
-        description: 'Khung giờ trưa có lượng khách đặt vé ít. Đề xuất phát hành mã Voucher BANMOI20 giảm 10% vé để tăng tỷ lệ lấp đầy.',
+        description: 'Khung giờ trưa có lượng khách đặt vé ít. Đề xuất phát hành mã Voucher giảm 10% vé để tăng tỷ lệ lấp đầy.',
         suggestedAction: 'Kích hoạt Mã Khuyến Mãi',
       });
     }
@@ -308,7 +428,7 @@ class PricingService {
       badgeBg: '#eff6ff',
       badgeColor: '#1d4ed8',
       title: 'Tối ưu hóa doanh thu chuyến xe dịp Cuối Tuần',
-      description: 'Hệ thống AI đề xuất điều chỉnh phụ thu +10% giá vé niêm yết cho các chuyến xuất phát sau 18h00 Thứ 6 và Chủ Nhật.',
+      description: 'Hệ thống đề xuất điều chỉnh phụ thu +10% giá vé niêm yết cho các chuyến xuất phát sau 18h00 Thứ 6 và Chủ Nhật.',
       suggestedAction: 'Áp dụng Quy định Phụ thu',
     });
 

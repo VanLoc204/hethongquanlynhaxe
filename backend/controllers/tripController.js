@@ -2,33 +2,222 @@ const tripService = require('../services/tripService');
 const Trip = require('../models/Trip');
 const Notification = require('../models/Notification');
 const Attendance = require('../models/Attendance');
+const Route = require('../models/Route');
+const RouteDemandLog = require('../models/RouteDemandLog');
+const geminiService = require('../services/geminiService');
 
-// @desc    Search trips by origin, destination and date
+// @desc    Search trips by origin, destination and date (flexible: by date, from, or to)
 // @route   GET /api/v1/trips/search
 // @access  Public
 exports.searchTrips = async (req, res) => {
   try {
-    const { from, to, date } = req.query;
+    const { from, to, date, passengers } = req.query;
 
-    if (!from || !to || !date) {
+    const cleanFrom = (from || '').trim();
+    const cleanTo = (to || '').trim();
+
+    // Nếu người dùng chọn cả Điểm đi và Điểm đến thì 2 điểm không được trùng nhau
+    if (cleanFrom && cleanTo && cleanFrom.toLowerCase() === cleanTo.toLowerCase()) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng cung cấp Điểm đi (from), Điểm đến (to) và Ngày đi (date).'
+        message: 'Điểm đến không được trùng với điểm xuất phát.'
       });
     }
 
-    const trips = await tripService.searchTrips({ from, to, date });
+    const targetDate = date ? date.trim() : new Date().toISOString().split('T')[0];
+
+    // 1. Thực hiện tìm kiếm trực tiếp lần đầu
+    let trips = await tripService.searchTrips({
+      from: cleanFrom,
+      to: cleanTo,
+      date: targetDate
+    });
+
+    let aiSemanticInfo = null;
+    let resolvedFromInfo = null;
+    let resolvedToInfo = null;
+
+    // 2. TÌM KIẾM NỀN BẰNG GEMINI AI (Tìm nền thông minh khi chưa có kết quả trực tiếp)
+    // Nếu kết quả trả về = 0 nhưng người dùng có nhập điểm đi hoặc điểm đến:
+    if ((!trips || trips.length === 0) && (cleanFrom || cleanTo)) {
+      try {
+        let availableLocations = [];
+        try {
+          const locData = await tripService.getSearchLocations();
+          availableLocations = [
+            ...(locData.origins || []).map(o => o.name),
+            ...(locData.destinations || []).map(d => d.name)
+          ];
+        } catch (e) {
+          availableLocations = ['Hồ Chí Minh', 'Đà Lạt', 'Bảo Lộc', 'Cần Thơ', 'Nha Trang', 'Đà Nẵng', 'Vũng Tàu'];
+        }
+
+        // Phân tích điểm đến bằng Gemini AI nếu có nhập
+        if (cleanTo) {
+          resolvedToInfo = await geminiService.resolveSemanticLocation(cleanTo, availableLocations);
+        }
+
+        // Phân tích điểm đi bằng Gemini AI nếu có nhập
+        if (cleanFrom) {
+          resolvedFromInfo = await geminiService.resolveSemanticLocation(cleanFrom, availableLocations);
+        }
+
+        const effectiveFrom = (resolvedFromInfo && resolvedFromInfo.canonicalLocation) ? resolvedFromInfo.canonicalLocation : cleanFrom;
+        const effectiveTo = (resolvedToInfo && resolvedToInfo.canonicalLocation) ? resolvedToInfo.canonicalLocation : cleanTo;
+
+        // Nếu Gemini phân giải ra địa danh/tỉnh thành khác từ khóa ban đầu, thử tìm lại chuyến xe
+        if (effectiveFrom !== cleanFrom || effectiveTo !== cleanTo) {
+          const aiTrips = await tripService.searchTrips({
+            from: effectiveFrom,
+            to: effectiveTo,
+            date: targetDate
+          });
+
+          if (aiTrips && aiTrips.length > 0) {
+            trips = aiTrips;
+            aiSemanticInfo = {
+              originalQuery: cleanTo || cleanFrom,
+              landmark: resolvedToInfo?.matchedLandmark || resolvedFromInfo?.matchedLandmark || (cleanTo || cleanFrom),
+              province: resolvedToInfo?.province || resolvedFromInfo?.province || effectiveTo,
+              city: resolvedToInfo?.city || resolvedFromInfo?.city || '',
+              canonicalLocation: effectiveTo || effectiveFrom,
+              stop: resolvedToInfo?.nearestStop || resolvedFromInfo?.nearestStop || effectiveTo,
+              explanation: resolvedToInfo?.explanation || resolvedFromInfo?.explanation || `Hệ thống đã nhận diện ${cleanTo || cleanFrom} và tự động hiển thị chuyến xe phù hợp.`
+            };
+          }
+        }
+      } catch (aiSearchErr) {
+        console.warn('[AI Background Search] Lỗi tìm nền Gemini:', aiSearchErr.message);
+      }
+    }
+
+    // 3. Ghi nhận nhu cầu tìm kiếm của người dùng bất đồng bộ (Non-blocking demand logging)
+    if (cleanFrom || cleanTo) {
+      setImmediate(async () => {
+        try {
+          const hasResults = Array.isArray(trips) && trips.length > 0;
+          let isExisting = false;
+
+          // Chuẩn hóa Tỉnh/Thành từ kết quả phân giải AI hoặc từ khóa gốc
+          let normalizedFrom = cleanFrom || 'Tất cả';
+          let normalizedTo = cleanTo || 'Tất cả';
+
+          if (resolvedFromInfo?.province) {
+            normalizedFrom = resolvedFromInfo.province;
+          } else if (cleanFrom) {
+            const abbr = cleanFrom.toLowerCase();
+            if (abbr.includes('sg') || abbr.includes('hcm') || abbr.includes('sài gòn')) normalizedFrom = 'Hồ Chí Minh';
+            else if (abbr.includes('đl') || abbr.includes('đà lạt')) normalizedFrom = 'Đà Lạt';
+            else if (abbr.includes('hn') || abbr.includes('hà nội')) normalizedFrom = 'Hà Nội';
+            else if (abbr.includes('nt') || abbr.includes('nha trang')) normalizedFrom = 'Nha Trang';
+            else if (abbr.includes('ct') || abbr.includes('cần thơ')) normalizedFrom = 'Cần Thơ';
+          }
+
+          if (resolvedToInfo?.province) {
+            normalizedTo = resolvedToInfo.province;
+          } else if (cleanTo) {
+            const abbr = cleanTo.toLowerCase();
+            if (abbr.includes('sg') || abbr.includes('hcm') || abbr.includes('sài gòn')) normalizedTo = 'Hồ Chí Minh';
+            else if (abbr.includes('đl') || abbr.includes('đà lạt')) normalizedTo = 'Đà Lạt';
+            else if (abbr.includes('hn') || abbr.includes('hà nội')) normalizedTo = 'Hà Nội';
+            else if (abbr.includes('nt') || abbr.includes('nha trang')) normalizedTo = 'Nha Trang';
+            else if (abbr.includes('ct') || abbr.includes('cần thơ')) normalizedTo = 'Cần Thơ';
+          }
+
+          // Nếu chưa có resolvedToInfo nhưng cleanTo có gõ và chưa có kết quả, gọi Gemini phân giải tỉnh để ghi nhận nhu cầu
+          if (!resolvedToInfo && cleanTo && !hasResults) {
+            try {
+              const resTo = await geminiService.resolveSemanticLocation(cleanTo, []);
+              if (resTo && resTo.province) {
+                normalizedTo = resTo.province;
+              }
+            } catch (e) {}
+          }
+
+          if (cleanFrom && cleanTo) {
+            const fromRegex = new RegExp(normalizedFrom !== 'Tất cả' ? normalizedFrom : cleanFrom, 'i');
+            const toRegex = new RegExp(normalizedTo !== 'Tất cả' ? normalizedTo : cleanTo, 'i');
+            const routeFound = await Route.findOne({
+              $or: [
+                { startPoint: { $regex: fromRegex }, endPoint: { $regex: toRegex } },
+                { startPoint: { $regex: new RegExp(cleanFrom, 'i') }, endPoint: { $regex: new RegExp(cleanTo, 'i') } }
+              ]
+            }).select('_id');
+            isExisting = Boolean(routeFound);
+          }
+
+          const userAgent = req.headers['user-agent'] || '';
+          const isMobile = /mobile|iphone|android|ipad/i.test(userAgent);
+
+          await RouteDemandLog.create({
+            fromRaw: cleanFrom || 'Tất cả',
+            toRaw: cleanTo || 'Tất cả',
+            fromNormalized: normalizedFrom,
+            toNormalized: normalizedTo,
+            searchDate: targetDate,
+            passengers: Number(passengers || req.query.passengers) || 1,
+            tripResultsCount: Array.isArray(trips) ? trips.length : 0,
+            hasResults,
+            isRouteExistingInSystem: isExisting,
+            deviceType: isMobile ? 'mobile' : 'desktop'
+          });
+        } catch (logErr) {
+          // Ghi nhận log không làm ảnh hưởng luồng trả về của khách hàng
+          console.warn('[Demand Log] Warning recording route demand:', logErr.message);
+        }
+      });
+    }
 
     res.status(200).json({
       success: true,
       count: trips.length,
-      trips
+      trips,
+      aiSemanticInfo
     });
   } catch (error) {
     console.error('Lỗi tìm kiếm chuyến đi:', error);
     res.status(400).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi tìm kiếm chuyến đi.'
+    });
+  }
+};
+
+// @desc    Phân tích ngữ nghĩa địa danh / POI sang Tỉnh Thành và Trạm xe gần nhất (AI Semantic Resolver)
+// @route   GET /api/v1/trips/resolve-location, POST /api/v1/trips/resolve-location
+// @access  Public
+exports.resolveSemanticLocation = async (req, res) => {
+  try {
+    const query = (req.query.query || req.body.query || '').trim();
+    if (!query || query.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập tên địa danh hoặc địa điểm (tối thiểu 2 ký tự).'
+      });
+    }
+
+    let availableLocations = [];
+    try {
+      const data = await tripService.getSearchLocations();
+      availableLocations = [
+        ...(data.origins || []).map(o => o.name),
+        ...(data.destinations || []).map(d => d.name)
+      ];
+    } catch (locErr) {
+      availableLocations = ['Hồ Chí Minh', 'Đà Lạt', 'Bảo Lộc', 'Cần Thơ', 'Nha Trang', 'Đà Nẵng', 'Vũng Tàu'];
+    }
+
+    const result = await geminiService.resolveSemanticLocation(query, availableLocations);
+
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Lỗi phân tích địa danh AI:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi phân tích địa danh AI.'
     });
   }
 };

@@ -61,10 +61,11 @@ class TripService {
     return tripObj;
   }
 
-  async searchTrips({ from, to, date }) {
+  async searchTrips({ from = '', to = '', date }) {
     // 1. Standardize date range for GMT+7 (Vietnam Time)
-    const startOfDay = new Date(`${date}T00:00:00.000+07:00`);
-    const endOfDay = new Date(`${date}T23:59:59.999+07:00`);
+    const targetDate = date ? date.trim() : new Date().toISOString().split('T')[0];
+    const startOfDay = new Date(`${targetDate}T00:00:00.000+07:00`);
+    const endOfDay = new Date(`${targetDate}T23:59:59.999+07:00`);
 
     if (isNaN(startOfDay.getTime())) {
       throw new Error('Định dạng ngày không hợp lệ. Vui lòng sử dụng định dạng YYYY-MM-DD.');
@@ -98,20 +99,10 @@ class TripService {
       return map[clean] || text;
     };
 
-    const searchFrom = resolveAbbr(from);
-    const searchTo = resolveAbbr(to);
-
-    // Find all route IDs matching the "from" startPoint
-    const routesFrom = await routeRepository.find({
-      startPoint: { $regex: new RegExp(searchFrom.trim(), 'i') }
-    });
-    const routeIdsFrom = routesFrom.map(r => r._id);
-
-    // Find all route IDs matching the "to" endPoint
-    const routesTo = await routeRepository.find({
-      endPoint: { $regex: new RegExp(searchTo.trim(), 'i') }
-    });
-    const routeIdsTo = routesTo.map(r => r._id);
+    const cleanFrom = (from || '').trim();
+    const cleanTo = (to || '').trim();
+    const searchFrom = resolveAbbr(cleanFrom);
+    const searchTo = resolveAbbr(cleanTo);
 
     // 3. Build query for Trips (Only show trips in the future)
     const now = new Date();
@@ -124,26 +115,43 @@ class TripService {
       }
     };
 
-    const fromRegex = new RegExp(searchFrom.trim(), 'i');
-    const toRegex = new RegExp(searchTo.trim(), 'i');
+    const andConditions = [];
 
-    const fromConditions = [];
-    if (routeIdsFrom.length > 0) {
-      fromConditions.push({ routeId: { $in: routeIdsFrom } });
+    // Filter by Origin if provided
+    if (searchFrom) {
+      const fromRegex = new RegExp(searchFrom.trim(), 'i');
+      const routesFrom = await routeRepository.find({
+        startPoint: { $regex: fromRegex }
+      });
+      const routeIdsFrom = routesFrom.map(r => r._id);
+
+      const fromConditions = [];
+      if (routeIdsFrom.length > 0) {
+        fromConditions.push({ routeId: { $in: routeIdsFrom } });
+      }
+      fromConditions.push({ 'pickupPoints.location': { $regex: fromRegex } });
+      andConditions.push({ $or: fromConditions });
     }
-    fromConditions.push({ 'pickupPoints.location': { $regex: fromRegex } });
 
-    const toConditions = [];
-    if (routeIdsTo.length > 0) {
-      toConditions.push({ routeId: { $in: routeIdsTo } });
+    // Filter by Destination if provided
+    if (searchTo) {
+      const toRegex = new RegExp(searchTo.trim(), 'i');
+      const routesTo = await routeRepository.find({
+        endPoint: { $regex: toRegex }
+      });
+      const routeIdsTo = routesTo.map(r => r._id);
+
+      const toConditions = [];
+      if (routeIdsTo.length > 0) {
+        toConditions.push({ routeId: { $in: routeIdsTo } });
+      }
+      toConditions.push({ 'dropoffPoints.location': { $regex: toRegex } });
+      andConditions.push({ $or: toConditions });
     }
-    toConditions.push({ 'dropoffPoints.location': { $regex: toRegex } });
 
-    query.$and = [
-      { $or: fromConditions },
-      { $or: toConditions }
-    ];
-
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
+    }
 
     const trips = await tripRepository.findWithPopulate(query, { departureTime: 1 });
 

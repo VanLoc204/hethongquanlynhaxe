@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   searchTrips,
+  resolveSemanticLocation,
   getUpcomingTrips,
   getTripById,
   payosWebhook,
@@ -59,6 +60,8 @@ router.get('/my-bookings/:userId', getMyBookings);
 // ==========================================
 // Search Route
 router.get('/search', searchTrips);
+router.get('/resolve-location', resolveSemanticLocation);
+router.post('/resolve-location', resolveSemanticLocation);
 router.get('/upcoming', getUpcomingTrips);
 
 // Get all routes (public view for search suggestions)

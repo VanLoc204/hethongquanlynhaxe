@@ -1070,21 +1070,57 @@ const OpsRoutesPage = () => {
     return { totalPickups, totalDropoffs, approvedCount };
   }, [routes]);
 
-  const handleOpenAdd = () => {
+  const handleOpenAdd = (prefill = null) => {
     setEditingRoute(null);
-    setStartPoint('');
-    setEndPoint('');
-    setDistance('');
-    setDuration('');
+    const sp = prefill?.startPoint || '';
+    const ep = prefill?.endPoint || '';
+    setStartPoint(sp);
+    setEndPoint(ep);
+    setDistance(prefill?.distance || '');
+    setDuration(prefill?.duration || '');
     setStops([
-      { name: '', address: '', type: 'start' },
-      { name: '', address: '', type: 'end' }
+      { name: sp ? `${sp} (Bến chính)` : '', address: '', type: 'start' },
+      { name: ep ? `${ep} (Bến chính)` : '', address: '', type: 'end' }
     ]);
     setSuggestedEta(null);
-    setUserEditedDistance(false);
-    setUserEditedDuration(false);
+    setUserEditedDistance(!!prefill?.distance);
+    setUserEditedDuration(!!prefill?.duration);
     setShowModal(true);
   };
+
+  // Tự động nhận diện dữ liệu tạo tuyến từ Phân tích Nhu cầu (GM) hoặc URL hash
+  useEffect(() => {
+    try {
+      const draft = sessionStorage.getItem('pending_create_route');
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        sessionStorage.removeItem('pending_create_route');
+        if (parsed.startPoint || parsed.endPoint) {
+          handleOpenAdd(parsed);
+          return;
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const hash = window.location.hash || '';
+      if (hash.includes('startPoint=') || hash.includes('endPoint=')) {
+        const queryPart = hash.includes('?') ? hash.split('?')[1] : '';
+        if (queryPart) {
+          const params = new URLSearchParams(queryPart);
+          const sp = params.get('startPoint') || '';
+          const ep = params.get('endPoint') || '';
+          if (sp || ep) {
+            handleOpenAdd({
+              startPoint: decodeURIComponent(sp),
+              endPoint: decodeURIComponent(ep)
+            });
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }
+      }
+    } catch (e) {}
+  }, []);
 
   const handleOpenEdit = (route) => {
     setEditingRoute(route);
