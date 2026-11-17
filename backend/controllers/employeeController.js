@@ -11,7 +11,6 @@ const WorkSchedule = require('../models/WorkSchedule');
 const Attendance = require('../models/Attendance');
 const Incident = require('../models/Incident');
 const Review = require('../models/Review');
-const CustomerBankAccount = require('../models/CustomerBankAccount');
 const payosPayoutService = require('../services/payosPayoutService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -1021,27 +1020,6 @@ exports.createCounterBooking = async (req, res) => {
   }
 };
 
-// @desc    Get linked customer bank account by phone number
-// @route   GET /api/v1/users/customer-bank-account/:phone
-// @access  Private (Ticket Agent, Ticket Manager, Admin)
-exports.getCustomerBankAccount = async (req, res) => {
-  try {
-    const { phone } = req.params;
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Số điện thoại không hợp lệ.' });
-    }
-    const cleanPhone = phone.trim();
-    const bankAccount =
-      (await CustomerBankAccount.findOne({ customerPhone: cleanPhone, isDefault: true })) ||
-      (await CustomerBankAccount.findOne({ customerPhone: cleanPhone }));
-
-    return res.status(200).json({ success: true, bankAccount: bankAccount || null });
-  } catch (error) {
-    console.error('getCustomerBankAccount error:', error);
-    return res.status(500).json({ success: false, message: 'Lỗi khi tải thông tin tài khoản ngân hàng khách.' });
-  }
-};
-
 // @desc    Get list of supported banks for PayOS Payout
 // @route   GET /api/v1/users/banks-list
 // @access  Public / Private
@@ -1183,27 +1161,6 @@ exports.cancelTicketAtCounter = async (req, res) => {
         transactionCode: payoutResult.transactionCode,
         payoutStatus: payoutResult.payoutStatus
       };
-
-      if (saveBankAccount && booking.customerPhone) {
-        try {
-          await CustomerBankAccount.findOneAndUpdate(
-            { customerPhone: booking.customerPhone.trim() },
-            {
-              customerPhone: booking.customerPhone.trim(),
-              customerName: booking.customerName,
-              bankCode: payoutResult.bankCode,
-              bankName: payoutResult.bankName,
-              bin: payoutResult.bin || '',
-              accountNumber: payoutResult.accountNumber,
-              accountHolder: payoutResult.accountHolder,
-              isDefault: true
-            },
-            { upsert: true, new: true }
-          );
-        } catch (dbBankErr) {
-          console.error('[CustomerBankAccount] Error saving bank record:', dbBankErr.message);
-        }
-      }
     } else {
       booking.refundMethod = 'cash';
     }

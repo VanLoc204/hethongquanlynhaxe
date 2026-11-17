@@ -10,10 +10,8 @@ import {
   MapPin,
   Package,
   MessageSquare,
-  Bell,
   Menu,
   X,
-  ChevronDown,
   Sparkles,
   Search,
   Phone
@@ -32,7 +30,6 @@ import MyTicketsPage from './pages/customer/MyTicketsPage';
 import TrackJourneyPage from './pages/customer/TrackJourneyPage';
 import ShipmentPage from './pages/customer/ShipmentPage';
 import AIAssistantPage from './pages/customer/AIAssistantPage';
-import NotificationsPage from './pages/customer/NotificationsPage';
 import ProfilePage from './pages/customer/ProfilePage';
 import AIChatbotWidget from './components/AIChatbotWidget';
 import ScrollToTop from './components/ScrollToTop';
@@ -170,28 +167,6 @@ const Navigation = () => {
           }}>AI</span>
         </Link>
 
-        {/* Chuông thông báo */}
-        <Link
-          to="/notifications"
-          className="nav-item nav-notification-link"
-          onClick={handleLinkClick}
-          title="Thông báo"
-        >
-          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-            <Bell size={18} />
-            <span style={{
-              position: 'absolute',
-              top: '-2px',
-              right: '-3px',
-              width: '7px',
-              height: '7px',
-              borderRadius: '50%',
-              background: '#ef4444'
-            }} />
-          </div>
-          <span className="mobile-only-text">Thông báo</span>
-        </Link>
-        
         {loading ? (
           <Loader size={18} className="logo-icon" />
         ) : isAuthenticated && user ? (
@@ -200,7 +175,6 @@ const Navigation = () => {
               <span style={{ fontSize: '0.88rem', color: '#0f172a', fontWeight: '800' }}>
                 {user.name}
               </span>
-              <ChevronDown size={14} color="#64748b" />
             </Link>
 
             <button type="button" onClick={handleLogoutClick} className="btn-logout-pill">
@@ -245,7 +219,6 @@ const AppContent = () => {
           <Route path="/track-journey" element={<ProtectedRoute><TrackJourneyPage /></ProtectedRoute>} />
           <Route path="/shipment" element={<ProtectedRoute><ShipmentPage /></ProtectedRoute>} />
           <Route path="/ai-assistant" element={<ProtectedRoute><AIAssistantPage /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         </Routes>
       </main>

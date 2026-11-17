@@ -6,6 +6,10 @@ import {
   Mail, 
   Lock, 
   Key, 
+  KeyRound,
+  Clock,
+  X,
+  ArrowRight,
   Eye, 
   EyeOff, 
   Star, 
@@ -23,7 +27,14 @@ import {
 } from 'lucide-react';
 
 const ProfilePage = () => {
-  const { user, updateProfile, changePassword, loading } = useContext(AuthContext);
+  const { 
+    user, 
+    updateProfile, 
+    changePassword, 
+    sendChangePasswordOtp, 
+    verifyAndChangePassword, 
+    loading 
+  } = useContext(AuthContext);
 
   // Profile fields state
   const [name, setName] = useState('');
@@ -38,9 +49,19 @@ const ProfilePage = () => {
   // Status/alerts state
   const [infoMessage, setInfoMessage] = useState({ text: '', type: '' });
   const [passMessage, setPassMessage] = useState({ text: '', type: '' });
+  const [profileErrors, setProfileErrors] = useState({});
+  const [passErrors, setPassErrors] = useState({});
   const [copiedCode, setCopiedCode] = useState('');
   const [promoInput, setPromoInput] = useState('');
   const [promoAlert, setPromoAlert] = useState('');
+
+  // 2FA OTP Modal State for Password Change
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [changePassOtp, setChangePassOtp] = useState('');
+  const [otpTimer, setOtpTimer] = useState(180);
+  const [otpError, setOtpError] = useState('');
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -48,6 +69,25 @@ const ProfilePage = () => {
       setEmail(user.email || '');
     }
   }, [user]);
+
+  // Đếm ngược 3 phút (180 giây) cho OTP
+  useEffect(() => {
+    let interval = null;
+    if (showOtpModal && otpTimer > 0) {
+      interval = setInterval(() => {
+        setOtpTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (otpTimer === 0) {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [showOtpModal, otpTimer]);
+
+  const formatTimer = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
 
   if (!user) {
     return (
@@ -63,13 +103,34 @@ const ProfilePage = () => {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setInfoMessage({ text: '', type: '' });
+    setProfileErrors({});
 
-    if (!name) {
-      setInfoMessage({ text: 'Họ tên không được bỏ trống.', type: 'error' });
+    const errs = {};
+    const trimmedName = (name || '').trim();
+    const trimmedEmail = (email || '').trim();
+
+    if (!trimmedName) {
+      errs.name = 'Vui lòng nhập họ và tên.';
+    } else if (trimmedName.length < 2) {
+      errs.name = 'Họ và tên tối thiểu 2 ký tự.';
+    } else if (trimmedName.length > 50) {
+      errs.name = 'Họ và tên không quá 50 ký tự.';
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừỬỮỰỲỴÝỶỸửữựỳỵỷỹ\s]+$/.test(trimmedName)) {
+      errs.name = 'Họ và tên chỉ được chứa chữ cái.';
+    }
+
+    if (!trimmedEmail) {
+      errs.email = 'Vui lòng nhập địa chỉ email.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      errs.email = 'Email không đúng định dạng.';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setProfileErrors(errs);
       return;
     }
 
-    const res = await updateProfile(name, email);
+    const res = await updateProfile(trimmedName, trimmedEmail);
     if (res.success) {
       setInfoMessage({ text: 'Cập nhật thông tin thành công.', type: 'success' });
       setTimeout(() => setInfoMessage({ text: '', type: '' }), 4000);
@@ -81,25 +142,99 @@ const ProfilePage = () => {
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setPassMessage({ text: '', type: '' });
+    setPassErrors({});
 
-    if (!currentPassword || !newPassword) {
-      setPassMessage({ text: 'Vui lòng nhập mật khẩu hiện tại và mật khẩu mới.', type: 'error' });
+    const errs = {};
+    const trimmedCurrent = (currentPassword || '').trim();
+    const trimmedNew = (newPassword || '').trim();
+
+    if (!trimmedCurrent) {
+      errs.currentPassword = 'Vui lòng nhập mật khẩu hiện tại.';
+    }
+
+    if (!trimmedNew) {
+      errs.newPassword = 'Vui lòng nhập mật khẩu mới.';
+    } else if (trimmedNew.length < 8) {
+      errs.newPassword = 'Mật khẩu mới tối thiểu 8 ký tự.';
+    } else if (trimmedCurrent && trimmedNew === trimmedCurrent) {
+      errs.newPassword = 'Mật khẩu mới không được trùng mật khẩu cũ.';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setPassErrors(errs);
       return;
     }
 
-    if (newPassword.length < 6) {
-      setPassMessage({ text: 'Mật khẩu mới phải từ 6 ký tự trở lên.', type: 'error' });
+    if (!user?.email) {
+      setPassMessage({ text: 'Tài khoản chưa cập nhật email để nhận mã OTP 2FA.', type: 'error' });
       return;
     }
 
-    const res = await changePassword(currentPassword, newPassword);
+    // Gửi OTP xác thực 2FA đến email của người dùng
+    setIsSendingOtp(true);
+    const res = await sendChangePasswordOtp(trimmedCurrent, trimmedNew);
+    setIsSendingOtp(false);
+
     if (res.success) {
-      setPassMessage({ text: 'Đổi mật khẩu thành công.', type: 'success' });
+      setOtpTimer(180);
+      setChangePassOtp('');
+      setOtpError('');
+      setShowOtpModal(true);
+    } else {
+      const msg = res.message || 'Không thể gửi mã xác thực.';
+      const lower = msg.toLowerCase();
+      if (lower.includes('hiện tại')) {
+        setPassErrors({ currentPassword: msg });
+      } else if (lower.includes('mật khẩu') || lower.includes('ký tự') || lower.includes('chữ')) {
+        setPassErrors({ newPassword: msg });
+      } else {
+        setPassMessage({ text: msg, type: 'error' });
+      }
+    }
+  };
+
+  // Gửi lại mã OTP
+  const handleResendChangePassOtp = async () => {
+    if (otpTimer > 0 || isSendingOtp) return;
+    setOtpError('');
+    setIsSendingOtp(true);
+    const res = await sendChangePasswordOtp(currentPassword, newPassword);
+    setIsSendingOtp(false);
+    if (res.success) {
+      setOtpTimer(180);
+    } else {
+      setOtpError(res.message || 'Không thể gửi lại mã xác thực.');
+    }
+  };
+
+  // Xác thực OTP và cập nhật mật khẩu mới
+  const handleVerifyChangePassOtp = async (e) => {
+    e.preventDefault();
+    setOtpError('');
+
+    const cleanOtp = (changePassOtp || '').trim();
+    if (!cleanOtp) {
+      setOtpError('Vui lòng nhập mã xác thực OTP.');
+      return;
+    }
+    if (cleanOtp.length !== 6) {
+      setOtpError('Mã xác thực phải gồm đúng 6 chữ số.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    const res = await verifyAndChangePassword(cleanOtp);
+    setIsVerifyingOtp(false);
+
+    if (res.success) {
+      setShowOtpModal(false);
       setCurrentPassword('');
       setNewPassword('');
+      setChangePassOtp('');
+      setPassMessage({ text: 'Đổi mật khẩu thành công.', type: 'success' });
       setTimeout(() => setPassMessage({ text: '', type: '' }), 4000);
     } else {
-      setPassMessage({ text: res.message || 'Đổi mật khẩu thất bại.', type: 'error' });
+      setOtpError(res.message || 'Mã xác thực không chính xác.');
     }
   };
 
@@ -431,7 +566,6 @@ const ProfilePage = () => {
   };
 
   const tierCfg = getTierConfig(user.membershipTier || 'Platinum');
-  const memberId = user.phone ? `ABL-${user.phone.slice(-5)}` : 'ABL-98421';
   const pointsVal = (user.points !== undefined && user.points !== null) ? Number(user.points) : 55750;
 
   return (
@@ -584,27 +718,6 @@ const ProfilePage = () => {
             </p>
           </div>
         </div>
-
-        {/* Right security badges */}
-        <div className="profile-header-right">
-          <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: '6px',
-            padding: '4px 10px',
-            fontSize: '0.75rem',
-            color: '#475569',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}>
-            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-            Tài khoản bảo vệ cấp 2
-          </div>
-          <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-            Mã hội viên: <strong style={{ color: '#0f172a', letterSpacing: '0.5px' }}>{memberId}</strong>
-          </div>
-        </div>
       </div>
 
       {/* ─── Main 3-Column Responsive Grid ─── */}
@@ -750,17 +863,6 @@ const ProfilePage = () => {
                   Thông Tin Cá Nhân
                 </h3>
               </div>
-              <span style={{
-                background: '#ecfdf5',
-                color: '#10b981',
-                border: '1px solid #a7f3d0',
-                fontSize: '0.7rem',
-                fontWeight: '700',
-                padding: '1px 8px',
-                borderRadius: '5px'
-              }}>
-                Đã xác minh
-              </span>
             </div>
 
             {infoMessage.text && (
@@ -781,7 +883,7 @@ const ProfilePage = () => {
               </div>
             )}
 
-            <form onSubmit={handleUpdateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <form onSubmit={handleUpdateProfile} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
                   Họ và tên
@@ -792,21 +894,30 @@ const ProfilePage = () => {
                   </span>
                   <input
                     type="text"
+                    placeholder="Nhập họ và tên đầy đủ"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      if (profileErrors.name) setProfileErrors(prev => ({ ...prev, name: '' }));
+                    }}
                     style={{
                       width: '100%',
                       padding: '7px 10px 7px 32px',
                       fontSize: '0.8rem',
-                      border: '1px solid #cbd5e1',
+                      border: profileErrors.name ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: profileErrors.name ? '#fff5f5' : '#ffffff',
                       borderRadius: '6px',
                       outline: 'none',
                       boxSizing: 'border-box',
                       color: '#0f172a'
                     }}
-                    required
                   />
                 </div>
+                {profileErrors.name && (
+                  <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                    {profileErrors.name}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -846,13 +957,18 @@ const ProfilePage = () => {
                   </span>
                   <input
                     type="email"
+                    placeholder="Nhập địa chỉ email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (profileErrors.email) setProfileErrors(prev => ({ ...prev, email: '' }));
+                    }}
                     style={{
                       width: '100%',
                       padding: '7px 10px 7px 32px',
                       fontSize: '0.8rem',
-                      border: '1px solid #cbd5e1',
+                      border: profileErrors.email ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: profileErrors.email ? '#fff5f5' : '#ffffff',
                       borderRadius: '6px',
                       outline: 'none',
                       boxSizing: 'border-box',
@@ -860,6 +976,11 @@ const ProfilePage = () => {
                     }}
                   />
                 </div>
+                {profileErrors.email && (
+                  <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                    {profileErrors.email}
+                  </div>
+                )}
               </div>
 
               <button
@@ -890,7 +1011,7 @@ const ProfilePage = () => {
 
           {/* Card: Đổi Mật Khẩu Bảo Mật */}
           <div className="profile-card" style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                 <div style={{ width: '22px', height: '22px', borderRadius: '5px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Key size={13} />
@@ -899,9 +1020,6 @@ const ProfilePage = () => {
                   Đổi Mật Khẩu Bảo Mật
                 </h3>
               </div>
-              <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                Đổi lần cuối: 30 ngày trước
-              </span>
             </div>
 
             {passMessage.text && (
@@ -922,7 +1040,7 @@ const ProfilePage = () => {
               </div>
             )}
 
-            <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <form onSubmit={handleChangePassword} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
                   Mật khẩu hiện tại
@@ -935,12 +1053,16 @@ const ProfilePage = () => {
                     type={showCurrentPass ? 'text' : 'password'}
                     placeholder="••••••••••••"
                     value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    onChange={(e) => {
+                      setCurrentPassword(e.target.value);
+                      if (passErrors.currentPassword) setPassErrors(prev => ({ ...prev, currentPassword: '' }));
+                    }}
                     style={{
                       width: '100%',
                       padding: '7px 32px 7px 32px',
                       fontSize: '0.8rem',
-                      border: '1px solid #cbd5e1',
+                      border: passErrors.currentPassword ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: passErrors.currentPassword ? '#fff5f5' : '#ffffff',
                       borderRadius: '6px',
                       outline: 'none',
                       boxSizing: 'border-box'
@@ -954,6 +1076,11 @@ const ProfilePage = () => {
                     {showCurrentPass ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 </div>
+                {passErrors.currentPassword && (
+                  <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                    {passErrors.currentPassword}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -968,12 +1095,16 @@ const ProfilePage = () => {
                     type={showNewPass ? 'text' : 'password'}
                     placeholder="Tối thiểu 8 ký tự"
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (passErrors.newPassword) setPassErrors(prev => ({ ...prev, newPassword: '' }));
+                    }}
                     style={{
                       width: '100%',
                       padding: '7px 32px 7px 32px',
                       fontSize: '0.8rem',
-                      border: '1px solid #cbd5e1',
+                      border: passErrors.newPassword ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: passErrors.newPassword ? '#fff5f5' : '#ffffff',
                       borderRadius: '6px',
                       outline: 'none',
                       boxSizing: 'border-box'
@@ -987,17 +1118,18 @@ const ProfilePage = () => {
                     {showNewPass ? <EyeOff size={14} /> : <Eye size={14} />}
                   </button>
                 </div>
+                {passErrors.newPassword && (
+                  <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                    {passErrors.newPassword}
+                  </div>
+                )}
               </div>
 
               {/* Bottom footer row */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', color: '#64748b' }}>
-                  <ShieldCheck size={13} color="#10b981" />
-                  <span>Bảo mật 2FA đang bật</span>
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '6px' }}>
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={isSendingOtp}
                   style={{
                     padding: '6px 14px',
                     background: '#f8fafc',
@@ -1006,10 +1138,10 @@ const ProfilePage = () => {
                     borderRadius: '6px',
                     fontSize: '0.75rem',
                     fontWeight: '700',
-                    cursor: 'pointer'
+                    cursor: isSendingOtp ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  Lưu thay đổi
+                  {isSendingOtp ? 'Đang gửi mã...' : 'Lưu thay đổi'}
                 </button>
               </div>
             </form>
@@ -1190,6 +1322,208 @@ const ProfilePage = () => {
         </div>
 
       </div>
+
+      {/* ─── MODAL XÁC THỰC OTP ĐỔI MẬT KHẨU (2FA) ─── */}
+      {showOtpModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '1rem'
+        }}>
+          <div style={{
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '420px',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            overflow: 'hidden',
+            border: '1px solid #e2e8f0'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '14px 18px',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: '#f8fafc'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '7px',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <ShieldCheck size={16} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a' }}>
+                    Xác Thực Đổi Mật Khẩu (2FA)
+                  </h3>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Bảo vệ an toàn tài khoản An Bình Lines
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOtpModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleVerifyChangePassOtp} style={{ padding: '18px 20px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <p style={{ fontSize: '0.82rem', color: '#475569', margin: '0 0 6px 0', lineHeight: '1.5' }}>
+                  Mã xác thực 6 số đã được gửi đến email:
+                </p>
+                <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#1e293b' }}>
+                  {user?.email}
+                </div>
+              </div>
+
+              {/* Input OTP 6 số */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#334155', marginBottom: '6px', textAlign: 'center' }}>
+                  Nhập mã OTP 6 chữ số
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    maxLength="6"
+                    autoFocus
+                    placeholder="------"
+                    value={changePassOtp}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setChangePassOtp(val);
+                      if (otpError) setOtpError('');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      fontSize: '1.4rem',
+                      fontWeight: '800',
+                      letterSpacing: '8px',
+                      textAlign: 'center',
+                      borderRadius: '8px',
+                      border: otpError ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                      backgroundColor: otpError ? '#fff5f5' : '#f8fafc',
+                      color: '#0f172a',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                {otpError && (
+                  <div style={{ color: '#dc2626', fontSize: '0.74rem', marginTop: '6px', textAlign: 'center', fontWeight: '500' }}>
+                    {otpError}
+                  </div>
+                )}
+              </div>
+
+              {/* Timer Countdown & Resend */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '8px 12px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '6px',
+                marginBottom: '18px',
+                fontSize: '0.75rem'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: otpTimer > 0 ? '#d97706' : '#dc2626', fontWeight: '600' }}>
+                  <Clock size={13} />
+                  <span>Hiệu lực: {formatTimer(otpTimer)}</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={otpTimer > 0 || isSendingOtp}
+                  onClick={handleResendChangePassOtp}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: otpTimer > 0 ? '#94a3b8' : '#2563eb',
+                    fontWeight: '700',
+                    cursor: otpTimer > 0 ? 'not-allowed' : 'pointer',
+                    fontSize: '0.74rem',
+                    textDecoration: otpTimer > 0 ? 'none' : 'underline'
+                  }}
+                >
+                  {isSendingOtp ? 'Đang gửi lại...' : 'Gửi lại mã'}
+                </button>
+              </div>
+
+              {/* Modal Buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowOtpModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    color: '#475569',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingOtp || changePassOtp.length !== 6}
+                  style={{
+                    flex: 2,
+                    padding: '8px 0',
+                    background: changePassOtp.length === 6 && !isVerifyingOtp ? '#2563eb' : '#94a3b8',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '0.8rem',
+                    fontWeight: '700',
+                    color: '#ffffff',
+                    cursor: changePassOtp.length === 6 && !isVerifyingOtp ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  {isVerifyingOtp ? 'Đang xác thực...' : 'Xác nhận đổi mật khẩu'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

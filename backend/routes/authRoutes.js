@@ -5,6 +5,8 @@ const {
   getMe,
   updateDetails,
   updatePassword,
+  sendChangePasswordOTP,
+  verifyChangePasswordOTP,
   forgotPassword,
   sendForgotPasswordOTP,
   verifyForgotPasswordOTP,
@@ -26,5 +28,7 @@ router.post('/forgotpassword/reset', resetForgotPasswordWithToken);
 router.get('/me', protect, getMe);
 router.put('/updatedetails', protect, updateDetails);
 router.put('/updatepassword', protect, updatePassword);
+router.post('/changepassword/send-otp', protect, sendChangePasswordOTP);
+router.put('/changepassword/verify-and-update', protect, verifyChangePasswordOTP);
 
 module.exports = router;

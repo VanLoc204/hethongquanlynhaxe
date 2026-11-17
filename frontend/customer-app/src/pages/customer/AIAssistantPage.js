@@ -330,8 +330,8 @@ const AIAssistantPage = () => {
   // Passenger Form State
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [customerBirthYear, setCustomerBirthYear] = useState('2004');
-  const [customerCCCD, setCustomerCCCD] = useState('054204006391');
+  const [customerBirthYear, setCustomerBirthYear] = useState('');
+  const [customerCCCD, setCustomerCCCD] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [usePoints, setUsePoints] = useState(false);
   const [pointsInput, setPointsInput] = useState(0);
@@ -339,6 +339,7 @@ const AIAssistantPage = () => {
   const [selectedVoucherCode, setSelectedVoucherCode] = useState('');
   const [createdBooking, setCreatedBooking] = useState(null);
   const [bookingError, setBookingError] = useState('');
+  const [formErrors, setFormErrors] = useState({});
 
   // Client ID cho Real-time seat lock
   const getClientId = () => {
@@ -423,6 +424,8 @@ const AIAssistantPage = () => {
       setCustomerName(user.name || '');
       setCustomerPhone(user.phone || '');
       setCustomerEmail(user.email || '');
+      if (user.birthYear) setCustomerBirthYear(String(user.birthYear));
+      if (user.cccd) setCustomerCCCD(String(user.cccd));
     }
   }, [user]);
 
@@ -822,13 +825,63 @@ const AIAssistantPage = () => {
   const handleConfirmBooking = async (e) => {
     e.preventDefault();
     setBookingError('');
+    setFormErrors({});
 
     if (selectedSeats.length === 0) {
       setBookingError('Vui lòng chọn ít nhất 1 vị trí ghế trên sơ đồ.');
       return;
     }
-    if (!customerName || !customerPhone || !customerCCCD) {
-      setBookingError('Vui lòng điền đầy đủ Họ tên, Số điện thoại và CCCD.');
+
+    const errs = {};
+    const nameTrimmed = (customerName || '').trim();
+    const phoneTrimmed = (customerPhone || '').trim();
+    const birthYearVal = (customerBirthYear || '').toString().trim();
+    const cccdTrimmed = (customerCCCD || '').trim();
+
+    // 1. Họ và tên
+    if (!nameTrimmed) {
+      errs.customerName = 'Vui lòng nhập họ và tên.';
+    } else if (nameTrimmed.length < 2) {
+      errs.customerName = 'Họ và tên tối thiểu 2 ký tự.';
+    } else if (nameTrimmed.length > 50) {
+      errs.customerName = 'Họ và tên không quá 50 ký tự.';
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừỬỮỰỲỴÝỶỸửữựỳỵỷỹ\s]+$/.test(nameTrimmed)) {
+      errs.customerName = 'Họ và tên chỉ được chứa chữ cái.';
+    }
+
+    // 2. Số điện thoại
+    if (!phoneTrimmed) {
+      errs.customerPhone = 'Vui lòng nhập số điện thoại.';
+    } else if (!/^\d+$/.test(phoneTrimmed)) {
+      errs.customerPhone = 'Số điện thoại chỉ gồm các chữ số.';
+    } else if (!phoneTrimmed.startsWith('0')) {
+      errs.customerPhone = 'Số điện thoại phải bắt đầu bằng số 0.';
+    } else if (phoneTrimmed.length !== 10) {
+      errs.customerPhone = 'Số điện thoại phải có đúng 10 chữ số.';
+    } else if (!/^0(3[2-9]|5[2689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/.test(phoneTrimmed)) {
+      errs.customerPhone = 'Đầu số điện thoại không hợp lệ.';
+    }
+
+    // 3. Năm sinh
+    const currentYear = new Date().getFullYear();
+    const yearNum = Number(birthYearVal);
+    if (!birthYearVal) {
+      errs.customerBirthYear = 'Vui lòng nhập năm sinh.';
+    } else if (!/^\d{4}$/.test(birthYearVal) || isNaN(yearNum) || yearNum < 1920 || yearNum > currentYear) {
+      errs.customerBirthYear = 'Năm sinh không hợp lệ.';
+    }
+
+    // 4. Số CCCD
+    if (!cccdTrimmed) {
+      errs.customerCCCD = 'Vui lòng nhập số CCCD.';
+    } else if (!/^\d+$/.test(cccdTrimmed)) {
+      errs.customerCCCD = 'Số CCCD chỉ gồm các chữ số.';
+    } else if (cccdTrimmed.length !== 12) {
+      errs.customerCCCD = 'Số CCCD phải gồm đúng 12 chữ số.';
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setFormErrors(errs);
       return;
     }
 
@@ -839,10 +892,10 @@ const AIAssistantPage = () => {
         seats: selectedSeats,
         pickup: selectedPickup,
         dropoff: selectedDropoff,
-        customerName,
-        customerPhone,
-        customerBirthYear: Number(customerBirthYear) || 2004,
-        customerCCCD,
+        customerName: nameTrimmed,
+        customerPhone: phoneTrimmed,
+        customerBirthYear: yearNum,
+        customerCCCD: cccdTrimmed,
         customerEmail,
         paymentType: 'immediate',
         pointsUsed: isGuest ? 0 : pointsDiscountAmount,
@@ -1393,9 +1446,9 @@ const AIAssistantPage = () => {
                 </div>
 
                 {/* Cột 2: Thông tin hành khách & Điểm đón trả */}
-                <form onSubmit={handleConfirmBooking} className="ai-modal-form">
+                <form onSubmit={handleConfirmBooking} noValidate className="ai-modal-form">
                   {bookingError && (
-                    <div style={{ padding: '6px 8px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#dc2626', fontSize: '0.72rem' }}>
+                    <div style={{ padding: '6px 8px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#dc2626', fontSize: '0.72rem', fontWeight: '500' }}>
                       {bookingError}
                     </div>
                   )}
@@ -1426,49 +1479,97 @@ const AIAssistantPage = () => {
                     </select>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <div className="ai-form-row">
-                      <label className="ai-form-label">Họ tên hành khách</label>
+                      <label className="ai-form-label">Họ tên hành khách <span style={{ color: '#dc2626' }}>*</span></label>
                       <input
                         type="text"
                         className="ai-form-input"
+                        placeholder="Nhập họ và tên"
                         value={customerName}
-                        onChange={e => setCustomerName(e.target.value)}
-                        required
+                        onChange={e => {
+                          setCustomerName(e.target.value);
+                          if (formErrors.customerName) setFormErrors(prev => ({ ...prev, customerName: '' }));
+                        }}
+                        style={{
+                          borderColor: formErrors.customerName ? '#dc2626' : undefined,
+                          backgroundColor: formErrors.customerName ? '#fff5f5' : undefined
+                        }}
                       />
+                      {formErrors.customerName && (
+                        <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                          {formErrors.customerName}
+                        </div>
+                      )}
                     </div>
                     <div className="ai-form-row">
-                      <label className="ai-form-label">Số điện thoại</label>
+                      <label className="ai-form-label">Số điện thoại <span style={{ color: '#dc2626' }}>*</span></label>
                       <input
-                        type="text"
+                        type="tel"
                         className="ai-form-input"
+                        placeholder="Nhập số điện thoại"
                         value={customerPhone}
-                        onChange={e => setCustomerPhone(e.target.value)}
-                        required
+                        onChange={e => {
+                          setCustomerPhone(e.target.value);
+                          if (formErrors.customerPhone) setFormErrors(prev => ({ ...prev, customerPhone: '' }));
+                        }}
+                        style={{
+                          borderColor: formErrors.customerPhone ? '#dc2626' : undefined,
+                          backgroundColor: formErrors.customerPhone ? '#fff5f5' : undefined
+                        }}
                       />
+                      {formErrors.customerPhone && (
+                        <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                          {formErrors.customerPhone}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <div className="ai-form-row">
-                      <label className="ai-form-label">Năm sinh</label>
+                      <label className="ai-form-label">Năm sinh <span style={{ color: '#dc2626' }}>*</span></label>
                       <input
                         type="number"
                         className="ai-form-input"
+                        placeholder="Nhập năm sinh"
                         value={customerBirthYear}
-                        onChange={e => setCustomerBirthYear(e.target.value)}
-                        required
+                        onChange={e => {
+                          setCustomerBirthYear(e.target.value);
+                          if (formErrors.customerBirthYear) setFormErrors(prev => ({ ...prev, customerBirthYear: '' }));
+                        }}
+                        style={{
+                          borderColor: formErrors.customerBirthYear ? '#dc2626' : undefined,
+                          backgroundColor: formErrors.customerBirthYear ? '#fff5f5' : undefined
+                        }}
                       />
+                      {formErrors.customerBirthYear && (
+                        <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                          {formErrors.customerBirthYear}
+                        </div>
+                      )}
                     </div>
                     <div className="ai-form-row">
-                      <label className="ai-form-label">Số CCCD</label>
+                      <label className="ai-form-label">Số CCCD <span style={{ color: '#dc2626' }}>*</span></label>
                       <input
                         type="text"
                         className="ai-form-input"
+                        placeholder="Nhập số CCCD"
                         value={customerCCCD}
-                        onChange={e => setCustomerCCCD(e.target.value)}
-                        required
+                        onChange={e => {
+                          setCustomerCCCD(e.target.value);
+                          if (formErrors.customerCCCD) setFormErrors(prev => ({ ...prev, customerCCCD: '' }));
+                        }}
+                        style={{
+                          borderColor: formErrors.customerCCCD ? '#dc2626' : undefined,
+                          backgroundColor: formErrors.customerCCCD ? '#fff5f5' : undefined
+                        }}
                       />
+                      {formErrors.customerCCCD && (
+                        <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '3px', fontWeight: '500' }}>
+                          {formErrors.customerCCCD}
+                        </div>
+                      )}
                     </div>
                   </div>
 

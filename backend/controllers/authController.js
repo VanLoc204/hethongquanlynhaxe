@@ -114,7 +114,30 @@ exports.getMe = async (req, res) => {
 exports.updateDetails = async (req, res) => {
   try {
     const { name, email } = req.body;
-    const user = await authService.updateUserDetails(req.user.id, { name, email });
+    const trimmedName = (name || '').trim();
+    const trimmedEmail = (email || '').trim();
+
+    if (!trimmedName) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập họ và tên.' });
+    }
+    if (trimmedName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Họ và tên tối thiểu 2 ký tự.' });
+    }
+    if (trimmedName.length > 50) {
+      return res.status(400).json({ success: false, message: 'Họ và tên không quá 50 ký tự.' });
+    }
+    if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừỬỮỰỲỴÝỶỸửữựỳỵỷỹ\s]+$/.test(trimmedName)) {
+      return res.status(400).json({ success: false, message: 'Họ và tên chỉ được chứa chữ cái.' });
+    }
+
+    if (!trimmedEmail) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập địa chỉ email.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({ success: false, message: 'Email không đúng định dạng.' });
+    }
+
+    const user = await authService.updateUserDetails(req.user.id, { name: trimmedName, email: trimmedEmail });
 
     res.status(200).json({
       success: true,
@@ -156,15 +179,31 @@ exports.restrictTo = (...roles) => {
 exports.updatePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
+    const trimmedCurrent = (currentPassword || '').trim();
+    const trimmedNew = (newPassword || '').trim();
 
-    if (!currentPassword || !newPassword) {
+    if (!trimmedCurrent || !trimmedNew) {
       return res.status(400).json({
         success: false,
         message: 'Vui lòng cung cấp mật khẩu hiện tại và mật khẩu mới.'
       });
     }
 
-    await authService.updatePassword(req.user.id, { currentPassword, newPassword });
+    if (trimmedNew.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu mới tối thiểu 8 ký tự.'
+      });
+    }
+
+    if (trimmedCurrent === trimmedNew) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mật khẩu mới không được trùng mật khẩu cũ.'
+      });
+    }
+
+    await authService.updatePassword(req.user.id, { currentPassword: trimmedCurrent, newPassword: trimmedNew });
 
     res.status(200).json({
       success: true,
@@ -284,6 +323,55 @@ exports.resetForgotPasswordWithToken = async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message || 'Đặt lại mật khẩu thất bại.'
+    });
+  }
+};
+
+// @desc    Send OTP to email for authenticated change password (2FA)
+// @route   POST /api/v1/auth/changepassword/send-otp
+// @access  Private
+exports.sendChangePasswordOTP = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const result = await authService.sendChangePasswordOTP(req.user.id, { currentPassword, newPassword });
+    res.status(200).json({
+      success: true,
+      message: 'Mã xác thực OTP đã được gửi đến email của bạn.',
+      email: result.email,
+      expiresIn: result.expiresIn
+    });
+  } catch (error) {
+    console.error('Lỗi gửi OTP đổi mật khẩu:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Không thể gửi mã xác thực.'
+    });
+  }
+};
+
+// @desc    Verify OTP and update password (2FA)
+// @route   PUT /api/v1/auth/changepassword/verify-and-update
+// @access  Private
+exports.verifyChangePasswordOTP = async (req, res) => {
+  try {
+    const { otp } = req.body;
+    if (!otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập mã xác thực OTP.'
+      });
+    }
+
+    await authService.verifyAndChangePassword(req.user.id, otp);
+    res.status(200).json({
+      success: true,
+      message: 'Đổi mật khẩu thành công.'
+    });
+  } catch (error) {
+    console.error('Lỗi xác thực OTP đổi mật khẩu:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Mã xác thực không chính xác hoặc đã hết hạn.'
     });
   }
 };
