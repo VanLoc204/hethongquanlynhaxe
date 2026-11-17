@@ -99,7 +99,6 @@ export const AuthProvider = ({ children }) => {
 
   // Update Profile Details
   const updateProfile = async (name, email) => {
-    setLoading(true);
     setError(null);
     try {
       const res = await axios.put(`${API_URL}/updatedetails`, { name, email });
@@ -111,14 +110,11 @@ export const AuthProvider = ({ children }) => {
       const errMsg = err.response?.data?.message || 'Cập nhật thông tin thất bại.';
       setError(errMsg);
       return { success: false, message: errMsg };
-    } finally {
-      setLoading(false);
     }
   };
 
   // Change Password
   const changePassword = async (currentPassword, newPassword) => {
-    setLoading(true);
     setError(null);
     try {
       const res = await axios.put(`${API_URL}/updatepassword`, { currentPassword, newPassword });
@@ -129,8 +125,37 @@ export const AuthProvider = ({ children }) => {
       const errMsg = err.response?.data?.message || 'Thay đổi mật khẩu thất bại.';
       setError(errMsg);
       return { success: false, message: errMsg };
-    } finally {
-      setLoading(false);
+    }
+  };
+
+  // Gửi mã OTP xác thực đổi mật khẩu 2FA qua Email (Hiệu lực 3 phút = 180s)
+  const sendChangePasswordOtp = async (currentPassword, newPassword) => {
+    setError(null);
+    try {
+      const res = await axios.post(`${API_URL}/changepassword/send-otp`, { currentPassword, newPassword });
+      return {
+        success: true,
+        message: res.data.message,
+        email: res.data.email,
+        expiresIn: res.data.expiresIn || 180
+      };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Không thể gửi mã xác thực. Vui lòng thử lại.';
+      setError(errMsg);
+      return { success: false, message: errMsg };
+    }
+  };
+
+  // Xác thực OTP 2FA và hoàn tất cập nhật mật khẩu mới
+  const verifyAndChangePassword = async (otp) => {
+    setError(null);
+    try {
+      const res = await axios.put(`${API_URL}/changepassword/verify-and-update`, { otp });
+      return { success: true, message: res.data.message };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Mã xác thực không chính xác hoặc đã hết hạn.';
+      setError(errMsg);
+      return { success: false, message: errMsg };
     }
   };
 
@@ -206,6 +231,8 @@ export const AuthProvider = ({ children }) => {
         setError,
         updateProfile,
         changePassword,
+        sendChangePasswordOtp,
+        verifyAndChangePassword,
         forgotPassword,
         sendForgotOtp,
         verifyForgotOtp,

@@ -6,6 +6,7 @@ const emailService = require('./emailService');
 // Bộ nhớ đệm in-memory lưu trữ OTP và Reset Token khôi phục mật khẩu (TTL 3 phút = 180s)
 const forgotOtpStore = new Map();
 const forgotResetTokenStore = new Map();
+const changePasswordOtpStore = new Map();
 
 class AuthService {
   generateToken(user) {
@@ -18,19 +19,19 @@ class AuthService {
 
   validatePasswordPolicy(password) {
     if (!password || password.length < 8) {
-      throw new Error('Mật khẩu phải chứa tối thiểu 8 ký tự.');
+      throw new Error('Mật khẩu tối thiểu 8 ký tự.');
     }
     if (!/[A-Z]/.test(password)) {
-      throw new Error('Mật khẩu phải chứa ít nhất 1 chữ cái in hoa (A-Z).');
+      throw new Error('Mật khẩu phải chứa chữ in hoa.');
     }
     if (!/[a-z]/.test(password)) {
-      throw new Error('Mật khẩu phải chứa ít nhất 1 chữ cái in thường (a-z).');
+      throw new Error('Mật khẩu phải chứa chữ in thường.');
     }
     if (!/\d/.test(password)) {
-      throw new Error('Mật khẩu phải chứa ít nhất 1 chữ số (0-9).');
+      throw new Error('Mật khẩu phải chứa chữ số.');
     }
     if (!/[@$!%*?&#_.-]/.test(password)) {
-      throw new Error('Mật khẩu phải chứa ít nhất 1 ký tự đặc biệt (@, $, !, %, *, #,...).');
+      throw new Error('Mật khẩu phải chứa ký tự đặc biệt.');
     }
   }
 
@@ -288,6 +289,100 @@ class AuthService {
     await userRepository.save(user);
 
     forgotResetTokenStore.delete(email);
+    return true;
+  }
+
+  // 4. Gửi mã OTP xác thực đổi mật khẩu (2FA) qua Email (Hiệu lực 3 phút = 180s)
+  async sendChangePasswordOTP(userId, { currentPassword, newPassword }) {
+    const trimmedCurrent = (currentPassword || '').trim();
+    const trimmedNew = (newPassword || '').trim();
+
+    if (!trimmedCurrent || !trimmedNew) {
+      throw new Error('Vui lòng cung cấp mật khẩu hiện tại và mật khẩu mới.');
+    }
+
+    if (trimmedNew.length < 8) {
+      throw new Error('Mật khẩu mới tối thiểu 8 ký tự.');
+    }
+
+    if (trimmedCurrent === trimmedNew) {
+      throw new Error('Mật khẩu mới không được trùng mật khẩu cũ.');
+    }
+
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new Error('Không tìm thấy thông tin người dùng.');
+    }
+
+    if (!user.email) {
+      throw new Error('Tài khoản chưa cập nhật địa chỉ email để nhận mã OTP.');
+    }
+
+    if (!(await user.comparePassword(trimmedCurrent))) {
+      throw new Error('Mật khẩu hiện tại không chính xác.');
+    }
+
+    this.validatePasswordPolicy(trimmedNew);
+
+    // Tạo mã OTP ngẫu nhiên 6 chữ số
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresInSec = 180; // 3 phút
+    const expiresAt = Date.now() + expiresInSec * 1000;
+
+    changePasswordOtpStore.set(String(userId), {
+      otp,
+      expiresAt,
+      attempts: 0,
+      newPassword: trimmedNew
+    });
+
+    setTimeout(() => {
+      const current = changePasswordOtpStore.get(String(userId));
+      if (current && current.expiresAt <= Date.now()) {
+        changePasswordOtpStore.delete(String(userId));
+      }
+    }, expiresInSec * 1000);
+
+    // Gửi email OTP
+    try {
+      await emailService.sendChangePasswordOtpEmail(user.email, user.name, otp, 3);
+    } catch (err) {
+      console.warn('[Change Pass Email OTP Warning]:', err.message);
+    }
+
+    console.log(`[Auth] Mã OTP đổi mật khẩu (2FA) cho ${user.email}: ${otp} (Hiệu lực 3 phút)`);
+    return { email: user.email, expiresIn: expiresInSec };
+  }
+
+  // 5. Xác thực mã OTP và cập nhật mật khẩu mới
+  async verifyAndChangePassword(userId, rawOtp) {
+    const otp = (rawOtp || '').trim();
+    if (!otp) throw new Error('Vui lòng nhập mã xác thực OTP.');
+
+    const data = changePasswordOtpStore.get(String(userId));
+    if (!data || Date.now() > data.expiresAt) {
+      changePasswordOtpStore.delete(String(userId));
+      throw new Error('Mã xác thực đã hết hạn hoặc không tồn tại.');
+    }
+
+    if (data.otp !== otp) {
+      data.attempts = (data.attempts || 0) + 1;
+      if (data.attempts >= 5) {
+        changePasswordOtpStore.delete(String(userId));
+        throw new Error('Bạn đã nhập sai mã quá 5 lần. Vui lòng gửi lại mã mới.');
+      }
+      throw new Error('Mã xác thực không chính xác.');
+    }
+
+    const user = await userRepository.findById(userId);
+    if (!user) {
+      throw new Error('Không tìm thấy thông tin người dùng.');
+    }
+
+    user.password = data.newPassword;
+    await userRepository.save(user);
+
+    changePasswordOtpStore.delete(String(userId));
     return true;
   }
 }

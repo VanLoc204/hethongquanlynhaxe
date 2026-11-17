@@ -189,6 +189,7 @@ const TripsPage = () => {
   const [customerBirthYear, setCustomerBirthYear] = useState('');
   const [customerCCCD, setCustomerCCCD] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [customerErrors, setCustomerErrors] = useState({});
   const [paymentType, setPaymentType] = useState('immediate'); // 'immediate', 'later'
   const [createdBooking, setCreatedBooking] = useState(null);
   const [usePoints, setUsePoints] = useState(false);
@@ -689,11 +690,69 @@ const TripsPage = () => {
     setVoucherError('');
   };
 
+  const validateCustomerForm = () => {
+    const errs = {};
+    const nameTrimmed = (customerName || '').trim();
+    const phoneTrimmed = (customerPhone || '').trim();
+    const birthYearVal = (customerBirthYear || '').toString().trim();
+    const cccdTrimmed = (customerCCCD || '').trim();
+    const emailTrimmed = (customerEmail || '').trim();
+
+    // 1. Họ và tên
+    if (!nameTrimmed) {
+      errs.customerName = 'Vui lòng nhập họ và tên.';
+    } else if (nameTrimmed.length < 2) {
+      errs.customerName = 'Họ và tên tối thiểu 2 ký tự.';
+    } else if (nameTrimmed.length > 50) {
+      errs.customerName = 'Họ và tên không quá 50 ký tự.';
+    } else if (!/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừỬỮỰỲỴÝỶỸửữựỳỵỷỹ\s]+$/.test(nameTrimmed)) {
+      errs.customerName = 'Họ và tên chỉ được chứa chữ cái.';
+    }
+
+    // 2. Số điện thoại
+    if (!phoneTrimmed) {
+      errs.customerPhone = 'Vui lòng nhập số điện thoại.';
+    } else if (!/^\d+$/.test(phoneTrimmed)) {
+      errs.customerPhone = 'Số điện thoại chỉ gồm các chữ số.';
+    } else if (!phoneTrimmed.startsWith('0')) {
+      errs.customerPhone = 'Số điện thoại phải bắt đầu bằng số 0.';
+    } else if (phoneTrimmed.length !== 10) {
+      errs.customerPhone = 'Số điện thoại phải có đúng 10 chữ số.';
+    } else if (!/^0(3[2-9]|5[2689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/.test(phoneTrimmed)) {
+      errs.customerPhone = 'Đầu số điện thoại không hợp lệ.';
+    }
+
+    // 3. Năm sinh
+    const currentYear = new Date().getFullYear();
+    const yearNum = Number(birthYearVal);
+    if (!birthYearVal) {
+      errs.customerBirthYear = 'Vui lòng nhập năm sinh.';
+    } else if (!/^\d{4}$/.test(birthYearVal) || isNaN(yearNum) || yearNum < 1920 || yearNum > currentYear) {
+      errs.customerBirthYear = 'Năm sinh không hợp lệ.';
+    }
+
+    // 4. Số CCCD
+    if (!cccdTrimmed) {
+      errs.customerCCCD = 'Vui lòng nhập số CCCD.';
+    } else if (!/^\d+$/.test(cccdTrimmed)) {
+      errs.customerCCCD = 'Số CCCD chỉ gồm các chữ số.';
+    } else if (cccdTrimmed.length !== 12) {
+      errs.customerCCCD = 'Số CCCD phải gồm đúng 12 chữ số.';
+    }
+
+    // 5. Email (Không bắt buộc)
+    if (emailTrimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+      errs.customerEmail = 'Email không đúng định dạng.';
+    }
+
+    setCustomerErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   // Submit passenger details and create pending booking
   const handleCustomerInfoSubmit = async (e) => {
     e.preventDefault();
-    if (!customerName || !customerPhone || !customerBirthYear || !customerCCCD) {
-      alert('Vui lòng điền đầy đủ các trường thông tin bắt buộc.');
+    if (!validateCustomerForm()) {
       return;
     }
 
@@ -1331,7 +1390,7 @@ const TripsPage = () => {
             {/* Passenger Info Form */}
             <div>
               <h4 style={{ fontWeight: '700', marginBottom: '1.5rem', textAlign: 'center' }}>Thông Tin Khách Hàng</h4>
-              <form onSubmit={handleCustomerInfoSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '450px', margin: '0 auto' }}>
+              <form onSubmit={handleCustomerInfoSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '450px', margin: '0 auto' }}>
                 
                 {/* Banner Thông Tin Khách Vãng Lai (nếu chưa đăng nhập) */}
                 {(!isAuthenticated || isGuestBooking) && (
@@ -1377,10 +1436,22 @@ const TripsPage = () => {
                     className="form-control"
                     placeholder="Nhập họ và tên đầy đủ"
                     value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    required
+                    onChange={(e) => {
+                      setCustomerName(e.target.value);
+                      if (customerErrors.customerName) setCustomerErrors(prev => ({ ...prev, customerName: '' }));
+                    }}
+                    style={{
+                      borderColor: customerErrors.customerName ? '#dc2626' : undefined,
+                      backgroundColor: customerErrors.customerName ? '#fff5f5' : undefined
+                    }}
                   />
+                  {customerErrors.customerName && (
+                    <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px', fontWeight: '500' }}>
+                      {customerErrors.customerName}
+                    </div>
+                  )}
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Số điện thoại <span style={{ color: 'red' }}>*</span></label>
                   <input
@@ -1388,22 +1459,46 @@ const TripsPage = () => {
                     className="form-control"
                     placeholder="Nhập số điện thoại liên hệ"
                     value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    required
+                    onChange={(e) => {
+                      setCustomerPhone(e.target.value);
+                      if (customerErrors.customerPhone) setCustomerErrors(prev => ({ ...prev, customerPhone: '' }));
+                    }}
+                    style={{
+                      borderColor: customerErrors.customerPhone ? '#dc2626' : undefined,
+                      backgroundColor: customerErrors.customerPhone ? '#fff5f5' : undefined
+                    }}
                   />
+                  {customerErrors.customerPhone && (
+                    <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px', fontWeight: '500' }}>
+                      {customerErrors.customerPhone}
+                    </div>
+                  )}
                 </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div className="form-group">
                     <label className="form-label">Năm sinh <span style={{ color: 'red' }}>*</span></label>
                     <input
                       type="number"
                       className="form-control"
-                      placeholder="VD: 2002"
+                      placeholder="Nhập năm sinh"
                       value={customerBirthYear}
-                      onChange={(e) => setCustomerBirthYear(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setCustomerBirthYear(e.target.value);
+                        if (customerErrors.customerBirthYear) setCustomerErrors(prev => ({ ...prev, customerBirthYear: '' }));
+                      }}
+                      style={{
+                        borderColor: customerErrors.customerBirthYear ? '#dc2626' : undefined,
+                        backgroundColor: customerErrors.customerBirthYear ? '#fff5f5' : undefined
+                      }}
                     />
+                    {customerErrors.customerBirthYear && (
+                      <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px', fontWeight: '500' }}>
+                        {customerErrors.customerBirthYear}
+                      </div>
+                    )}
                   </div>
+
                   <div className="form-group">
                     <label className="form-label">Số căn cước (CCCD) <span style={{ color: 'red' }}>*</span></label>
                     <input
@@ -1411,11 +1506,23 @@ const TripsPage = () => {
                       className="form-control"
                       placeholder="Nhập số CCCD"
                       value={customerCCCD}
-                      onChange={(e) => setCustomerCCCD(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setCustomerCCCD(e.target.value);
+                        if (customerErrors.customerCCCD) setCustomerErrors(prev => ({ ...prev, customerCCCD: '' }));
+                      }}
+                      style={{
+                        borderColor: customerErrors.customerCCCD ? '#dc2626' : undefined,
+                        backgroundColor: customerErrors.customerCCCD ? '#fff5f5' : undefined
+                      }}
                     />
+                    {customerErrors.customerCCCD && (
+                      <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px', fontWeight: '500' }}>
+                        {customerErrors.customerCCCD}
+                      </div>
+                    )}
                   </div>
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Email (Không bắt buộc - nhận thông tin hóa đơn)</label>
                   <input
@@ -1423,8 +1530,20 @@ const TripsPage = () => {
                     className="form-control"
                     placeholder="email@example.com"
                     value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    onChange={(e) => {
+                      setCustomerEmail(e.target.value);
+                      if (customerErrors.customerEmail) setCustomerErrors(prev => ({ ...prev, customerEmail: '' }));
+                    }}
+                    style={{
+                      borderColor: customerErrors.customerEmail ? '#dc2626' : undefined,
+                      backgroundColor: customerErrors.customerEmail ? '#fff5f5' : undefined
+                    }}
                   />
+                  {customerErrors.customerEmail && (
+                    <div style={{ color: '#dc2626', fontSize: '0.75rem', marginTop: '4px', fontWeight: '500' }}>
+                      {customerErrors.customerEmail}
+                    </div>
+                  )}
                 </div>
 
                 {/* Sử dụng điểm tích lũy thành viên (Chỉ hiển thị khi có đăng nhập) */}

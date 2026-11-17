@@ -25,13 +25,61 @@ exports.createBooking = async (req, res) => {
     const isGuest = !userId || userId === 'user_guest' || userId === 'guest';
     const finalUserId = isGuest ? 'user_guest' : userId;
 
+    const trimmedName = (customerName || '').trim();
+    const trimmedPhone = (customerPhone || '').trim();
+    const birthYearVal = Number(customerBirthYear);
+    const trimmedCCCD = (customerCCCD || '').trim();
+    const trimmedEmail = (customerEmail || '').trim();
+
     if (!tripId || !seats || !seats.length || !pickup || !dropoff || 
-        !customerName || !customerPhone || !customerBirthYear || !customerCCCD) {
+        !trimmedName || !trimmedPhone || !customerBirthYear || !trimmedCCCD) {
       return res.status(400).json({
         success: false,
-        message: 'Vui lòng cung cấp đầy đủ thông tin đặt vé và thông tin khách hàng.'
+        message: 'Vui lòng cung cấp đầy đủ thông tin đặt vé.'
       });
     }
+
+    if (trimmedName.length < 2 || trimmedName.length > 50 || !/^[a-zA-ZÀÁÂÃÈÉÊÌÍÒÓÔÕÙÚĂĐĨŨƠàáâãèéêìíòóôõùúăđĩũơƯĂẠẢẤẦẨẪẬẮẰẲẴẶẸẺẼỀỀỂưăạảấầẩẫậắằẳẵặẹẻẽềềểỄỆỈỊỌỎỐỒỔỖỘỚỜỞỠỢỤỦỨỪễệỉịọỏốồổỗộớờởỡợụủứừỬỮỰỲỴÝỶỸửữựỳỵỷỹ\s]+$/.test(trimmedName)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Họ và tên không hợp lệ.'
+      });
+    }
+
+    if (!/^\d{10}$/.test(trimmedPhone) || !trimmedPhone.startsWith('0') || !/^0(3[2-9]|5[2689]|7[06-9]|8[1-9]|9[0-9])[0-9]{7}$/.test(trimmedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại không hợp lệ.'
+      });
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (isNaN(birthYearVal) || birthYearVal < 1920 || birthYearVal > currentYear) {
+      return res.status(400).json({
+        success: false,
+        message: 'Năm sinh không hợp lệ.'
+      });
+    }
+
+    if (!/^\d{12}$/.test(trimmedCCCD)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số CCCD không hợp lệ.'
+      });
+    }
+
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email không đúng định dạng.'
+      });
+    }
+
+    customerName = trimmedName;
+    customerPhone = trimmedPhone;
+    customerBirthYear = birthYearVal;
+    customerCCCD = trimmedCCCD;
+    customerEmail = trimmedEmail;
 
     // Phân quyền bảo mật: Khách vãng lai (Guest - Không đăng nhập)
     // 1. KHÔNG ĐƯỢC dùng Voucher và Điểm thưởng

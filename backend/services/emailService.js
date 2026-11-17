@@ -323,4 +323,57 @@ exports.sendForgotPasswordOtpEmail = async (toEmail, userName, otp, expiresInMin
   return await sendEmail(toEmail, userName || 'Quý khách', subject, htmlContent);
 };
 
+/**
+ * Send Change Password OTP Verification Email (2FA Security)
+ */
+exports.sendChangePasswordOtpEmail = async (toEmail, userName, otp, expiresInMinutes = 3) => {
+  if (!toEmail) return { success: false, error: 'Email không được để trống' };
+
+  const subject = `[An Bình Lines] Mã xác thực OTP đổi mật khẩu (2FA) - Mã số #${otp}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+      <div style="background-color: #2563eb; color: white; padding: 24px; text-align: center;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 1px;">XÁC THỰC ĐỔI MẬT KHẨU (2FA)</h2>
+        <p style="margin: 8px 0 0 0; opacity: 0.9;">Hệ thống vé xe khách trực tuyến An Bình Lines</p>
+      </div>
+      
+      <div style="padding: 24px; color: #334155; line-height: 1.6;">
+        <h3 style="color: #2563eb; border-bottom: 2px dashed #e2e8f0; padding-bottom: 8px; margin-top: 0;">Mã OTP xác thực bảo mật 2 lớp</h3>
+        
+        <p style="margin: 0 0 16px 0; color: #475569; font-size: 15px;">
+          Xin chào <strong>${userName || 'Quý khách'}</strong>,<br/>
+          Hệ thống vừa nhận được yêu cầu đổi mật khẩu cho tài khoản của bạn. Để hoàn tất quy trình bảo mật 2FA, vui lòng nhập mã xác thực OTP 6 số dưới đây:
+        </p>
+
+        <div style="background-color: #eff6ff; border: 2px dashed #2563eb; border-radius: 10px; padding: 20px; text-align: center; margin: 24px 0;">
+          <span style="display: inline-block; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #1d4ed8; font-family: monospace;">
+            ${otp}
+          </span>
+        </div>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 13.5px; color: #dc2626; font-weight: bold;">
+            ⏱️ Mã OTP này có hiệu lực trong vòng ${expiresInMinutes} phút (${expiresInMinutes * 60} giây).
+          </p>
+          <p style="margin: 6px 0 0 0; font-size: 12.5px; color: #64748b;">
+            Vì lý do an toàn thông tin, tuyệt đối không chia sẻ mã xác thực này cho bất kỳ ai, kể cả nhân viên nhà xe.
+          </p>
+        </div>
+
+        <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">
+          Nếu quý khách không yêu cầu đổi mật khẩu, vui lòng liên hệ ngay hotline <strong>1900 6067</strong> để khóa tài khoản khẩn cấp.
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+        Email này được gửi tự động từ hệ thống An Bình Lines. Vui lòng không trả lời email này.<br>
+        An Bình Lines - Dịch vụ vận tải hành khách chất lượng cao.
+      </div>
+    </div>
+  `;
+
+  return await sendEmail(toEmail, userName || 'Quý khách', subject, htmlContent);
+};
+
 exports.sendEmail = sendEmail;

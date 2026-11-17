@@ -17,7 +17,6 @@ const {
   createCounterBooking,
   cancelTicketAtCounter,
   resendTicketNotification,
-  getCustomerBankAccount,
   getBanksList,
   verifyTicketQR,
   getTripBookings,
@@ -89,7 +88,6 @@ router.get('/agent/tickets', protect, lookupTickets);
 router.post('/agent/book', protect, createCounterBooking);
 router.post('/agent/cancel-ticket/:id', protect, cancelTicketAtCounter);
 router.post('/agent/resend-ticket/:id', protect, resendTicketNotification);
-router.get('/customer-bank-account/:phone', protect, getCustomerBankAccount);
 router.get('/member-by-phone/:phone', getMemberByPhone);
 router.get('/banks-list', protect, getBanksList);
 router.post('/agent/verify-ticket-qr', protect, verifyTicketQR);
