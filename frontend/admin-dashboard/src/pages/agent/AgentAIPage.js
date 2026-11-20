@@ -1,34 +1,50 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
-
-const QUICK_PROMPTS = [
-  'Chính sách đổi trả vé ngày thường và dịp Lễ Tết',
-  'Quy định cân nặng và kích thước hành lý gửi gầm',
-  'Chính sách vé cho trẻ em và người lớn tuổi',
-  'Thủ tục hỗ trợ hành khách đổi chuyến giờ chót',
-  'Quy định vận chuyển thú cưng và xe máy kèm theo',
-  'Quy định đón trả khách tại các trạm trung chuyển'
-];
 
 const AgentAIPage = () => {
   const { token, user } = useContext(AuthContext);
   const [messages, setMessages] = useState([
     {
       sender: 'assistant',
-      text: 'Xin chào anh/chị. Tôi là Trợ Lý Số An Bình AI hỗ trợ nghiệp vụ bán vé và điều hành quầy. Anh/chị cần tra cứu giá vé, chính sách hoàn hủy, quy định hành lý, thủ tục đổi vé hay quy chế vận tải nào của nhà xe không ạ?',
+      text: 'Xin chào anh/chị. Tôi là Trợ Lý Số An Bình AI hỗ trợ nghiệp vụ quầy vé.\nAnh/chị có thể tra cứu nhanh các thông tin:\n- Lịch trình xuất bến, giá vé niêm yết và tình trạng chỗ trống các chuyến xe.\n- Chính sách hoàn / hủy vé (quy định chỉ được hủy trước giờ khởi hành ít nhất 5 ngày, hoàn 100%).',
       timestamp: new Date()
     }
   ]);
   const [inputText, setInputText] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [sending, setSending] = useState(false);
+  const [currentShift, setCurrentShift] = useState(null);
+  const [loadingShift, setLoadingShift] = useState(true);
   const feedRef = useRef(null);
   const inputRef = useRef(null);
+
+  const fetchShiftInfo = useCallback(async () => {
+    if (!token) return;
+    try {
+      setLoadingShift(true);
+      const res = await fetch('http://localhost:8000/api/users/shift/current', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.session) {
+        setCurrentShift(data.session);
+      } else {
+        setCurrentShift(null);
+      }
+    } catch (err) {
+      setCurrentShift(null);
+    } finally {
+      setLoadingShift(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     setSessionId('agent_ai_session_' + Math.random().toString(36).substring(2, 9));
-  }, []);
+    fetchShiftInfo();
+  }, [fetchShiftInfo]);
 
   useEffect(() => {
     if (feedRef.current) {
@@ -58,7 +74,7 @@ const AgentAIPage = () => {
           text: msg.text
         }));
 
-      const res = await fetch('http://localhost:8000/api/v1/reviews/chat', {
+      const res = await fetch('http://localhost:8000/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -67,14 +83,26 @@ const AgentAIPage = () => {
         body: JSON.stringify({
           message: userMessage.text,
           sessionId,
-          history: historyContext
+          history: historyContext,
+          source: 'staff_agent',
+          role: 'ticket_agent'
         })
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        const cleanText = (data.text || '')
+          .replace(/\s*[\(\[]\s*(?:ID|Mã\s*(?:chuyến|ID|vé)?)\s*:\s*[0-9a-fA-F]{24}\s*[\)\]]/gi, '')
+          .replace(/\s*(?:ID|Mã\s*(?:chuyến|ID|vé)?)\s*:\s*[0-9a-fA-F]{24}/gi, '')
+          .replace(/\s*[\(\[]\s*[0-9a-fA-F]{24}\s*[\)\]]/g, '')
+          .replace(/\b[0-9a-fA-F]{24}\b/g, '')
+          .replace(/\(\s*\)/g, '')
+          .replace(/\[\s*\]/g, '')
+          .replace(/\s+([.,;:!?])/g, '$1')
+          .trim();
+
         setMessages(prev => [...prev, {
           sender: 'assistant',
-          text: data.text,
+          text: cleanText,
           timestamp: new Date(data.timestamp || new Date())
         }]);
       } else {
@@ -100,7 +128,7 @@ const AgentAIPage = () => {
     setMessages([
       {
         sender: 'assistant',
-        text: 'Đoạn hội thoại đã được làm mới. Tôi sẵn sàng hỗ trợ anh/chị tra cứu các quy định và nghiệp vụ bán vé mới.',
+        text: 'Hội thoại đã được làm mới. Tôi sẵn sàng hỗ trợ tra cứu các quy định và nghiệp vụ bán vé mới.',
         timestamp: new Date()
       }
     ]);
@@ -155,24 +183,6 @@ const AgentAIPage = () => {
           gap: 1rem;
         }
 
-        .ai-prompt-chip {
-          background: #ffffff;
-          border: 1px solid #cbd5e1;
-          color: #1e293b;
-          border-radius: 20px;
-          padding: 5px 12px;
-          font-size: 0.72rem;
-          font-weight: 600;
-          cursor: pointer;
-          white-space: nowrap;
-          transition: all 0.15s ease;
-        }
-        .ai-prompt-chip:hover {
-          background: #eff6ff;
-          border-color: #93c5fd;
-          color: #1d4ed8;
-        }
-
         .ai-sidebar-card {
           background: #ffffff;
           border-radius: 14px;
@@ -215,16 +225,6 @@ const AgentAIPage = () => {
                 Trợ Lý Số &amp; Tư Vấn Nghiệp Vụ AI
               </h1>
               <span style={{
-                background: '#eff6ff',
-                color: '#2563eb',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                An Bình AI 2.0
-              </span>
-              <span style={{
                 background: '#ecfdf5',
                 color: '#059669',
                 padding: '2px 8px',
@@ -246,7 +246,7 @@ const AgentAIPage = () => {
               </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
-              Hệ thống trí tuệ nhân tạo hỗ trợ tra cứu chính sách vé, giá cước, lịch trình xe, quy định hành lý và thủ tục đổi/trả vé.
+              Hệ thống trí tuệ nhân tạo hỗ trợ nhân viên tra cứu lịch trình chuyến xe, giá vé niêm yết và quy định hủy vé.
             </p>
           </div>
 
@@ -313,9 +313,6 @@ const AgentAIPage = () => {
                 Hội Thoại Nghiệp Vụ Bán Vé
               </span>
             </div>
-            <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '600' }}>
-              Phiên: {sessionId ? sessionId.substring(0, 16) : 'Đang khởi tạo'}
-            </span>
           </div>
 
           {/* Danh sách tin nhắn */}
@@ -405,32 +402,6 @@ const AgentAIPage = () => {
             )}
           </div>
 
-          {/* Vùng gợi ý câu hỏi nhanh (Prompt Chips) */}
-          <div style={{
-            padding: '8px 1.25rem',
-            background: '#ffffff',
-            borderTop: '1px solid #f1f5f9',
-            display: 'flex',
-            gap: '6px',
-            overflowX: 'auto',
-            scrollbarWidth: 'none'
-          }}>
-            <span style={{ fontSize: '0.68rem', fontWeight: '800', color: '#64748b', alignSelf: 'center', whiteSpace: 'nowrap' }}>
-              Gợi ý nhanh:
-            </span>
-            {QUICK_PROMPTS.map((prompt, idx) => (
-              <button
-                key={idx}
-                type="button"
-                className="ai-prompt-chip"
-                onClick={() => handleSendMessage(prompt)}
-                disabled={sending}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-
           {/* Form nhập liệu tin nhắn */}
           <form
             onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
@@ -446,7 +417,7 @@ const AgentAIPage = () => {
             <input
               ref={inputRef}
               type="text"
-              placeholder="Nhập câu hỏi nghiệp vụ bán vé, hoàn hủy, hành lý... (Nhấn Enter để gửi)"
+              placeholder="Nhập câu hỏi tra cứu chuyến xe, giá vé, chính sách hoàn hủy... (Nhấn Enter để gửi)"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -483,87 +454,107 @@ const AgentAIPage = () => {
           </form>
         </div>
 
-        {/* CỘT PHẢI: SỔ TAY NGHIỆP VỤ & QUY ĐỊNH BÁN VÉ */}
+        {/* CỘT PHẢI: SỔ TAY NGHIỆP VỤ & QUY ĐỊNH BÁN VÉ THỰC TẾ */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {/* Card 1: Thông tin phiên trực quầy */}
+          {/* Card 1: Thông tin phiên trực quầy thực tế */}
           <div className="ai-sidebar-card">
             <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
               <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0f172a' }}>
                 Thông Tin Trực Quầy
               </div>
               <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                Phiên làm việc nhân viên bán vé
+                Dữ liệu phiên làm việc thực tế từ hệ thống
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Nhân viên:</span>
-                <span style={{ fontWeight: '700', color: '#0f172a' }}>{user?.name || 'Nhân Viên Bán Vé'}</span>
+                <span style={{ fontWeight: '700', color: '#0f172a' }}>{user?.name || currentShift?.userId?.name || 'Nhân Viên Bán Vé'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Vị trí trực:</span>
-                <span style={{ fontWeight: '700', color: '#2563eb' }}>Quầy Số 01 - BXMĐ</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Ca làm việc:</span>
-                <span style={{ fontWeight: '700', color: '#0f172a' }}>Hành chính 8h (08:00 - 17:00)</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: '#64748b' }}>Trạng thái:</span>
-                <span style={{ fontWeight: '700', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px' }}>
-                  Đang trong ca trực
+                <span style={{ color: '#64748b' }}>Văn phòng trực:</span>
+                <span style={{ fontWeight: '700', color: '#2563eb' }}>
+                  {currentShift?.location || user?.assignedOffice || user?.branch || 'Văn phòng chi nhánh'}
                 </span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b' }}>Trạng thái ca:</span>
+                {loadingShift ? (
+                  <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Đang tải...</span>
+                ) : currentShift ? (
+                  <span style={{ fontWeight: '700', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px' }}>
+                    Đang trong ca trực
+                  </span>
+                ) : (
+                  <span style={{ fontWeight: '700', color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+                    Chưa mở ca trực
+                  </span>
+                )}
+              </div>
+              {currentShift && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Giờ mở ca:</span>
+                    <span style={{ fontWeight: '700', color: '#0f172a' }}>
+                      {currentShift.startTime ? new Date(currentShift.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Tiền két nhận bàn giao:</span>
+                    <span style={{ fontWeight: '700', color: '#047857' }}>
+                      {(currentShift.initialCash || 0).toLocaleString('vi-VN')} đ
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Card 2: Tóm tắt quy định nghiệp vụ cốt lõi */}
+          {/* Card 2: Quy chuẩn nghiệp vụ cốt lõi chuẩn xác */}
           <div className="ai-sidebar-card">
             <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '6px' }}>
               <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#0f172a' }}>
                 Quy Chuẩn Nghiệp Vụ Cốt Lõi
               </div>
               <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                Tóm tắt quy tắc áp dụng cho khách tại quầy
+                Quy chế vận tải &amp; bán vé An Bình Lines
               </div>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.72rem' }}>
-              {/* Mục 1: Đổi trả vé */}
-              <div style={{ background: '#f8fafc', padding: '7px 9px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: '800', color: '#1e40af', marginBottom: '2px' }}>
-                  Đổi / Trả vé ngày thường
+              {/* Mục 1: Chính sách hoàn hủy vé */}
+              <div style={{ background: '#f8fafc', padding: '9px 11px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: '800', color: '#1e40af', marginBottom: '3px' }}>
+                  Chính sách Hoàn / Hủy vé
                 </div>
-                <div style={{ color: '#475569', lineHeight: '1.4' }}>
-                  - Trước giờ xuất bến 24h: Phí 10% giá vé.<br/>
-                  - Trước 12h - 24h: Phí 20% giá vé.<br/>
-                  - Dưới 12h: Không áp dụng hoàn hủy.
+                <div style={{ color: '#475569', lineHeight: '1.45' }}>
+                  - <strong>Trước giờ chạy &gt;= 5 ngày (120h)</strong>: Hoàn 100% giá vé (hoàn Điểm Tích Lũy hoặc tiền mặt tại quầy).<br/>
+                  - <strong>Dưới 5 ngày trước giờ chạy</strong>: Tuyệt đối không hỗ trợ hoàn hoặc hủy vé.
                 </div>
               </div>
 
-              {/* Mục 2: Vé Lễ Tết */}
-              <div style={{ background: '#f8fafc', padding: '7px 9px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                <div style={{ fontWeight: '800', color: '#b45309', marginBottom: '2px' }}>
-                  Đổi / Trả vé dịp Tết &amp; Lễ lớn
+              {/* Mục 2: Quy chuẩn giá vé & vị trí ghế */}
+              <div style={{ background: '#f8fafc', padding: '9px 11px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: '800', color: '#0f172a', marginBottom: '3px' }}>
+                  Quy Chuẩn Giá Vé &amp; Vị Trí Ghế
                 </div>
-                <div style={{ color: '#475569', lineHeight: '1.4' }}>
-                  - Trước giờ khởi hành 48h: Khấu trừ 30%.<br/>
-                  - Trong vòng 48h trước giờ chạy: Không hoàn vé.
+                <div style={{ color: '#475569', lineHeight: '1.45' }}>
+                  - Giá vé áp dụng đồng nhất theo giá niêm yết của từng chuyến và vị trí ghế hành khách chọn trên sơ đồ.<br/>
+                  - Hệ thống không áp dụng chính sách vé ưu tiên hay giảm giá riêng.
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Card 3: Đường dây liên hệ nội bộ */}
+          {/* Card 3: Đường dây liên hệ nội bộ chính thức */}
           <div className="ai-sidebar-card">
             <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>
               Đường Dây Hỗ Trợ Nội Bộ
             </div>
             <div style={{ fontSize: '0.7rem', color: '#64748b', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              <div>Tổng đài nhà xe: <strong style={{ color: '#2563eb' }}>1900 6868</strong></div>
-              <div>Trực ban Bến Xe Miền Đông: <strong style={{ color: '#0f172a' }}>028 3899 1607</strong></div>
-              <div>Hỗ trợ kỹ thuật phần mềm: <strong style={{ color: '#0f172a' }}>0912.345.678</strong></div>
+              <div>Tổng đài CSKH &amp; Đặt vé: <strong style={{ color: '#2563eb' }}>1900 6067</strong> (24/7)</div>
+              <div>Bộ phận Kỹ thuật &amp; Vận hành nội bộ</div>
             </div>
           </div>
         </div>

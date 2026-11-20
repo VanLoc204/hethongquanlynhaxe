@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const VIETNAMESE_DAYS = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ Nhật'];
 const SHORT_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -10,6 +10,15 @@ const StaffSchedulePage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
   const [schedules, setSchedules] = useState([]);
   const [trips, setTrips] = useState([]);
+  const [attendances, setAttendances] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [activeShift, setActiveShift] = useState(null);
+  const [agentInfo, setAgentInfo] = useState({
+    office: 'Văn phòng Bến xe Miền Đông',
+    branchName: 'Chi nhánh TP. Hồ Chí Minh',
+    shiftType: 'morning',
+    shiftName: 'Ca Sáng (06:30 - 14:30)'
+  });
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -38,6 +47,12 @@ const StaffSchedulePage = ({ setActiveTab }) => {
       if (res.ok && data.success) {
         setTrips(data.trips || []);
         setSchedules(data.schedules || []);
+        setAttendances(data.attendances || []);
+        setLeaves(data.leaves || []);
+        setActiveShift(data.activeShift || null);
+        if (data.agentProfile) {
+          setAgentInfo(data.agentProfile);
+        }
       } else {
         setError(data.message || 'Không thể tải lịch làm việc cá nhân.');
       }
@@ -84,52 +99,175 @@ const StaffSchedulePage = ({ setActiveTab }) => {
   const isToday = (dateObj) => {
     const today = new Date();
     return dateObj.getFullYear() === today.getFullYear() &&
-           dateObj.getMonth() === today.getMonth() &&
-           dateObj.getDate() === today.getDate();
+      dateObj.getMonth() === today.getMonth() &&
+      dateObj.getDate() === today.getDate();
   };
 
-  // Lấy các ca hoặc chuyến xe trong ngày cụ thể
+  // Chuẩn hóa tên ca và thời gian nghỉ (tinh gọn, không lặp lại giờ trong tiêu đề)
+  const getShiftDetails = (shiftType, startTime, endTime) => {
+    let title = 'Ca Sáng';
+    let breakTime = '10:30 - 11:00 (Nghỉ giữa ca)';
+
+    if (shiftType === 'evening') {
+      title = 'Ca Chiều';
+      breakTime = '18:00 - 18:30 (Nghỉ giữa ca)';
+    } else if (shiftType === 'morning') {
+      title = 'Ca Sáng';
+      breakTime = '10:30 - 11:00 (Nghỉ giữa ca)';
+    } else if (shiftType === 'full_day') {
+      title = 'Ca Hành Chính';
+      breakTime = '12:00 - 13:00 (Nghỉ trưa)';
+    } else if (shiftType === 'night') {
+      title = 'Ca Đêm';
+      breakTime = '02:00 - 02:30 (Nghỉ giữa ca)';
+    } else {
+      title = 'Ca Trực Quầy';
+      breakTime = 'Nghỉ giữa ca 30 phút';
+    }
+
+    return { title, breakTime };
+  };
+
+  // Setup điều kiện chuẩn xác cho trạng thái mỗi ngày dựa trên CSDL thực tế
+  const calculateScheduleStatus = (dateObj, shiftStartTime = '06:30') => {
+    const dateStr = dateObj.toLocaleDateString('en-CA');
+    const dayNum = dateObj.getDay();
+
+    // 1. Kiểm tra đơn xin nghỉ phép đã được phê duyệt (LeaveRequest)
+    const isApprovedLeave = leaves.some(l => {
+      if (l.status !== 'approved') return false;
+      const start = new Date(l.startDate).toLocaleDateString('en-CA');
+      const end = new Date(l.endDate).toLocaleDateString('en-CA');
+      return dateStr >= start && dateStr <= end;
+    });
+    if (isApprovedLeave) return 'leave';
+
+    // 2. Ngày nghỉ hàng tuần (Chủ Nhật)
+    if (dayNum === 0) return 'off';
+
+    const now = new Date();
+    const todayStr = now.toLocaleDateString('en-CA');
+
+    // 3. Tìm bản ghi chấm công thực tế của ngày này (Attendance)
+    const dayAtt = attendances.find(a => {
+      const dStr = new Date(a.date).toLocaleDateString('en-CA');
+      const inStr = a.checkInTime ? new Date(a.checkInTime).toLocaleDateString('en-CA') : null;
+      return dStr === dateStr || inStr === dateStr;
+    });
+
+    // 4. NẾU LÀ NGÀY HÔM NAY (TODAY)
+    if (dateStr === todayStr) {
+      if (dayAtt?.status === 'active') return 'in_shift';
+      if (dayAtt?.status === 'closed') {
+        if (dayAtt.checkInTime) {
+          const inD = new Date(dayAtt.checkInTime);
+          const inMinutes = inD.getHours() * 60 + inD.getMinutes();
+          const [sH, sM] = shiftStartTime.split(':').map(Number);
+          if (inMinutes > (sH * 60 + (sM || 0) + 15)) return 'late';
+        }
+        return 'completed';
+      }
+      const [sH, sM] = shiftStartTime.split(':').map(Number);
+      const shiftStartMinutes = sH * 60 + (sM || 0);
+      const curMinutes = now.getHours() * 60 + now.getMinutes();
+
+      // Giờ kết thúc ca:
+      // Ca sáng (06:30): kết thúc 14:30
+      // Ca chiều (14:00): kết thúc 22:00
+      // Ca hành chính: kết thúc 17:00
+      let shiftEndMinutes = shiftStartMinutes + 8 * 60;
+      if (shiftStartTime.startsWith('06')) shiftEndMinutes = 14 * 60 + 30;
+      else if (shiftStartTime.startsWith('14')) shiftEndMinutes = 22 * 60;
+      else if (shiftStartTime.startsWith('08') || shiftStartTime.startsWith('07')) shiftEndMinutes = 17 * 60;
+
+      // Nếu đã quá giờ kết thúc ca mà không chấm công -> VẮNG MẶT (BỎ CA)
+      if (curMinutes > shiftEndMinutes) return 'absent';
+      if (curMinutes > shiftStartMinutes + 15) return 'late';
+      return 'scheduled';
+    }
+
+    // 5. NẾU LÀ NGÀY TRONG QUÁ KHỨ (< today)
+    if (dateStr < todayStr) {
+      if (dayAtt && (dayAtt.status === 'closed' || dayAtt.checkInTime)) {
+        if (dayAtt.checkInTime) {
+          const inD = new Date(dayAtt.checkInTime);
+          const inMinutes = inD.getHours() * 60 + inD.getMinutes();
+          const [sH, sM] = shiftStartTime.split(':').map(Number);
+          if (inMinutes > (sH * 60 + (sM || 0) + 15)) return 'late';
+        }
+        return 'completed';
+      }
+      // Quá khứ không có chấm công và không có đơn xin nghỉ phép -> VẮNG MẶT
+      return 'absent';
+    }
+
+    // 6. NẾU LÀ NGÀY TRONG TƯƠNG LAI (> today)
+    return 'scheduled';
+  };
+
+  // Lấy các ca hoặc chuyến xe trong ngày cụ thể (phân quyền chuẩn theo vai trò)
   const getShiftsForDay = (dateObj) => {
     const dateStr = dateObj.toLocaleDateString('en-CA');
     const dayNum = dateObj.getDay();
 
-    // 1. Nếu là TÀI XẾ hoặc PHỤ XE: phân công theo chuyến xe
+    // 1. Nếu là TÀI XẾ hoặc PHỤ XE: Lịch làm việc phân công theo CHUYẾN XE (Trips)
     if (isDriverOrAttendant) {
-      if (trips && trips.length > 0) {
-        const dayTrips = trips.filter(t => {
-          if (!t.departureTime) return false;
-          const d = new Date(t.departureTime);
-          return d.toLocaleDateString('en-CA') === dateStr;
+      const dayTrips = (trips || []).filter(t => {
+        if (!t.departureTime) return false;
+        return new Date(t.departureTime).toLocaleDateString('en-CA') === dateStr;
+      });
+
+      if (dayTrips.length === 0) {
+        const isLeave = leaves.some(l => {
+          if (l.status !== 'approved') return false;
+          const start = new Date(l.startDate).toLocaleDateString('en-CA');
+          const end = new Date(l.endDate).toLocaleDateString('en-CA');
+          return dateStr >= start && dateStr <= end;
         });
 
-        if (dayTrips.length > 0) {
-          return dayTrips.map(t => {
-            const dep = new Date(t.departureTime);
-            const arr = t.arrivalTime ? new Date(t.arrivalTime) : new Date(dep.getTime() + 5.5 * 3600 * 1000);
-            return {
-              _id: t._id,
-              isTrip: true,
-              title: t.routeId ? `${t.routeId.startPoint} - ${t.routeId.endPoint}` : 'Chuyến xe',
-              timeRange: `${dep.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${arr.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-              departureTime: t.departureTime,
-              arrivalTime: t.arrivalTime,
-              busPlate: t.busId?.plateNumber || '51B-029.29',
-              busType: t.busId?.type || 'Xe Khách Cao Cấp',
-              status: t.journeyStatus || 'scheduled',
-              notes: 'Lịch chạy chuyến được phân công',
-              salaryType: 'Lương cố định tháng',
-              duration: '8 tiếng/ngày',
-              tripData: t
-            };
-          });
-        }
+        return [{
+          _id: `crew-off-${dateStr}`,
+          isOff: !isLeave,
+          isLeave,
+          title: isLeave ? 'Nghỉ Phép' : 'Nghỉ Ca',
+          timeRange: isLeave ? 'Theo đơn phê duyệt' : 'Không có chuyến xe',
+          busPlate: '--',
+          busType: '--',
+          status: isLeave ? 'leave' : 'off'
+        }];
       }
 
-      if (dayNum === 0) return []; // Chủ nhật nghỉ
-      return [];
+      return dayTrips.map(t => {
+        const dep = new Date(t.departureTime);
+        const arr = t.arrivalTime ? new Date(t.arrivalTime) : new Date(dep.getTime() + 5.5 * 3600 * 1000);
+        let status = t.journeyStatus || 'scheduled';
+        const now = new Date();
+        const isPast = dep < now;
+        if (status === 'completed') status = 'completed';
+        else if (status === 'running') status = 'in_transit';
+        else if (status === 'cancelled') status = 'cancelled';
+        else if (isPast && (now.getTime() - dep.getTime()) > 30 * 60000) status = 'late';
+        else status = 'scheduled';
+
+        return {
+          _id: t._id,
+          isTrip: true,
+          title: t.routeId?.name || (t.routeId ? `${t.routeId.startPoint} ➔ ${t.routeId.endPoint}` : 'Chuyến xe'),
+          timeRange: `${dep.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${arr.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+          departureTime: t.departureTime,
+          arrivalTime: t.arrivalTime,
+          busPlate: t.busId?.plateNumber || '51B-029.29',
+          busType: t.busId?.type || 'Xe Khách Cao Cấp',
+          roleInTrip: user?.role === 'driver' ? 'Tài chính' : 'Phụ xe',
+          status,
+          duration: 'Theo chuyến xe',
+          salaryType: 'Lương cố định tháng',
+          tripData: t
+        };
+      });
     }
 
-    // 2. NHÂN VIÊN BÁN VÉ / HÀNH CHÍNH (Giờ hành chính: 08:00 - 17:00, Nghỉ CN)
+    // 2. NHÂN VIÊN BÁN VÉ / HÀNH CHÍNH / QUẢN LÝ (Chủ Nhật nghỉ hàng tuần theo quy định)
     if (dayNum === 0) {
       return [{
         _id: `off-sun-${dateStr}`,
@@ -137,85 +275,44 @@ const StaffSchedulePage = ({ setActiveTab }) => {
         title: 'Nghỉ Chủ Nhật',
         timeRange: 'Nghỉ theo quy định',
         breakTime: '',
-        workLocation: 'Toàn hệ thống',
-        assignedDuty: 'Nghỉ tuần theo chế độ hành chính',
+        workLocation: agentInfo?.office || 'Văn phòng Bến xe Miền Đông',
         workHours: 0,
         duration: 'Nghỉ',
         salaryType: 'Lương cố định tháng',
-        status: 'scheduled',
-        notes: 'Nghỉ cố định chủ nhật hàng tuần'
+        status: 'off'
       }];
     }
 
-    // Tìm trong bảng WorkSchedule từ CSDL
-    const daySchedules = schedules.filter(s => {
-      const d = new Date(s.date);
-      return d.toLocaleDateString('en-CA') === dateStr;
-    });
+    // Tự động phân ca chuẩn mực:
+    // Với ticket_agent: lấy từ agentProfile?.shiftType ('morning' | 'evening')
+    // Với office / quản lý: Ca Hành Chính 8h (08:00 - 17:00)
+    const shiftType = isTicketAgent ? (agentInfo?.shiftType || 'morning') : 'full_day';
+    const startTime = isTicketAgent ? (shiftType === 'evening' ? '14:00' : '06:30') : '08:00';
+    const endTime = isTicketAgent ? (shiftType === 'evening' ? '22:00' : '14:30') : '17:00';
+    const details = getShiftDetails(shiftType, startTime, endTime);
+    const computedStatus = calculateScheduleStatus(dateObj, startTime);
 
-    let currentStatus = 'scheduled';
-    if (isToday(dateObj)) {
-      const currentHour = new Date().getHours();
-      if (currentHour >= 8 && currentHour < 17) {
-        currentStatus = 'in_shift';
-      } else if (currentHour >= 17) {
-        currentStatus = 'completed';
-      } else {
-        currentStatus = 'scheduled';
-      }
-    } else {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const compareDate = new Date(dateObj);
-      compareDate.setHours(0, 0, 0, 0);
-      if (compareDate < today) {
-        currentStatus = 'completed';
-      } else {
-        currentStatus = 'scheduled';
-      }
-    }
-
-    if (daySchedules.length > 0) {
-      const s = daySchedules[0];
-      return [{
-        _id: s._id,
-        isOffice: true,
-        title: s.shiftName || 'Ca Hành Chính 8h',
-        timeRange: `${s.startTime || '08:00'} - ${s.endTime || '17:00'}`,
-        breakTime: '12:00 - 13:00 (Nghỉ trưa)',
-        workLocation: 'Quầy Vé Số 01 - Bến Xe Miền Đông',
-        assignedDuty: 'Bán vé & Tiếp đón hành khách tại quầy',
-        workHours: s.workHours || 8,
-        duration: '8 tiếng / ngày',
-        salaryType: s.salaryType || 'Lương cố định tháng',
-        status: s.status === 'leave' || s.status === 'absent' ? s.status : currentStatus,
-        notes: s.notes || 'Lịch cố định 8 tiếng/ngày (Sáng 08:00-12:00, Chiều 13:00-17:00).'
-      }];
-    }
-
-    // Mặc định ca hành chính nếu chưa có record riêng
     return [{
-      _id: `default-${dateStr}`,
-      isOffice: true,
-      title: 'Ca Hành Chính 8h',
-      timeRange: '08:00 - 17:00',
-      breakTime: '12:00 - 13:00 (Nghỉ trưa)',
-      workLocation: 'Quầy Vé Số 01 - Bến Xe Miền Đông',
-      assignedDuty: 'Bán vé & Tiếp đón hành khách tại quầy',
-      workHours: 8,
+      _id: `shift-${dateStr}`,
+      isOffice: !isTicketAgent,
+      isTicketAgent,
+      title: details.title,
+      timeRange: `${startTime} - ${endTime}`,
+      breakTime: details.breakTime,
+      workLocation: agentInfo?.office || 'Văn phòng Bến xe Miền Đông',
       duration: '8 tiếng / ngày',
       salaryType: 'Lương cố định tháng',
-      status: currentStatus,
-      notes: 'Lịch cố định 8 tiếng/ngày (Sáng 08:00-12:00, Chiều 13:00-17:00).'
+      status: computedStatus
     }];
   };
 
-  // Định dạng badge trạng thái (Không dùng icon)
+  // Định dạng badge trạng thái chuẩn mực (Không dùng emoji icon)
   const getStatusBadge = (status) => {
     switch (status) {
       case 'in_shift':
+        return { text: 'Đang trực ca', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
       case 'in_transit':
-        return { text: isDriverOrAttendant ? 'Đang di chuyển' : 'Đang trực ca', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
+        return { text: 'Đang di chuyển', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
       case 'completed':
       case 'present':
         return { text: 'Đã hoàn thành', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' };
@@ -227,8 +324,12 @@ const StaffSchedulePage = ({ setActiveTab }) => {
         return { text: 'Nghỉ phép', bg: '#fefce8', color: '#a16207', border: '#fef08a' };
       case 'absent':
         return { text: 'Vắng mặt', bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' };
+      case 'off':
+        return { text: 'Nghỉ tuần', bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' };
+      case 'cancelled':
+        return { text: 'Chuyến hủy', bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' };
       default:
-        return { text: 'Lịch cố định', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
+        return { text: 'Lịch phân công', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
     }
   };
 
@@ -585,34 +686,34 @@ const StaffSchedulePage = ({ setActiveTab }) => {
             }}>
               {isDriverOrAttendant
                 ? (todayShifts.length > 0 ? `${todayShifts.length} chuyến` : 'Nghỉ ca')
-                : (todayActiveShift ? 'Ca Hành Chính 8h' : 'Nghỉ tuần')}
+                : (todayActiveShift ? (todayActiveShift.title || 'Ca Trực Phân Công') : 'Nghỉ tuần')}
             </div>
             <div className="stat-sub" style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {isDriverOrAttendant
-                ? (todayShifts.length > 0 ? todayShifts[0].title : 'Không có ca chạy')
-                : (todayActiveShift ? '08:00 - 17:00 (Nghỉ trưa 12:00-13:00)' : 'Nghỉ Chủ Nhật theo quy định')}
+                ? (todayShifts.length > 0 && !todayShifts[0].isOff ? todayShifts[0].title : 'Không có ca chạy hôm nay')
+                : (todayActiveShift ? `Giờ: ${todayActiveShift.timeRange}` : 'Nghỉ Chủ Nhật theo quy định')}
             </div>
           </div>
 
-          {/* Card 3: Địa điểm trực hoặc Xuất bến */}
+          {/* Card 3: Nơi làm việc hoặc Phương tiện */}
           <div className="schedule-stat-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
               <span className="stat-title" style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {isDriverOrAttendant ? 'XUẤT BẾN TỚI' : 'ĐỊA ĐIỂM / QUẦY'}
+                {isDriverOrAttendant ? 'PHƯƠNG TIỆN PHÂN CÔNG' : 'ĐỊA ĐIỂM LÀM VIỆC'}
               </span>
               <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: '700' }}>
-                {isDriverOrAttendant ? 'Phương tiện' : 'Quầy vé'}
+                {isDriverOrAttendant ? 'Phương tiện' : 'Địa điểm'}
               </span>
             </div>
-            <div className="stat-val" style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
+            <div className="stat-val" style={{ fontSize: '1.05rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
               {isDriverOrAttendant
-                ? (todayShifts[0]?.timeRange?.split('-')[0]?.trim() || '--:--')
-                : 'Quầy Số 01'}
+                ? (todayShifts[0]?.busPlate && todayShifts[0]?.busPlate !== '--' ? `Xe ${todayShifts[0].busPlate}` : 'Chưa có chuyến')
+                : (agentInfo?.office || 'Văn phòng Bến xe Miền Đông')}
             </div>
             <div className="stat-sub" style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {isDriverOrAttendant
-                ? (todayShifts[0]?.busPlate ? `Xe ${todayShifts[0].busPlate}` : 'Chưa có chuyến')
-                : 'Bến Xe Miền Đông (TP.HCM)'}
+                ? (todayShifts[0]?.busType || 'Tổ lái An Bình Lines')
+                : (activeShift ? `Đang trực ca tại: ${activeShift.userId?.assignedOffice || user?.assignedOffice || 'Văn phòng vé'}` : (agentInfo?.branchName || 'Chi nhánh TP. Hồ Chí Minh'))}
             </div>
           </div>
 
@@ -931,27 +1032,27 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                             );
                           }
 
-                          // Trường hợp nhân viên bán vé / hành chính
-                          if (!isDriverOrAttendant) {
+                          // Trường hợp nhân viên bán vé
+                          if (isTicketAgent) {
                             return (
                               <div
                                 key={shift._id}
                                 style={{
                                   background: '#ffffff',
-                                  border: activeDay ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+                                  border: activeDay ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
                                   borderRadius: '8px',
                                   padding: '9px 8px',
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                  boxShadow: activeDay ? '0 2px 6px rgba(59,130,246,0.12)' : '0 1px 3px rgba(0,0,0,0.03)',
                                   display: 'flex',
                                   flexDirection: 'column',
-                                  gap: '4px',
+                                  gap: '3px',
                                   textAlign: 'left'
                                 }}
                               >
                                 {/* Tiêu đề ca */}
                                 <div style={{
                                   fontWeight: '800',
-                                  fontSize: '0.78rem',
+                                  fontSize: '0.82rem',
                                   color: '#0f172a',
                                   lineHeight: '1.25'
                                 }}>
@@ -968,7 +1069,7 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                                   Giờ: {shift.timeRange}
                                 </div>
 
-                                {/* Giờ nghỉ trưa */}
+                                {/* Giờ nghỉ giữa ca */}
                                 {shift.breakTime && (
                                   <div style={{
                                     fontSize: '0.65rem',
@@ -979,28 +1080,32 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                                   </div>
                                 )}
 
-                                {/* Vị trí quầy trực */}
+                                {/* Địa điểm làm việc */}
                                 <div style={{
-                                  fontSize: '0.7rem',
+                                  fontSize: '0.68rem',
                                   color: '#334155',
                                   fontWeight: '600',
-                                  lineHeight: '1.2',
-                                  marginTop: '2px'
+                                  lineHeight: '1.25',
+                                  marginTop: '2px',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
                                 }}>
-                                  Quầy: <span style={{ fontWeight: '700', color: '#0f172a' }}>{shift.workLocation}</span>
+                                  {shift.workLocation || agentInfo?.office || 'Văn phòng Bến xe Miền Đông'}
                                 </div>
-
-                                {/* Nhiệm vụ */}
-                                <div style={{
-                                  fontSize: '0.65rem',
-                                  color: '#64748b',
-                                  lineHeight: '1.2'
-                                }}>
-                                  Nhiệm vụ: {shift.assignedDuty}
-                                </div>
+                                {activeDay && activeShift && (
+                                  <div style={{
+                                    fontSize: '0.65rem',
+                                    color: '#059669',
+                                    fontWeight: '700',
+                                    lineHeight: '1.2'
+                                  }}>
+                                    Đang trực tại: {activeShift.userId?.assignedOffice || user?.assignedOffice || 'Văn phòng vé'}
+                                  </div>
+                                )}
 
                                 {/* Trạng thái */}
-                                <div style={{ marginTop: '4px' }}>
+                                <div style={{ marginTop: '3px' }}>
                                   <span style={{
                                     display: 'inline-block',
                                     fontSize: '0.62rem',
@@ -1020,12 +1125,12 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                                   <button
                                     onClick={() => setActiveTab && setActiveTab('agent-booking')}
                                     style={{
-                                      marginTop: '5px',
+                                      marginTop: '4px',
                                       backgroundColor: '#2563eb',
                                       color: '#ffffff',
                                       border: 'none',
                                       borderRadius: '6px',
-                                      padding: '6px 8px',
+                                      padding: '5px 8px',
                                       fontSize: '0.7rem',
                                       fontWeight: '700',
                                       cursor: 'pointer',
@@ -1040,16 +1145,85 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                             );
                           }
 
+                          // Trường hợp Cán bộ Quản lý / Văn phòng
+                          if (!isTicketAgent && !isDriverOrAttendant) {
+                            return (
+                              <div
+                                key={shift._id}
+                                style={{
+                                  background: '#ffffff',
+                                  border: activeDay ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                                  borderRadius: '8px',
+                                  padding: '9px 8px',
+                                  boxShadow: activeDay ? '0 2px 6px rgba(59,130,246,0.12)' : '0 1px 3px rgba(0,0,0,0.03)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '3px',
+                                  textAlign: 'left'
+                                }}
+                              >
+                                <div style={{
+                                  fontWeight: '800',
+                                  fontSize: '0.82rem',
+                                  color: '#0f172a',
+                                  lineHeight: '1.25'
+                                }}>
+                                  {shift.title}
+                                </div>
+                                <div style={{
+                                  fontSize: '0.72rem',
+                                  color: '#1d4ed8',
+                                  fontWeight: '700',
+                                  lineHeight: '1.2'
+                                }}>
+                                  Giờ: {shift.timeRange}
+                                </div>
+                                {shift.breakTime && (
+                                  <div style={{
+                                    fontSize: '0.65rem',
+                                    color: '#64748b',
+                                    lineHeight: '1.2'
+                                  }}>
+                                    {shift.breakTime}
+                                  </div>
+                                )}
+                                <div style={{
+                                  fontSize: '0.7rem',
+                                  color: '#334155',
+                                  fontWeight: '600',
+                                  lineHeight: '1.2',
+                                  marginTop: '2px'
+                                }}>
+                                  Nơi làm việc: <strong style={{ color: '#0f172a' }}>{shift.workLocation || agentInfo?.office || 'Văn phòng Bến xe Miền Đông'}</strong>
+                                </div>
+                                <div style={{ marginTop: '3px' }}>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    fontSize: '0.62rem',
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    backgroundColor: badge.bg,
+                                    color: badge.color,
+                                    fontWeight: '700',
+                                    border: `1px solid ${badge.border}`
+                                  }}>
+                                    {badge.text}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           // Trường hợp tài xế / phụ xe
                           return (
                             <div
                               key={shift._id}
                               style={{
                                 background: '#ffffff',
-                                border: '1px solid #e2e8f0',
+                                border: activeDay ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
                                 borderRadius: '8px',
                                 padding: '8px 7px',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                                boxShadow: activeDay ? '0 2px 6px rgba(59,130,246,0.12)' : '0 1px 3px rgba(0,0,0,0.03)',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: '3px',
@@ -1058,8 +1232,8 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                             >
                               <div style={{
                                 fontWeight: '800',
-                                fontSize: '0.76rem',
-                                color: '#003865',
+                                fontSize: '0.78rem',
+                                color: '#1e40af',
                                 lineHeight: '1.25',
                                 marginBottom: '2px',
                                 wordBreak: 'break-word'
@@ -1069,34 +1243,32 @@ const StaffSchedulePage = ({ setActiveTab }) => {
 
                               <div style={{
                                 fontSize: '0.72rem',
-                                color: '#1e3a8a',
+                                color: '#0f172a',
                                 fontWeight: '700',
                                 lineHeight: '1.2',
                                 whiteSpace: 'nowrap'
                               }}>
-                                Giờ: {shift.timeRange}
+                                Xuất bến: {shift.timeRange}
                               </div>
 
-                              {shift.busPlate && (
+                              {shift.busPlate && shift.busPlate !== '--' && (
                                 <div style={{
                                   fontSize: '0.7rem',
                                   color: '#1e293b',
                                   fontWeight: '600',
                                   lineHeight: '1.2'
                                 }}>
-                                  Xe: <span style={{ fontWeight: '700' }}>{shift.busPlate}</span>
+                                  Xe: <span style={{ fontWeight: '700', color: '#0f172a' }}>{shift.busPlate}</span> ({shift.busType ? shift.busType.replace(/^Xe\s+/i, '') : 'Giường nằm'})
                                 </div>
                               )}
 
-                              {shift.busType && (
-                                <div style={{
-                                  fontSize: '0.67rem',
-                                  color: '#475569',
-                                  lineHeight: '1.2'
-                                }}>
-                                  Loại: {shift.busType.replace(/^Xe\s+/i, '')}
-                                </div>
-                              )}
+                              <div style={{
+                                fontSize: '0.68rem',
+                                color: '#64748b',
+                                lineHeight: '1.2'
+                              }}>
+                                Vai trò: <strong style={{ color: '#2563eb' }}>{shift.roleInTrip || (user?.role === 'driver' ? 'Tài chính' : 'Phụ xe')}</strong>
+                              </div>
 
                               <div style={{ marginTop: '3px' }}>
                                 <span style={{
@@ -1117,7 +1289,7 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                                 <button
                                   onClick={() => setActiveTab && setActiveTab('driver-status')}
                                   style={{
-                                    marginTop: '5px',
+                                    marginTop: '4px',
                                     backgroundColor: '#2563eb',
                                     color: '#ffffff',
                                     border: 'none',
@@ -1226,9 +1398,13 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                           ) : (
                             <span style={{ color: '#94a3b8' }}>--</span>
                           )
+                        ) : isTicketAgent ? (
+                          <span style={{ color: item.isOff ? '#94a3b8' : '#334155', fontWeight: '600' }}>
+                            {item.isOff ? '--' : (item.workLocation || agentInfo?.office || 'Văn phòng Bến xe Miền Đông')}
+                          </span>
                         ) : (
                           <span style={{ color: item.isOff ? '#94a3b8' : '#334155', fontWeight: '600' }}>
-                            {item.isOff ? '--' : (item.workLocation || 'Quầy Số 01 - BXMĐ')}
+                            {item.isOff ? '--' : (item.workLocation || 'Văn phòng Bến xe Miền Đông')}
                           </span>
                         )}
                       </td>

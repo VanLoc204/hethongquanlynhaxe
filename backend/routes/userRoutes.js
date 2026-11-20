@@ -10,7 +10,10 @@ const {
   getMySalary,
   startShift,
   endShift,
+  pauseShift,
+  resumeShift,
   verifyShiftCash,
+  getCounterBalance,
   getCurrentShift,
   getShiftHistory,
   lookupTickets,
@@ -81,8 +84,11 @@ router.get('/salary', protect, getMySalary);
 // Ticket Agent & Shift specific routes
 router.post('/shift/start', protect, startShift);
 router.post('/shift/end', protect, endShift);
+router.post('/shift/pause', protect, pauseShift);
+router.post('/shift/resume', protect, resumeShift);
 router.patch('/shift/:id/verify-cash', protect, restrictTo('ticket_manager', 'general_manager', 'admin'), verifyShiftCash);
 router.get('/shift/current', protect, getCurrentShift);
+router.get('/shift/counter-balance', protect, getCounterBalance);
 router.get('/shift/history', protect, getShiftHistory);
 router.get('/agent/tickets', protect, lookupTickets);
 router.post('/agent/book', protect, createCounterBooking);

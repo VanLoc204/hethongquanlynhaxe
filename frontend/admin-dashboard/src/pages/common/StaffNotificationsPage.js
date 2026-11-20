@@ -10,7 +10,7 @@ const StaffNotificationsPage = () => {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/v1/users/notifications', {
+        const res = await fetch('http://localhost:8000/api/users/notifications', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

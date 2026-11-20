@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const AgentTripsPage = ({ setActiveTab }) => {
   const { token } = useContext(AuthContext);
@@ -290,40 +290,10 @@ const AgentTripsPage = ({ setActiveTab }) => {
       <div className="trips-card-box">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+            <div>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
                 Bảng Giờ Xe Chạy &amp; Tra Cứu Chuyến Xe
               </h1>
-              <span style={{
-                background: '#eff6ff',
-                color: '#2563eb',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Tra Cứu Quầy
-              </span>
-              <span style={{
-                background: '#ecfdf5',
-                color: '#059669',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Thời Gian Thực
-              </span>
-              <span style={{
-                background: '#f1f5f9',
-                color: '#475569',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                An Bình Lines
-              </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
               Tra cứu nhanh lịch xe xuất bến, giá vé niêm yết, số chỗ trống thực tế và hỗ trợ tư vấn trực tiếp cho hành khách tại quầy.

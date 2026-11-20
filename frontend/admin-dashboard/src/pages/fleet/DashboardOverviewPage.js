@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
 import TicketManagerOverview from '../ticket/TicketManagerOverview';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const exportAuditLogsToExcel = (logs = [], healthData = null) => {
   if (!logs || logs.length === 0) {

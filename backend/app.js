@@ -29,20 +29,21 @@ app.use(systemLogger);
 app.use('/face-models', express.static(path.join(__dirname, 'public/face-models')));
 
 // Routes
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/trips', tripRoutes);
-app.use('/api/v1/bookings', bookingRoutes);
-app.use('/api/v1/pricing', pricingRoutes);
-app.use('/api/v1/chat', chatRoutes);
-app.use('/api/v1/system', systemRoutes);
-app.use('/api/v1/targets', targetRoutes);
-app.use('/api/v1/promotions', promotionRoutes);
-app.use('/api/v1/attendance', attendanceRoutes);
+const { payosWebhook } = require('./controllers/bookingController');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/trips', tripRoutes);
+app.use('/api/bookings', bookingRoutes);
+app.use('/api/pricing', pricingRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/system', systemRoutes);
+app.use('/api/targets', targetRoutes);
+app.use('/api/promotions', promotionRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.post('/api/payment/webhook', payosWebhook);
 
 // Direct payOS Webhook Endpoint
-const { payosWebhook } = require('./controllers/bookingController');
-app.post('/api/v1/payment/webhook', payosWebhook);
 app.post('/payment/webhook', payosWebhook);
 
 // Health check endpoint

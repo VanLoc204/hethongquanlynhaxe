@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import './MyTicketsPage.css';
 
-const BOOKING_API = 'http://localhost:8000/api/v1/trips';
-const TRIP_API = 'http://localhost:8000/api/v1/trips';
+const BOOKING_API = 'http://localhost:8000/api/trips';
+const TRIP_API = 'http://localhost:8000/api/trips';
 const CANCEL_HOURS_LIMIT = 120; // Must cancel at least 5 days (120h) before departure
 
 const MyTicketsPage = () => {

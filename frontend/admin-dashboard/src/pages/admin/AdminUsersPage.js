@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const ROLE_LABELS = {
   driver: 'Tài xế',
   attendant: 'Phụ xe',
   ticket_agent: 'Nhân viên bán vé',
+  ticket_manager: 'Quản lý phòng vé',
   fleet_manager: 'Quản lý Đội xe',
   ops_manager: 'Quản lý Vận tải',
   general_manager: 'Ban Giám đốc',
@@ -18,9 +19,34 @@ const ROLE_BADGE_STYLES = {
   general_manager: { bg: '#f3e8ff', color: '#7e22ce', border: '#e9d5ff' },
   ops_manager: { bg: '#e0f2fe', color: '#0284c7', border: '#bae6fd' },
   fleet_manager: { bg: '#eff6ff', color: '#2563eb', border: '#bfdbfe' },
+  ticket_manager: { bg: '#e0e7ff', color: '#4338ca', border: '#c7d2fe' },
   ticket_agent: { bg: '#ccfbf1', color: '#0d9488', border: '#99f6e4' },
   driver: { bg: '#dcfce7', color: '#16a34a', border: '#bbf7d0' },
   attendant: { bg: '#fce7f3', color: '#be185d', border: '#fbcfe8' }
+};
+
+const PROVINCE_OFFICES = {
+  sg: {
+    provinceName: 'Chi nhánh TP. Hồ Chí Minh',
+    offices: [
+      { id: 'sg-bxmd', name: 'Văn phòng Bến xe Miền Đông' },
+      { id: 'sg-bxmt', name: 'Văn phòng Bến xe Miền Tây' }
+    ]
+  },
+  dl: {
+    provinceName: 'Chi nhánh Đà Lạt',
+    offices: [
+      { id: 'dl-bxlt', name: 'Văn phòng Bến xe Liên Tỉnh' },
+      { id: 'dl-btx', name: 'Văn phòng Bùi Thị Xuân' }
+    ]
+  },
+  ct: {
+    provinceName: 'Chi nhánh Cần Thơ',
+    offices: [
+      { id: 'ct-bxtt', name: 'Văn phòng Bến xe Trung Tâm' },
+      { id: 'ct-nk', name: 'Văn phòng Ninh Kiều' }
+    ]
+  }
 };
 
 const STATUS_LABELS = {
@@ -38,16 +64,17 @@ const exportStaffToExcel = (staffList) => {
   let csvContent = '\uFEFF';
   csvContent += 'DANH SÁCH TÀI KHOẢN NGƯỜI DÙNG & PHÂN QUYỀN RBAC - AN BÌNH LINES\n';
   csvContent += `Thời gian xuất: ${new Date().toLocaleString('vi-VN')}\n\n`;
-  csvContent += 'STT,Họ và tên,Số điện thoại / Đăng nhập,Email,Vai trò RBAC,Trạng thái\n';
+  csvContent += 'STT,Họ và tên,Số điện thoại / Đăng nhập,Email,Vai trò RBAC,Chi nhánh / Văn phòng,Trạng thái\n';
 
   staffList.forEach((s, idx) => {
     const nameClean = `"${(s.name || '').replace(/"/g, '""')}"`;
     const phoneClean = `"${(s.phone || '').replace(/"/g, '""')}"`;
     const emailClean = `"${(s.email || '').replace(/"/g, '""')}"`;
     const roleClean = `"${(ROLE_LABELS[s.role] || s.role || '').replace(/"/g, '""')}"`;
+    const branchClean = `"${(s.assignedOffice ? `${s.branch?.branchName || 'Chi nhánh TP. HCM'} - ${s.assignedOffice}` : (s.branch?.branchName || 'Toàn hệ thống')).replace(/"/g, '""')}"`;
     const statusClean = `"${(STATUS_LABELS[s.status] || s.status || '').replace(/"/g, '""')}"`;
 
-    csvContent += `${idx + 1},${nameClean},${phoneClean},${emailClean},${roleClean},${statusClean}\n`;
+    csvContent += `${idx + 1},${nameClean},${phoneClean},${emailClean},${roleClean},${branchClean},${statusClean}\n`;
   });
 
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -84,10 +111,21 @@ const AdminUsersPage = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('driver');
+  const [role, setRole] = useState('ticket_agent');
+  const [branchId, setBranchId] = useState('sg');
+  const [assignedOffice, setAssignedOffice] = useState('Văn phòng Bến xe Miền Đông');
+  const [shiftType, setShiftType] = useState('morning'); // 'morning' | 'evening'
   const [status, setStatus] = useState('active');
   const [showPassword, setShowPassword] = useState(false);
   const [sendNotify, setSendNotify] = useState(true);
+
+  const handleBranchChange = (newBranchId) => {
+    setBranchId(newBranchId);
+    const availableOffices = PROVINCE_OFFICES[newBranchId]?.offices || [];
+    if (availableOffices.length > 0) {
+      setAssignedOffice(availableOffices[0].name);
+    }
+  };
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -123,7 +161,10 @@ const AdminUsersPage = () => {
     setEmail('');
     setPhone('');
     setPassword('');
-    setRole('driver');
+    setRole('ticket_agent');
+    setBranchId('sg');
+    setAssignedOffice('Văn phòng Bến xe Miền Đông');
+    setShiftType('morning');
     setStatus('active');
     setShowModal(true);
   };
@@ -135,6 +176,11 @@ const AdminUsersPage = () => {
     setPhone(staff.phone || '');
     setPassword('');
     setRole(staff.role || 'driver');
+    const bId = staff.branch?.branchId || 'sg';
+    setBranchId(bId);
+    const curOffice = staff.assignedOffice || (Array.isArray(staff.branch?.assignedOffices) ? staff.branch.assignedOffices[0] : null) || PROVINCE_OFFICES[bId]?.offices[0]?.name;
+    setAssignedOffice(curOffice || 'Văn phòng Bến xe Miền Đông');
+    setShiftType(staff.shiftType || 'morning');
     setStatus(staff.status || 'active');
     setShowModal(true);
   };
@@ -265,6 +311,25 @@ const AdminUsersPage = () => {
       role,
       status
     };
+
+    if (['ticket_manager', 'ticket_agent'].includes(role)) {
+      const bInfo = PROVINCE_OFFICES[branchId];
+      payload.branch = {
+        branchId,
+        branchName: bInfo?.provinceName || 'Chi nhánh TP. Hồ Chí Minh',
+        assignedOffices: [assignedOffice]
+      };
+      payload.assignedOffice = assignedOffice;
+      if (role === 'ticket_agent') {
+        payload.shiftType = shiftType;
+        payload.shiftName = shiftType === 'evening' ? 'Ca Chiều (14:00 - 22:00)' : 'Ca Sáng (06:30 - 14:30)';
+      }
+    } else {
+      payload.branch = {
+        branchId: 'sg',
+        branchName: 'Chi nhánh TP. Hồ Chí Minh (Hội sở)'
+      };
+    }
 
     if (password) {
       payload.password = password;
@@ -577,6 +642,7 @@ const AdminUsersPage = () => {
             <option value="general_manager">Ban Giám đốc</option>
             <option value="ops_manager">Quản lý Vận tải</option>
             <option value="fleet_manager">Quản lý Đội xe</option>
+            <option value="ticket_manager">Quản lý phòng vé</option>
             <option value="ticket_agent">Nhân viên bán vé</option>
             <option value="driver">Tài xế</option>
             <option value="attendant">Phụ xe</option>
@@ -707,6 +773,7 @@ const AdminUsersPage = () => {
                   <th style={{ padding: '0.65rem 0.85rem' }}>SỐ ĐIỆN THOẠI / ĐĂNG NHẬP</th>
                   <th style={{ padding: '0.65rem 0.85rem' }}>EMAIL</th>
                   <th style={{ padding: '0.65rem 0.85rem' }}>VAI TRÒ RBAC</th>
+                  <th style={{ padding: '0.65rem 0.85rem' }}>CHI NHÁNH / VĂN PHÒNG</th>
                   <th style={{ padding: '0.65rem 0.85rem' }}>TRẠNG THÁI</th>
                   <th style={{ padding: '0.65rem 0.85rem', textAlign: 'right' }}>THAO TÁC</th>
                 </tr>
@@ -757,6 +824,18 @@ const AdminUsersPage = () => {
                           <span style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: badgeStyle.color }}></span>
                           {ROLE_LABELS[staff.role] || staff.role}
                         </span>
+                      </td>
+                      <td style={{ padding: '0.65rem 0.85rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: '600', color: '#1e293b' }}>
+                            {staff.branch?.branchName || 'Chi nhánh TP. Hồ Chí Minh'}
+                          </span>
+                          {staff.assignedOffice && (
+                            <span style={{ fontSize: '0.68rem', color: '#0d9488', fontWeight: '500' }}>
+                              📍 {staff.assignedOffice} {staff.shiftType ? (staff.shiftType === 'evening' ? '(Ca Chiều)' : '(Ca Sáng)') : ''}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '0.65rem 0.85rem' }}>
                         <span style={{
@@ -1054,6 +1133,7 @@ const AdminUsersPage = () => {
                         <option value="driver">Tài xế (Lái xe)</option>
                         <option value="attendant">Phụ xe (Phụ tá)</option>
                         <option value="ticket_agent">Nhân viên Bán vé quầy</option>
+                        <option value="ticket_manager">Quản lý Phòng vé</option>
                         <option value="ops_manager">Quản lý Vận tải</option>
                         <option value="fleet_manager">Quản lý Đội xe</option>
                         <option value="general_manager">Ban Giám đốc</option>
@@ -1086,6 +1166,69 @@ const AdminUsersPage = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Khối Cấu hình Chi nhánh / Văn phòng / Khung giờ cho Nhân sự phòng vé */}
+                {['ticket_manager', 'ticket_agent'].includes(role) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '1.1rem', background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                    {/* 1. Chọn Chi nhánh Tỉnh / Thành phố */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e40af' }}>
+                        Chi nhánh trực thuộc (Tỉnh / Thành phố) *
+                      </label>
+                      <select
+                        value={branchId}
+                        onChange={(e) => handleBranchChange(e.target.value)}
+                        style={{
+                          padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe',
+                          fontSize: '0.82rem', fontWeight: '600', outline: 'none', background: '#eff6ff', color: '#1e3a8a'
+                        }}
+                      >
+                        <option value="sg">Chi nhánh TP. Hồ Chí Minh</option>
+                        <option value="dl">Chi nhánh Đà Lạt</option>
+                        <option value="ct">Chi nhánh Cần Thơ</option>
+                      </select>
+                    </div>
+
+                    {/* 2. Chọn Văn phòng làm việc cụ thể */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e40af' }}>
+                        Văn phòng phòng vé làm việc cụ thể *
+                      </label>
+                      <select
+                        value={assignedOffice}
+                        onChange={(e) => setAssignedOffice(e.target.value)}
+                        style={{
+                          padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1',
+                          fontSize: '0.82rem', fontWeight: '600', outline: 'none', background: '#ffffff', color: '#0f172a'
+                        }}
+                      >
+                        {(PROVINCE_OFFICES[branchId]?.offices || []).map(off => (
+                          <option key={off.id} value={off.name}>{off.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 3. Nếu là Nhân viên bán vé: Chọn Khung giờ làm việc */}
+                    {role === 'ticket_agent' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#047857' }}>
+                          Khung giờ làm việc *
+                        </label>
+                        <select
+                          value={shiftType}
+                          onChange={(e) => setShiftType(e.target.value)}
+                          style={{
+                            padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #a7f3d0',
+                            fontSize: '0.82rem', fontWeight: '600', outline: 'none', background: '#ecfdf5', color: '#065f46'
+                          }}
+                        >
+                          <option value="morning">Ca Sáng (06:30 - 14:30)</option>
+                          <option value="evening">Ca Chiều - Tối (14:00 - 22:00)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Footer Buttons */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>

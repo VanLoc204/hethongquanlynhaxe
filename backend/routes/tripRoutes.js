@@ -47,12 +47,12 @@ const { protect, restrictTo } = require('../middlewares/authMiddleware');
 // ==========================================
 // Intercepted booking routes from Gateway
 // ==========================================
-// /api/v1/trips/book ...
+// /api/trips/book ...
 router.post('/book', createBooking);
 router.patch('/book/:id', updateBookingPayment);
 router.patch('/book/:id/cancel', cancelExpiredBooking);
 
-// /api/v1/trips/my-bookings/:userId ...
+// /api/trips/my-bookings/:userId ...
 router.get('/my-bookings/:userId', getMyBookings);
 
 // ==========================================

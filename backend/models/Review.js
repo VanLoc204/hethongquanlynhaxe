@@ -32,10 +32,6 @@ const reviewSchema = new mongoose.Schema(
       type: String,
       default: 'sg'
     },
-    counterNumber: {
-      type: String,
-      default: ''
-    },
     category: {
       type: String,
       default: 'bus_quality' // 'bus_quality' | 'service' | 'staff' | 'general'

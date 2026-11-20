@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
 import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute, getDistanceMeters } from '../../utils/mapRoutingUtils';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const DriverMapPage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const MOCK_ERRORS = [
   {
@@ -23,12 +23,12 @@ const MOCK_ERRORS = [
     code: '401 Unauthorized',
     statusCode: 401,
     method: 'GET',
-    path: '/api/v1/users/duong-dan-sai-404',
-    endpoint: 'GET /api/v1/users/duong-dan-sai-404',
+    path: '/api/users/duong-dan-sai-404',
+    endpoint: 'GET /api/users/duong-dan-sai-404',
     count: 1,
     lastOccurred: 'Vừa xong',
     timestamp: '26/09/2026 16:01:20',
-    description: 'Phát sinh ngoại lệ HTTP 401 tại đường dẫn /api/v1/users/duong-dan-sai-404',
+    description: 'Phát sinh ngoại lệ HTTP 401 tại đường dẫn /api/users/duong-dan-sai-404',
     status: 'Đang ghi nhận',
     level: 'WARNING'
   },
@@ -37,8 +37,8 @@ const MOCK_ERRORS = [
     code: '500 Internal Error',
     statusCode: 500,
     method: 'POST',
-    path: '/api/v1/shipments/sync',
-    endpoint: 'POST /api/v1/shipments/sync',
+    path: '/api/shipments/sync',
+    endpoint: 'POST /api/shipments/sync',
     count: 4,
     lastOccurred: '2 giờ trước',
     timestamp: '26/09/2026 14:15:00',
@@ -100,7 +100,7 @@ const AdminErrorsPage = () => {
             statusCode: parseInt(err.code || 400),
             method: method,
             path: path,
-            endpoint: err.endpoint || 'GET /api/v1/system',
+            endpoint: err.endpoint || 'GET /api/system',
             count: err.count || 1,
             lastOccurred: err.lastOccurred || 'Vừa xong',
             timestamp: err.timestamp || new Date().toLocaleString('vi-VN'),

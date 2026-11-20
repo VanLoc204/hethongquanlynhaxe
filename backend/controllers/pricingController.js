@@ -2,7 +2,7 @@ const pricingService = require('../services/pricingService');
 const { getExecutiveAiChatResponse } = require('../services/geminiService');
 
 // @desc    Get all pricing rules
-// @route   GET /api/v1/pricing/rules
+// @route   GET /api/pricing/rules
 // @access  Private (General Manager / Admin / Ticket Agent)
 exports.getRules = async (req, res) => {
   try {
@@ -23,7 +23,7 @@ exports.getRules = async (req, res) => {
 };
 
 // @desc    Executive AI Chat Assistant for General Manager
-// @route   POST /api/v1/pricing/gm-ai-chat
+// @route   POST /api/pricing/gm-ai-chat
 // @access  Private (General Manager / Admin)
 exports.getExecutiveAiChat = async (req, res) => {
   try {
@@ -52,7 +52,7 @@ exports.getExecutiveAiChat = async (req, res) => {
 };
 
 // @desc    Get demand analytics & AI strategic action recommendations
-// @route   GET /api/v1/pricing/demand-analytics
+// @route   GET /api/pricing/demand-analytics
 // @access  Private (General Manager / Admin)
 exports.getDemandAnalytics = async (req, res) => {
   try {
@@ -75,7 +75,7 @@ exports.getDemandAnalytics = async (req, res) => {
 };
 
 // @desc    Lấy thống kê nhu cầu tìm kiếm chưa được đáp ứng (AI Unmet Demand Sensing)
-// @route   GET /api/v1/pricing/unmet-demand
+// @route   GET /api/pricing/unmet-demand
 // @access  Private (General Manager / Admin)
 exports.getUnmetDemandAnalytics = async (req, res) => {
   try {
@@ -196,7 +196,7 @@ exports.getUnmetDemandAnalytics = async (req, res) => {
 };
 
 // @desc    Create a pricing rule
-// @route   POST /api/v1/pricing/rules
+// @route   POST /api/pricing/rules
 // @access  Private (General Manager / Admin)
 exports.createRule = async (req, res) => {
   try {
@@ -219,7 +219,7 @@ exports.createRule = async (req, res) => {
 };
 
 // @desc    Update a pricing rule
-// @route   PUT /api/v1/pricing/rules/:id
+// @route   PUT /api/pricing/rules/:id
 // @access  Private (General Manager / Admin)
 exports.updateRule = async (req, res) => {
   try {
@@ -243,7 +243,7 @@ exports.updateRule = async (req, res) => {
 };
 
 // @desc    Delete a pricing rule
-// @route   DELETE /api/v1/pricing/rules/:id
+// @route   DELETE /api/pricing/rules/:id
 // @access  Private (General Manager / Admin)
 exports.deleteRule = async (req, res) => {
   try {
@@ -264,7 +264,7 @@ exports.deleteRule = async (req, res) => {
 };
 
 // @desc    Get all base prices combinations (Route + Bus Type)
-// @route   GET /api/v1/pricing/base-prices
+// @route   GET /api/pricing/base-prices
 // @access  Private (General Manager / Admin / Ops Manager / Ticket Agent)
 exports.getBasePrices = async (req, res) => {
   try {
@@ -285,7 +285,7 @@ exports.getBasePrices = async (req, res) => {
 };
 
 // @desc    Create or update base price for Route + Bus Type
-// @route   POST /api/v1/pricing/base-prices
+// @route   POST /api/pricing/base-prices
 // @access  Private (General Manager / Admin)
 exports.setBasePrice = async (req, res) => {
   try {
@@ -316,7 +316,7 @@ exports.setBasePrice = async (req, res) => {
 };
 
 // @desc    Lookup base price for Route + Bus
-// @route   GET /api/v1/pricing/base-prices/lookup
+// @route   GET /api/pricing/base-prices/lookup
 // @access  Private (Ops Manager / Admin / General Manager)
 exports.lookupPrice = async (req, res) => {
   try {
@@ -357,9 +357,9 @@ const Route = require('../models/Route');
 const Notification = require('../models/Notification');
 
 // @desc    Create a pricing proposal (Ticket Manager -> General Manager)
-// @route   POST /api/v1/pricing/proposals
+// @route   POST /api/pricing/proposals
 // @desc    Create a pricing proposal (Ticket Manager -> General Manager)
-// @route   POST /api/v1/pricing/proposals
+// @route   POST /api/pricing/proposals
 // @access  Private (Ticket Manager, General Manager, Admin)
 exports.createPricingProposal = async (req, res) => {
   try {
@@ -456,7 +456,7 @@ exports.createPricingProposal = async (req, res) => {
 };
 
 // @desc    Get all pricing proposals
-// @route   GET /api/v1/pricing/proposals
+// @route   GET /api/pricing/proposals
 // @access  Private (Ticket Manager, General Manager, Admin)
 exports.getPricingProposals = async (req, res) => {
   try {
@@ -499,7 +499,7 @@ exports.getPricingProposals = async (req, res) => {
 };
 
 // @desc    Review pricing proposal (Approve / Reject)
-// @route   PATCH /api/v1/pricing/proposals/:id/review
+// @route   PATCH /api/pricing/proposals/:id/review
 // @access  Private (General Manager, Admin)
 exports.reviewPricingProposal = async (req, res) => {
   try {
@@ -648,7 +648,7 @@ exports.reviewPricingProposal = async (req, res) => {
 };
 
 // @desc    Delete pricing proposal
-// @route   DELETE /api/v1/pricing/proposals/:id
+// @route   DELETE /api/pricing/proposals/:id
 // @access  Private (Proposer, Admin)
 exports.deletePricingProposal = async (req, res) => {
   try {

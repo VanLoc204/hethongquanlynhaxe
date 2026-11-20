@@ -1,5 +1,8 @@
 const Attendance = require('../models/Attendance');
+const CrewAttendance = require('../models/CrewAttendance');
+const AgentAttendance = require('../models/AgentAttendance');
 const User = require('../models/User');
+const EmployeeProfile = require('../models/EmployeeProfile');
 const Trip = require('../models/Trip');
 const ShiftSession = require('../models/ShiftSession');
 const LeaveRequest = require('../models/LeaveRequest');
@@ -55,7 +58,7 @@ function formatShortTime(date) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. ĐĂNG KÝ KHUÔN MẶT (Quản lý vận tải thực hiện tại Quản lý tài khoản đội xe)
-// POST /api/v1/attendance/register-face
+// POST /api/attendance/register-face
 // ═══════════════════════════════════════════════════════════════════════════
 exports.registerFace = async (req, res) => {
   try {
@@ -94,12 +97,15 @@ exports.registerFace = async (req, res) => {
       });
     }
 
-    user.faceDescriptors = faceDescriptors;
-    user.faceRegistered = true;
-    if (facePhoto) {
-      user.facePhoto = facePhoto;
-    }
-    await user.save();
+    const emp = await EmployeeProfile.findByIdAndUpdate(
+      userId,
+      {
+        faceDescriptors,
+        faceRegistered: true,
+        ...(facePhoto ? { facePhoto } : {})
+      },
+      { upsert: true, new: true }
+    );
 
     return res.status(200).json({
       success: true,
@@ -108,7 +114,7 @@ exports.registerFace = async (req, res) => {
         userId: user._id,
         name: user.name,
         faceRegistered: true,
-        facePhoto: user.facePhoto,
+        facePhoto: emp.facePhoto,
         samplesCount: faceDescriptors.length
       }
     });
@@ -119,8 +125,8 @@ exports.registerFace = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 2. CHECK-IN (Bắt đầu ca trực theo chuyến xe)
-// POST /api/v1/attendance/check-in
+// 2. CHECK-IN (Bắt đầu ca trực theo chuyến xe / ngày công)
+// POST /api/attendance/check-in
 // Body: { faceDescriptor, tripId?, location?, gpsLat?, gpsLng?, checkInPhoto?, isLiveVerified? }
 // ═══════════════════════════════════════════════════════════════════════════
 exports.checkIn = async (req, res) => {
@@ -135,10 +141,11 @@ exports.checkIn = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).select('+faceDescriptors +faceRegistered');
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản.' });
 
-    if (!user.faceRegistered || !user.faceDescriptors || user.faceDescriptors.length === 0) {
+    const emp = await EmployeeProfile.findById(userId).select('+faceDescriptors +faceRegistered assignedOffice branchId');
+    if (!emp || !emp.faceRegistered || !emp.faceDescriptors || emp.faceDescriptors.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Bạn chưa đăng ký khuôn mặt Face ID. Vui lòng liên hệ Quản lý Vận tải để được kích hoạt khuôn mặt.'
@@ -147,7 +154,7 @@ exports.checkIn = async (req, res) => {
 
     // Nhận diện khuôn mặt sinh trắc học
     const THRESHOLD = 0.38;
-    const distances = user.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
+    const distances = emp.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
     const bestDistance = Math.min(...distances);
     const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length;
 
@@ -162,9 +169,12 @@ exports.checkIn = async (req, res) => {
     const now = new Date();
     const { dayStart, dayEnd } = getDayRangeVN();
 
-    // Xác định chuyến xe cần Check-in (chỉ áp dụng cho Tài xế và Phụ xe)
-    let targetTrip = null;
+    // Xác định nhóm nhân sự và bảng mở rộng
     const isCrewRole = ['driver', 'attendant'].includes(user.role);
+    const isAgentRole = user.role === 'ticket_agent';
+    const attendanceType = isCrewRole ? 'crew' : (isAgentRole ? 'agent' : 'standard');
+
+    let targetTrip = null;
 
     if (isCrewRole) {
       if (tripId) {
@@ -190,8 +200,15 @@ exports.checkIn = async (req, res) => {
 
         if (assignedTrips.length > 0) {
           for (const t of assignedTrips) {
-            const existingForTrip = await Attendance.findOne({ userId, tripId: t._id });
-            if (!existingForTrip || existingForTrip.status !== 'closed') {
+            // Kiểm tra xem đã có bản ghi chấm công cho chuyến xe này chưa
+            const existingCrew = await CrewAttendance.findOne({ tripId: t._id });
+            if (existingCrew) {
+              const existingAtt = await Attendance.findById(existingCrew.attendanceId);
+              if (!existingAtt || existingAtt.status !== 'closed') {
+                targetTrip = t;
+                break;
+              }
+            } else {
               targetTrip = t;
               break;
             }
@@ -203,24 +220,27 @@ exports.checkIn = async (req, res) => {
 
     // Kiểm tra trạng thái nếu đã check-in cho chuyến này rồi
     if (targetTrip) {
-      const existing = await Attendance.findOne({ userId, tripId: targetTrip._id });
-      if (existing) {
-        if (existing.status === 'active') {
-          return res.status(400).json({
-            success: false,
-            message: `Bạn đã bắt đầu ca cho chuyến này từ ${formatTime(existing.checkInTime)}. Hãy tan ca (Check-out) khi hoàn thành chuyến đi!`,
-            data: existing
-          });
-        }
-        if (existing.status === 'closed') {
-          return res.status(400).json({
-            success: false,
-            message: `Bạn đã hoàn thành ca cho chuyến này (vào lúc ${formatTime(existing.checkInTime)} — tan ca ${formatTime(existing.checkOutTime)}).`
-          });
+      const existingCrew = await CrewAttendance.findOne({ tripId: targetTrip._id });
+      if (existingCrew) {
+        const existingAtt = await Attendance.findById(existingCrew.attendanceId);
+        if (existingAtt && existingAtt.userId.toString() === userId.toString()) {
+          if (existingAtt.status === 'active') {
+            return res.status(400).json({
+              success: false,
+              message: `Bạn đã bắt đầu ca cho chuyến này từ ${formatTime(existingAtt.checkInTime)}. Hãy tan ca (Check-out) khi hoàn thành chuyến đi!`,
+              data: existingAtt
+            });
+          }
+          if (existingAtt.status === 'closed') {
+            return res.status(400).json({
+              success: false,
+              message: `Bạn đã hoàn thành ca cho chuyến này (vào lúc ${formatTime(existingAtt.checkInTime)} — tan ca ${formatTime(existingAtt.checkOutTime)}).`
+            });
+          }
         }
       }
     } else if (!isCrewRole) {
-      // Đối với nhân sự văn phòng / Quản lý vận tải / Quản lý đội xe / Quản lý phòng vé
+      // Đối với nhân sự văn phòng / Quản lý / Quầy vé
       const existingToday = await Attendance.findOne({ userId, date: dayStart });
       if (existingToday) {
         if (existingToday.status === 'active') {
@@ -239,79 +259,85 @@ exports.checkIn = async (req, res) => {
       }
     }
 
-    const defaultRoleTitle = 
-      user.role === 'ops_manager' ? 'Ca trực Điều hành Vận tải' :
-      user.role === 'fleet_manager' ? 'Ca trực Quản lý Đội xe' :
-      user.role === 'ticket_manager' ? 'Ca trực Quản lý Phòng vé' :
-      user.role === 'ticket_agent' ? 'Ca trực Quầy vé' :
-      'Ca làm việc tiêu chuẩn';
-
-    const defaultOfficeLocation = 
-      user.role === 'ops_manager' ? 'Trung tâm Điều hành Vận tải' :
-      user.role === 'fleet_manager' ? 'Trạm Quản lý Đội xe' :
-      user.role === 'ticket_manager' ? 'Văn phòng Quản lý Phòng vé' :
-      user.role === 'ticket_agent' ? 'Quầy vé bến xe' :
-      'Trụ sở văn phòng';
-
-    const routeName = targetTrip?.routeId?.name || (targetTrip?.routeId?.startPoint ? `${targetTrip.routeId.startPoint} -> ${targetTrip.routeId.endPoint}` : defaultRoleTitle);
+    const routeName = targetTrip?.routeId?.name || (targetTrip?.routeId?.startPoint ? `${targetTrip.routeId.startPoint} -> ${targetTrip.routeId.endPoint}` : 'Ca làm việc tiêu chuẩn');
     const plateNumber = targetTrip?.busId?.plateNumber || '--';
-    const scheduledDepTime = targetTrip?.departureTime || null;
 
-    const filter = targetTrip ? { userId, tripId: targetTrip._id } : { userId, date: dayStart };
-    const attendance = await Attendance.findOneAndUpdate(
-      filter,
-      {
-        $set: {
-          userId,
-          employeeName: user.name,
-          employeePhone: user.phone,
-          role: user.role,
-          date: dayStart,
-          tripId: targetTrip ? targetTrip._id : null,
-          tripRoute: routeName,
-          busPlateNumber: plateNumber,
-          scheduledDepartureTime: scheduledDepTime,
-          checkInTime: now,
-          status: 'active',
-          faceVerified: true,
-          faceDistance: parseFloat(bestDistance.toFixed(4)),
-          isLiveVerified: Boolean(isLiveVerified),
-          checkInPhoto: checkInPhoto || null,
-          location: location || (targetTrip ? 'Tại bến xuất bến' : defaultOfficeLocation),
-          gpsLat: gpsLat || null,
-          gpsLng: gpsLng || null,
-          note: `Đã check-in thành công ca làm việc`
-        }
-      },
-      { upsert: true, new: true }
-    );
+    // 1. Lưu bản ghi vào bảng chung Attendance (Chuẩn hóa 3NF - chỉ lưu userId)
+    let attendance = null;
+    if (targetTrip) {
+      // Tìm xem có attendance liên kết với crew này chưa
+      const existingCrew = await CrewAttendance.findOne({ tripId: targetTrip._id });
+      if (existingCrew && existingCrew.attendanceId) {
+        attendance = await Attendance.findById(existingCrew.attendanceId);
+      }
+    } else {
+      attendance = await Attendance.findOne({ userId, date: dayStart });
+    }
 
-    // Đồng bộ mở ShiftSession nếu có
-    if (!targetTrip) {
+    if (!attendance) {
+      attendance = new Attendance({
+        userId,
+        date: dayStart
+      });
+    }
+
+    attendance.checkInTime = now;
+    attendance.status = 'active';
+    attendance.attendanceType = attendanceType;
+    attendance.faceVerified = true;
+    attendance.faceDistance = parseFloat(bestDistance.toFixed(4));
+    attendance.isLiveVerified = Boolean(isLiveVerified);
+    attendance.checkInPhoto = checkInPhoto || null;
+    attendance.gpsLat = gpsLat || null;
+    attendance.gpsLng = gpsLng || null;
+    attendance.note = targetTrip ? `Check-in chuyến ${routeName} (${plateNumber})` : 'Đã check-in thành công ca làm việc';
+
+    await attendance.save();
+
+    // 2. Lưu vào bảng mở rộng đặc thù tương ứng
+    if (isCrewRole && targetTrip) {
+      const punctuality = targetTrip.departureTime && now > new Date(targetTrip.departureTime) ? 'late' : 'on_time';
+      await CrewAttendance.findOneAndUpdate(
+        { attendanceId: attendance._id },
+        {
+          $set: {
+            attendanceId: attendance._id,
+            tripId: targetTrip._id,
+            busId: targetTrip.busId?._id || targetTrip.busId || null,
+            roleInTrip: user.role === 'attendant' ? 'attendant' : 'driver_main',
+            punctuality,
+            actualDeparture: now
+          }
+        },
+        { upsert: true, new: true }
+      );
+    } else if (isAgentRole) {
+      await AgentAttendance.findOneAndUpdate(
+        { attendanceId: attendance._id },
+        {
+          $set: {
+            attendanceId: attendance._id,
+            initialCash: 0
+          }
+        },
+        { upsert: true, new: true }
+      );
+
+      // Đồng bộ mở ShiftSession cho nhân viên bán vé nếu chưa có ca đang mở
       try {
         await ShiftSession.findOneAndUpdate(
           { userId, status: 'active' },
           {
             $setOnInsert: {
               userId,
-              counterNumber: location || defaultOfficeLocation,
               initialCash: 0,
               startTime: now,
-              status: 'active',
-              faceVerified: true,
-              faceDistance: parseFloat(bestDistance.toFixed(4)),
-              isLiveVerified: Boolean(isLiveVerified),
-              checkInPhoto: checkInPhoto || null,
-              location: location || defaultOfficeLocation,
-              gpsLat: gpsLat || null,
-              gpsLng: gpsLng || null
+              status: 'active'
             }
           },
           { upsert: true }
         );
-      } catch (e) {
-        // bỏ qua nếu lỗi shift session
-      }
+      } catch (e) {}
     }
 
     const roleGreeting = 
@@ -349,8 +375,8 @@ exports.checkIn = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3. CHECK-OUT (Tan ca chuyến xe)
-// POST /api/v1/attendance/check-out
+// 3. CHECK-OUT (Tan ca chuyến xe / Kết thúc ngày làm việc)
+// POST /api/attendance/check-out
 // Body: { faceDescriptor, tripId?, checkOutPhoto?, location? }
 // ═══════════════════════════════════════════════════════════════════════════
 exports.checkOut = async (req, res) => {
@@ -362,13 +388,14 @@ exports.checkOut = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Dữ liệu khuôn mặt không hợp lệ.' });
     }
 
-    const user = await User.findById(userId).select('+faceDescriptors');
-    if (!user || !user.faceDescriptors || user.faceDescriptors.length === 0) {
+    const user = await User.findById(userId);
+    const emp = await EmployeeProfile.findById(userId).select('+faceDescriptors');
+    if (!emp || !emp.faceDescriptors || emp.faceDescriptors.length === 0) {
       return res.status(400).json({ success: false, message: 'Chưa đăng ký khuôn mặt.' });
     }
 
     const THRESHOLD = 0.38;
-    const distances = user.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
+    const distances = emp.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
     const bestDistance = Math.min(...distances);
     const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length;
     if (bestDistance > THRESHOLD || avgDistance > 0.42) {
@@ -380,11 +407,19 @@ exports.checkOut = async (req, res) => {
     }
 
     // Tìm bản ghi đang active của nhân viên
-    let query = { userId, status: 'active' };
+    let attendance = null;
+    let crewRecord = null;
+
     if (tripId) {
-      query.tripId = tripId;
+      crewRecord = await CrewAttendance.findOne({ tripId }).populate('tripId').populate('busId');
+      if (crewRecord && crewRecord.attendanceId) {
+        attendance = await Attendance.findOne({ _id: crewRecord.attendanceId, userId, status: 'active' });
+      }
     }
-    const attendance = await Attendance.findOne(query).sort({ checkInTime: -1 });
+
+    if (!attendance) {
+      attendance = await Attendance.findOne({ userId, status: 'active' }).sort({ checkInTime: -1 });
+    }
 
     if (!attendance) {
       return res.status(400).json({
@@ -400,32 +435,50 @@ exports.checkOut = async (req, res) => {
     if (location) {
       attendance.note = attendance.note ? `${attendance.note} | Tan ca: ${location}` : `Tan ca: ${location}`;
     }
-    await attendance.save();
-
-    // Đồng bộ đóng ShiftSession nếu có
-    try {
-      await ShiftSession.findOneAndUpdate(
-        { userId, status: 'active' },
-        {
-          $set: {
-            status: 'closed',
-            endTime: now,
-            checkOutPhoto: checkOutPhoto || null
-          }
-        }
-      );
-    } catch (e) {}
 
     const diffMs = now - (attendance.checkInTime || now);
     const totalHours = Math.floor(diffMs / 3_600_000);
     const totalMinutes = Math.floor((diffMs % 3_600_000) / 60_000);
+    attendance.totalHours = parseFloat((Math.max(0, diffMs) / 3600000).toFixed(2));
+
+    await attendance.save();
+
+    // Cập nhật bảng con tương ứng
+    let tripRoute = 'Ca làm việc';
+    if (attendance.attendanceType === 'crew') {
+      if (!crewRecord) {
+        crewRecord = await CrewAttendance.findOne({ attendanceId: attendance._id }).populate({
+          path: 'tripId',
+          populate: { path: 'routeId busId' }
+        });
+      }
+      if (crewRecord) {
+        crewRecord.actualArrival = now;
+        await crewRecord.save();
+        tripRoute = crewRecord.tripId?.routeId?.name || (crewRecord.tripId?.routeId?.startPoint ? `${crewRecord.tripId.routeId.startPoint} -> ${crewRecord.tripId.routeId.endPoint}` : 'Chuyến xe');
+      }
+    } else if (attendance.attendanceType === 'agent') {
+      // Đồng bộ đóng ShiftSession nếu có
+      try {
+        await ShiftSession.findOneAndUpdate(
+          { userId, status: 'active' },
+          {
+            $set: {
+              status: 'closed',
+              endTime: now,
+              checkOutPhoto: checkOutPhoto || null
+            }
+          }
+        );
+      } catch (e) {}
+    }
 
     return res.status(200).json({
       success: true,
-      message: `Tan ca thành công (${attendance.tripRoute || 'Ca làm việc'})! Thời gian thực hiện: ${totalHours} giờ ${totalMinutes} phút. Chúc bạn nghỉ ngơi vui vẻ!`,
+      message: `Tan ca thành công (${tripRoute})! Thời gian thực hiện: ${totalHours} giờ ${totalMinutes} phút. Chúc bạn nghỉ ngơi vui vẻ!`,
       data: {
-        tripId: attendance.tripId,
-        tripRoute: attendance.tripRoute,
+        tripId: crewRecord?.tripId?._id || null,
+        tripRoute,
         checkInTime: formatTime(attendance.checkInTime),
         checkOutTime: formatTime(attendance.checkOutTime),
         totalWork: `${totalHours}h ${totalMinutes}m`,
@@ -439,20 +492,16 @@ exports.checkOut = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4. XEM LỊCH SỬ CHẤM CÔNG CỦA BẢN THÂN (driver / attendant)
-// GET /api/v1/attendance/mine
+// 4. XEM LỊCH SỬ CHẤM CÔNG CỦA BẢN THÂN
+// GET /api/attendance/mine
 // ═══════════════════════════════════════════════════════════════════════════
 exports.getMyAttendance = async (req, res) => {
   try {
     const userId = req.user?.id || req.user?._id;
     const limit = parseInt(req.query.limit) || 100;
 
-    const user = await User.findById(userId).select('name phone role faceRegistered facePhoto +faceDescriptors').lean();
-
-    const records = await Attendance.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
+    const user = await User.findById(userId).select('name phone role').lean();
+    const emp = await EmployeeProfile.findById(userId).select('faceRegistered facePhoto assignedOffice branchId +faceDescriptors').lean();
 
     const { dayStart, dayEnd } = getDayRangeVN();
 
@@ -488,9 +537,6 @@ exports.getMyAttendance = async (req, res) => {
       if (req.query.status && req.query.status !== 'all') {
         shiftQuery.status = req.query.status;
       }
-      if (req.query.counterNumber && req.query.counterNumber !== 'all') {
-        shiftQuery.counterNumber = req.query.counterNumber;
-      }
       if (req.query.reconciliationStatus && req.query.reconciliationStatus !== 'all') {
         shiftQuery.reconciliationStatus = req.query.reconciliationStatus;
       }
@@ -503,7 +549,7 @@ exports.getMyAttendance = async (req, res) => {
         .limit(limit)
         .lean();
 
-      // Kết hợp thêm các bản ghi chấm công từ collection 'Attendance' của nhân viên
+      // Kết hợp thêm các bản ghi chấm công từ collection 'Attendance'
       const attTicketQuery = { userId };
       if (req.query.fromDate && req.query.toDate) {
         const from = new Date(req.query.fromDate);
@@ -529,21 +575,34 @@ exports.getMyAttendance = async (req, res) => {
         .limit(limit)
         .lean();
 
+      const attTicketDateMap = {};
+      attTicketRecords.forEach(att => {
+        const dKey = new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN');
+        attTicketDateMap[dKey] = att;
+      });
+
       let totalWorkHours = 0;
       let totalCashRevenue = 0;
       let totalCashlessRevenue = 0;
       let totalTicketsSold = 0;
       let faceVerifiedCount = 0;
-      let verifiedCashCount = 0;
       let activeShiftsCount = 0;
       let closedShiftsCount = 0;
 
-      const nowTime = new Date();
       const combinedHistory = [];
       const seenDates = new Set();
+      const nowTime = Date.now();
 
       // 1. Nạp từ ca trực quầy bán vé (ShiftSession)
       shiftHistory.forEach(s => {
+        const sDateKey = new Date(s.startTime).toLocaleDateString('vi-VN');
+        seenDates.add(sDateKey);
+
+        const cashRev = s.cashRevenue || 0;
+        const cashlessRev = s.cashlessRevenue || 0;
+        const totalRev = cashRev + cashlessRev;
+        const tickets = Array.isArray(s.ticketsSold) ? s.ticketsSold.length : (s.ticketsSold || 0);
+
         let durationH = 0;
         if (s.status === 'active') {
           activeShiftsCount += 1;
@@ -558,25 +617,21 @@ exports.getMyAttendance = async (req, res) => {
             durationH = 8.0;
           }
         }
-        totalWorkHours += durationH;
-        totalCashRevenue += Number(s.cashRevenue || 0);
-        totalCashlessRevenue += Number(s.cashlessRevenue || 0);
-        const ticketsCount = Number(s.ticketsSold?.length || 0);
-        totalTicketsSold += ticketsCount;
-        if (s.faceVerified) faceVerifiedCount += 1;
-        if (s.reconciliationStatus === 'verified') verifiedCashCount += 1;
 
-        const dateKey = new Date(s.startTime).toLocaleDateString('vi-VN');
-        seenDates.add(dateKey);
+        totalWorkHours += durationH;
+        totalCashRevenue += cashRev;
+        totalCashlessRevenue += cashlessRev;
+        totalTicketsSold += tickets;
+        const matchedAtt = attTicketDateMap[sDateKey];
+        if (matchedAtt?.faceVerified) faceVerifiedCount += 1;
 
         combinedHistory.push({
           id: s._id,
-          tripRoute: s.counterNumber || 'Quầy vé trực',
-          busPlateNumber: `Quỹ: ${(s.initialCash || 0).toLocaleString('vi-VN')}đ`,
-          counterNumber: s.counterNumber || 'Quầy vé trực',
-          officeName: s.officeName || 'Văn phòng chi nhánh',
-          branchId: s.branchId || 'sg',
-          date: dateKey,
+          tripRoute: emp?.assignedOffice || 'Quầy vé trực',
+          busPlateNumber: 'Quầy bán vé',
+          officeName: emp?.assignedOffice || 'Văn phòng Bến xe Miền Đông',
+          branchId: emp?.branchId || 'sg',
+          date: sDateKey,
           startTime: s.startTime,
           endTime: s.endTime,
           checkInTime: formatTime(s.startTime),
@@ -584,17 +639,17 @@ exports.getMyAttendance = async (req, res) => {
           durationHours: durationH,
           status: s.status,
           initialCash: s.initialCash || 0,
-          cashRevenue: s.cashRevenue || 0,
-          cashlessRevenue: s.cashlessRevenue || 0,
-          totalRevenue: Number(s.cashRevenue || 0) + Number(s.cashlessRevenue || 0),
-          ticketsCount,
-          reconciliationStatus: s.reconciliationStatus || 'pending',
-          faceVerified: Boolean(s.faceVerified),
-          faceDistance: s.faceDistance,
-          isLiveVerified: Boolean(s.isLiveVerified),
-          checkInPhoto: s.checkInPhoto || null,
-          checkOutPhoto: s.checkOutPhoto || null,
-          location: s.location || s.counterNumber,
+          cashRevenue: cashRev,
+          cashlessRevenue: cashlessRev,
+          totalRevenue: totalRev,
+          ticketsCount: tickets,
+          reconciliationStatus: s.reconciliationStatus || 'verified',
+          faceVerified: Boolean(matchedAtt?.faceVerified),
+          faceDistance: matchedAtt?.faceDistance ?? null,
+          isLiveVerified: Boolean(matchedAtt?.isLiveVerified),
+          checkInPhoto: matchedAtt?.checkInPhoto || null,
+          checkOutPhoto: matchedAtt?.checkOutPhoto || null,
+          location: emp?.assignedOffice || 'Văn phòng bán vé',
           notes: s.notes || ''
         });
       });
@@ -603,7 +658,7 @@ exports.getMyAttendance = async (req, res) => {
       attTicketRecords.forEach(att => {
         const attDateKey = new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN');
         if (!seenDates.has(attDateKey)) {
-          let durationH = 0;
+          let durationH = att.totalHours || 0;
           if (att.status === 'active') {
             activeShiftsCount += 1;
             const diffMs = Math.max(0, nowTime - new Date(att.checkInTime || att.createdAt));
@@ -613,20 +668,21 @@ exports.getMyAttendance = async (req, res) => {
             if (att.checkOutTime && att.checkInTime) {
               const diffMs = Math.max(0, new Date(att.checkOutTime) - new Date(att.checkInTime));
               durationH = +(diffMs / 3600000).toFixed(1);
-            } else {
+            } else if (!durationH) {
               durationH = 8.0;
             }
           }
           totalWorkHours += durationH;
           if (att.faceVerified) faceVerifiedCount += 1;
 
+          const office = emp?.assignedOffice || 'Văn phòng bán vé';
+
           combinedHistory.push({
             id: att._id,
-            tripRoute: att.location || 'Quầy vé trực',
-            busPlateNumber: 'Quầy bán vé',
-            counterNumber: att.location || 'Quầy vé trực',
-            officeName: 'Văn phòng chi nhánh',
-            branchId: 'sg',
+            tripRoute: office,
+            busPlateNumber: 'Văn phòng vé',
+            officeName: office,
+            branchId: emp?.branchId || 'sg',
             date: attDateKey,
             startTime: att.checkInTime || att.createdAt,
             endTime: att.checkOutTime || null,
@@ -645,7 +701,7 @@ exports.getMyAttendance = async (req, res) => {
             isLiveVerified: Boolean(att.isLiveVerified),
             checkInPhoto: att.checkInPhoto || null,
             checkOutPhoto: att.checkOutPhoto || null,
-            location: att.location || 'Quầy vé',
+            location: office,
             notes: att.note || ''
           });
         }
@@ -658,7 +714,7 @@ exports.getMyAttendance = async (req, res) => {
         status: 'approved'
       }).lean();
 
-      const totalShifts = shiftHistory.length;
+      const totalShifts = shiftHistory.length || combinedHistory.length;
       const faceRate = totalShifts > 0 ? Math.round((faceVerifiedCount / totalShifts) * 100) : 100;
       const expectedDays = 26;
       let attendanceRate = Math.min(100, Math.round(((totalShifts + approvedLeaves.length) / expectedDays) * 100));
@@ -698,11 +754,12 @@ exports.getMyAttendance = async (req, res) => {
         currentTodayRecord = latestShift;
       }
 
+      const hasFaceEnrolled = Boolean(emp && emp.faceRegistered && Array.isArray(emp.faceDescriptors) && emp.faceDescriptors.length > 0);
       return res.status(200).json({
         success: true,
-        faceRegistered: Boolean(user.faceRegistered),
-        facePhoto: user.facePhoto || null,
-        faceDescriptors: Array.isArray(user.faceDescriptors) ? user.faceDescriptors : [],
+        faceRegistered: hasFaceEnrolled,
+        facePhoto: emp?.facePhoto || null,
+        faceDescriptors: emp && Array.isArray(emp.faceDescriptors) ? emp.faceDescriptors : [],
         todayDuties: [],
         activeTrip: null,
         todayStatus: currentTodayStatus,
@@ -712,7 +769,7 @@ exports.getMyAttendance = async (req, res) => {
       });
     }
 
-    // ── Đối với Tài xế & Phụ xe: Xử lý ca trực hôm nay & dữ liệu thật từ MongoDB ──
+    // ── Đối với Tài xế & Phụ xe: Dữ liệu chuẩn hóa 3NF từ Attendance + CrewAttendance + Trip ──
     const tripQuery = {
       departureTime: { $gte: dayStart, $lte: dayEnd },
       journeyStatus: { $ne: 'cancelled' }
@@ -729,10 +786,29 @@ exports.getMyAttendance = async (req, res) => {
       .populate('busId', 'plateNumber')
       .lean();
 
+    // Lấy các bản ghi attendance của user
+    const records = await Attendance.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    // Lấy danh sách crew_attendances tương ứng
+    const attIds = records.map(r => r._id);
+    const crewRecords = await CrewAttendance.find({ attendanceId: { $in: attIds } })
+      .populate({ path: 'tripId', populate: { path: 'routeId busId' } })
+      .populate('busId')
+      .lean();
+
+    const crewMap = {};
+    crewRecords.forEach(c => {
+      crewMap[c.attendanceId.toString()] = c;
+    });
+
     const now = new Date();
     const todayDuties = myTodayTrips.map(t => {
       const routeName = t.routeId?.name || (t.routeId?.startPoint ? `${t.routeId.startPoint} -> ${t.routeId.endPoint}` : 'Chuyến xe theo phân công');
-      const rec = records.find(r => r.tripId && r.tripId.toString() === t._id.toString());
+      const matchedCrew = crewRecords.find(c => c.tripId && (c.tripId._id || c.tripId).toString() === t._id.toString());
+      const rec = matchedCrew ? records.find(r => r._id.toString() === matchedCrew.attendanceId.toString()) : null;
       const isPastDeparture = now > new Date(t.departureTime);
 
       let status = 'scheduled';
@@ -762,20 +838,13 @@ exports.getMyAttendance = async (req, res) => {
     const activeAttendanceRecord = records.find(r => r.status === 'active') || null;
 
     if (activeAttendanceRecord && !todayDuties.some(d => d.status === 'active')) {
-      let activeTripInfo = null;
-      if (activeAttendanceRecord.tripId) {
-        activeTripInfo = await Trip.findById(activeAttendanceRecord.tripId)
-          .populate('routeId', 'name startPoint endPoint')
-          .populate('busId', 'plateNumber')
-          .lean();
-      }
-
-      const activeRouteName = activeAttendanceRecord.tripRoute ||
-        (activeTripInfo?.routeId?.name || (activeTripInfo?.routeId?.startPoint ? `${activeTripInfo.routeId.startPoint} -> ${activeTripInfo.routeId.endPoint}` : 'Chuyến xe đang phục vụ'));
-      const activePlate = activeAttendanceRecord.busPlateNumber || activeTripInfo?.busId?.plateNumber || '--';
+      const activeCrew = crewMap[activeAttendanceRecord._id.toString()];
+      const activeTripInfo = activeCrew?.tripId || null;
+      const activeRouteName = activeTripInfo?.routeId?.name || (activeTripInfo?.routeId?.startPoint ? `${activeTripInfo.routeId.startPoint} -> ${activeTripInfo.routeId.endPoint}` : 'Chuyến xe đang phục vụ');
+      const activePlate = activeCrew?.busId?.plateNumber || activeTripInfo?.busId?.plateNumber || '--';
 
       todayDuties.unshift({
-        tripId: activeAttendanceRecord.tripId || activeTripInfo?._id || null,
+        tripId: activeTripInfo?._id || null,
         route: activeRouteName,
         plateNumber: activePlate,
         departureTime: activeTripInfo?.departureTime || activeAttendanceRecord.checkInTime,
@@ -806,22 +875,13 @@ exports.getMyAttendance = async (req, res) => {
 
     let todayRecord = activeAttendanceRecord;
     if (!todayRecord && activeDuty && activeDuty.tripId) {
-      todayRecord = records.find(r => r.tripId && r.tripId.toString() === activeDuty.tripId.toString() && r.status !== 'scheduled') || null;
-    }
-    if (!todayRecord) {
-      todayRecord = records.find(r => {
-        if (r.tripId && todayDuties.some(d => d.tripId && d.tripId.toString() === r.tripId.toString())) return true;
-        const dIn = r.checkInTime ? new Date(r.checkInTime) : null;
-        if (dIn && dIn >= dayStart && dIn <= dayEnd) return true;
-        const dOut = r.checkOutTime ? new Date(r.checkOutTime) : null;
-        if (dOut && dOut >= dayStart && dOut <= dayEnd) return true;
-        const dDate = r.date ? new Date(r.date) : null;
-        if (dDate && dDate >= dayStart && dDate <= dayEnd) return true;
-        return false;
-      }) || null;
+      const matchedCrew = crewRecords.find(c => c.tripId && (c.tripId._id || c.tripId).toString() === activeDuty.tripId.toString());
+      if (matchedCrew) {
+        todayRecord = records.find(r => r._id.toString() === matchedCrew.attendanceId.toString() && r.status !== 'scheduled') || null;
+      }
     }
 
-    // ── XÂY DỰNG LỊCH SỬ CHẤM CÔNG THẬT TỪ MONGODB (KẾT HỢP ATTENDANCE & TRIP) ──
+    // ── XÂY DỰNG LỊCH SỬ CHẤM CÔNG THẬT TỪ MONGODB (3NF MERGE) ──
     const attHistoryQuery = { userId };
     const tripHistoryQuery = { journeyStatus: { $ne: 'cancelled' } };
 
@@ -839,7 +899,6 @@ exports.getMyAttendance = async (req, res) => {
       attHistoryQuery.$or = [
         { date: { $gte: from, $lte: to } },
         { checkInTime: { $gte: from, $lte: to } },
-        { scheduledDepartureTime: { $gte: from, $lte: to } },
         { createdAt: { $gte: from, $lte: to } }
       ];
       tripHistoryQuery.departureTime = { $gte: from, $lte: to };
@@ -849,7 +908,6 @@ exports.getMyAttendance = async (req, res) => {
       attHistoryQuery.$or = [
         { date: { $gte: from } },
         { checkInTime: { $gte: from } },
-        { scheduledDepartureTime: { $gte: from } },
         { createdAt: { $gte: from } }
       ];
       tripHistoryQuery.departureTime = { $gte: from };
@@ -859,7 +917,6 @@ exports.getMyAttendance = async (req, res) => {
       attHistoryQuery.$or = [
         { date: { $lte: to } },
         { checkInTime: { $lte: to } },
-        { scheduledDepartureTime: { $lte: to } },
         { createdAt: { $lte: to } }
       ];
       tripHistoryQuery.departureTime = { $lte: to };
@@ -871,7 +928,6 @@ exports.getMyAttendance = async (req, res) => {
       attHistoryQuery.$or = [
         { date: { $gte: startOfMonth, $lte: endOfMonth } },
         { checkInTime: { $gte: startOfMonth, $lte: endOfMonth } },
-        { scheduledDepartureTime: { $gte: startOfMonth, $lte: endOfMonth } },
         { createdAt: { $gte: startOfMonth, $lte: endOfMonth } }
       ];
       tripHistoryQuery.departureTime = { $gte: startOfMonth, $lte: endOfMonth };
@@ -882,6 +938,18 @@ exports.getMyAttendance = async (req, res) => {
       .sort({ date: -1, checkInTime: -1, createdAt: -1 })
       .limit(limit)
       .lean();
+
+    // Nạp crew_attendances tương ứng
+    const histAttIds = attRecords.map(r => r._id);
+    const histCrewRecords = await CrewAttendance.find({ attendanceId: { $in: histAttIds } })
+      .populate({ path: 'tripId', populate: { path: 'routeId busId' } })
+      .populate('busId')
+      .lean();
+
+    const histCrewMap = {};
+    histCrewRecords.forEach(c => {
+      histCrewMap[c.attendanceId.toString()] = c;
+    });
 
     // 2. Lấy dữ liệu chuyến xe phân công từ collection 'trips' trong MongoDB
     let assignedTrips = [];
@@ -894,12 +962,12 @@ exports.getMyAttendance = async (req, res) => {
         .lean();
     }
 
-    // 3. Kết hợp (Merge) hai nguồn dữ liệu thật trong MongoDB
+    // 3. Kết hợp (Merge) dữ liệu thật trong MongoDB
     const mergedList = [];
     const usedTripIds = new Set();
     const usedAttIds = new Set();
 
-    // 3.1. Chuyến xe từ collection 'trips'
+    // 3.1. Duyệt chuyến xe từ collection 'trips'
     for (const trip of assignedTrips) {
       const tIdStr = trip._id.toString();
       usedTripIds.add(tIdStr);
@@ -909,29 +977,31 @@ exports.getMyAttendance = async (req, res) => {
       const depDate = new Date(trip.departureTime);
       const isPastDeparture = now > depDate;
 
-      const matchedAtt = attRecords.find(r => r.tripId && r.tripId.toString() === tIdStr);
+      // Tìm bản ghi attendance thông qua crew_attendances
+      const matchedCrew = histCrewRecords.find(c => c.tripId && (c.tripId._id || c.tripId).toString() === tIdStr);
+      const matchedAtt = matchedCrew ? attRecords.find(r => r._id.toString() === matchedCrew.attendanceId.toString()) : null;
 
       if (matchedAtt) {
         usedAttIds.add(matchedAtt._id.toString());
-        let durationH = 0;
+        let durationH = matchedAtt.totalHours || 0;
         if (matchedAtt.status === 'active' && matchedAtt.checkInTime) {
           const diffMs = Math.max(0, now - new Date(matchedAtt.checkInTime));
           durationH = +(diffMs / 3600000).toFixed(1);
         } else if (matchedAtt.checkInTime && matchedAtt.checkOutTime) {
           const diffMs = Math.max(0, new Date(matchedAtt.checkOutTime) - new Date(matchedAtt.checkInTime));
           durationH = +(diffMs / 3600000).toFixed(1);
-        } else if (trip.arrivalTime && trip.departureTime) {
+        } else if (!durationH && trip.arrivalTime && trip.departureTime) {
           const diffMs = Math.max(0, new Date(trip.arrivalTime) - new Date(trip.departureTime));
           durationH = +(diffMs / 3600000).toFixed(1);
-        } else {
+        } else if (!durationH) {
           durationH = 6.0;
         }
 
         mergedList.push({
           id: matchedAtt._id,
           tripId: trip._id,
-          tripRoute: matchedAtt.tripRoute || routeName,
-          busPlateNumber: matchedAtt.busPlateNumber || plateNumber,
+          tripRoute: routeName,
+          busPlateNumber: plateNumber,
           date: new Date(matchedAtt.date || matchedAtt.checkInTime || depDate).toLocaleDateString('vi-VN'),
           rawDate: matchedAtt.date || matchedAtt.checkInTime || depDate,
           scheduledDepartureTime: formatShortTime(depDate),
@@ -942,39 +1012,17 @@ exports.getMyAttendance = async (req, res) => {
           rawCheckOutTime: matchedAtt.checkOutTime || null,
           durationHours: durationH,
           status: matchedAtt.status,
-          faceVerified: Boolean(matchedAtt.faceVerified),
+          faceVerified: matchedAtt.faceVerified,
           faceDistance: matchedAtt.faceDistance,
           isLiveVerified: Boolean(matchedAtt.isLiveVerified),
           checkInPhoto: matchedAtt.checkInPhoto || null,
           checkOutPhoto: matchedAtt.checkOutPhoto || null,
-          location: matchedAtt.location || (trip.routeId?.startPoint ? `Bến xe ${trip.routeId.startPoint}` : 'Bến xe trung tâm'),
-          note: matchedAtt.note || ''
+          location: emp?.assignedOffice || 'Tại bến xuất phát',
+          notes: matchedAtt.note || ''
         });
       } else {
-        let tripStatus = 'scheduled';
-        let checkInTimeStr = '--:--:--';
-        let checkOutTimeStr = '--:--:--';
-        let durationH = 0;
-
-        if (trip.arrivalTime && trip.departureTime) {
-          const diffMs = Math.max(0, new Date(trip.arrivalTime) - new Date(trip.departureTime));
-          durationH = +(diffMs / 3600000).toFixed(1);
-        } else {
-          durationH = 6.0;
-        }
-
-        if (trip.journeyStatus === 'completed') {
-          tripStatus = 'closed';
-          checkInTimeStr = formatTime(depDate);
-          checkOutTimeStr = trip.arrivalTime ? formatTime(trip.arrivalTime) : '--:--:--';
-        } else if (trip.journeyStatus === 'in_transit') {
-          tripStatus = 'active';
-          checkInTimeStr = formatTime(depDate);
-          const diffMs = Math.max(0, now - depDate);
-          durationH = +(diffMs / 3600000).toFixed(1);
-        } else if (isPastDeparture) {
-          tripStatus = 'absent';
-        }
+        const tripStatus = isPastDeparture ? 'absent' : 'scheduled';
+        const tripDuration = trip.arrivalTime ? +((new Date(trip.arrivalTime) - depDate) / 3600000).toFixed(1) : 6.0;
 
         mergedList.push({
           id: `trip_${trip._id}`,
@@ -985,65 +1033,69 @@ exports.getMyAttendance = async (req, res) => {
           rawDate: depDate,
           scheduledDepartureTime: formatShortTime(depDate),
           rawScheduledDepartureTime: depDate,
-          checkInTime: checkInTimeStr,
-          rawCheckInTime: trip.journeyStatus === 'completed' || trip.journeyStatus === 'in_transit' ? depDate : null,
-          checkOutTime: checkOutTimeStr,
-          rawCheckOutTime: trip.arrivalTime || null,
-          durationHours: durationH,
+          checkInTime: '--:--:--',
+          rawCheckInTime: null,
+          checkOutTime: '--:--:--',
+          rawCheckOutTime: null,
+          durationHours: isPastDeparture ? 0 : tripDuration,
           status: tripStatus,
           faceVerified: false,
           faceDistance: null,
           isLiveVerified: false,
           checkInPhoto: null,
           checkOutPhoto: null,
-          location: trip.routeId?.startPoint ? `Bến xe ${trip.routeId.startPoint}` : 'Bến xe trung tâm',
-          note: trip.journeyStatus === 'completed' ? 'Chuyến xe đã hoàn thành theo lịch trình' : ''
+          location: emp?.assignedOffice || 'Chưa check-in',
+          notes: isPastDeparture ? 'Quá giờ khởi hành chưa check-in (Vắng)' : 'Chờ khởi hành'
         });
       }
     }
 
-    // 3.2. Bổ sung các bản ghi trong 'attendances' không gắn với chuyến xe nào ở trên
+    // 3.2. Bổ sung các bản ghi 'Attendance' chưa khớp với chuyến xe nào
     for (const att of attRecords) {
-      if (!usedAttIds.has(att._id.toString())) {
-        let durationH = 0;
-        if (att.status === 'active' && att.checkInTime) {
-          const diffMs = Math.max(0, now - new Date(att.checkInTime));
-          durationH = +(diffMs / 3600000).toFixed(1);
-        } else if (att.checkInTime && att.checkOutTime) {
-          const diffMs = Math.max(0, new Date(att.checkOutTime) - new Date(att.checkInTime));
-          durationH = +(diffMs / 3600000).toFixed(1);
-        } else {
-          durationH = 6.0;
-        }
+      if (usedAttIds.has(att._id.toString())) continue;
 
-        mergedList.push({
-          id: att._id,
-          tripId: att.tripId || null,
-          tripRoute: att.tripRoute || 'Ca trực tăng cường / Tăng ca',
-          busPlateNumber: att.busPlateNumber || '--',
-          date: new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN'),
-          rawDate: att.date || att.checkInTime || att.createdAt,
-          scheduledDepartureTime: att.scheduledDepartureTime ? formatShortTime(att.scheduledDepartureTime) : '--:--',
-          rawScheduledDepartureTime: att.scheduledDepartureTime || null,
-          checkInTime: formatTime(att.checkInTime),
-          rawCheckInTime: att.checkInTime || null,
-          checkOutTime: formatTime(att.checkOutTime),
-          rawCheckOutTime: att.checkOutTime || null,
-          durationHours: durationH,
-          status: att.status,
-          faceVerified: Boolean(att.faceVerified),
-          faceDistance: att.faceDistance,
-          isLiveVerified: Boolean(att.isLiveVerified),
-          checkInPhoto: att.checkInPhoto || null,
-          checkOutPhoto: att.checkOutPhoto || null,
-          location: att.location || 'Bến xe',
-          note: att.note || ''
-        });
+      const crewInfo = histCrewMap[att._id.toString()];
+      const tInfo = crewInfo?.tripId;
+      const routeName = tInfo?.routeId?.name || (tInfo?.routeId?.startPoint ? `${tInfo.routeId.startPoint} -> ${tInfo.routeId.endPoint}` : 'Ca làm việc');
+      const plateNumber = crewInfo?.busId?.plateNumber || tInfo?.busId?.plateNumber || '--';
+
+      let durationH = att.totalHours || 0;
+      if (att.status === 'active' && att.checkInTime) {
+        const diffMs = Math.max(0, now - new Date(att.checkInTime));
+        durationH = +(diffMs / 3600000).toFixed(1);
+      } else if (att.checkInTime && att.checkOutTime) {
+        const diffMs = Math.max(0, new Date(att.checkOutTime) - new Date(att.checkInTime));
+        durationH = +(diffMs / 3600000).toFixed(1);
+      } else if (!durationH) {
+        durationH = 6.0;
       }
+
+      mergedList.push({
+        id: att._id,
+        tripId: tInfo?._id || null,
+        tripRoute: routeName,
+        busPlateNumber: plateNumber,
+        date: new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN'),
+        rawDate: att.date || att.checkInTime || att.createdAt,
+        scheduledDepartureTime: '--:--',
+        rawScheduledDepartureTime: null,
+        checkInTime: formatTime(att.checkInTime),
+        rawCheckInTime: att.checkInTime || null,
+        checkOutTime: formatTime(att.checkOutTime),
+        rawCheckOutTime: att.checkOutTime || null,
+        durationHours: durationH,
+        status: att.status,
+        faceVerified: att.faceVerified,
+        faceDistance: att.faceDistance,
+        isLiveVerified: Boolean(att.isLiveVerified),
+        checkInPhoto: att.checkInPhoto || null,
+        checkOutPhoto: att.checkOutPhoto || null,
+        location: emp?.assignedOffice || 'Tại bến xe',
+        notes: att.note || ''
+      });
     }
 
-    mergedList.sort((a, b) => new Date(b.rawDate || 0) - new Date(a.rawDate || 0));
-
+    // Lọc theo query status nếu có
     let finalHistory = mergedList;
     if (req.query.status && req.query.status !== 'all') {
       finalHistory = finalHistory.filter(item => item.status === req.query.status);
@@ -1053,56 +1105,51 @@ exports.getMyAttendance = async (req, res) => {
       finalHistory = finalHistory.filter(item => item.faceVerified === wantVerified);
     }
 
-    let totalWorkHours = 0;
-    let activeTripsCount = 0;
-    let closedTripsCount = 0;
-    let absentTripsCount = 0;
-    let faceVerifiedCount = 0;
+    finalHistory.sort((a, b) => new Date(b.rawDate || 0) - new Date(a.rawDate || 0));
 
-    finalHistory.forEach(r => {
-      totalWorkHours += (r.durationHours || 0);
-      if (r.status === 'active') activeTripsCount += 1;
-      else if (r.status === 'closed') closedTripsCount += 1;
-      else if (r.status === 'absent') absentTripsCount += 1;
-      if (r.faceVerified) faceVerifiedCount += 1;
-    });
-
-    const combinedCrewHistory = finalHistory.slice(0, limit);
+    // Tính toán chỉ số KPI tóm tắt
+    const totalShifts = finalHistory.length;
+    const activeShiftsCount = finalHistory.filter(h => h.status === 'active').length;
+    const closedShiftsCount = finalHistory.filter(h => h.status === 'closed').length;
+    const absentShiftsCount = finalHistory.filter(h => h.status === 'absent').length;
+    const totalWorkHours = finalHistory.reduce((acc, h) => acc + (h.durationHours || 0), 0);
+    const faceVerifiedCount = finalHistory.filter(h => h.faceVerified).length;
+    const faceRate = totalShifts > 0 ? Math.round((faceVerifiedCount / totalShifts) * 100) : 100;
 
     const approvedLeaves = await LeaveRequest.find({
       userId,
       status: 'approved'
     }).lean();
 
-    const totalTrips = finalHistory.length;
-    const faceRate = totalTrips > 0 ? Math.round((faceVerifiedCount / totalTrips) * 100) : 100;
     const expectedDays = 26;
-    let attendanceRate = Math.min(100, Math.round(((closedTripsCount + approvedLeaves.length) / expectedDays) * 100));
-    if (closedTripsCount >= 18) attendanceRate = Math.min(100, Math.max(95, attendanceRate));
+    let attendanceRate = Math.min(100, Math.round(((closedShiftsCount + activeShiftsCount + approvedLeaves.length) / expectedDays) * 100));
+    if (totalShifts >= 18) attendanceRate = Math.min(100, Math.max(95, attendanceRate));
 
-    const crewSummary = {
-      totalTrips,
-      activeTripsCount,
-      closedTripsCount,
-      absentTripsCount,
+    const summary = {
+      totalShifts,
+      activeShiftsCount,
+      closedShiftsCount,
+      absentShiftsCount,
       totalWorkHours: +totalWorkHours.toFixed(1),
-      avgHoursPerTrip: totalTrips > 0 ? +(totalWorkHours / totalTrips).toFixed(1) : 0,
+      avgHoursPerShift: totalShifts > 0 ? +(totalWorkHours / totalShifts).toFixed(1) : 0,
       faceVerifiedCount,
       faceRate,
       leaveDaysCount: approvedLeaves.length,
       attendanceRate
     };
 
+    const hasFaceEnrolled = Boolean(emp && emp.faceRegistered && Array.isArray(emp.faceDescriptors) && emp.faceDescriptors.length > 0);
     return res.status(200).json({
       success: true,
-      faceRegistered: user ? Boolean(user.faceRegistered) : false,
-      faceDescriptors: user && user.faceDescriptors ? user.faceDescriptors : [],
+      faceRegistered: hasFaceEnrolled,
+      facePhoto: emp?.facePhoto || null,
+      faceDescriptors: emp && Array.isArray(emp.faceDescriptors) ? emp.faceDescriptors : [],
       todayDuties,
-      activeTrip: activeDuty,
+      activeTrip: activeDuty?.status === 'active' ? activeDuty : null,
       todayStatus: finalTodayStatus,
       todayRecord,
-      history: combinedCrewHistory,
-      summary: crewSummary
+      history: finalHistory,
+      summary
     });
   } catch (err) {
     console.error('[getMyAttendance Error]:', err);
@@ -1111,12 +1158,8 @@ exports.getMyAttendance = async (req, res) => {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5. XEM BẢNG CHẤM CÔNG THEO DÕI TỔ LÁI (ops_manager / gm / admin)
-// GET /api/v1/attendance/today?date=YYYY-MM-DD
-// Logic dữ liệu thật theo từng Chuyến xe (Trip):
-// - Nếu ngày đó tài xế chạy 2 chuyến xe thì check-in/out riêng 2 lần độc lập
-// - Quá thời gian xe bắt đầu chạy (now > departureTime) mà chưa chấm công -> Đánh "Vắng không phép" (absent)
-// - Chỉ dùng để theo dõi chấm công & xác thực hình ảnh, không đăng ký Face ID ở chức năng này
+// 5. GIÁM SÁT TOÀN BỘ CHẤM CÔNG HÔM NAY (ops_manager / ticket_manager)
+// GET /api/attendance/today?date=2026-10-18&role=all
 // ═══════════════════════════════════════════════════════════════════════════
 exports.getTodayAttendance = async (req, res) => {
   try {
@@ -1139,33 +1182,61 @@ exports.getTodayAttendance = async (req, res) => {
     const allStaff = await User.find({
       role: { $in: allStaffRoles },
       status: 'active'
-    }).select('_id name phone role faceRegistered facePhoto branch').lean();
+    }).select('_id name phone role branch').lean();
+
+    const staffIds = allStaff.map(s => s._id);
+    const empProfiles = await EmployeeProfile.find({
+      _id: { $in: staffIds }
+    }).select('_id faceRegistered facePhoto faceDescriptors').lean();
+
+    const empMap = {};
+    empProfiles.forEach(ep => {
+      empMap[ep._id.toString()] = ep;
+    });
 
     const staffByPhone = {};
     const staffByName = {};
     allStaff.forEach(s => {
-      if (s.phone) staffByPhone[s.phone] = s;
-      if (s.name) staffByName[s.name.trim().toLowerCase()] = s;
+      const ep = empMap[s._id.toString()];
+      const enrichedStaff = {
+        ...s,
+        faceRegistered: Boolean(ep?.faceRegistered && Array.isArray(ep?.faceDescriptors) && ep?.faceDescriptors?.length > 0),
+        facePhoto: ep?.facePhoto || null
+      };
+      if (s.phone) staffByPhone[s.phone] = enrichedStaff;
+      if (s.name) staffByName[s.name.trim().toLowerCase()] = enrichedStaff;
     });
 
-    // 3. Lấy tất cả bản ghi chấm công liên quan đến ngày hoặc các chuyến xe này
-    const tripIds = trips.map(t => t._id);
+    // 3. Lấy tất cả bản ghi chấm công trong ngày từ bảng chung Attendance
     const records = await Attendance.find({
-      $or: [
-        { tripId: { $in: tripIds } },
-        { date: { $gte: dayStart, $lte: dayEnd } }
-      ]
+      date: { $gte: dayStart, $lte: dayEnd }
     }).lean();
+
+    const attIds = records.map(r => r._id);
+    const crewRecords = await CrewAttendance.find({ attendanceId: { $in: attIds } }).lean();
+    const agentRecords = await AgentAttendance.find({ attendanceId: { $in: attIds } }).lean();
+
+    const crewByTripAndUser = {};
+    crewRecords.forEach(c => {
+      if (c.tripId) {
+        crewByTripAndUser[c.tripId.toString()] = c;
+      }
+    });
 
     const attMap = {};
     records.forEach(r => {
-      if (r.tripId) {
-        attMap[`${r.userId}_${r.tripId}`] = r;
-        attMap[`${r.employeePhone}_${r.tripId}`] = r;
-      } else {
-        attMap[`${r.userId}`] = r;
-        attMap[`${r.employeePhone}`] = r;
-      }
+      attMap[r.userId.toString()] = r;
+    });
+
+    // Lấy danh sách đơn nghỉ phép hợp lệ trong ngày
+    const approvedLeaves = await LeaveRequest.find({
+      status: 'approved',
+      startDate: { $lte: dayEnd },
+      endDate: { $gte: dayStart }
+    }).lean();
+    const leaveMap = {};
+    approvedLeaves.forEach(l => {
+      leaveMap[l.userId.toString()] = l;
     });
 
     const now = new Date();
@@ -1193,7 +1264,8 @@ exports.getTodayAttendance = async (req, res) => {
 
         if (staff._id) staffAssignedMap[staff._id.toString()] = true;
 
-        const rec = attMap[`${staff._id}_${trip._id}`] || attMap[`${staff.phone}_${trip._id}`];
+        const crewItem = crewByTripAndUser[trip._id.toString()];
+        const rec = crewItem ? records.find(r => r._id.toString() === crewItem.attendanceId.toString()) : (staff._id ? attMap[staff._id.toString()] : null);
         let status = 'scheduled';
         let note = '';
 
@@ -1201,32 +1273,41 @@ exports.getTodayAttendance = async (req, res) => {
           status = rec.status;
           note = rec.note || '';
         } else if (isPastDeparture) {
-          // LOGIC QUAN TRỌNG: Quá giờ xe chạy mà chưa check-in -> VẮNG KHÔNG PHÉP
           status = 'absent';
           note = `Quá giờ xuất bến ${overdueMinutes} phút chưa check-in (Vắng không phép)`;
           
-          // Tự động đồng bộ bản ghi vắng vào DB nếu nhân viên có tài khoản
+          // Tự động đồng bộ bản ghi vắng vào DB nếu nhân viên có tài khoản (3NF)
           if (staff._id) {
             Attendance.findOneAndUpdate(
-              { userId: staff._id, tripId: trip._id },
+              { userId: staff._id, date: dayStart },
               {
                 $setOnInsert: {
                   userId: staff._id,
-                  employeeName: staff.name,
-                  employeePhone: staff.phone,
-                  role: 'driver',
                   date: dayStart,
-                  tripId: trip._id,
-                  tripRoute: routeName,
-                  busPlateNumber: plateNumber,
-                  scheduledDepartureTime: depDate,
                   status: 'absent',
+                  attendanceType: 'crew',
                   faceVerified: false,
                   note: `Quá giờ xuất bến ${overdueMinutes} phút chưa check-in (Vắng không phép)`
                 }
               },
-              { upsert: true }
-            ).catch(err => console.error('[Auto Absent Driver Err]:', err));
+              { upsert: true, new: true }
+            ).then(newAtt => {
+              if (newAtt) {
+                CrewAttendance.findOneAndUpdate(
+                  { attendanceId: newAtt._id },
+                  {
+                    $setOnInsert: {
+                      attendanceId: newAtt._id,
+                      tripId: trip._id,
+                      busId: trip.busId?._id || trip.busId,
+                      roleInTrip: 'driver_main',
+                      punctuality: 'late'
+                    }
+                  },
+                  { upsert: true }
+                ).catch(e => {});
+              }
+            }).catch(err => console.error('[Auto Absent Driver Err]:', err));
           }
         }
 
@@ -1255,7 +1336,7 @@ exports.getTodayAttendance = async (req, res) => {
           isLiveVerified: rec ? Boolean(rec.isLiveVerified) : false,
           checkInPhoto: rec?.checkInPhoto || null,
           checkOutPhoto: rec?.checkOutPhoto || null,
-          location: rec?.location || (status === 'absent' ? 'Chưa có mặt tại bến' : 'Chờ xuất bến'),
+          location: status === 'absent' ? 'Chưa có mặt tại bến' : 'Chờ xuất bến',
           gps: rec?.gpsLat && rec?.gpsLng ? `${rec.gpsLat.toFixed(4)}°N, ${rec.gpsLng.toFixed(4)}°E` : '--'
         });
       }
@@ -1273,7 +1354,8 @@ exports.getTodayAttendance = async (req, res) => {
 
         if (staff._id) staffAssignedMap[staff._id.toString()] = true;
 
-        const rec = attMap[`${staff._id}_${trip._id}`] || attMap[`${staff.phone}_${trip._id}`];
+        const crewItem = crewByTripAndUser[trip._id.toString()];
+        const rec = crewItem ? records.find(r => r._id.toString() === crewItem.attendanceId.toString()) : (staff._id ? attMap[staff._id.toString()] : null);
         let status = 'scheduled';
         let note = '';
 
@@ -1281,31 +1363,40 @@ exports.getTodayAttendance = async (req, res) => {
           status = rec.status;
           note = rec.note || '';
         } else if (isPastDeparture) {
-          // LOGIC QUAN TRỌNG: Quá giờ xe chạy mà chưa check-in -> VẮNG KHÔNG PHÉP
           status = 'absent';
           note = `Quá giờ xuất bến ${overdueMinutes} phút chưa check-in (Vắng không phép)`;
 
           if (staff._id) {
             Attendance.findOneAndUpdate(
-              { userId: staff._id, tripId: trip._id },
+              { userId: staff._id, date: dayStart },
               {
                 $setOnInsert: {
                   userId: staff._id,
-                  employeeName: staff.name,
-                  employeePhone: staff.phone,
-                  role: 'attendant',
                   date: dayStart,
-                  tripId: trip._id,
-                  tripRoute: routeName,
-                  busPlateNumber: plateNumber,
-                  scheduledDepartureTime: depDate,
                   status: 'absent',
+                  attendanceType: 'crew',
                   faceVerified: false,
                   note: `Quá giờ xuất bến ${overdueMinutes} phút chưa check-in (Vắng không phép)`
                 }
               },
-              { upsert: true }
-            ).catch(err => console.error('[Auto Absent Assistant Err]:', err));
+              { upsert: true, new: true }
+            ).then(newAtt => {
+              if (newAtt) {
+                CrewAttendance.findOneAndUpdate(
+                  { attendanceId: newAtt._id },
+                  {
+                    $setOnInsert: {
+                      attendanceId: newAtt._id,
+                      tripId: trip._id,
+                      busId: trip.busId?._id || trip.busId,
+                      roleInTrip: 'attendant',
+                      punctuality: 'late'
+                    }
+                  },
+                  { upsert: true }
+                ).catch(e => {});
+              }
+            }).catch(err => console.error('[Auto Absent Assistant Err]:', err));
           }
         }
 
@@ -1334,7 +1425,7 @@ exports.getTodayAttendance = async (req, res) => {
           isLiveVerified: rec ? Boolean(rec.isLiveVerified) : false,
           checkInPhoto: rec?.checkInPhoto || null,
           checkOutPhoto: rec?.checkOutPhoto || null,
-          location: rec?.location || (status === 'absent' ? 'Chưa có mặt tại bến' : 'Chờ xuất bến'),
+          location: status === 'absent' ? 'Chưa có mặt tại bến' : 'Chờ xuất bến',
           gps: rec?.gpsLat && rec?.gpsLng ? `${rec.gpsLat.toFixed(4)}°N, ${rec.gpsLng.toFixed(4)}°E` : '--'
         });
       }
@@ -1344,12 +1435,35 @@ exports.getTodayAttendance = async (req, res) => {
     const officeStaff = allStaff.filter(s => ['ticket_agent', 'ticket_manager', 'ops_manager', 'fleet_manager'].includes(s.role));
     for (const staff of officeStaff) {
       staffAssignedMap[staff._id.toString()] = true;
-      const rec = attMap[`${staff._id}`] || attMap[`${staff.phone}`];
+      const rec = attMap[staff._id.toString()];
+      const leave = leaveMap[staff._id.toString()];
       let status = 'scheduled';
       let note = '';
+      let isPastDeparture = false;
+
+      let shiftEndTime = new Date(dayEnd);
+      if (staff.role === 'ticket_agent') {
+        const isEvening = staff.shiftType === 'evening';
+        shiftEndTime = new Date(dayStart);
+        shiftEndTime.setHours(isEvening ? 22 : 14, isEvening ? 0 : 30, 0, 0);
+      } else {
+        shiftEndTime = new Date(dayStart);
+        shiftEndTime.setHours(17, 0, 0, 0);
+      }
+
       if (rec) {
         status = rec.status;
         note = rec.note || '';
+      } else if (leave) {
+        status = 'on_leave';
+        note = `Nghỉ phép (${leave.leaveType || 'Có đơn đã duyệt'})`;
+      } else if (now > shiftEndTime || dayEnd < now) {
+        status = 'absent';
+        isPastDeparture = true;
+        note = 'Hết ca trực chưa chấm công (Vắng không phép)';
+      } else {
+        status = 'scheduled';
+        note = 'Chờ nhận ca làm việc';
       }
 
       const roleRouteName = 
@@ -1379,7 +1493,7 @@ exports.getTodayAttendance = async (req, res) => {
         faceRegistered: Boolean(staff.faceRegistered),
         facePhoto: staff.facePhoto || null,
         status,
-        isPastDeparture: false,
+        isPastDeparture,
         overdueMinutes: 0,
         note: note || (status === 'scheduled' ? 'Chờ nhận ca làm việc' : ''),
         checkInTime: formatTime(rec?.checkInTime),
@@ -1389,73 +1503,45 @@ exports.getTodayAttendance = async (req, res) => {
         isLiveVerified: rec ? Boolean(rec.isLiveVerified) : false,
         checkInPhoto: rec?.checkInPhoto || null,
         checkOutPhoto: rec?.checkOutPhoto || null,
-        location: rec?.location || roleLocation,
+        location: roleLocation,
         gps: rec?.gpsLat && rec?.gpsLng ? `${rec.gpsLat.toFixed(4)}°N, ${rec.gpsLng.toFixed(4)}°E` : '--'
       });
     }
 
-    // 5. Thêm các nhân viên đội xe KHÔNG có chuyến nào hôm nay (để Quản lý nắm thông tin)
-    const unassignedStaff = allStaff
-      .filter(s => ['driver', 'attendant'].includes(s.role) && !staffAssignedMap[s._id.toString()])
-      .map(s => ({
-        id: `unassigned_${s._id}`,
-        dutyId: `unassigned_${s._id}`,
-        tripId: null,
-        tripRoute: 'Không có chuyến phân công hôm nay',
-        busPlateNumber: '--',
-        scheduledDepartureTime: null,
-        departureTimeStr: '--:--',
-        userId: s._id.toString(),
-        name: s.name,
-        phone: s.phone,
-        role: s.role,
-        faceRegistered: Boolean(s.faceRegistered),
-        facePhoto: s.facePhoto || null,
-        status: 'off',
-        isPastDeparture: false,
-        overdueMinutes: 0,
-        note: 'Nghỉ theo lịch phân công',
-        checkInTime: '--:--:--',
-        checkOutTime: '--:--:--',
-        faceVerified: false,
-        faceDistance: null,
-        isLiveVerified: false,
-        checkInPhoto: null,
-        checkOutPhoto: null,
-        location: '--',
-        gps: '--'
-      }));
-
-    // 6. Tính toán các chỉ số KPI thống kê & phân bổ theo vai trò
-    const activeDirect = duties.filter(d => d.status === 'active').length;
-    const closedShift = duties.filter(d => d.status === 'closed').length;
-    const absent = duties.filter(d => d.status === 'absent').length;
-    const scheduled = duties.filter(d => d.status === 'scheduled').length;
-    const faceRegisteredCount = allStaff.filter(s => s.faceRegistered).length;
-
-    const roleStats = {};
-    allStaffRoles.forEach(r => { roleStats[r] = 0; });
-    allStaff.forEach(s => {
-      roleStats[s.role] = (roleStats[s.role] || 0) + 1;
-    });
-
+    // 5. Thống kê tổng hợp KPI
     let finalDuties = duties;
     if (roleFilter && roleFilter !== 'all') {
       finalDuties = duties.filter(d => d.role === roleFilter);
     }
 
+    const totalAssigned = finalDuties.length;
+    const checkedInCount = finalDuties.filter(d => d.status === 'active' || d.status === 'closed').length;
+    const closedCount = finalDuties.filter(d => d.status === 'closed').length;
+    const activeCount = finalDuties.filter(d => d.status === 'active').length;
+    const absentCount = finalDuties.filter(d => d.status === 'absent').length;
+    const scheduledCount = finalDuties.filter(d => d.status === 'scheduled').length;
+
     const stats = {
-      totalTrips: trips.length,
-      totalScheduled: duties.length,
-      activeDirect,
-      closedShift,
-      absent,
-      scheduled,
-      unassignedCount: unassignedStaff.length,
-      totalStaff: allStaff.length,
-      faceRegisteredCount,
-      roleStats
+      totalAssigned,
+      checkedInCount,
+      activeCount,
+      closedCount,
+      absentCount,
+      scheduledCount,
+      attendanceRate: totalAssigned > 0 ? Math.round((checkedInCount / totalAssigned) * 100) : 0
     };
+
+    // Danh sách nhân sự chưa được phân công nhiệm vụ hôm nay
+    const unassignedStaff = allStaff
+      .filter(s => !staffAssignedMap[s._id.toString()])
+      .map(s => ({
+        id: s._id,
+        name: s.name,
+        phone: s.phone,
+        role: s.role,
+        faceRegistered: Boolean(s.faceRegistered),
+        facePhoto: s.facePhoto || null
+      }));
 
     return res.status(200).json({
       success: true,
@@ -1473,7 +1559,7 @@ exports.getTodayAttendance = async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 6. THỐNG KÊ TỔNG HỢP THEO THÁNG (general_manager)
-// GET /api/v1/attendance/stats?month=10&year=2026
+// GET /api/attendance/stats?month=10&year=2026
 // ═══════════════════════════════════════════════════════════════════════════
 exports.getAttendanceStats = async (req, res) => {
   try {
@@ -1511,6 +1597,7 @@ exports.getAttendanceStats = async (req, res) => {
     const firstDayOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0);
     const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
 
+    // Chuẩn hóa 3NF: $lookup sang bảng users để lấy name, phone, role
     const absentDetails = await Attendance.aggregate([
       {
         $match: {
@@ -1521,10 +1608,30 @@ exports.getAttendanceStats = async (req, res) => {
       {
         $group: {
           _id: '$userId',
-          name: { $first: '$employeeName' },
-          phone: { $first: '$employeePhone' },
-          role: { $first: '$role' },
           absentDays: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'userInfo'
+        }
+      },
+      {
+        $unwind: {
+          path: '$userInfo',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          absentDays: 1,
+          name: '$userInfo.name',
+          phone: '$userInfo.phone',
+          role: '$userInfo.role'
         }
       },
       { $sort: { absentDays: -1 } },
@@ -1536,10 +1643,16 @@ exports.getAttendanceStats = async (req, res) => {
       status: 'active'
     });
 
-    const faceRegisteredCount = await User.countDocuments({
+    const activeStaff = await User.find({
       role: { $in: ['driver', 'attendant'] },
-      status: 'active',
-      faceRegistered: true
+      status: 'active'
+    }).select('_id').lean();
+    const activeStaffIds = activeStaff.map(s => s._id);
+
+    const faceRegisteredCount = await EmployeeProfile.countDocuments({
+      _id: { $in: activeStaffIds },
+      faceRegistered: true,
+      'faceDescriptors.0': { $exists: true }
     });
 
     const currentMonthStats = monthlyStats.find(s => s.month === month) || {};
@@ -1558,9 +1671,9 @@ exports.getAttendanceStats = async (req, res) => {
       },
       monthlyStats,
       topAbsent: absentDetails.map(a => ({
-        name: a.name,
-        phone: a.phone,
-        role: a.role,
+        name: a.name || 'Nhân viên',
+        phone: a.phone || '--',
+        role: a.role || 'driver',
         absentDays: a.absentDays
       }))
     });
@@ -1572,7 +1685,7 @@ exports.getAttendanceStats = async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 7. ĐẶT LẠI (RESET) DỮ LIỆU CA TRỰC HÔM NAY ĐỂ PHỤC VỤ TEST / DEMO
-// DELETE /api/v1/attendance/reset-today
+// DELETE /api/attendance/reset-today
 // ═══════════════════════════════════════════════════════════════════════════
 exports.resetTodayAttendance = async (req, res) => {
   try {
@@ -1580,16 +1693,25 @@ exports.resetTodayAttendance = async (req, res) => {
     const user = await User.findById(userId);
     const { dayStart, dayEnd } = getDayRangeVN();
 
-    // 1. Xóa toàn bộ bản ghi chấm công ca trực hôm nay của nhân viên
-    const attResult = await Attendance.deleteMany({
+    // Tìm các bản ghi Attendance hôm nay của user
+    const todayAtts = await Attendance.find({
       userId,
       $or: [
         { date: { $gte: dayStart, $lte: dayEnd } },
         { createdAt: { $gte: dayStart, $lte: dayEnd } }
       ]
-    });
+    }).select('_id');
 
-    // 2. Tìm và đồng bộ đặt lại các chuyến xe hôm nay của nhân viên
+    const attIds = todayAtts.map(a => a._id);
+
+    // 1. Xóa các bản ghi con liên kết tương ứng
+    await CrewAttendance.deleteMany({ attendanceId: { $in: attIds } });
+    await AgentAttendance.deleteMany({ attendanceId: { $in: attIds } });
+
+    // 2. Xóa toàn bộ bản ghi chấm công ca trực hôm nay của nhân viên
+    const attResult = await Attendance.deleteMany({ _id: { $in: attIds } });
+
+    // 3. Tìm và đồng bộ đặt lại các chuyến xe hôm nay của nhân viên
     const tripFilter = {
       departureTime: { $gte: dayStart, $lte: dayEnd }
     };
@@ -1608,8 +1730,7 @@ exports.resetTodayAttendance = async (req, res) => {
       t.journeyLogs = [];
       t.liveGps = null;
 
-      // Nếu giờ xuất bến đã trôi qua trong quá khứ (khiến hệ thống tự động đánh Vắng không phép),
-      // tự động cập nhật lại giờ xuất bến lùi sau thời điểm hiện tại 20 phút để phục vụ kiểm thử
+      // Nếu giờ xuất bến đã trôi qua trong quá khứ, tự động lùi sau 20 phút để phục vụ kiểm thử
       if (new Date(t.departureTime) < now) {
         t.departureTime = new Date(now.getTime() + 20 * 60 * 1000);
       }

@@ -3,7 +3,7 @@ const Trip = require('../models/Trip');
 const Booking = require('../models/Booking');
 
 // @desc    Stream seat lock events via Server-Sent Events (SSE)
-// @route   GET /api/v1/trips/:id/seat-locks/stream
+// @route   GET /api/trips/:id/seat-locks/stream
 exports.streamSeatLocks = async (req, res) => {
   const { id: tripId } = req.params;
 
@@ -30,7 +30,7 @@ exports.streamSeatLocks = async (req, res) => {
 };
 
 // @desc    Get all current locked seats for a trip
-// @route   GET /api/v1/trips/:id/locked-seats
+// @route   GET /api/trips/:id/locked-seats
 exports.getLockedSeats = async (req, res) => {
   try {
     const { id: tripId } = req.params;
@@ -42,7 +42,7 @@ exports.getLockedSeats = async (req, res) => {
 };
 
 // @desc    Lock a seat for 5 minutes
-// @route   POST /api/v1/trips/:id/lock-seat
+// @route   POST /api/trips/:id/lock-seat
 exports.lockSeat = async (req, res) => {
   try {
     const { id: tripId } = req.params;
@@ -81,7 +81,7 @@ exports.lockSeat = async (req, res) => {
 };
 
 // @desc    Unlock a seat
-// @route   POST /api/v1/trips/:id/unlock-seat
+// @route   POST /api/trips/:id/unlock-seat
 exports.unlockSeat = async (req, res) => {
   try {
     const { id: tripId } = req.params;
@@ -99,7 +99,7 @@ exports.unlockSeat = async (req, res) => {
 };
 
 // @desc    Unlock all seats held by a client
-// @route   POST /api/v1/trips/:id/unlock-all-my-seats
+// @route   POST /api/trips/:id/unlock-all-my-seats
 exports.unlockAllMySeats = async (req, res) => {
   try {
     const { id: tripId } = req.params;

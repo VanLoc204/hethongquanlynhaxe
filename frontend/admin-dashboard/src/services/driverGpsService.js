@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 // Singleton Driver GPS Background Service (chạy ngầm bền bỉ xuyên suốt các tab)
 class DriverGpsService {

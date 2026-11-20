@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { BRANCH_FILTER_OPTIONS, getBranchById } from '../../constants/branches';
 import MonthlyAreaRevenueReportModal from '../../components/MonthlyAreaRevenueReportModal';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const formatDateToISO = (date) => {
   if (!date) return '';

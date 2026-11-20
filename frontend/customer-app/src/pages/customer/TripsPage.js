@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import './TripsPage.css';
 
-const API_BASE = 'http://localhost:8000/api/v1/trips';
+const API_BASE = 'http://localhost:8000/api/trips';
 
 const TripsPage = () => {
   const { search } = useLocation();
@@ -81,7 +81,7 @@ const TripsPage = () => {
   useEffect(() => {
     const fetchLocations = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/v1/trips/routes');
+        const response = await fetch('http://localhost:8000/api/trips/routes');
         const data = await response.json();
         if (data && data.success) {
           setFromLocations(data.origins || []);
@@ -205,7 +205,7 @@ const TripsPage = () => {
   useEffect(() => {
     const fetchPromos = async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/v1/promotions');
+        const res = await axios.get('http://localhost:8000/api/promotions');
         if (res.data && res.data.data) {
           const activeList = res.data.data.filter(p => p.status === 'active');
           setPromotionsList(activeList);
@@ -670,7 +670,7 @@ const TripsPage = () => {
     if (!customVoucherCode.trim()) return;
     setVoucherError('');
     try {
-      const res = await axios.post('http://localhost:8000/api/v1/promotions/validate', {
+      const res = await axios.post('http://localhost:8000/api/promotions/validate', {
         code: customVoucherCode.trim().toUpperCase(),
         orderAmount: currentTotal
       });

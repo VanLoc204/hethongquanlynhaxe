@@ -41,6 +41,7 @@ import ManagerLeavesPage from './pages/common/ManagerLeavesPage';
 import StaffSalaryPage from './pages/common/StaffSalaryPage';
 import StaffNotificationsPage from './pages/common/StaffNotificationsPage';
 import StaffAttendancePage from './pages/common/StaffAttendancePage';
+import StaffProfilePage from './pages/common/StaffProfilePage';
 
 // Ticket Agent Pages
 import AgentAttendancePage from './pages/agent/AgentAttendancePage';
@@ -84,9 +85,26 @@ import TicketManagerOverview from './pages/ticket/TicketManagerOverview';
 import TicketMonthlyReportsReviewPage from './pages/ticket/TicketMonthlyReportsReviewPage';
 
 function DashboardLayout() {
-  const { user } = useContext(AuthContext);
+  const { user, logout } = useContext(AuthContext);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const profileMenuRef = React.useRef(null);
+
+  // Đóng dropdown tài khoản khi click ra ngoài
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target)) {
+        setProfileDropdownOpen(false);
+      }
+    };
+    if (profileDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [profileDropdownOpen]);
 
   // Tự động cuộn lên đầu mỗi khi chuyển tab / tính năng trên sidebar
   useEffect(() => {
@@ -192,8 +210,8 @@ function DashboardLayout() {
         return <StaffLeavePage />;
       case 'staff-salary':
         return <StaffSalaryPage />;
-      case 'staff-notifications':
-        return <StaffNotificationsPage />;
+      case 'staff-profile':
+        return <StaffProfilePage setActiveTab={setActiveTab} />;
 
       // Ticket Agent views
       case 'agent-attendance':
@@ -202,11 +220,11 @@ function DashboardLayout() {
         return <AgentAttendanceReportPage setActiveTab={setActiveTab} />;
       case 'counter-booking':
       case 'agent-booking':
-        return <AgentBookingPage />;
+        return <AgentBookingPage setActiveTab={setActiveTab} />;
       case 'agent-tickets':
-        return <AgentTicketsPage />;
+        return <AgentTicketsPage setActiveTab={setActiveTab} />;
       case 'agent-shift':
-        return <AgentShiftSummaryPage />;
+        return <AgentShiftSummaryPage setActiveTab={setActiveTab} />;
       case 'agent-monthly-report':
         return <AgentMonthlyReportPage />;
       case 'agent-trips':
@@ -341,8 +359,8 @@ function DashboardLayout() {
         return 'Đơn xin nghỉ phép';
       case 'staff-salary':
         return 'Xem bảng lương chi tiết';
-      case 'staff-notifications':
-        return 'Thông báo nội bộ';
+      case 'staff-profile':
+        return 'Hồ sơ thông tin cá nhân';
 
       // Ticket Agent views
       case 'agent-attendance':
@@ -416,8 +434,8 @@ function DashboardLayout() {
     admin: 'Quản trị viên',
     ticket_manager: 'Quản lý Phòng vé',
     ticket_agent: 'Nhân viên bán vé',
-    driver: 'Nhân viên Tài xế',
-    attendant: 'Nhân viên Phụ xe',
+    driver: 'Tài xế',
+    attendant: 'Phụ xe',
   };
 
   return (
@@ -470,44 +488,129 @@ function DashboardLayout() {
           </div>
 
           <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            {/* Bell Icon với chấm đỏ/xanh thông báo */}
-            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', position: 'relative', padding: '4px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg>
-              <span style={{ position: 'absolute', top: '2px', right: '2px', width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444', border: '1.5px solid #ffffff' }}></span>
-            </button>
-            <button style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
-            </button>
-
-            {/* Profile Section */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div className="header-user-text" style={{ textAlign: 'right' }}>
-                <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                  {user?.name || user?.fullName || ROLE_LABEL[user?.role] || 'Người dùng'}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: '500' }}>
-                  {user?.branch?.branchName
-                    ? `${ROLE_LABEL[user?.role] || user?.role} (${user.branch.branchName.replace('Chi nhánh ', '')})`
-                    : (ROLE_LABEL[user?.role] || user?.role || 'Nhân sự')}
-                </div>
-              </div>
-              <div className="user-profile">
-                <span className="avatar" style={{
-                  backgroundColor: '#eff6ff',
-                  color: '#2563eb',
-                  fontWeight: '800',
-                  fontSize: '0.8rem',
-                  border: '1px solid #bfdbfe',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
+            {/* Profile Section with Dropdown Menu */}
+            <div ref={profileMenuRef} style={{ position: 'relative' }}>
+              <div
+                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  {user?.name ? user.name.trim().split(' ').slice(-1)[0].substring(0, 2).toUpperCase() : (user?.role === 'driver' ? 'TX' : user?.role === 'attendant' ? 'PX' : 'AB')}
-                </span>
+                  gap: '8px',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: '10px',
+                  transition: 'background-color 0.15s ease',
+                  backgroundColor: profileDropdownOpen ? '#f1f5f9' : 'transparent',
+                  userSelect: 'none'
+                }}
+                title="Tài khoản cá nhân"
+              >
+                <div className="header-user-text" style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                    {user?.name || user?.fullName || ROLE_LABEL[user?.role] || 'Người dùng'}
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: '500' }}>
+                    {ROLE_LABEL[user?.role] || 'Nhân sự'}
+                  </div>
+                </div>
+                <div className="user-profile">
+                  <span className="avatar" style={{
+                    backgroundColor: '#eff6ff',
+                    color: '#2563eb',
+                    fontWeight: '800',
+                    fontSize: '0.8rem',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: profileDropdownOpen ? '0 0 0 2px rgba(37,99,235,0.2)' : 'none'
+                  }}>
+                    {user?.name ? user.name.trim().split(' ').slice(-1)[0].substring(0, 2).toUpperCase() : (user?.role === 'driver' ? 'TX' : user?.role === 'attendant' ? 'PX' : 'AB')}
+                  </span>
+                </div>
               </div>
+
+              {/* Popup Dropdown Menu - Chỉ Thông tin cá nhân & Đăng xuất */}
+              {profileDropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 8px)',
+                  right: 0,
+                  width: '230px',
+                  backgroundColor: '#ffffff',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+                  border: '1px solid #e2e8f0',
+                  padding: '8px',
+                  zIndex: 9999
+                }}>
+                  <div style={{ padding: '8px 10px 10px 10px', borderBottom: '1px solid #f1f5f9' }}>
+                    <div style={{ fontSize: '0.84rem', fontWeight: '800', color: '#0f172a' }}>
+                      {user?.name || user?.fullName || 'Nhân sự'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                      {ROLE_LABEL[user?.role] || 'Nhân sự'} {user?.phone ? `• ${user.phone}` : ''}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '6px 0' }}>
+                    <button
+                      onClick={() => {
+                        setActiveTab('staff-profile');
+                        setProfileDropdownOpen(false);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: activeTab === 'staff-profile' ? '#eff6ff' : 'transparent',
+                        color: activeTab === 'staff-profile' ? '#2563eb' : '#334155',
+                        fontWeight: activeTab === 'staff-profile' ? '700' : '600',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                      Thông tin cá nhân
+                    </button>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                    <button
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        logout();
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#ef4444',
+                        fontWeight: '700',
+                        fontSize: '0.8rem',
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                      Đăng xuất
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>

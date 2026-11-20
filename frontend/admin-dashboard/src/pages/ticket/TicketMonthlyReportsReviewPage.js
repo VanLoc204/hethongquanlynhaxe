@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import MonthlyRevenueReportModal from '../../components/MonthlyRevenueReportModal';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const formatCurrency = (val) => {
   return (val || 0).toLocaleString('vi-VN') + ' đ';
@@ -452,9 +452,9 @@ const TicketMonthlyReportsReviewPage = () => {
                     <td style={{ textAlign: 'center', fontWeight: '700' }}>{idx + 1}</td>
                     <td style={{ fontWeight: '700', color: '#1e3a8a' }}>{r.reportCode}</td>
                     <td>
-                      <div style={{ fontWeight: '700' }}>{r.agentId?.name || 'Nhân viên bán vé'}</div>
+                      <div style={{ fontWeight: '700' }}>{(r.userId || r.agentId)?.name || 'Nhân viên bán vé'}</div>
                       <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                        {r.agentId?.phone} • {r.agentId?.branch?.branchName || 'Chi nhánh TP.HCM'}
+                        {(r.userId || r.agentId)?.phone} • {(r.userId || r.agentId)?.branch?.branchName || 'Chi nhánh TP.HCM'}
                       </div>
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: '700' }}>

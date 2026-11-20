@@ -4,7 +4,7 @@ import BusModal from '../../components/BusModal';
 
 const DEFAULT_SLEEPER_IMAGE = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80';
 const DEFAULT_VAN_IMAGE = 'https://images.unsplash.com/photo-1570125909232-eb263c188f7e?auto=format&fit=crop&w=800&q=80';
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 const ITEMS_PER_PAGE = 10;
 
 const FleetBusesPage = () => {

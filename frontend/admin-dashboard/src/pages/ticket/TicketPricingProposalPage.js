@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } 
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 // Enterprise Status Mapping
 const STATUS_CONFIG = {

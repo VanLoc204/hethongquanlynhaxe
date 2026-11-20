@@ -2,7 +2,12 @@ const crypto = require('crypto');
 const MonthlyAreaRevenueReport = require('../models/MonthlyAreaRevenueReport');
 const ShiftSession = require('../models/ShiftSession');
 const User = require('../models/User');
-const { getBranchById } = require('../constants/branches');
+
+const BRANCH_NAMES = {
+  sg: 'Chi nhánh TP. Hồ Chí Minh',
+  dl: 'Chi nhánh Đà Lạt',
+  ct: 'Chi nhánh Cần Thơ'
+};
 
 // Helper tính khoảng thời gian của tháng theo UTC
 const getMonthRange = (year, month) => {
@@ -33,15 +38,17 @@ exports.getAreaRevenuePreview = async (req, res) => {
     const y = parseInt(year, 10);
     const { start, end } = getMonthRange(y, m);
 
-    const branchInfo = getBranchById(branchId);
-    const branchName = branchInfo?.branchName || (branchId === 'sg' ? 'Chi nhánh TP. Hồ Chí Minh' : branchId === 'dl' ? 'Chi nhánh Đà Lạt' : 'Chi nhánh Cần Thơ');
+    const branchName = BRANCH_NAMES[branchId] || (branchId === 'dl' ? 'Chi nhánh Đà Lạt' : branchId === 'ct' ? 'Chi nhánh Cần Thơ' : 'Chi nhánh TP. Hồ Chí Minh');
 
-    // Lấy tất cả ca trực trong tháng của chi nhánh
+    const branchUsers = await User.find({ 'branch.branchId': branchId }).select('_id');
+    const branchUserIds = branchUsers.map(u => u._id);
+
+    // Lấy tất cả ca trực trong tháng của nhân viên thuộc chi nhánh (kế thừa từ User)
     const shifts = await ShiftSession.find({
-      branchId,
+      userId: { $in: branchUserIds },
       startTime: { $gte: start, $lt: end }
     })
-      .populate('userId', 'name phone email role')
+      .populate('userId', 'name phone email role assignedOffice')
       .sort({ startTime: -1 })
       .lean();
 
@@ -62,8 +69,8 @@ exports.getAreaRevenuePreview = async (req, res) => {
       totalCashlessRevenue += cashless;
       totalTickets += tickets;
 
-      // Gom nhóm theo quầy
-      const cKey = s.counterNumber || 'Quầy vé';
+      // Gom nhóm theo điểm bán / văn phòng (kế thừa từ User)
+      const cKey = s.userId?.assignedOffice || 'Văn phòng bán vé';
       if (!counterMap[cKey]) {
         counterMap[cKey] = {
           counter: cKey,
@@ -184,14 +191,16 @@ exports.submitAreaRevenueReport = async (req, res) => {
     }
 
     const { start, end } = getMonthRange(y, m);
-    const branchInfo = getBranchById(branchId);
-    const branchName = branchInfo?.branchName || (branchId === 'sg' ? 'Chi nhánh TP. Hồ Chí Minh' : branchId === 'dl' ? 'Chi nhánh Đà Lạt' : 'Chi nhánh Cần Thơ');
+    const branchName = BRANCH_NAMES[branchId] || (branchId === 'dl' ? 'Chi nhánh Đà Lạt' : branchId === 'ct' ? 'Chi nhánh Cần Thơ' : 'Chi nhánh TP. Hồ Chí Minh');
+
+    const branchUsers = await User.find({ 'branch.branchId': branchId }).select('_id');
+    const branchUserIds = branchUsers.map(u => u._id);
 
     const shifts = await ShiftSession.find({
-      branchId,
+      userId: { $in: branchUserIds },
       startTime: { $gte: start, $lt: end }
     })
-      .populate('userId', 'name phone email role')
+      .populate('userId', 'name phone email role assignedOffice')
       .lean();
 
     let totalCashRevenue = 0;
@@ -211,7 +220,8 @@ exports.submitAreaRevenueReport = async (req, res) => {
       totalCashlessRevenue += cashless;
       totalTickets += tickets;
 
-      const cKey = s.counterNumber || 'Quầy vé';
+      // Gom nhóm theo điểm bán / văn phòng (kế thừa từ User)
+      const cKey = s.userId?.assignedOffice || 'Văn phòng bán vé';
       if (!counterMap[cKey]) {
         counterMap[cKey] = {
           counter: cKey,

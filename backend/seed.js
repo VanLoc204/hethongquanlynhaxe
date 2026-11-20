@@ -14,7 +14,11 @@ const Review = require('./models/Review');
 const Booking = require('./models/Booking');
 const ShiftSession = require('./models/ShiftSession');
 const LeaveRequest = require('./models/LeaveRequest');
-const WorkSchedule = require('./models/WorkSchedule');
+const EmployeeProfile = require('./models/EmployeeProfile');
+const TicketAgentProfile = require('./models/TicketAgentProfile');
+const CounterIncident = require('./models/CounterIncident');
+const TripIncident = require('./models/TripIncident');
+const Payroll = require('./models/Payroll');
 
 const mockReviewsList = [
   { userName: "Nguyễn Văn Hùng", rating: 5, comment: "Xe đi rất êm, sạch sẽ, lái xe cẩn thận và đúng giờ. Tôi rất hài lòng." },
@@ -55,6 +59,18 @@ async function seedDB() {
     await Booking.deleteMany({});
     await ShiftSession.deleteMany({});
     await LeaveRequest.deleteMany({});
+    await EmployeeProfile.deleteMany({});
+    await TicketAgentProfile.deleteMany({});
+    await CounterIncident.deleteMany({});
+    await TripIncident.deleteMany({});
+    await Payroll.deleteMany({});
+
+    try {
+      await mongoose.connection.collection('workschedules').drop();
+      console.log('Dropped obsolete workschedules collection.');
+    } catch (e) {
+      // already dropped
+    }
     
     try {
       await mongoose.connection.collection('shipments').deleteMany({});
@@ -82,9 +98,9 @@ async function seedDB() {
 
     // ========================================
     // Seed System and Customer Accounts
-    // Mật khẩu mặc định: 123456
+    // Mật khẩu mặc định: Anbinh@2026
     // ========================================
-    const hashedPassword = await bcrypt.hash('123456', 10);
+    const hashedPassword = await bcrypt.hash('Anbinh@2026', 10);
 
     const systemUsers = [
       // Managers & Admin
@@ -328,7 +344,8 @@ async function seedDB() {
 
     // Seed all staff/system users
     const staffIds = {};
-    for (const u of systemUsers) {
+    for (let i = 0; i < systemUsers.length; i++) {
+      const u = systemUsers[i];
       const result = await mongoose.connection.collection('users').insertOne({
         ...u,
         password: hashedPassword,
@@ -339,6 +356,32 @@ async function seedDB() {
         updatedAt: new Date()
       });
       staffIds[u.email] = result.insertedId;
+
+      // Seed EmployeeProfile
+      const bInfo = u.branch || { branchId: 'sg', branchName: 'Chi nhánh TP. Hồ Chí Minh' };
+      const assignedOffices = bInfo.assignedOffices || ['Văn phòng Bến xe Miền Đông'];
+      await EmployeeProfile.create({
+        _id: result.insertedId,
+        employeeCode: `AB-${u.role.substring(0, 3).toUpperCase()}-${String(i + 1).padStart(3, '0')}`,
+        branch: {
+          branchId: bInfo.branchId,
+          branchName: bInfo.branchName,
+          assignedOffices
+        },
+        faceRegistered: false,
+        faceDescriptors: [],
+        facePhoto: null
+      });
+
+      // Seed TicketAgentProfile if role is ticket_agent or ticket_manager
+      if (['ticket_agent', 'ticket_manager'].includes(u.role)) {
+        await TicketAgentProfile.create({
+          _id: result.insertedId,
+          assignedOffice: assignedOffices[0] || 'Văn phòng Bến xe Miền Đông',
+          shiftType: 'morning',
+          shiftName: 'Ca Sáng (06:30 - 14:30)'
+        });
+      }
     }
 
     // Seed Customer accounts
@@ -777,46 +820,14 @@ async function seedDB() {
       await ShiftSession.create([
         {
           userId: ticketAgentUser,
-          counterNumber: 'Văn phòng Sài Gòn (BXMĐ) - Quầy số 1',
-          startTime: new Date(todayDate.getTime() + 7 * 3600 * 1000),
-          endTime: null,
-          initialCash: 1000000,
-          cashRevenue: revActive.cash,
-          cashlessRevenue: revActive.cashless,
-          ticketsSold: bBatchActive.map(b => b._id),
-          status: 'active',
-          branchId: 'sg',
-          officeName: 'Văn phòng Sài Gòn (BXMĐ)',
-          reconciliationStatus: 'pending',
-          notes: 'Ca trực mở bán sáng hôm nay. Quầy phục vụ khách tuyến Sài Gòn đi Đà Lạt và Cần Thơ.'
-        },
-        {
-          userId: ticketManagerUser,
-          counterNumber: 'Văn phòng Sài Gòn (BXMĐ) - Quầy Giám sát',
-          startTime: new Date(todayDate.getTime() + 7 * 3600 * 1000),
-          endTime: null,
-          initialCash: 2000000,
-          cashRevenue: 0,
-          cashlessRevenue: 0,
-          ticketsSold: [],
-          status: 'active',
-          branchId: 'sg',
-          officeName: 'Văn phòng Sài Gòn (BXMĐ)',
-          reconciliationStatus: 'pending',
-          notes: 'Quản lý trực ca điều hành chi nhánh TP.HCM, đối soát quỹ thu ngân ngày hôm nay.'
-        },
-        {
-          userId: ticketAgentUser,
-          counterNumber: 'Văn phòng Sài Gòn (BXMĐ) - Quầy số 1',
           startTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 7 * 3600 * 1000),
           endTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 15 * 3600 * 1000 + 30 * 60 * 1000),
           initialCash: 1000000,
+          expectedInitialCash: 1000000,
           cashRevenue: rev1.cash,
           cashlessRevenue: rev1.cashless,
           ticketsSold: bBatch1.map(b => b._id),
           status: 'closed',
-          branchId: 'sg',
-          officeName: 'Văn phòng Sài Gòn (BXMĐ)',
           reconciliationStatus: 'verified',
           reconciledBy: ticketManagerUser,
           reconciledAt: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 16 * 3600 * 1000),
@@ -824,16 +835,14 @@ async function seedDB() {
         },
         {
           userId: ticketAgentDl || ticketAgentUser,
-          counterNumber: 'Văn phòng Đà Lạt (BX Liên Tỉnh) - Quầy số 1',
           startTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 8 * 3600 * 1000),
           endTime: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 16 * 3600 * 1000 + 30 * 60 * 1000),
           initialCash: 1000000,
+          expectedInitialCash: 1000000,
           cashRevenue: rev2.cash,
           cashlessRevenue: rev2.cashless,
           ticketsSold: bBatch2.map(b => b._id),
           status: 'closed',
-          branchId: 'dl',
-          officeName: 'Văn phòng Đà Lạt (BX Liên Tỉnh)',
           reconciliationStatus: 'verified',
           reconciledBy: ticketManagerDl || ticketManagerUser,
           reconciledAt: new Date(todayDate.getTime() - 24 * 3600 * 1000 + 17 * 3600 * 1000),
@@ -897,32 +906,7 @@ async function seedDB() {
       }
     }
 
-    // Seed WorkSchedules for all operational staff (8h/day fixed shift)
-    const allUsers = await mongoose.connection.collection('users').find({}).toArray();
-    const opsStaff = allUsers.filter(u => u.role !== 'customer');
-
-    for (let day = -30; day <= 60; day++) {
-      const scheduleDate = getDateAt(day, 0, 0);
-      for (const staffUser of opsStaff) {
-        await WorkSchedule.create({
-          userId: staffUser._id,
-          userName: staffUser.name,
-          userRole: staffUser.role,
-          date: scheduleDate,
-          shiftType: 'full_day',
-          shiftName: 'Ca Hành Chính 8h',
-          startTime: '08:00',
-          endTime: '17:00',
-          workHours: 8,
-          salaryType: 'Lương cố định tháng',
-          status: 'present',
-          notes: 'Lịch cố định 8 tiếng/ngày (Sáng 08:00-12:00, Chiều 13:00-17:00). Lương cố định tháng.'
-        });
-      }
-    }
-    console.log('Seeded WorkSchedules for all operational staff.');
-
-    console.log('Successfully seeded all Route, Bus, Trip, Review, Booking and WorkSchedule data!');
+    console.log('Successfully seeded all Route, Bus, Trip, Review, Booking and Attendance data!');
   } catch (error) {
     console.error('Error seeding DB:', error);
   } finally {

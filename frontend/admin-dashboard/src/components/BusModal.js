@@ -250,7 +250,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
   const [upperFloor, setUpperFloor] = useState(initialLayout.upperFloor || []);
   const [activeFloor, setActiveFloor] = useState('lower');
 
-  const API_BASE = 'http://localhost:8000/api/v1';
+  const API_BASE = 'http://localhost:8000/api';
 
   // Calculate live seats per floor
   const countLower = lowerFloor.flat().filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;

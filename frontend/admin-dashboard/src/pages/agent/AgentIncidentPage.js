@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const getSeverityBadge = (sev) => {
   switch (sev) {
@@ -49,7 +49,7 @@ const AgentIncidentPage = () => {
   const branchInfo = agentBranchId ? getBranchById(agentBranchId) : null;
   const branchName = branchInfo?.branchName || user?.branch?.branchName || 'Chi nhánh TP. Hồ Chí Minh';
 
-  const defaultLocation = (user?.branch?.assignedOffices && user.branch.assignedOffices[0]) || 'Quầy vé Bến xe Miền Đông';
+  const defaultLocation = user?.assignedOffice || (user?.branch?.assignedOffices && user.branch.assignedOffices[0]) || user?.branch?.branchName || 'Văn phòng Bến xe Miền Đông';
 
   const [incidents, setIncidents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,12 +58,12 @@ const AgentIncidentPage = () => {
   // Form gửi sự cố
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
   const [formData, setFormData] = useState({
     title: '',
     category: 'equipment',
     severity: 'medium',
     location: defaultLocation,
-    counterNumber: 'Quầy 01',
     details: '',
     initialAction: ''
   });
@@ -99,8 +99,40 @@ const AgentIncidentPage = () => {
     if (token) fetchMyIncidents();
   }, [token]);
 
+  // Bắt lỗi nhập liệu sự cố
+  const validateIncidentForm = () => {
+    const errs = {};
+
+    const trimmedTitle = (formData.title || '').trim();
+    if (!trimmedTitle) {
+      errs.title = 'Vui lòng nhập tiêu đề tóm tắt sự cố.';
+    } else if (trimmedTitle.length < 5) {
+      errs.title = 'Tiêu đề sự cố quá ngắn (tối thiểu 5 ký tự).';
+    }
+
+    const trimmedLocation = (formData.location || '').trim();
+    if (!trimmedLocation) {
+      errs.location = 'Vui lòng nhập vị trí làm việc / quầy vé.';
+    }
+
+    const trimmedDetails = (formData.details || '').trim();
+    if (!trimmedDetails) {
+      errs.details = 'Vui lòng nhập mô tả chi tiết sự cố đang xảy ra.';
+    } else if (trimmedDetails.length < 10) {
+      errs.details = 'Mô tả chi tiết quá ngắn (tối thiểu 10 ký tự để quản lý hiểu rõ hiện trường).';
+    }
+
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSubmitIncident = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!validateIncidentForm()) {
+      showToast('Vui lòng điền đầy đủ các thông tin bắt buộc được đánh dấu đỏ.', 'error');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch(`${API_BASE}/users/ticket-manager/incidents`, {
@@ -118,9 +150,10 @@ const AgentIncidentPage = () => {
       if (res.ok && data.success) {
         showToast('Đã gửi báo cáo sự cố thành công cho Quản lý chi nhánh!');
         setShowCreateModal(false);
+        setFormErrors({});
         setFormData({
           title: '', category: 'equipment', severity: 'medium',
-          location: defaultLocation, counterNumber: 'Quầy 01',
+          location: defaultLocation,
           details: '', initialAction: ''
         });
         fetchMyIncidents();
@@ -161,30 +194,35 @@ const AgentIncidentPage = () => {
       <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <h1 style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Báo Cáo Sự Cố Cho Quản Lý Phòng Vé
-              </h1>
-              <span style={{ fontSize: '0.74rem', background: '#fee2e2', color: '#991b1b', padding: '3px 10px', borderRadius: '20px', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                {branchName}
-              </span>
-            </div>
-            <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '6px 0 0 0' }}>
-              Gửi trực tiếp báo cáo sự cố máy in vé, máy quẹt thẻ POS, rớt mạng hoặc khiếu nại tại quầy lên <strong>Quản lý phòng vé chi nhánh ({branchName})</strong> để được chỉ đạo xử lý kịp thời.
+            <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Báo Cáo Sự Cố Phòng Vé
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+              Gửi phản ánh sự cố kỹ thuật hoặc nghiệp vụ quầy vé tới Quản lý để được hỗ trợ kịp thời.
             </p>
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setFormData({
+                  title: '',
+                  category: 'equipment',
+                  severity: 'medium',
+                  location: defaultLocation,
+                  details: '',
+                  initialAction: ''
+                });
+                setFormErrors({});
+                setShowCreateModal(true);
+              }}
               style={{
                 backgroundColor: '#dc2626', border: 'none', color: '#ffffff',
                 fontWeight: '700', padding: '0.65rem 1.35rem', borderRadius: '8px', fontSize: '0.82rem',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap',
+                display: 'inline-block', cursor: 'pointer', whiteSpace: 'nowrap',
                 boxShadow: '0 2px 4px rgba(220,38,38,0.25)'
               }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               Gửi Báo Cáo Sự Cố Mới
             </button>
             <button
@@ -192,10 +230,9 @@ const AgentIncidentPage = () => {
               style={{
                 backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569',
                 fontWeight: '700', padding: '0.65rem 1rem', borderRadius: '8px', fontSize: '0.82rem',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap'
+                display: 'inline-block', cursor: 'pointer', whiteSpace: 'nowrap'
               }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg>
               Làm Mới
             </button>
           </div>
@@ -245,18 +282,18 @@ const AgentIncidentPage = () => {
           </div>
         ) : (
           <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-            <table style={{ width: '100%', minWidth: '1200px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+            <table style={{ width: '100%', minWidth: '1050px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>STT</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Mã sự cố</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Vị trí / Quầy</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Tiêu đề sự cố</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Mức độ</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Thời gian gửi</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Trạng thái</th>
-                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Chỉ đạo của Quản lý chi nhánh</th>
-                  <th style={{ padding: '12px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>Chi tiết</th>
+                  <th style={{ padding: '12px 14px', width: '45px', textAlign: 'center', whiteSpace: 'nowrap' }}>STT</th>
+                  <th style={{ padding: '12px 14px', width: '140px', whiteSpace: 'nowrap' }}>Mã sự cố</th>
+                  <th style={{ padding: '12px 14px', width: '160px', whiteSpace: 'nowrap' }}>Vị trí / Quầy</th>
+                  <th style={{ padding: '12px 14px', width: '200px', whiteSpace: 'nowrap' }}>Tiêu đề sự cố</th>
+                  <th style={{ padding: '12px 14px', width: '100px', whiteSpace: 'nowrap' }}>Mức độ</th>
+                  <th style={{ padding: '12px 14px', width: '130px', whiteSpace: 'nowrap' }}>Thời gian gửi</th>
+                  <th style={{ padding: '12px 14px', width: '160px', whiteSpace: 'nowrap' }}>Trạng thái</th>
+                  <th style={{ padding: '12px 14px', width: '250px', whiteSpace: 'nowrap' }}>Chỉ đạo của Quản lý chi nhánh</th>
+                  <th style={{ padding: '12px 14px', width: '110px', textAlign: 'center', whiteSpace: 'nowrap' }}>Chi tiết</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,17 +303,23 @@ const AgentIncidentPage = () => {
                   const dateStr = inc.createdAt ? new Date(inc.createdAt).toLocaleString('vi-VN') : '--';
 
                   return (
-                    <tr key={inc._id} style={{ borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
-                      <td style={{ padding: '12px 14px', color: '#64748b', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                    <tr key={inc._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px 14px', color: '#64748b', textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
                       <td style={{ padding: '12px 14px', fontWeight: '800', color: '#2563eb', whiteSpace: 'nowrap' }}>
                         {inc.incidentCode}
                       </td>
-                      <td style={{ padding: '12px 14px', color: '#334155', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                        {inc.location} {inc.counterNumber ? `(${inc.counterNumber})` : ''}
+                      <td style={{ padding: '12px 14px', color: '#334155', fontWeight: '600', maxWidth: '160px' }}>
+                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={inc.location}>
+                          {inc.location}
+                        </div>
                       </td>
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', maxWidth: '300px' }}>
-                        <div style={{ fontWeight: '700', color: '#0f172a', textOverflow: 'ellipsis', overflow: 'hidden' }}>{inc.title}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{getCategoryLabel(inc.category)}</div>
+                      <td style={{ padding: '12px 14px', maxWidth: '200px' }}>
+                        <div style={{ fontWeight: '700', color: '#0f172a', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={inc.title}>
+                          {inc.title}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {getCategoryLabel(inc.category)}
+                        </div>
                       </td>
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                         <span style={{
@@ -299,26 +342,62 @@ const AgentIncidentPage = () => {
                       </td>
 
                       {/* Chỉ đạo từ Quản lý */}
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+                      <td style={{ padding: '12px 14px', width: '250px', maxWidth: '250px' }}>
                         {inc.resolutionNotes ? (
-                          <div style={{ fontSize: '0.74rem', color: '#047857', fontWeight: '600', background: '#ecfdf5', padding: '4px 8px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
-                            ✓ Quản lý: {inc.resolutionNotes}
+                          <div
+                            title={inc.resolutionNotes}
+                            style={{
+                              fontSize: '0.74rem',
+                              color: '#047857',
+                              fontWeight: '600',
+                              background: '#ecfdf5',
+                              padding: '4px 8px',
+                              borderRadius: '6px',
+                              border: '1px solid #a7f3d0',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: '240px',
+                              boxSizing: 'border-box'
+                            }}
+                          >
+                            Quản lý: {inc.resolutionNotes}
                           </div>
                         ) : (
-                          <span style={{ fontSize: '0.72rem', color: '#d97706', fontStyle: 'italic' }}>
-                            Đang chờ Quản lý chi nhánh tiếp nhận & chỉ đạo...
-                          </span>
+                          <div
+                            title="Đang chờ Quản lý chi nhánh tiếp nhận & chỉ đạo..."
+                            style={{
+                              fontSize: '0.72rem',
+                              color: '#d97706',
+                              fontStyle: 'italic',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: '240px'
+                            }}
+                          >
+                            Đang chờ chỉ đạo...
+                          </div>
                         )}
                       </td>
 
-                      <td style={{ padding: '12px 14px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '12px 14px', textAlign: 'center', width: '110px', minWidth: '110px', whiteSpace: 'nowrap' }}>
                         <button
                           onClick={() => setSelectedIncident(inc)}
                           style={{
-                            padding: '5px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '700',
-                            border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', cursor: 'pointer',
-                            whiteSpace: 'nowrap'
+                            padding: '5px 12px',
+                            borderRadius: '6px',
+                            fontSize: '0.74rem',
+                            fontWeight: '700',
+                            border: '1px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#1e293b',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s ease'
                           }}
+                          onMouseOver={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.borderColor = '#94a3b8'; }}
+                          onMouseOut={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
                         >
                           Xem chi tiết
                         </button>
@@ -343,30 +422,45 @@ const AgentIncidentPage = () => {
             padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', maxHeight: '90vh', overflowY: 'auto'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-              <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
                 Gửi Báo Cáo Sự Cố Cho Quản Lý Chi Nhánh
               </h2>
-              <button onClick={() => setShowCreateModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '1.25rem' }}>✕</button>
+              <button onClick={() => setShowCreateModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem', fontWeight: '700' }}>Đóng</button>
             </div>
 
             <div style={{ background: '#eff6ff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '1rem', fontSize: '0.78rem', color: '#1e40af' }}>
               Báo cáo sẽ được chuyển thẳng đến <strong>Quản lý phòng vé chi nhánh ({branchName})</strong> để tiếp nhận và chỉ đạo phương án hỗ trợ ngay.
             </div>
 
-            <form onSubmit={handleSubmitIncident} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form noValidate onSubmit={handleSubmitIncident} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
                   Tiêu đề tóm tắt sự cố *
                 </label>
                 <input
                   type="text"
-                  required
                   placeholder="Ví dụ: Máy in quầy 01 kẹt phôi vé, không nhả cuống..."
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  onChange={(e) => {
+                    setFormData({ ...formData, title: e.target.value });
+                    if (formErrors.title) setFormErrors(prev => ({ ...prev, title: null }));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.title ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    background: formErrors.title ? '#fef2f2' : '#ffffff',
+                    fontSize: '0.82rem',
+                    boxSizing: 'border-box',
+                    transition: 'all 0.15s ease'
+                  }}
                 />
+                {formErrors.title && (
+                  <span style={{ color: '#dc2626', fontSize: '0.72rem', fontWeight: '600', marginTop: '3px', display: 'block' }}>
+                    * {formErrors.title}
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -377,7 +471,7 @@ const AgentIncidentPage = () => {
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff', boxSizing: 'border-box' }}
                   >
                     <option value="equipment">Thiết bị & Máy in/POS</option>
                     <option value="network">Mạng truyền tải & Phần mềm</option>
@@ -394,7 +488,7 @@ const AgentIncidentPage = () => {
                   <select
                     value={formData.severity}
                     onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
+                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff', boxSizing: 'border-box' }}
                   >
                     <option value="urgent">Khẩn cấp (Ngưng bán vé)</option>
                     <option value="high">Mức cao (Cần xử lý gấp)</option>
@@ -404,32 +498,28 @@ const AgentIncidentPage = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                    Vị trí làm việc *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.location}
-                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                    Số quầy vé
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.counterNumber}
-                    onChange={(e) => setFormData({ ...formData, counterNumber: e.target.value })}
-                    placeholder="Quầy 01, Quầy 02..."
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                  />
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  Vị trí làm việc (Cố định theo tài khoản)
+                </label>
+                <input
+                  type="text"
+                  value={formData.location}
+                  readOnly
+                  title="Vị trí làm việc được gán cố định theo chi nhánh của bạn"
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.85rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    fontSize: '0.82rem',
+                    boxSizing: 'border-box',
+                    cursor: 'not-allowed',
+                    fontWeight: '700'
+                  }}
+                />
               </div>
 
               <div>
@@ -437,13 +527,29 @@ const AgentIncidentPage = () => {
                   Mô tả chi tiết sự cố đang xảy ra *
                 </label>
                 <textarea
-                  required
                   rows="3"
                   placeholder="Mô tả cụ thể hiện tượng gì, máy báo lỗi gì, khách có đang chờ đông không..."
                   value={formData.details}
-                  onChange={(e) => setFormData({ ...formData, details: e.target.value })}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  onChange={(e) => {
+                    setFormData({ ...formData, details: e.target.value });
+                    if (formErrors.details) setFormErrors(prev => ({ ...prev, details: null }));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '0.55rem 0.85rem',
+                    borderRadius: '8px',
+                    border: formErrors.details ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    background: formErrors.details ? '#fef2f2' : '#ffffff',
+                    fontSize: '0.82rem',
+                    boxSizing: 'border-box',
+                    transition: 'all 0.15s ease'
+                  }}
                 />
+                {formErrors.details && (
+                  <span style={{ color: '#dc2626', fontSize: '0.72rem', fontWeight: '600', marginTop: '3px', display: 'block' }}>
+                    * {formErrors.details}
+                  </span>
+                )}
               </div>
 
               <div>
@@ -499,12 +605,12 @@ const AgentIncidentPage = () => {
                   {selectedIncident.title}
                 </div>
               </div>
-              <button onClick={() => setSelectedIncident(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '1.25rem' }}>✕</button>
+              <button onClick={() => setSelectedIncident(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '0.85rem', fontWeight: '700' }}>Đóng</button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', fontSize: '0.82rem', color: '#334155' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', background: '#f8fafc', padding: '10px 14px', borderRadius: '8px' }}>
-                <div><strong>Vị trí / Quầy:</strong> {selectedIncident.location} ({selectedIncident.counterNumber})</div>
+                <div><strong>Vị trí làm việc:</strong> {selectedIncident.location}</div>
                 <div><strong>Mức độ:</strong> {selectedIncident.severity}</div>
                 <div><strong>Thời gian gửi:</strong> {new Date(selectedIncident.createdAt).toLocaleString('vi-VN')}</div>
                 <div><strong>Trạng thái:</strong> {getStatusBadge(selectedIncident.status).label}</div>

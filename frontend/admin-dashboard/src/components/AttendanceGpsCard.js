@@ -4,7 +4,7 @@ import {
   formatDistance
 } from '../utils/busStationsGeo';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 /**
  * AttendanceGpsCard: Thẻ giám sát vị trí xuất bến và quy định giờ lăn bánh

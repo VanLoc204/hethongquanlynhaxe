@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 const ITEMS_PER_PAGE = 8;
 
 // Xuất toàn bộ 4 báo cáo vận tải ra Excel CSV UTF-8

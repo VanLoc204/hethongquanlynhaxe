@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const getSeverityBadge = (sev) => {
   switch (sev) {
@@ -68,7 +68,6 @@ const TicketIncidentsPage = () => {
     category: 'equipment',
     severity: 'medium',
     location: 'Văn phòng Sài Gòn (BXMĐ)',
-    counterNumber: 'Quầy 01',
     details: '',
     initialAction: '',
     estimatedCost: ''
@@ -152,7 +151,7 @@ const TicketIncidentsPage = () => {
         setShowCreateModal(false);
         setNewIncident({
           title: '', category: 'equipment', severity: 'medium',
-          location: 'Văn phòng Sài Gòn (BXMĐ)', counterNumber: 'Quầy 01',
+          location: 'Văn phòng Sài Gòn (BXMĐ)',
           details: '', initialAction: '', estimatedCost: ''
         });
         fetchIncidents();
@@ -230,7 +229,6 @@ const TicketIncidentsPage = () => {
       (i.incidentCode && i.incidentCode.toLowerCase().includes(q)) ||
       (i.title && i.title.toLowerCase().includes(q)) ||
       (i.location && i.location.toLowerCase().includes(q)) ||
-      (i.counterNumber && i.counterNumber.toLowerCase().includes(q)) ||
       (i.reportedBy?.name && i.reportedBy.name.toLowerCase().includes(q)) ||
       (i.details && i.details.toLowerCase().includes(q)) ||
       (i.resolutionNotes && i.resolutionNotes.toLowerCase().includes(q))
@@ -487,11 +485,6 @@ const TicketIncidentsPage = () => {
                       {/* Vị trí quầy vé */}
                       <td style={{ padding: '12px 14px', color: '#334155', fontWeight: '600', whiteSpace: 'nowrap' }}>
                         <div>{inc.location}</div>
-                        {inc.counterNumber && (
-                          <span style={{ fontSize: '0.7rem', color: '#2563eb', background: '#eff6ff', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
-                            {inc.counterNumber}
-                          </span>
-                        )}
                       </td>
 
                       {/* Tiêu đề & phân loại */}
@@ -526,15 +519,37 @@ const TicketIncidentsPage = () => {
                       </td>
 
                       {/* Chỉ đạo của Quản lý */}
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', maxWidth: '250px' }}>
+                      <td style={{ padding: '12px 14px', maxWidth: '250px' }}>
                         {inc.resolutionNotes ? (
-                          <div style={{ fontSize: '0.73rem', color: '#047857', fontWeight: '600', textOverflow: 'ellipsis', overflow: 'hidden' }}>
-                            ✓ {inc.resolutionNotes}
+                          <div
+                            title={inc.resolutionNotes}
+                            style={{
+                              fontSize: '0.73rem',
+                              color: '#047857',
+                              fontWeight: '600',
+                              textOverflow: 'ellipsis',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                              maxWidth: '240px'
+                            }}
+                          >
+                            Quản lý: {inc.resolutionNotes}
                           </div>
                         ) : (
-                          <span style={{ fontSize: '0.7rem', color: '#d97706', fontStyle: 'italic' }}>
-                            Chờ Quản lý chỉ đạo phương án...
-                          </span>
+                          <div
+                            title="Chờ Quản lý chỉ đạo phương án..."
+                            style={{
+                              fontSize: '0.7rem',
+                              color: '#d97706',
+                              fontStyle: 'italic',
+                              textOverflow: 'ellipsis',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                              maxWidth: '240px'
+                            }}
+                          >
+                            Chờ chỉ đạo...
+                          </div>
                         )}
                       </td>
 
@@ -633,32 +648,17 @@ const TicketIncidentsPage = () => {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                    Vị trí xảy ra *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newIncident.location}
-                    onChange={(e) => setNewIncident({ ...newIncident, location: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                    Quầy vé cụ thể
-                  </label>
-                  <input
-                    type="text"
-                    value={newIncident.counterNumber}
-                    onChange={(e) => setNewIncident({ ...newIncident, counterNumber: e.target.value })}
-                    placeholder="Quầy 01, Quầy 02..."
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                  />
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  Vị trí xảy ra *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newIncident.location}
+                  onChange={(e) => setNewIncident({ ...newIncident, location: e.target.value })}
+                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                />
               </div>
 
               <div>

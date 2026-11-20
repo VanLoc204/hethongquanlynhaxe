@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const STATUS_MAP = {
   pending: { label: 'Chờ duyệt', bg: '#fef3c7', color: '#b45309', border: '#fde68a' },

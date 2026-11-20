@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const AgentBookingPage = () => {
+const AgentBookingPage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
   const [trips, setTrips] = useState([]);
   const [publicLocations, setPublicLocations] = useState({ origins: [], destinations: [], routes: [] });
@@ -54,6 +54,7 @@ const AgentBookingPage = () => {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [printTarget, setPrintTarget] = useState(null);
   const [showQRModal, setShowQRModal] = useState(null);
@@ -115,7 +116,7 @@ const AgentBookingPage = () => {
     }
 
     const tripId = selectedTrip._id;
-    const es = new EventSource(`http://localhost:8000/api/v1/trips/${tripId}/seat-locks/stream`);
+    const es = new EventSource(`http://localhost:8000/api/trips/${tripId}/seat-locks/stream`);
 
     es.addEventListener('INITIAL_LOCKS', (e) => {
       try {
@@ -187,7 +188,7 @@ const AgentBookingPage = () => {
     if (cleanPhone.length >= 10) {
       let isMounted = true;
       setMemberLoading(true);
-      fetch(`http://localhost:8000/api/v1/users/member-by-phone/${cleanPhone}`)
+      fetch(`http://localhost:8000/api/users/member-by-phone/${cleanPhone}`)
         .then(res => res.json())
         .then(data => {
           if (!isMounted) return;
@@ -222,7 +223,7 @@ const AgentBookingPage = () => {
     setError('');
     try {
       // 1. Kiểm tra thông tin ca trực tại quầy của nhân viên
-      const shiftRes = await fetch('http://localhost:8000/api/v1/users/shift/current', {
+      const shiftRes = await fetch('http://localhost:8000/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const shiftData = await shiftRes.json();
@@ -232,7 +233,7 @@ const AgentBookingPage = () => {
 
       // 2. Lấy danh sách điểm đi / điểm đến thực tế từ CSDL
       try {
-        const locRes = await fetch('http://localhost:8000/api/v1/trips/routes');
+        const locRes = await fetch('http://localhost:8000/api/trips/routes');
         const locData = await locRes.json();
         if (locRes.ok && locData.success) {
           setPublicLocations({
@@ -246,7 +247,7 @@ const AgentBookingPage = () => {
       }
 
       // 3. Lấy toàn bộ chuyến xe thực tế từ CSDL hệ thống
-      const tripsRes = await fetch('http://localhost:8000/api/v1/trips/ops/trips', {
+      const tripsRes = await fetch('http://localhost:8000/api/trips/ops/trips', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const tripsData = await tripsRes.json();
@@ -254,7 +255,7 @@ const AgentBookingPage = () => {
         setTrips(tripsData.trips || []);
       } else {
         // Phương án dự phòng nếu không phải ops_manager: dùng my-schedule
-        const backupRes = await fetch('http://localhost:8000/api/v1/users/my-schedule', {
+        const backupRes = await fetch('http://localhost:8000/api/users/my-schedule', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const backupData = await backupRes.json();
@@ -441,7 +442,7 @@ const AgentBookingPage = () => {
     // Nếu ghế đang được chính mình chọn -> Hủy chọn (Mở khóa)
     if (selectedSeats.includes(seatCode)) {
       try {
-        await fetch(`http://localhost:8000/api/v1/trips/${selectedTrip._id}/unlock-seat`, {
+        await fetch(`http://localhost:8000/api/trips/${selectedTrip._id}/unlock-seat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ seat: seatCode, clientId: myClientId })
@@ -458,7 +459,7 @@ const AgentBookingPage = () => {
 
     // Tiến hành khóa giữ chỗ ghế trong 5 phút trên server
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/trips/${selectedTrip._id}/lock-seat`, {
+      const res = await fetch(`http://localhost:8000/api/trips/${selectedTrip._id}/lock-seat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seat: seatCode, clientId: myClientId })
@@ -466,6 +467,7 @@ const AgentBookingPage = () => {
       const data = await res.json();
       if (res.ok && data.success) {
         setSelectedSeats(prev => [...prev, seatCode]);
+        setFormErrors(prev => ({ ...prev, seats: null }));
         if (data.expiresAt) {
           setLockedSeats(prev => ({
             ...prev,
@@ -483,7 +485,7 @@ const AgentBookingPage = () => {
   const handleBackToList = async () => {
     if (selectedTrip && selectedSeats.length > 0) {
       try {
-        await fetch(`http://localhost:8000/api/v1/trips/${selectedTrip._id}/unlock-all-my-seats`, {
+        await fetch(`http://localhost:8000/api/trips/${selectedTrip._id}/unlock-all-my-seats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clientId: getClientId(), seats: selectedSeats })
@@ -492,20 +494,61 @@ const AgentBookingPage = () => {
     }
     setSelectedTrip(null);
     setSelectedSeats([]);
+    setFormErrors({});
+  };
+
+  // Kiểm tra tính hợp lệ của dữ liệu nhập liệu trước khi xuất vé
+  const validateBookingForm = () => {
+    const errs = {};
+
+    // 1. Kiểm tra mở ca quầy vé
+    if (!activeShift) {
+      errs.shift = 'Bạn phải mở ca tại quầy vé trước khi thực hiện xuất vé.';
+    }
+
+    // 2. Kiểm tra chọn vị trí ghế
+    if (!selectedSeats || selectedSeats.length === 0) {
+      errs.seats = 'Vui lòng chọn ít nhất một vị trí ghế trên sơ đồ xe.';
+    }
+
+    // 3. Kiểm tra Họ và Tên khách hàng
+    const trimmedName = (customerName || '').trim();
+    if (!trimmedName) {
+      errs.customerName = 'Vui lòng nhập họ và tên khách hàng.';
+    } else if (trimmedName.length < 2) {
+      errs.customerName = 'Họ tên khách hàng phải có tối thiểu 2 ký tự.';
+    } else if (/\d/.test(trimmedName)) {
+      errs.customerName = 'Họ tên không được chứa chữ số.';
+    }
+
+    // 4. Kiểm tra Số Điện Thoại (Chuẩn 10 số di động VN: 03, 05, 07, 08, 09)
+    const trimmedPhone = (customerPhone || '').trim().replace(/\s+/g, '');
+    const phoneRegex = /^(03|05|07|08|09)\d{8}$/;
+    if (!trimmedPhone) {
+      errs.customerPhone = 'Vui lòng nhập số điện thoại khách hàng.';
+    } else if (!phoneRegex.test(trimmedPhone)) {
+      errs.customerPhone = 'Số điện thoại không hợp lệ (Phải gồm 10 chữ số, bắt đầu bằng 03, 05, 07, 08, 09).';
+    }
+
+    // 5. Kiểm tra Email (nếu khách có nhập)
+    if (customerEmail && customerEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customerEmail.trim())) {
+        errs.customerEmail = 'Email không đúng định dạng (Ví dụ: khachhang@gmail.com).';
+      }
+    }
+
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
   const handleCreateBooking = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setError('');
     setSuccess('');
 
-    if (!activeShift) {
-      setError('Bạn phải mở ca tại quầy vé trước khi thực hiện xuất vé.');
-      return;
-    }
-
-    if (selectedSeats.length === 0) {
-      setError('Vui lòng chọn ít nhất một vị trí ghế.');
+    if (!validateBookingForm()) {
+      setError('Vui lòng kiểm tra và hoàn tất chính xác các thông tin bắt buộc được đánh dấu đỏ bên dưới.');
       return;
     }
 
@@ -516,7 +559,7 @@ const AgentBookingPage = () => {
       const maxPts = Math.min(availablePts, origTotal);
       const discountPts = usePoints ? Math.min(Math.max(0, Number(pointsInput) || 0), maxPts) : 0;
 
-      const res = await fetch('http://localhost:8000/api/v1/users/agent/book', {
+      const res = await fetch('http://localhost:8000/api/users/agent/book', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -742,70 +785,65 @@ const AgentBookingPage = () => {
       <div className="agent-panel-box">
         <div className="agent-header-wrap">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-                Đặt Vé Xe Tại Quầy
-              </h1>
-              <span style={{
-                background: '#eff6ff',
-                color: '#2563eb',
-                border: '1px solid #bfdbfe',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.68rem',
-                fontWeight: '700'
-              }}>
-                Nhân Viên Bán Vé
-              </span>
-            </div>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+              Đặt Vé Xe Tại Quầy
+            </h1>
 
-            <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '6px' }}>
-              {activeShift ? (
-                <span>
-                  Đang mở ca tại: <strong style={{ color: '#0f172a' }}>{activeShift.counterNumber}</strong>
-                  <span style={{ margin: '0 8px', color: '#cbd5e1' }}>•</span>
-                  Bắt đầu: <strong style={{ color: '#0f172a' }}>{new Date(activeShift.startTime).toLocaleTimeString('vi-VN')}</strong> ({new Date(activeShift.startTime).toLocaleDateString('vi-VN')})
-                </span>
-              ) : (
-                <span style={{ color: '#b45309' }}>
-                  Chưa ghi nhận ca trực quầy hôm nay. Vui lòng mở ca để liên kết doanh thu và lịch sử bán vé.
-                </span>
-              )}
-            </div>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0 0' }}>
+              Tra cứu chuyến xe, chọn ghế và in vé trực tiếp cho hành khách tại quầy.
+            </p>
           </div>
 
           <div className="agent-header-actions">
-            <button
-              onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                fontWeight: '700',
-                padding: '0.5rem 1rem',
-                borderRadius: '8px',
-                fontSize: '0.78rem',
-                cursor: 'pointer'
-              }}
-            >
-              {viewMode === 'list' ? 'Chuyển Sang Dạng Lịch' : 'Chuyển Sang Danh Sách'}
-            </button>
+            {!activeShift ? (
+              <span style={{
+                background: '#fef2f2',
+                color: '#dc2626',
+                border: '1px solid #fecdd3',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                fontSize: '0.74rem',
+                fontWeight: '800',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} />
+                CHƯA MỞ CA
+              </span>
+            ) : (
+              <button
+                onClick={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  color: '#334155',
+                  fontWeight: '700',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '8px',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer'
+                }}
+              >
+                {viewMode === 'list' ? 'Chuyển Sang Dạng Lịch' : 'Chuyển Sang Danh Sách'}
+              </button>
+            )}
 
             <button
               onClick={fetchInitialData}
               style={{
-                backgroundColor: '#2563eb',
-                border: 'none',
-                color: '#ffffff',
+                backgroundColor: activeShift ? '#2563eb' : '#ffffff',
+                border: activeShift ? 'none' : '1px solid #cbd5e1',
+                color: activeShift ? '#ffffff' : '#334155',
                 fontWeight: '700',
                 padding: '0.5rem 1.15rem',
                 borderRadius: '8px',
                 fontSize: '0.78rem',
                 cursor: 'pointer'
               }}
-              title="Tải lại dữ liệu chuyến xe từ CSDL"
+              title="Tải lại dữ liệu từ CSDL"
             >
-              Làm Mới Dữ Liệu
+              Làm Mới
             </button>
           </div>
         </div>
@@ -823,6 +861,130 @@ const AgentBookingPage = () => {
         )}
       </div>
 
+      {!activeShift ? (
+        /* ========================================================= */
+        /* MÀN HÌNH CHỜ MỞ CA TRỰC QUẦY (STANDBY TERMINAL CARD)      */
+        /* ========================================================= */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '900px', margin: '1rem auto' }}>
+          <div className="agent-panel-box" style={{
+            padding: '2.5rem 2rem',
+            textAlign: 'center',
+            boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.05)',
+            border: '1px solid #cbd5e1'
+          }}>
+            
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 14px',
+              borderRadius: '20px',
+              backgroundColor: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              color: '#1d4ed8',
+              fontSize: '0.76rem',
+              fontWeight: '800',
+              margin: '0 auto 1.25rem auto'
+            }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb' }} />
+              TRẠM BÁN VÉ • ĐANG TẠM KHÓA
+            </div>
+
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '900', color: '#0f172a', margin: '0 0 0.5rem 0', letterSpacing: '-0.3px' }}>
+              Khởi Tạo Ca Trực Để Kích Hoạt Máy Bán Vé
+            </h2>
+
+            <p style={{ color: '#64748b', fontSize: '0.88rem', lineHeight: '1.6', margin: '0 auto 2rem auto', maxWidth: '640px' }}>
+              Hệ thống bán vé thông minh An Bình Lines yêu cầu xác thực Face ID và khai báo quỹ tiền lẻ đầu ca trước khi bắt đầu tạo đơn, nhận thanh toán và in vé cho hành khách.
+            </p>
+
+            {/* 3 Thẻ Trạng Thái Tiền Trạm */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '1rem',
+              textAlign: 'left',
+              marginBottom: '2rem'
+            }}>
+              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>
+                  Nhân Viên Trực Quầy
+                </div>
+                <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', marginTop: '3px' }}>
+                  {user?.name || user?.fullName || user?.email}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: '700', marginTop: '2px' }}>
+                  ✓ Đã đăng nhập hệ thống
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>
+                  Văn Phòng Chỉ Định
+                </div>
+                <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', marginTop: '3px' }}>
+                  {user?.branch?.branchName || 'Chi nhánh TP. Hồ Chí Minh'}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: '700', marginTop: '2px' }}>
+                  Quầy số 1 - POS Trực tuyến
+                </div>
+              </div>
+
+              <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>
+                  Định Danh &amp; Mở Két
+                </div>
+                <div style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', marginTop: '3px' }}>
+                  Face ID &amp; Quỹ Đầu Ca
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: '700', marginTop: '2px' }}>
+                  Xác nhận khi chấm công
+                </div>
+              </div>
+            </div>
+
+            {/* Nút hành động */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab && setActiveTab('agent-attendance')}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '0.9rem 2.25rem',
+                  borderRadius: '10px',
+                  fontSize: '0.92rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                Chấm Công Face ID &amp; Mở Ca Ngay ➔
+              </button>
+
+              <button
+                type="button"
+                onClick={fetchInitialData}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  color: '#334155',
+                  padding: '0.9rem 1.5rem',
+                  borderRadius: '10px',
+                  fontSize: '0.9rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Kiểm Tra Lại Trạng Thái
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       {!selectedTrip && (
         <>
           {/* ========================================================= */}
@@ -1348,11 +1510,20 @@ const AgentBookingPage = () => {
             </div>
           </div>
 
-          <form onSubmit={handleCreateBooking}>
+          <form noValidate onSubmit={handleCreateBooking}>
             <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '2rem', alignItems: 'start' }}>
 
               {/* CỘT TRÁI: SƠ ĐỒ GHẾ XE */}
-              <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{
+                background: '#f8fafc',
+                padding: '1.25rem',
+                borderRadius: '12px',
+                border: formErrors.seats ? '2px solid #ef4444' : '1px solid #e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                transition: 'border 0.2s ease'
+              }}>
                 <h3 style={{ margin: '0 0 1rem 0', color: '#0f172a', fontWeight: '800', fontSize: '0.9rem' }}>
                   Sơ Đồ Ghế Xe ({selectedTrip.busId?.type || 'Xe khách'})
                 </h3>
@@ -1583,8 +1754,10 @@ const AgentBookingPage = () => {
                     <select
                       className="agent-form-control"
                       value={selectedDropoff}
-                      onChange={(e) => setSelectedDropoff(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setSelectedDropoff(e.target.value);
+                        if (formErrors.dropoff) setFormErrors(prev => ({ ...prev, dropoff: null }));
+                      }}
                     >
                       {(selectedTrip.dropoffPoints || []).map((d, idx) => (
                         <option key={idx} value={d.location}>
@@ -1605,9 +1778,21 @@ const AgentBookingPage = () => {
                       className="agent-form-control"
                       placeholder="Nhập họ tên người đi xe..."
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setCustomerName(e.target.value);
+                        if (formErrors.customerName) setFormErrors(prev => ({ ...prev, customerName: null }));
+                      }}
+                      style={{
+                        border: formErrors.customerName ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.customerName ? '#fef2f2' : '#ffffff',
+                        transition: 'all 0.15s ease'
+                      }}
                     />
+                    {formErrors.customerName && (
+                      <span style={{ color: '#dc2626', fontSize: '0.72rem', fontWeight: '600', marginTop: '3px', display: 'block' }}>
+                        * {formErrors.customerName}
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -1617,11 +1802,23 @@ const AgentBookingPage = () => {
                     <input
                       type="tel"
                       className="agent-form-control"
-                      placeholder="Nhập SĐT khách hàng..."
+                      placeholder="Nhập SĐT (10 số, vd: 0944555666)..."
                       value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        setCustomerPhone(e.target.value);
+                        if (formErrors.customerPhone) setFormErrors(prev => ({ ...prev, customerPhone: null }));
+                      }}
+                      style={{
+                        border: formErrors.customerPhone ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.customerPhone ? '#fef2f2' : '#ffffff',
+                        transition: 'all 0.15s ease'
+                      }}
                     />
+                    {formErrors.customerPhone && (
+                      <span style={{ color: '#dc2626', fontSize: '0.72rem', fontWeight: '600', marginTop: '3px', display: 'block' }}>
+                        * {formErrors.customerPhone}
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -1631,10 +1828,23 @@ const AgentBookingPage = () => {
                     <input
                       type="email"
                       className="agent-form-control"
-                      placeholder="Gửi vé điện tử qua Email / Hotline..."
+                      placeholder="Gửi vé điện tử qua Email..."
                       value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      onChange={(e) => {
+                        setCustomerEmail(e.target.value);
+                        if (formErrors.customerEmail) setFormErrors(prev => ({ ...prev, customerEmail: null }));
+                      }}
+                      style={{
+                        border: formErrors.customerEmail ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.customerEmail ? '#fef2f2' : '#ffffff',
+                        transition: 'all 0.15s ease'
+                      }}
                     />
+                    {formErrors.customerEmail && (
+                      <span style={{ color: '#dc2626', fontSize: '0.72rem', fontWeight: '600', marginTop: '3px', display: 'block' }}>
+                        * {formErrors.customerEmail}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1791,8 +2001,24 @@ const AgentBookingPage = () => {
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
                         <span>Vị trí ghế đã chọn:</span>
-                        <strong style={{ color: '#0f172a' }}>{selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế'}</strong>
+                        <strong style={{ color: selectedSeats.length > 0 ? '#1d4ed8' : (formErrors.seats ? '#dc2626' : '#0f172a') }}>
+                          {selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Chưa chọn ghế'}
+                        </strong>
                       </div>
+                      {formErrors.seats && (
+                        <div style={{
+                          backgroundColor: '#fef2f2',
+                          border: '1px solid #fecaca',
+                          color: '#b91c1c',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '0.74rem',
+                          fontWeight: '700',
+                          marginBottom: '0.5rem'
+                        }}>
+                          * {formErrors.seats}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.8rem', color: '#475569' }}>
                         <span>Đơn giá vé:</span>
                         <strong style={{ color: '#0f172a' }}>{formatCurrency(selectedTrip.price)}</strong>
@@ -2008,6 +2234,9 @@ const AgentBookingPage = () => {
             </div>
           </div>
         </div>
+      )}
+
+        </>
       )}
 
     </div>

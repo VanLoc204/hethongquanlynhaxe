@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import AutoFaceEnrollModal from '../../components/AutoFaceEnrollModal';
 import {
   loadFaceApiModels,
   startWebcam,
@@ -13,14 +14,13 @@ import {
 } from '../../utils/faceApiHelper';
 import { BRANCHES } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const getRoleDetails = (role) => {
   switch (role) {
     case 'ops_manager':
       return {
         title: 'Quản lý Vận tải',
-        dept: 'Phòng Điều hành & Giám sát Vận tải',
         defaultLocation: 'Trung tâm Điều hành Vận tải TP.HCM',
         badgeBg: '#fff7ed',
         badgeColor: '#c2410c',
@@ -29,7 +29,6 @@ const getRoleDetails = (role) => {
     case 'fleet_manager':
       return {
         title: 'Quản lý Đội xe',
-        dept: 'Ban Kỹ thuật & Phương tiện',
         defaultLocation: 'Trạm Kỹ thuật & Quản lý Đội xe',
         badgeBg: '#fefce8',
         badgeColor: '#a16207',
@@ -38,7 +37,6 @@ const getRoleDetails = (role) => {
     case 'ticket_manager':
       return {
         title: 'Quản lý Phòng vé',
-        dept: 'Khối Kinh doanh & Dịch vụ Vé',
         defaultLocation: 'Văn phòng Điều hành Phòng vé Trung tâm',
         badgeBg: '#f0fdfa',
         badgeColor: '#0f766e',
@@ -47,7 +45,6 @@ const getRoleDetails = (role) => {
     case 'general_manager':
       return {
         title: 'Ban Giám đốc',
-        dept: 'Văn phòng Tổng Giám đốc',
         defaultLocation: 'Trụ sở chính An Bình Lines',
         badgeBg: '#fff1f2',
         badgeColor: '#be123c',
@@ -56,7 +53,6 @@ const getRoleDetails = (role) => {
     default:
       return {
         title: 'Nhân sự Quản lý',
-        dept: 'Hệ thống Quản lý Nhà xe',
         defaultLocation: 'Văn phòng Điều hành',
         badgeBg: '#eff6ff',
         badgeColor: '#1d4ed8',
@@ -98,6 +94,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
   const [faceMatchResult, setFaceMatchResult] = useState({ isMatch: true, similarity: 100, bestDistance: 0 });
   const [actionLoading, setActionLoading] = useState(false);
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
+  const [showAutoEnrollModal, setShowAutoEnrollModal] = useState(false);
   const blinkRef = useRef({ state: 'open', lastTime: Date.now() });
 
   // Trạng thái ca trực của Quản lý
@@ -288,8 +285,8 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
               !faceRegistered || registeredDescriptors.length === 0
                 ? 'Nhận diện khuôn mặt người thật tốt. Nhấn nút "Chụp & Đăng Ký Khuôn Mặt" bên dưới để lưu mẫu!'
                 : isMatch
-                ? 'Khuôn mặt hợp lệ. Sẵn sàng xác thực ca trực!'
-                : 'Khuôn mặt chưa trùng khớp với mẫu đã lưu!'
+                  ? 'Khuôn mặt hợp lệ. Sẵn sàng xác thực ca trực!'
+                  : 'Khuôn mặt chưa trùng khớp với mẫu đã lưu!'
             );
           } else {
             setFaceDetected(false);
@@ -551,7 +548,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
             </span>
           </div>
           <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-            Nhân sự: <strong>{user?.name || 'Cán bộ quản lý'}</strong> • SĐT: <strong>{user?.phone || '--'}</strong> • {roleInfo.dept}
+            Nhân sự: <strong>{user?.name || 'Cán bộ quản lý'}</strong> • SĐT: <strong>{user?.phone || '--'}</strong>
           </p>
         </div>
 
@@ -885,29 +882,28 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
               }}>
                 <div style={{ fontSize: '0.78rem', color: !faceRegistered ? '#92400e' : '#475569' }}>
                   {!faceRegistered ? (
-                    <span><strong>Bước 1:</strong> Bạn chưa đăng ký mẫu khuôn mặt. Nhìn thẳng vào camera và nhấn nút bên cạnh để đăng ký Face ID của bạn!</span>
+                    <span><strong>Bước 1:</strong> Bạn chưa đăng ký mẫu khuôn mặt. Nhấn nút bên cạnh để quét đăng ký Face ID 3 góc mặt tự động (chuẩn sinh trắc học)!</span>
                   ) : (
-                    <span><strong>Face ID đã lưu:</strong> Nếu muốn cập nhật lại góc chụp hoặc khuôn mặt mới, bạn có thể chụp và đăng ký lại bất kỳ lúc nào.</span>
+                    <span><strong>Face ID đã lưu:</strong> Nếu muốn cập nhật lại 3 góc mặt sinh trắc học mới, bạn có thể quét lại bất kỳ lúc nào.</span>
                   )}
                 </div>
                 <button
-                  onClick={handleRegisterFace}
-                  disabled={isRegisteringFace || !cameraActive}
+                  type="button"
+                  onClick={() => setShowAutoEnrollModal(true)}
                   style={{
-                    backgroundColor: !faceRegistered ? '#d97706' : '#2563eb',
+                    backgroundColor: !faceRegistered ? '#2563eb' : '#0284c7',
                     color: '#ffffff',
                     border: 'none',
                     padding: '8px 16px',
                     borderRadius: '6px',
                     fontSize: '0.75rem',
                     fontWeight: '800',
-                    cursor: cameraActive ? 'pointer' : 'not-allowed',
+                    cursor: 'pointer',
                     whiteSpace: 'nowrap',
-                    opacity: cameraActive ? 1 : 0.6,
                     boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
                   }}
                 >
-                  {isRegisteringFace ? 'Đang lưu mẫu...' : (!faceRegistered ? 'Chụp & Đăng Ký Face ID' : 'Cập Nhật Mẫu Face ID')}
+                  {!faceRegistered ? 'Đăng Ký Face ID (3 Góc Tự Động)' : 'Quét Lại Mẫu Face ID'}
                 </button>
               </div>
             )}
@@ -1110,7 +1106,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ fontWeight: '700', color: '#0f172a' }}>
-                          {item.tripRoute || item.counterNumber || roleInfo.title}
+                          {item.tripRoute || item.officeName || item.location || roleInfo.title}
                         </div>
                         <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
                           {item.location || item.officeName || 'Văn phòng điều hành'}
@@ -1159,6 +1155,22 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
           )}
         </div>
       )}
+      {/* MODAL ĐĂNG KÝ SINH TRẮC HỌC FACE ID 3 GÓC MẶT TỰ ĐỘNG */}
+      <AutoFaceEnrollModal
+        isOpen={showAutoEnrollModal}
+        onClose={() => setShowAutoEnrollModal(false)}
+        onSuccess={(data) => {
+          setFaceRegistered(true);
+          showToast('Đã đăng ký Face ID nhận diện khuôn mặt 3 góc thành công!', 'success');
+          setShowAutoEnrollModal(false);
+          if (fetchMyAttendance) {
+            fetchMyAttendance();
+          }
+        }}
+        token={token}
+        userId={user?._id || user?.id}
+        userName={user?.name}
+      />
     </div>
   );
 };

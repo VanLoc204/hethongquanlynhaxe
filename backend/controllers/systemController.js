@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const { getSystemLogs, getSystemErrors } = require('../middlewares/systemLogger');
 
 // @desc    Get live system health & metrics
-// @route   GET /api/v1/system/health
+// @route   GET /api/system/health
 // @access  Private (Admin / General Manager)
 exports.getSystemHealth = async (req, res) => {
   try {
@@ -48,7 +48,7 @@ exports.getSystemHealth = async (req, res) => {
 };
 
 // @desc    Get real live audit logs
-// @route   GET /api/v1/system/logs
+// @route   GET /api/system/logs
 // @access  Private (Admin / General Manager)
 exports.getAuditLogs = async (req, res) => {
   try {
@@ -67,7 +67,7 @@ exports.getAuditLogs = async (req, res) => {
 };
 
 // @desc    Get real live system error logs
-// @route   GET /api/v1/system/errors
+// @route   GET /api/system/errors
 // @access  Private (Admin / General Manager)
 exports.getSystemErrors = async (req, res) => {
   try {
@@ -86,7 +86,7 @@ exports.getSystemErrors = async (req, res) => {
 };
 
 // @desc    Trigger real DB health check & ping
-// @route   POST /api/v1/system/db/health-check
+// @route   POST /api/system/db/health-check
 // @access  Private (Admin / General Manager)
 exports.checkDbHealth = async (req, res) => {
   try {
@@ -110,7 +110,7 @@ exports.checkDbHealth = async (req, res) => {
 };
 
 // @desc    Clear Redis Cache
-// @route   POST /api/v1/system/redis/clear
+// @route   POST /api/system/redis/clear
 // @access  Private (Admin / General Manager)
 exports.clearRedisCache = async (req, res) => {
   try {
