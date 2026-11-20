@@ -1,23 +1,17 @@
 const mongoose = require('mongoose');
 
+/**
+ * Payroll Schema - Bảng Quyết Toán Lương Nhân Sự (Chuẩn 3NF Tuyệt Đối)
+ * Chỉ lưu trữ các dữ liệu chốt số tài chính của kỳ lương (tháng/năm).
+ * Toàn bộ thông tin nhân thân (name, phone, role) kế thừa trực tiếp từ bảng User (employeeId).
+ * Các sự cố hoàn ứng được truy vấn trực tiếp từ bảng TripIncident.
+ */
 const payrollSchema = new mongoose.Schema(
   {
     employeeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'Mã nhân viên là bắt buộc.']
-    },
-    phone: {
-      type: String,
-      required: [true, 'Số điện thoại nhân viên là bắt buộc.']
-    },
-    name: {
-      type: String,
-      required: [true, 'Tên nhân viên là bắt buộc.']
-    },
-    role: {
-      type: String,
-      required: [true, 'Vai trò là bắt buộc.']
     },
     month: {
       type: Number,
@@ -44,30 +38,6 @@ const payrollSchema = new mongoose.Schema(
       required: [true, 'Khấu trừ bảo hiểm là bắt buộc.'],
       min: 0
     },
-    absentDays: {
-      type: Number,
-      default: 0,
-      min: 0
-    },
-    absentDeduction: {
-      type: Number,
-      default: 0,
-      min: 0
-    },
-    incidentReimbursement: {
-      type: Number,
-      default: 0,
-      min: 0
-    },
-    incidentItems: [
-      {
-        incidentCode: { type: String },
-        title: { type: String },
-        amount: { type: Number, default: 0 },
-        status: { type: String },
-        approvedAt: { type: Date }
-      }
-    ],
     netSalary: {
       type: Number,
       required: [true, 'Thực lĩnh là bắt buộc.'],
@@ -88,7 +58,7 @@ const payrollSchema = new mongoose.Schema(
   }
 );
 
-// Ensure an employee has only one payroll record per month/year
+// Đảm bảo mỗi nhân viên chỉ có duy nhất 1 bản ghi quyết toán lương cho mỗi kỳ tháng/năm
 payrollSchema.index({ employeeId: 1, month: 1, year: 1 }, { unique: true });
 
 module.exports = mongoose.model('Payroll', payrollSchema);

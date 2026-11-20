@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const AgentTicketsPage = () => {
+const AgentTicketsPage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
 
   // Helper chuyển đổi ngày sang YYYY-MM-DD chuẩn local
@@ -37,6 +37,7 @@ const AgentTicketsPage = () => {
 
   // Shift status
   const [activeShift, setActiveShift] = useState(null);
+  const [showShiftRequiredModal, setShowShiftRequiredModal] = useState(false);
 
   // Modals
   const [detailTarget, setDetailTarget] = useState(null);
@@ -62,7 +63,7 @@ const AgentTicketsPage = () => {
     setResending(true);
     setResendFeedback({ type: '', text: '' });
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/users/agent/resend-ticket/${detailTarget._id}`, {
+      const res = await fetch(`http://localhost:8000/api/users/agent/resend-ticket/${detailTarget._id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -89,7 +90,7 @@ const AgentTicketsPage = () => {
   // Lấy thông tin ca trực quầy hiện tại
   const fetchShiftStatus = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/v1/users/shift/current', {
+      const res = await fetch('http://localhost:8000/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -120,7 +121,7 @@ const AgentTicketsPage = () => {
         params.append('status', st);
       }
 
-      const res = await fetch(`http://localhost:8000/api/v1/users/agent/tickets?${params.toString()}`, {
+      const res = await fetch(`http://localhost:8000/api/users/agent/tickets?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -181,6 +182,10 @@ const AgentTicketsPage = () => {
 
   // Mở modal xác nhận hủy vé
   const handleOpenCancelConfirmation = (booking) => {
+    if (!activeShift) {
+      setShowShiftRequiredModal(true);
+      return;
+    }
     setCancellationTarget(booking);
     setCancellationMethod('cash');
     setMemberInfo({ isMember: false, member: null, loading: true });
@@ -188,7 +193,7 @@ const AgentTicketsPage = () => {
     setSuccess('');
 
     if (booking.customerPhone) {
-      fetch(`http://localhost:8000/api/v1/users/member-by-phone/${booking.customerPhone.trim()}`, {
+      fetch(`http://localhost:8000/api/users/member-by-phone/${booking.customerPhone.trim()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -220,7 +225,7 @@ const AgentTicketsPage = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/users/agent/cancel-ticket/${cancellationTarget._id}`, {
+      const res = await fetch(`http://localhost:8000/api/users/agent/cancel-ticket/${cancellationTarget._id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -540,45 +545,39 @@ const AgentTicketsPage = () => {
       <div className="agent-panel-box">
         <div className="agent-header-wrap">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Tra Cứu & Quản Lý Vé Tại Quầy
-              </h1>
-              <span style={{
-                background: '#eff6ff',
-                color: '#2563eb',
-                border: '1px solid #bfdbfe',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.68rem',
-                fontWeight: '700'
-              }}>
-                Nhân Viên Bán Vé
-              </span>
-            </div>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Tra Cứu & Quản Lý Vé Tại Quầy
+            </h1>
 
-            <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '6px' }}>
-              {activeShift ? (
-                <span>
-                  Đang mở ca tại: <strong style={{ color: '#0f172a' }}>{activeShift.counterNumber}</strong>
-                  <span style={{ margin: '0 8px', color: '#cbd5e1' }}>•</span>
-                  Bắt đầu: <strong style={{ color: '#0f172a' }}>{new Date(activeShift.startTime).toLocaleTimeString('vi-VN')}</strong> ({new Date(activeShift.startTime).toLocaleDateString('vi-VN')})
-                </span>
-              ) : (
-                <span style={{ color: '#b45309' }}>
-                  Chưa ghi nhận ca trực quầy hôm nay. Vui lòng mở ca để liên kết thao tác hủy và hoàn vé.
-                </span>
-              )}
-            </div>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '4px 0 0 0' }}>
+              Tra cứu danh sách vé đã xuất, kiểm tra thông tin thanh toán và in lại vé.
+            </p>
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {!activeShift && (
+              <span style={{
+                background: '#fef2f2',
+                color: '#dc2626',
+                border: '1px solid #fecdd3',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                fontSize: '0.74rem',
+                fontWeight: '800',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#dc2626' }} />
+                CHƯA MỞ CA
+              </span>
+            )}
             <button
               onClick={() => fetchBookings(searchQuery, departureDate, dateType, statusFilter)}
               style={{
-                backgroundColor: '#2563eb',
-                border: 'none',
-                color: '#ffffff',
+                backgroundColor: activeShift ? '#2563eb' : '#ffffff',
+                border: activeShift ? 'none' : '1px solid #cbd5e1',
+                color: activeShift ? '#ffffff' : '#334155',
                 fontWeight: '700',
                 padding: '0.5rem 1.15rem',
                 borderRadius: '8px',
@@ -1574,6 +1573,81 @@ const AgentTicketsPage = () => {
                 onClick={() => setPrintTarget(null)}
               >
                 Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 4: CẢNH BÁO YÊU CẦU MỞ CA TRỰC ĐỂ HOÀN TIỀN VÉ      */}
+      {/* ========================================================= */}
+      {showShiftRequiredModal && (
+        <div className="modal-backdrop" onClick={() => setShowShiftRequiredModal(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ backgroundColor: '#ffffff', borderRadius: '16px', width: '100%', maxWidth: '480px', padding: '2rem 1.75rem', textAlign: 'center', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
+
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 14px',
+              borderRadius: '20px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecdd3',
+              color: '#dc2626',
+              fontSize: '0.75rem',
+              fontWeight: '800',
+              marginBottom: '1rem'
+            }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626' }} />
+              YÊU CẦU MỞ CA ĐỂ THAO TÁC KÉT TIỀN
+            </div>
+
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0f172a', margin: '0 0 0.5rem 0' }}>
+              Chưa Mở Ca Trực Quầy Vé
+            </h3>
+
+            <p style={{ color: '#64748b', fontSize: '0.85rem', lineHeight: '1.5', margin: '0 auto 1.5rem auto' }}>
+              Hành động hủy vé và hoàn tiền mặt cho hành khách yêu cầu mở két tiền và ghi nhận vào ca trực của nhân viên. Vui lòng chấm công mở ca trước khi thao tác.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowShiftRequiredModal(false);
+                  if (setActiveTab) setActiveTab('agent-attendance');
+                }}
+                style={{
+                  backgroundColor: '#2563eb',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '0.8rem 1.5rem',
+                  borderRadius: '10px',
+                  fontSize: '0.88rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)'
+                }}
+              >
+                Chấm Công Face ID &amp; Mở Ca Ngay ➔
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowShiftRequiredModal(false)}
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  padding: '0.7rem 1.5rem',
+                  borderRadius: '10px',
+                  fontSize: '0.82rem',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Đóng Lại
               </button>
             </div>
           </div>

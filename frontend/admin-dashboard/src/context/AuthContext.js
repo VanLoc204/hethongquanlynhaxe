@@ -2,7 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 
 export const AuthContext = createContext();
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(localStorage.getItem('admin_token') || '');
@@ -16,9 +16,19 @@ export const AuthProvider = ({ children }) => {
     fetch(`${API_BASE}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then(res => res.json())
+      .then(res => {
+        if (res.status === 401 || res.status === 404) {
+          // Token không còn tồn tại trong CSDL -> xóa session cũ và logout
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_user');
+          setToken('');
+          setUser(null);
+          return null;
+        }
+        return res.json();
+      })
       .then(data => {
-        if (isMounted && data.success && data.user) {
+        if (data && isMounted && data.success && data.user) {
           setUser(prev => ({ ...(prev || {}), ...data.user }));
           localStorage.setItem('admin_user', JSON.stringify(data.user));
         }
@@ -59,6 +69,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateUser = (updatedData) => {
+    setUser(prev => {
+      const next = { ...(prev || {}), ...updatedData };
+      localStorage.setItem('admin_user', JSON.stringify(next));
+      return next;
+    });
+  };
+
   const logout = () => {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
@@ -67,7 +85,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, logout, isAuthenticated: !!token && !!user }}>
+    <AuthContext.Provider value={{ token, user, updateUser, loading, login, logout, isAuthenticated: !!token && !!user }}>
       {children}
     </AuthContext.Provider>
   );

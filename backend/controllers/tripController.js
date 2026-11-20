@@ -7,7 +7,7 @@ const RouteDemandLog = require('../models/RouteDemandLog');
 const geminiService = require('../services/geminiService');
 
 // @desc    Search trips by origin, destination and date (flexible: by date, from, or to)
-// @route   GET /api/v1/trips/search
+// @route   GET /api/trips/search
 // @access  Public
 exports.searchTrips = async (req, res) => {
   try {
@@ -184,7 +184,7 @@ exports.searchTrips = async (req, res) => {
 };
 
 // @desc    Phân tích ngữ nghĩa địa danh / POI sang Tỉnh Thành và Trạm xe gần nhất (AI Semantic Resolver)
-// @route   GET /api/v1/trips/resolve-location, POST /api/v1/trips/resolve-location
+// @route   GET /api/trips/resolve-location, POST /api/trips/resolve-location
 // @access  Public
 exports.resolveSemanticLocation = async (req, res) => {
   try {
@@ -223,7 +223,7 @@ exports.resolveSemanticLocation = async (req, res) => {
 };
 
 // @desc    Get upcoming trips that have not departed yet (departureTime > now)
-// @route   GET /api/v1/trips/upcoming
+// @route   GET /api/trips/upcoming
 // @access  Public
 exports.getUpcomingTrips = async (req, res) => {
   try {
@@ -266,7 +266,7 @@ exports.getUpcomingTrips = async (req, res) => {
 };
 
 // @desc    Get all routes (public view for home search dropdown)
-// @route   GET /api/v1/trips/routes
+// @route   GET /api/trips/routes
 // @access  Public
 exports.getPublicRoutes = async (req, res) => {
   try {
@@ -288,7 +288,7 @@ exports.getPublicRoutes = async (req, res) => {
 
 
 // @desc    Get detailed trip by ID (with seat map info)
-// @route   GET /api/v1/trips/:id
+// @route   GET /api/trips/:id
 // @access  Public
 exports.getTripById = async (req, res) => {
   try {
@@ -311,7 +311,7 @@ exports.getTripById = async (req, res) => {
 
 
 // @desc    Webhook handler for PayOS payments (booking & shipments)
-// @route   POST /api/v1/trips/payment/webhook
+// @route   POST /api/trips/payment/webhook
 // @access  Public
 exports.payosWebhook = async (req, res) => {
   try {
@@ -346,7 +346,7 @@ exports.payosWebhook = async (req, res) => {
 
 
 // @desc    Create a new shipment
-// @route   POST /api/v1/trips/shipment/create
+// @route   POST /api/trips/shipment/create
 // @access  Public
 exports.createShipment = async (req, res) => {
   try {
@@ -400,7 +400,7 @@ exports.createShipment = async (req, res) => {
 };
 
 // @desc    Update shipment payment status
-// @route   PATCH /api/v1/trips/shipment/:id
+// @route   PATCH /api/trips/shipment/:id
 // @access  Public
 exports.updateShipmentPayment = async (req, res) => {
   try {
@@ -424,7 +424,7 @@ exports.updateShipmentPayment = async (req, res) => {
 };
 
 // @desc    Track shipment by shipmentId
-// @route   GET /api/v1/trips/shipment/track/:id
+// @route   GET /api/trips/shipment/track/:id
 // @access  Public
 exports.trackShipment = async (req, res) => {
   try {
@@ -445,7 +445,7 @@ exports.trackShipment = async (req, res) => {
 };
 
 // @desc    Get all buses
-// @route   GET /api/v1/trips/fleet/buses
+// @route   GET /api/trips/fleet/buses
 // @access  Private (Fleet Manager)
 exports.getBuses = async (req, res) => {
   try {
@@ -465,7 +465,7 @@ exports.getBuses = async (req, res) => {
 };
 
 // @desc    Create a new bus
-// @route   POST /api/v1/trips/fleet/buses
+// @route   POST /api/trips/fleet/buses
 // @access  Private (Fleet Manager)
 exports.createBus = async (req, res) => {
   try {
@@ -495,7 +495,7 @@ exports.createBus = async (req, res) => {
 };
 
 // @desc    Update a bus
-// @route   PUT /api/v1/trips/fleet/buses/:id
+// @route   PUT /api/trips/fleet/buses/:id
 // @access  Private (Fleet Manager)
 exports.updateBus = async (req, res) => {
   try {
@@ -530,7 +530,7 @@ exports.updateBus = async (req, res) => {
 };
 
 // @desc    Delete a bus
-// @route   DELETE /api/v1/trips/fleet/buses/:id
+// @route   DELETE /api/trips/fleet/buses/:id
 // @access  Private (Fleet Manager)
 exports.deleteBus = async (req, res) => {
   try {
@@ -551,7 +551,7 @@ exports.deleteBus = async (req, res) => {
 };
 
 // @desc    Get all routes
-// @route   GET /api/v1/trips/ops/routes
+// @route   GET /api/trips/ops/routes
 // @access  Private (Ops Manager)
 exports.getRoutes = async (req, res) => {
   try {
@@ -571,7 +571,7 @@ exports.getRoutes = async (req, res) => {
 };
 
 // @desc    Create a new route
-// @route   POST /api/v1/trips/ops/routes
+// @route   POST /api/trips/ops/routes
 // @access  Private (Ops Manager)
 exports.createRoute = async (req, res) => {
   try {
@@ -603,7 +603,7 @@ exports.createRoute = async (req, res) => {
 };
 
 // @desc    Update a route
-// @route   PUT /api/v1/trips/ops/routes/:id
+// @route   PUT /api/trips/ops/routes/:id
 // @access  Private (Ops Manager)
 exports.updateRoute = async (req, res) => {
   try {
@@ -629,7 +629,7 @@ exports.updateRoute = async (req, res) => {
 };
 
 // @desc    Delete a route
-// @route   DELETE /api/v1/trips/ops/routes/:id
+// @route   DELETE /api/trips/ops/routes/:id
 // @access  Private (Ops Manager)
 exports.deleteRoute = async (req, res) => {
   try {
@@ -650,7 +650,7 @@ exports.deleteRoute = async (req, res) => {
 };
 
 // @desc    Get all trips (ops view)
-// @route   GET /api/v1/trips/ops/trips
+// @route   GET /api/trips/ops/trips
 // @access  Private (Ops Manager)
 exports.getTrips = async (req, res) => {
   try {
@@ -670,7 +670,7 @@ exports.getTrips = async (req, res) => {
 };
 
 // @desc    Create a new trip
-// @route   POST /api/v1/trips/ops/trips
+// @route   POST /api/trips/ops/trips
 // @access  Private (Ops Manager)
 exports.createTrip = async (req, res) => {
   try {
@@ -700,7 +700,7 @@ exports.createTrip = async (req, res) => {
 };
 
 // @desc    Update a trip
-// @route   PUT /api/v1/trips/ops/trips/:id
+// @route   PUT /api/trips/ops/trips/:id
 // @access  Private (Ops Manager)
 exports.updateTrip = async (req, res) => {
   try {
@@ -828,7 +828,7 @@ exports.updateTrip = async (req, res) => {
 };
 
 // @desc    Delete a trip
-// @route   DELETE /api/v1/trips/ops/trips/:id
+// @route   DELETE /api/trips/ops/trips/:id
 // @access  Private (Ops Manager)
 exports.deleteTrip = async (req, res) => {
   try {
@@ -849,7 +849,7 @@ exports.deleteTrip = async (req, res) => {
 };
 
 // @desc    Auto schedule trips
-// @route   POST /api/v1/trips/ops/trips/auto-schedule
+// @route   POST /api/trips/ops/trips/auto-schedule
 // @access  Private (Ops Manager)
 exports.autoScheduleTrips = async (req, res) => {
   try {
@@ -877,7 +877,7 @@ exports.autoScheduleTrips = async (req, res) => {
 };
 
 // @desc    Release booked seats back (called by booking-service on cancellation)
-// @route   PATCH /api/v1/trips/:id/release-seats
+// @route   PATCH /api/trips/:id/release-seats
 // @access  Internal (no auth required - internal service call)
 exports.releaseSeats = async (req, res) => {
   try {
@@ -900,7 +900,7 @@ exports.releaseSeats = async (req, res) => {
 };
 
 // @desc    Update trip journey status (driver portal)
-// @route   PATCH /api/v1/trips/:id/update-journey
+// @route   PATCH /api/trips/:id/update-journey
 // @access  Private (Driver)
 exports.updateJourneyStatus = async (req, res) => {
   try {
@@ -1122,7 +1122,7 @@ exports.updateJourneyStatus = async (req, res) => {
 };
 
 // @desc    Get all maintenance records
-// @route   GET /api/v1/trips/fleet/maintenance-records
+// @route   GET /api/trips/fleet/maintenance-records
 // @access  Private (Fleet Manager)
 exports.getMaintenanceRecords = async (req, res) => {
   try {
@@ -1141,7 +1141,7 @@ exports.getMaintenanceRecords = async (req, res) => {
 };
 
 // @desc    Create a completed maintenance record
-// @route   POST /api/v1/trips/fleet/maintenance-records
+// @route   POST /api/trips/fleet/maintenance-records
 // @access  Private (Fleet Manager)
 exports.createMaintenanceRecord = async (req, res) => {
   try {
@@ -1179,7 +1179,7 @@ exports.createMaintenanceRecord = async (req, res) => {
 };
 
 // @desc    Lấy danh sách đề xuất bảo trì chi phí lớn chờ Giám đốc duyệt
-// @route   GET /api/v1/trips/fleet/maintenance-approvals
+// @route   GET /api/trips/fleet/maintenance-approvals
 // @access  Private (General Manager, Fleet Manager, Admin)
 exports.getMaintenanceApprovals = async (req, res) => {
   try {
@@ -1199,7 +1199,7 @@ exports.getMaintenanceApprovals = async (req, res) => {
 };
 
 // @desc    Giám đốc phê duyệt hoặc từ chối chi phí bảo trì lớn
-// @route   PATCH /api/v1/trips/fleet/maintenance-approvals/:id
+// @route   PATCH /api/trips/fleet/maintenance-approvals/:id
 // @access  Private (General Manager, Admin)
 exports.reviewMaintenanceApproval = async (req, res) => {
   try {
@@ -1239,7 +1239,7 @@ exports.reviewMaintenanceApproval = async (req, res) => {
 // ==========================================
 
 // @desc    Get Operations & Punctuality Report
-// @route   GET /api/v1/trips/ops/reports/punctuality
+// @route   GET /api/trips/ops/reports/punctuality
 // @access  Private (Ops Manager, General Manager, Admin)
 exports.getPunctualityReport = async (req, res) => {
   try {
@@ -1381,7 +1381,7 @@ exports.getPunctualityReport = async (req, res) => {
 };
 
 // @desc    Update trip delay reasons and punctuality status
-// @route   PATCH /api/v1/trips/ops/trips/:id/punctuality
+// @route   PATCH /api/trips/ops/trips/:id/punctuality
 // @access  Private (Ops Manager, Admin)
 exports.updateTripPunctuality = async (req, res) => {
   try {
@@ -1420,7 +1420,7 @@ exports.updateTripPunctuality = async (req, res) => {
 };
 
 // @desc    Update live GPS coordinates from driver PWA device
-// @route   PUT /api/v1/trips/:id/live-gps
+// @route   PUT /api/trips/:id/live-gps
 // @access  Public / Private (Driver)
 exports.updateLiveGps = async (req, res) => {
   try {

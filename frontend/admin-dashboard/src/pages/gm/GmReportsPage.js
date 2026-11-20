@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 const ITEMS_PER_PAGE = 10;
 
 // Export strictly real database report data to Excel CSV UTF-8
@@ -95,7 +95,7 @@ const exportComprehensiveReportToExcel = ({
       const start = s.startTime ? `"${new Date(s.startTime).toLocaleString('vi-VN')}"` : '""';
       const end = s.endTime ? `"${new Date(s.endTime).toLocaleString('vi-VN')}"` : '"Đang trực"';
       const notes = `"${(s.notes || '').replace(/"/g, '""')}"`;
-      csvContent += `${i + 1},"${s.counterNumber || 'Quầy vé'}",${start},${end},${s.initialCash || 0},${s.cashRevenue || 0},${s.cashlessRevenue || 0},${s.ticketsSold?.length || 0},${notes}\n`;
+      csvContent += `${i + 1},"${s.userId?.assignedOffice || s.officeName || 'Văn phòng bán vé'}",${start},${end},${s.initialCash || 0},${s.cashRevenue || 0},${s.cashlessRevenue || 0},${s.ticketsSold?.length || 0},${notes}\n`;
     });
 
     csvContent += '\n--- 2. BẢNG KÊ DANH SÁCH VÉ BÁN (DỮ LIỆU CSDL) ---\n';
@@ -1609,7 +1609,7 @@ const GmReportsPage = () => {
                     <tbody>
                       {paginate(agentCalculations.shifts).currentItems.map((s) => (
                         <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '0.65rem 0.85rem', fontWeight: '700', color: '#0f172a' }}>{s.counterNumber || 'Quầy vé'}</td>
+                          <td style={{ padding: '0.65rem 0.85rem', fontWeight: '700', color: '#0f172a' }}>{s.userId?.assignedOffice || s.officeName || 'Văn phòng bán vé'}</td>
                           <td style={{ padding: '0.65rem 0.85rem', color: '#64748b', fontSize: '0.74rem' }}>
                             {s.startTime ? new Date(s.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '...'} - {s.endTime ? new Date(s.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Đang trực'}
                             <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>{s.startTime ? new Date(s.startTime).toLocaleDateString('vi-VN') : ''}</div>

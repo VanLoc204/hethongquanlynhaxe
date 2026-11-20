@@ -2,7 +2,31 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { BRANCHES, getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const PROVINCE_OFFICES = {
+  sg: {
+    provinceName: 'Chi nhánh TP. Hồ Chí Minh',
+    offices: [
+      { id: 'sg-bxmd', name: 'Văn phòng Bến xe Miền Đông' },
+      { id: 'sg-bxmt', name: 'Văn phòng Bến xe Miền Tây' }
+    ]
+  },
+  dl: {
+    provinceName: 'Chi nhánh Đà Lạt',
+    offices: [
+      { id: 'dl-bxlt', name: 'Văn phòng Bến xe Liên Tỉnh' },
+      { id: 'dl-btx', name: 'Văn phòng Bùi Thị Xuân' }
+    ]
+  },
+  ct: {
+    provinceName: 'Chi nhánh Cần Thơ',
+    offices: [
+      { id: 'ct-bxtt', name: 'Văn phòng Bến xe Trung Tâm' },
+      { id: 'ct-nk', name: 'Văn phòng Ninh Kiều' }
+    ]
+  }
+};
+
+const API_BASE = 'http://localhost:8000/api';
 
 const ROLE_LABELS = {
   driver: 'Tài xế',
@@ -91,7 +115,17 @@ const GmStaffPage = () => {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('admin');
   const [branchId, setBranchId] = useState('sg');
+  const [assignedOffice, setAssignedOffice] = useState('Văn phòng Bến xe Miền Đông');
+  const [shiftType, setShiftType] = useState('morning'); // 'morning' | 'evening'
   const [status, setStatus] = useState('active');
+
+  const handleBranchChange = (newBranchId) => {
+    setBranchId(newBranchId);
+    const availableOffices = PROVINCE_OFFICES[newBranchId]?.offices || [];
+    if (availableOffices.length > 0) {
+      setAssignedOffice(availableOffices[0].name);
+    }
+  };
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -127,8 +161,10 @@ const GmStaffPage = () => {
     setEmail('');
     setPhone('');
     setPassword('');
-    setRole('admin');
+    setRole('ticket_agent');
     setBranchId('sg');
+    setAssignedOffice('Văn phòng Bến xe Miền Đông');
+    setShiftType('morning');
     setStatus('active');
     setShowModal(true);
   };
@@ -140,7 +176,11 @@ const GmStaffPage = () => {
     setPhone(staff.phone || '');
     setPassword('');
     setRole(staff.role || 'driver');
-    setBranchId(staff.branch?.branchId || 'sg');
+    const bId = staff.branch?.branchId || 'sg';
+    setBranchId(bId);
+    const curOffice = staff.assignedOffice || (Array.isArray(staff.branch?.assignedOffices) ? staff.branch.assignedOffices[0] : null) || PROVINCE_OFFICES[bId]?.offices[0]?.name;
+    setAssignedOffice(curOffice || 'Văn phòng Bến xe Miền Đông');
+    setShiftType(staff.shiftType || 'morning');
     setStatus(staff.status || 'active');
     setShowModal(true);
   };
@@ -218,11 +258,21 @@ const GmStaffPage = () => {
     };
 
     if (['ticket_manager', 'ticket_agent'].includes(role)) {
-      const branchObj = getBranchById(branchId);
+      const bInfo = PROVINCE_OFFICES[branchId];
       payload.branch = {
         branchId,
-        branchName: branchObj?.branchName || 'Chi nhánh TP. Hồ Chí Minh',
-        assignedOffices: (branchObj?.offices || []).map(o => o.name)
+        branchName: bInfo?.provinceName || 'Chi nhánh TP. Hồ Chí Minh',
+        assignedOffices: [assignedOffice]
+      };
+      payload.assignedOffice = assignedOffice;
+      if (role === 'ticket_agent') {
+        payload.shiftType = shiftType;
+        payload.shiftName = shiftType === 'evening' ? 'Ca Chiều (14:00 - 22:00)' : 'Ca Sáng (06:30 - 14:30)';
+      }
+    } else {
+      payload.branch = {
+        branchId: 'sg',
+        branchName: 'Chi nhánh TP. Hồ Chí Minh (Hội sở)'
       };
     }
 
@@ -881,22 +931,64 @@ const GmStaffPage = () => {
               </div>
 
               {['ticket_manager', 'ticket_agent'].includes(role) && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '0.85rem' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e40af' }}>
-                    Chi nhánh trực thuộc (Bắt buộc cho nhân sự phòng vé) *
-                  </label>
-                  <select
-                    value={branchId}
-                    onChange={(e) => setBranchId(e.target.value)}
-                    style={{
-                      padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe',
-                      fontSize: '0.8rem', fontWeight: '600', outline: 'none', background: '#eff6ff', color: '#1e3a8a'
-                    }}
-                  >
-                    <option value="sg">Chi nhánh TP. Hồ Chí Minh (sg)</option>
-                    <option value="dl">Chi nhánh Đà Lạt (dl)</option>
-                    <option value="ct">Chi nhánh Cần Thơ (ct)</option>
-                  </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '0.85rem' }}>
+                  {/* 1. Chọn Chi nhánh Tỉnh / Thành phố */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e40af' }}>
+                      Chi nhánh trực thuộc (Tỉnh / Thành phố) *
+                    </label>
+                    <select
+                      value={branchId}
+                      onChange={(e) => handleBranchChange(e.target.value)}
+                      style={{
+                        padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe',
+                        fontSize: '0.8rem', fontWeight: '600', outline: 'none', background: '#eff6ff', color: '#1e3a8a'
+                      }}
+                    >
+                      <option value="sg">Chi nhánh TP. Hồ Chí Minh</option>
+                      <option value="dl">Chi nhánh Đà Lạt</option>
+                      <option value="ct">Chi nhánh Cần Thơ</option>
+                    </select>
+                  </div>
+
+                  {/* 2. Chọn Văn phòng làm việc cụ thể */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#1e40af' }}>
+                      Văn phòng làm việc cụ thể *
+                    </label>
+                    <select
+                      value={assignedOffice}
+                      onChange={(e) => setAssignedOffice(e.target.value)}
+                      style={{
+                        padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1',
+                        fontSize: '0.8rem', fontWeight: '600', outline: 'none', background: '#ffffff', color: '#0f172a'
+                      }}
+                    >
+                      {(PROVINCE_OFFICES[branchId]?.offices || []).map(off => (
+                        <option key={off.id} value={off.name}>{off.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 3. Nếu là Nhân viên bán vé: Chọn Khung giờ làm việc */}
+                  {role === 'ticket_agent' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#047857' }}>
+                        Khung giờ làm việc *
+                      </label>
+                      <select
+                        value={shiftType}
+                        onChange={(e) => setShiftType(e.target.value)}
+                        style={{
+                          padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #a7f3d0',
+                          fontSize: '0.8rem', fontWeight: '600', outline: 'none', background: '#ecfdf5', color: '#065f46'
+                        }}
+                      >
+                        <option value="morning">Ca Sáng (06:30 - 14:30)</option>
+                        <option value="evening">Ca Chiều - Tối (14:00 - 22:00)</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 

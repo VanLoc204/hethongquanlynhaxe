@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const numberToVietnameseWords = (num) => {
   if (!num || isNaN(num) || num <= 0) return 'Không đồng.';
@@ -66,10 +66,7 @@ const StaffSalaryPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Feedback modal
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackMsg, setFeedbackMsg] = useState('');
-  const [feedbackSuccess, setFeedbackSuccess] = useState(false);
+  const isDriver = user?.role === 'driver';
 
   const formatCurrency = (val) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
@@ -124,28 +121,13 @@ const StaffSalaryPage = () => {
     }
   }, [token, month, year]);
 
-  const handleExportPDF = () => {
-    window.print();
-  };
-
-  const handleSendFeedback = (e) => {
-    e.preventDefault();
-    if (!feedbackMsg.trim()) return;
-    setFeedbackSuccess(true);
-    setTimeout(() => {
-      setFeedbackOpen(false);
-      setFeedbackSuccess(false);
-      setFeedbackMsg('');
-    }, 1800);
-  };
-
   const incidentItems = useMemo(() => {
-    return payroll?.incidentItems || [];
-  }, [payroll]);
+    return isDriver ? (payroll?.incidentItems || []) : [];
+  }, [payroll, isDriver]);
 
   const incidentTotal = useMemo(() => {
-    return payroll?.incidentReimbursement || 0;
-  }, [payroll]);
+    return isDriver ? (payroll?.incidentReimbursement || 0) : 0;
+  }, [payroll, isDriver]);
 
   const grossSalary = useMemo(() => {
     if (!payroll) return 0;
@@ -156,6 +138,11 @@ const StaffSalaryPage = () => {
     if (!payroll) return 0;
     return (payroll.insuranceDeduction || 0) + (payroll.absentDeduction || 0);
   }, [payroll]);
+
+  const totalNetPayout = useMemo(() => {
+    if (!payroll) return 0;
+    return (payroll.netSalary || 0) + incidentTotal;
+  }, [payroll, incidentTotal]);
 
   // Available year and month options
   const years = [2024, 2025, 2026, 2027];
@@ -225,7 +212,9 @@ const StaffSalaryPage = () => {
             </span>
           </div>
           <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-            Tra cứu chi tiết thu nhập, tiền hoàn ứng sự cố dọc đường, các khoản khấu trừ và lịch sử quyết toán lương hàng tháng.
+            {isDriver
+              ? 'Tra cứu chi tiết thu nhập, tiền hoàn ứng sự cố dọc đường, các khoản khấu trừ và lịch sử quyết toán lương hàng tháng.'
+              : 'Tra cứu chi tiết thu nhập, các khoản khấu trừ và lịch sử quyết toán lương hàng tháng.'}
           </p>
         </div>
 
@@ -233,29 +222,11 @@ const StaffSalaryPage = () => {
           <button
             onClick={fetchSalary}
             style={{
-              padding: '6px 12px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1',
+              padding: '6px 14px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1',
               borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', color: '#334155', cursor: 'pointer'
             }}
           >
             Làm mới
-          </button>
-          <button
-            onClick={handleExportPDF}
-            style={{
-              padding: '6px 12px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1',
-              borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', color: '#334155', cursor: 'pointer'
-            }}
-          >
-            In / Xuất PDF
-          </button>
-          <button
-            onClick={() => setFeedbackOpen(true)}
-            style={{
-              padding: '6px 14px', backgroundColor: '#2563eb', color: '#ffffff', border: 'none',
-              borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer'
-            }}
-          >
-            Phản hồi lương
           </button>
         </div>
       </div>
@@ -270,12 +241,14 @@ const StaffSalaryPage = () => {
           >
             Phiếu lương chi tiết
           </button>
-          <button
-            onClick={() => setActiveView('incidents')}
-            className={`filter-btn ${activeView === 'incidents' ? 'active' : ''}`}
-          >
-            Khoản hoàn ứng sự cố ({incidentItems.length})
-          </button>
+          {isDriver && (
+            <button
+              onClick={() => setActiveView('incidents')}
+              className={`filter-btn ${activeView === 'incidents' ? 'active' : ''}`}
+            >
+              Khoản hoàn ứng sự cố ({incidentItems.length})
+            </button>
+          )}
           <button
             onClick={() => setActiveView('history')}
             className={`filter-btn ${activeView === 'history' ? 'active' : ''}`}
@@ -335,12 +308,12 @@ const StaffSalaryPage = () => {
 
       {loading ? (
         <div className="salary-box" style={{ padding: '3rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
-          Đang tổng hợp dữ liệu bảng lương và đối soát hoàn ứng sự cố...
+          Đang tổng hợp dữ liệu bảng lương...
         </div>
       ) : payroll ? (
         <>
-          {/* 3. 4 KPI Cards Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
+          {/* 3. KPI Cards Grid: 4 cột cho Tài xế, 3 cột cho các nhân sự khác */}
+          <div style={{ display: 'grid', gridTemplateColumns: isDriver ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
             {/* KPI 1 */}
             <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
@@ -367,26 +340,28 @@ const StaffSalaryPage = () => {
               </div>
             </div>
 
-            {/* KPI 3: Hoàn Ứng Sự Cố Dọc Đường (MỚI) */}
-            <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #059669' }}>
-              <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#059669', textTransform: 'uppercase' }}>
-                Hoàn Ứng Sự Cố Dọc Đường
+            {/* KPI 3: Hoàn Ứng Sự Cố Dọc Đường (CHỈ HIỂN THỊ VỚI TÀI XẾ) */}
+            {isDriver && (
+              <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #059669' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#059669', textTransform: 'uppercase' }}>
+                  Hoàn Ứng Sự Cố Dọc Đường
+                </div>
+                <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#047857' }}>
+                  +{formatCurrency(incidentTotal)}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: incidentItems.length > 0 ? '#047857' : '#64748b', fontWeight: incidentItems.length > 0 ? '700' : '500' }}>
+                  {incidentItems.length > 0 ? `${incidentItems.length} sự cố được Quản lý duyệt` : 'Không phát sinh chi phí'}
+                </div>
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#047857' }}>
-                +{formatCurrency(incidentTotal)}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: incidentItems.length > 0 ? '#047857' : '#64748b', fontWeight: incidentItems.length > 0 ? '700' : '500' }}>
-                {incidentItems.length > 0 ? `${incidentItems.length} sự cố được Quản lý duyệt` : 'Không phát sinh chi phí'}
-              </div>
-            </div>
+            )}
 
             {/* KPI 4: Thực Lĩnh */}
             <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #2563eb' }}>
               <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#2563eb', textTransform: 'uppercase' }}>
-                Lương Thực Lĩnh (Net)
+                Lương Thực Lĩnh
               </div>
               <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#1d4ed8' }}>
-                {formatCurrency(payroll.netSalary)}
+                {formatCurrency(totalNetPayout)}
               </div>
               <div style={{ fontSize: '0.72rem', color: payroll.status === 'paid' ? '#15803d' : '#b45309', fontWeight: '700' }}>
                 {payroll.status === 'paid' ? 'Đã chi trả qua ngân hàng' : 'Chờ kỳ quyết toán'}
@@ -474,36 +449,38 @@ const StaffSalaryPage = () => {
                         <strong style={{ color: '#16a34a' }}>+{formatCurrency(payroll.allowance)}</strong>
                       </div>
 
-                      {/* HOÀN ỨNG SỰ CỐ DỌC ĐƯỜNG */}
-                      <div style={{
-                        padding: '8px 10px', background: incidentTotal > 0 ? '#f0fdf4' : '#fafafa',
-                        border: `1px solid ${incidentTotal > 0 ? '#bbf7d0' : '#e2e8f0'}`, borderRadius: '8px'
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <strong style={{ color: incidentTotal > 0 ? '#166534' : '#0f172a', display: 'block' }}>
-                              Hoàn ứng chi phí sự cố dọc đường
+                      {/* HOÀN ỨNG SỰ CỐ DỌC ĐƯỜNG (CHỈ HIỂN THỊ VỚI TÀI XẾ) */}
+                      {isDriver && (
+                        <div style={{
+                          padding: '8px 10px', background: incidentTotal > 0 ? '#f0fdf4' : '#fafafa',
+                          border: `1px solid ${incidentTotal > 0 ? '#bbf7d0' : '#e2e8f0'}`, borderRadius: '8px'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                              <strong style={{ color: incidentTotal > 0 ? '#166534' : '#0f172a', display: 'block' }}>
+                                Hoàn ứng chi phí sự cố dọc đường
+                              </strong>
+                              <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                {incidentItems.length > 0 ? `Quyết toán ${incidentItems.length} khoản tiền tài xế đã ứng tự sửa chữa` : 'Không phát sinh chi phí'}
+                              </span>
+                            </div>
+                            <strong style={{ color: incidentTotal > 0 ? '#15803d' : '#94a3b8', fontSize: '0.85rem' }}>
+                              +{formatCurrency(incidentTotal)}
                             </strong>
-                            <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                              {incidentItems.length > 0 ? `Quyết toán ${incidentItems.length} khoản tiền tài xế đã ứng tự sửa chữa` : 'Không phát sinh chi phí'}
-                            </span>
                           </div>
-                          <strong style={{ color: incidentTotal > 0 ? '#15803d' : '#94a3b8', fontSize: '0.85rem' }}>
-                            +{formatCurrency(incidentTotal)}
-                          </strong>
-                        </div>
 
-                        {incidentItems.length > 0 && (
-                          <div style={{ marginTop: '6px', borderTop: '1px dashed #bbf7d0', paddingTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                            {incidentItems.map((inc, i) => (
-                              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#166534' }}>
-                                <span>• <strong>{inc.incidentCode}</strong>: {inc.title.slice(0, 32)}...</span>
-                                <span style={{ fontWeight: '700' }}>{formatCurrency(inc.amount)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                          {incidentItems.length > 0 && (
+                            <div style={{ marginTop: '6px', borderTop: '1px dashed #bbf7d0', paddingTop: '6px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              {incidentItems.map((inc, i) => (
+                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#166534' }}>
+                                  <span>• <strong>{inc.incidentCode}</strong>: {inc.title.slice(0, 32)}...</span>
+                                  <span style={{ fontWeight: '700' }}>{formatCurrency(inc.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
@@ -515,7 +492,7 @@ const StaffSalaryPage = () => {
                     </div>
 
                     <div style={{ marginTop: 'auto', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '8px 12px', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#166534' }}>TỔNG THU NHẬP GỘP (GROSS):</span>
+                      <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#166534' }}>TỔNG THU NHẬP:</span>
                       <strong style={{ fontSize: '0.95rem', fontWeight: '900', color: '#15803d' }}>
                         {formatCurrency(grossSalary)}
                       </strong>
@@ -577,23 +554,23 @@ const StaffSalaryPage = () => {
                 }}>
                   <div>
                     <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase' }}>
-                      SỐ TIỀN THỰC LĨNH CHUYỂN KHOẢN (NET = GROSS - GIẢM TRỪ):
+                      SỐ TIỀN THỰC LĨNH CHUYỂN KHOẢN:
                     </div>
                     <div style={{ fontSize: '0.78rem', color: '#cbd5e1', marginTop: '3px' }}>
-                      <strong>Bằng chữ:</strong> {numberToVietnameseWords(payroll.netSalary)}
+                      <strong>Bằng chữ:</strong> {numberToVietnameseWords(totalNetPayout)}
                     </div>
                   </div>
 
                   <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#38bdf8' }}>
-                    {formatCurrency(payroll.netSalary)}
+                    {formatCurrency(totalNetPayout)}
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* VIEW 2: KHOẢN HOÀN ỨNG SỰ CỐ DỌC ĐƯỜNG */}
-          {activeView === 'incidents' && (
+          {/* VIEW 2: KHOẢN HOÀN ỨNG SỰ CỐ DỌC ĐƯỜNG (CHỈ DÀNH CHO TÀI XẾ) */}
+          {isDriver && activeView === 'incidents' && (
             <div className="salary-box" style={{ padding: '1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
                 <div>
@@ -681,7 +658,7 @@ const StaffSalaryPage = () => {
                   Lịch Sử Quyết Toán Lương Các Kỳ Gần Nhất
                 </h3>
                 <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                  Bảng đối soát thu nhập thực lĩnh, phụ cấp và các khoản hoàn ứng của nhân sự qua các tháng.
+                  Bảng đối soát thu nhập thực lĩnh, phụ cấp và các khoản khấu trừ của nhân sự qua các tháng.
                 </p>
               </div>
 
@@ -698,9 +675,9 @@ const StaffSalaryPage = () => {
                         <th>Lương hợp đồng</th>
                         <th>Công chuẩn</th>
                         <th>Phụ cấp ăn ca</th>
-                        <th>Hoàn ứng sự cố</th>
+                        {isDriver && <th>Hoàn ứng sự cố</th>}
                         <th>Khấu trừ</th>
-                        <th>Lương thực lĩnh (Net)</th>
+                        <th>Lương thực lĩnh</th>
                         <th>Trạng thái</th>
                         <th style={{ textAlign: 'center' }}>Thao tác</th>
                       </tr>
@@ -708,6 +685,7 @@ const StaffSalaryPage = () => {
                     <tbody>
                       {historyData.map((item, idx) => {
                         const isSelected = item.month === month && item.year === year;
+                        const itemNetPayout = isDriver ? ((item.netSalary || 0) + (item.incidentReimbursement || 0)) : (item.netSalary || 0);
                         return (
                           <tr key={idx} style={{ backgroundColor: isSelected ? '#f8fafc' : 'transparent' }}>
                             <td>
@@ -723,15 +701,17 @@ const StaffSalaryPage = () => {
                             <td>{formatCurrency(item.baseSalary)}</td>
                             <td>{26 - (item.absentDays || 0)} / 26 ngày</td>
                             <td style={{ color: '#16a34a' }}>+{formatCurrency(item.allowance)}</td>
-                            <td style={{ color: (item.incidentReimbursement || 0) > 0 ? '#059669' : '#64748b', fontWeight: (item.incidentReimbursement || 0) > 0 ? '700' : 'normal' }}>
-                              {(item.incidentReimbursement || 0) > 0 ? `+${formatCurrency(item.incidentReimbursement)}` : '0 ₫'}
-                            </td>
+                            {isDriver && (
+                              <td style={{ color: (item.incidentReimbursement || 0) > 0 ? '#059669' : '#64748b', fontWeight: (item.incidentReimbursement || 0) > 0 ? '700' : 'normal' }}>
+                                {(item.incidentReimbursement || 0) > 0 ? `+${formatCurrency(item.incidentReimbursement)}` : '0 ₫'}
+                              </td>
+                            )}
                             <td style={{ color: '#dc2626' }}>
                               -{formatCurrency((item.insuranceDeduction || 0) + (item.absentDeduction || 0))}
                             </td>
                             <td>
                               <strong style={{ color: '#1e40af', fontSize: '0.85rem' }}>
-                                {formatCurrency(item.netSalary)}
+                                {formatCurrency(itemNetPayout)}
                               </strong>
                             </td>
                             <td>
@@ -771,72 +751,6 @@ const StaffSalaryPage = () => {
       ) : (
         <div className="salary-box" style={{ padding: '3rem', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
           Không tìm thấy hồ sơ lương của kỳ đã chọn.
-        </div>
-      )}
-
-      {/* 4. Feedback Modal Popup */}
-      {feedbackOpen && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(2px)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1200
-        }}>
-          <div style={{
-            background: '#ffffff', borderRadius: '12px', width: '92%', maxWidth: '500px',
-            padding: '1.25rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem', marginBottom: '0.85rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>
-                Phản Hồi Thắc Mắc Lương Kỳ Tháng {String(month).padStart(2, '0')}/{year}
-              </h3>
-              <button
-                onClick={() => setFeedbackOpen(false)}
-                style={{ background: 'none', border: 'none', fontSize: '1.25rem', cursor: 'pointer', color: '#64748b' }}
-              >
-                &times;
-              </button>
-            </div>
-
-            {feedbackSuccess ? (
-              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#16a34a' }}>
-                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: '800' }}>Gửi phản hồi thành công!</h4>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
-                  Phòng Kế toán &amp; Nhân sự đã tiếp nhận thông tin và sẽ kiểm tra, phản hồi lại cho bạn trong vòng 24h.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleSendFeedback} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: 0 }}>
-                  Nếu bạn có thắc mắc về ngày công, tiền hoàn ứng sự cố dọc đường hoặc các khoản khấu trừ, vui lòng nhập nội dung chi tiết bên dưới:
-                </p>
-
-                <textarea
-                  required
-                  rows={4}
-                  value={feedbackMsg}
-                  onChange={e => setFeedbackMsg(e.target.value)}
-                  placeholder="Nhập nội dung thắc mắc, mã sự cố cần đối chiếu, hoặc yêu cầu kiểm tra lại ngày công..."
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', boxSizing: 'border-box' }}
-                />
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setFeedbackOpen(false)}
-                    style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#ffffff', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer' }}
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    type="submit"
-                    style={{ padding: '6px 16px', borderRadius: '6px', border: 'none', background: '#2563eb', color: '#ffffff', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer' }}
-                  >
-                    Gửi phản hồi
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
         </div>
       )}
     </div>

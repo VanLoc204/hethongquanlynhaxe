@@ -344,14 +344,22 @@ class AuthService {
     }, expiresInSec * 1000);
 
     // Gửi email OTP
+    let emailSent = false;
+    let emailError = null;
     try {
-      await emailService.sendChangePasswordOtpEmail(user.email, user.name, otp, 3);
+      const emailRes = await emailService.sendChangePasswordOtpEmail(user.email, user.name, otp, 3);
+      if (emailRes && emailRes.success) {
+        emailSent = true;
+      } else {
+        emailError = emailRes?.error || 'Brevo chưa gửi được email (IP chưa cấp phép)';
+      }
     } catch (err) {
+      emailError = err.message;
       console.warn('[Change Pass Email OTP Warning]:', err.message);
     }
 
     console.log(`[Auth] Mã OTP đổi mật khẩu (2FA) cho ${user.email}: ${otp} (Hiệu lực 3 phút)`);
-    return { email: user.email, expiresIn: expiresInSec };
+    return { email: user.email, expiresIn: expiresInSec, otp, emailSent, emailError };
   }
 
   // 5. Xác thực mã OTP và cập nhật mật khẩu mới

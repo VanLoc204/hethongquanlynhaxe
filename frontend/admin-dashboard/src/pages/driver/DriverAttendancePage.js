@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import AutoFaceEnrollModal from '../../components/AutoFaceEnrollModal';
 import {
   loadFaceApiModels,
   startWebcam,
@@ -15,7 +16,7 @@ import {
 
 import AttendanceGpsCard from '../../components/AttendanceGpsCard';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const DriverAttendancePage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);
@@ -32,6 +33,7 @@ const DriverAttendancePage = ({ setActiveTab }) => {
   const [actionLoading, setActionLoading] = useState(false);
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
+  const [showAutoEnrollModal, setShowAutoEnrollModal] = useState(false);
   const blinkRef = useRef({ state: 'open', lastTime: Date.now() });
 
   // Trạng thái chấm công từ Backend
@@ -797,13 +799,12 @@ const DriverAttendancePage = ({ setActiveTab }) => {
                       lineHeight: '1.4'
                     }}
                   >
-                    <strong>Tài khoản chưa có dữ liệu khuôn mặt:</strong> Vui lòng bật camera, nhìn thẳng vào ống kính và bấm nút bên dưới để <strong>chụp ảnh đăng ký dữ liệu khuôn mặt</strong> trước khi điểm danh ca trực.
+                    <strong>Tài khoản chưa có dữ liệu khuôn mặt:</strong> Vui lòng quét đăng ký sinh trắc học 3 góc mặt (tự động nhận diện chính diện, nghiêng trái, nghiêng phải) trước khi điểm danh ca trực.
                   </div>
 
                   <button
                     type="button"
-                    onClick={handleSelfEnrollFace}
-                    disabled={isRegisteringFace || !cameraActive || !faceDetected}
+                    onClick={() => setShowAutoEnrollModal(true)}
                     style={{
                       width: '100%',
                       padding: '0.85rem 1.25rem',
@@ -813,18 +814,12 @@ const DriverAttendancePage = ({ setActiveTab }) => {
                       color: '#ffffff',
                       fontSize: '0.95rem',
                       fontWeight: '800',
-                      cursor: isRegisteringFace || !cameraActive || !faceDetected ? 'not-allowed' : 'pointer',
-                      opacity: isRegisteringFace || !cameraActive || !faceDetected ? 0.6 : 1,
+                      cursor: 'pointer',
                       boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
                       transition: 'all 0.15s ease'
                     }}
                   >
-                    {isRegisteringFace ? 'Đang phân tích & lưu khuôn mặt...' : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-                        Chụp Ảnh &amp; Kích Hoạt Dữ Liệu Khuôn Mặt
-                      </span>
-                    )}
+                    Đăng Ký Khuôn Mặt Face ID (3 Góc Tự Động)
                   </button>
                 </div>
               ) : todayStatus !== 'closed' ? (
@@ -1129,6 +1124,22 @@ const DriverAttendancePage = ({ setActiveTab }) => {
           </div>
         </div>
       </div>
+      {/* MODAL ĐĂNG KÝ SINH TRẮC HỌC FACE ID 3 GÓC MẶT TỰ ĐỘNG */}
+      <AutoFaceEnrollModal
+        isOpen={showAutoEnrollModal}
+        onClose={() => setShowAutoEnrollModal(false)}
+        onSuccess={(data) => {
+          setFaceRegistered(true);
+          showToast('Kích hoạt khuôn mặt Face ID 3 góc thành công! Bây giờ bạn đã có thể bắt đầu ca trực.', 'success');
+          setShowAutoEnrollModal(false);
+          if (fetchMyAttendance) {
+            fetchMyAttendance();
+          }
+        }}
+        token={token}
+        userId={user?._id || user?.id}
+        userName={user?.name}
+      />
     </div>
   );
 };

@@ -1,4 +1,6 @@
 const User = require('../models/User');
+const EmployeeProfile = require('../models/EmployeeProfile');
+const TicketAgentProfile = require('../models/TicketAgentProfile');
 const Trip = require('../models/Trip');
 const LeaveRequest = require('../models/LeaveRequest');
 const Notification = require('../models/Notification');
@@ -7,40 +9,39 @@ const Booking = require('../models/Booking');
 const Route = require('../models/Route');
 const Bus = require('../models/Bus');
 const Payroll = require('../models/Payroll');
-const WorkSchedule = require('../models/WorkSchedule');
 const Attendance = require('../models/Attendance');
+const AgentAttendance = require('../models/AgentAttendance');
+const CrewAttendance = require('../models/CrewAttendance');
+const CounterIncident = require('../models/CounterIncident');
+const TripIncident = require('../models/TripIncident');
 const Incident = require('../models/Incident');
 const Review = require('../models/Review');
 const payosPayoutService = require('../services/payosPayoutService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { detectBranchFromLocation, getBranchById } = require('../constants/branches');
+
+const detectBranchFromLocation = (loc) => {
+  if (!loc || typeof loc !== 'string') return 'sg';
+  const t = loc.toLowerCase();
+  if (t.includes('đà lạt') || t.includes('lâm đồng') || t.includes('bxlt') || t.includes('bùi thị xuân')) return 'dl';
+  if (t.includes('cần thơ') || t.includes('ninh kiều') || t.includes('bxtt')) return 'ct';
+  return 'sg';
+};
 
 const generateTicketSignature = (bookingId) => {
   const secret = process.env.JWT_SECRET || 'anbinhlines_secret';
   return crypto.createHmac('sha256', secret).update(bookingId.toString()).digest('hex').substring(0, 16);
 };
 
-// @desc    Get all staff work schedules (queryable DB)
-// @route   GET /api/v1/users/work-schedules
-// @access  Private (Ops Manager, Admin, General Manager, Staff)
+// @desc    Get all staff work schedules (bảng WorkSchedule đã loại bỏ, duy trì endpoint tương thích)
+// @route   GET /api/users/work-schedules
+// @access  Private
 exports.getWorkSchedules = async (req, res) => {
   try {
-    const { userId, role, status } = req.query;
-    let query = {};
-    if (userId) query.userId = userId;
-    if (role) query.userRole = role;
-    if (status) query.status = status;
-
-    const schedules = await WorkSchedule.find(query)
-      .populate('userId', 'name email phone role')
-      .sort({ date: 1 })
-      .lean();
-
     res.status(200).json({
       success: true,
-      count: schedules.length,
-      schedules
+      count: 0,
+      schedules: []
     });
   } catch (error) {
     console.error('Lỗi lấy danh sách lịch làm việc:', error);
@@ -48,48 +49,100 @@ exports.getWorkSchedules = async (req, res) => {
   }
 };
 
-// @desc    Get work schedule (assigned trips or fixed office shifts)
-// @route   GET /api/v1/users/my-schedule
+// @desc    Get work schedule (assigned trips or dynamic shifts)
+// @route   GET /api/users/my-schedule
 // @access  Private (Driver / Attendant / Ticket Agent / Ops)
 exports.getMySchedule = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('phone role name').lean();
+    const userId = req.user.id || req.user._id;
+    const user = await User.findById(userId).select('phone role name email').lean();
     if (!user) {
       return res.status(200).json({ success: true, fixedSchedule: true, trips: [], schedules: [] });
     }
 
-    // Drivers and Attendants have flexible trip schedules; other roles work fixed office hours
-    const isFixedSchedule = user.role !== 'driver' && user.role !== 'attendant';
+    const isDriverOrAttendant = user.role === 'driver' || user.role === 'attendant';
+    const isTicketAgent = user.role === 'ticket_agent';
 
-    if (isFixedSchedule) {
-      const schedules = await WorkSchedule.find({ userId: req.user.id }).sort({ date: 1 }).lean();
+    // 1. Lấy thông tin hồ sơ nhân viên để lấy chi nhánh & văn phòng thật
+    const empProfile = await EmployeeProfile.findById(userId).lean();
+    let agentProfile = null;
+    if (isTicketAgent) {
+      agentProfile = await TicketAgentProfile.findById(userId).lean();
+    }
+
+    const office = agentProfile?.assignedOffice || empProfile?.assignedOffice || empProfile?.branch?.assignedOffices?.[0] || 'Văn phòng Bến xe Miền Đông';
+    const branchName = empProfile?.branch?.branchName || 'Chi nhánh TP. Hồ Chí Minh';
+
+    // 2. Lấy dữ liệu chấm công thực tế (Attendance) của nhân viên để đối soát trạng thái từng ngày
+    const attendances = await Attendance.find({ userId })
+      .select('date checkInTime checkOutTime totalHours status')
+      .sort({ date: -1 })
+      .limit(60)
+      .lean();
+
+    // 3. Lấy dữ liệu đơn xin nghỉ phép đã được duyệt (LeaveRequest)
+    const leaves = await LeaveRequest.find({ userId, status: 'approved' })
+      .select('startDate endDate typeName reason status')
+      .lean();
+
+    // 4. Nếu là TÀI XẾ hoặc PHỤ XE (Tổ lái): Lịch làm việc là chuyến xe (Trips)
+    if (isDriverOrAttendant) {
+      let query = {};
+      if (user.role === 'driver') {
+        query = { 'driver.phone': user.phone };
+      } else if (user.role === 'attendant') {
+        query = { 'assistant.phone': user.phone };
+      }
+
+      const trips = await Trip.find(query)
+        .populate('routeId', 'startPoint endPoint distance duration stops name')
+        .populate('busId', 'plateNumber type totalSeats')
+        .sort({ departureTime: 1 })
+        .lean();
+
       return res.status(200).json({
         success: true,
-        fixedSchedule: true,
+        fixedSchedule: false,
+        isDriverOrAttendant: true,
         role: user.role,
-        trips: [],
-        schedules
+        user: { name: user.name, phone: user.phone, role: user.role },
+        count: trips.length,
+        trips,
+        schedules: [],
+        attendances,
+        leaves,
+        agentProfile: { office, branchName }
       });
     }
 
-    let query = {};
-    if (user.role === 'driver') {
-      query = { 'driver.phone': user.phone };
-    } else if (user.role === 'attendant') {
-      query = { 'assistant.phone': user.phone };
+    // 5. Nếu là NHÂN VIÊN BÁN VÉ hoặc VĂN PHÒNG / QUẢN LÝ: Lịch theo ca mẫu / ca hành chính
+    // Kiểm tra ca trực quầy vé đang mở (ShiftSession) nếu là ticket_agent
+    let activeShift = null;
+    if (isTicketAgent) {
+      activeShift = await ShiftSession.findOne({ userId, status: 'active' }).lean();
     }
 
-    const trips = await Trip.find(query)
-      .populate('routeId', 'startPoint endPoint distance duration stops')
-      .populate('busId', 'plateNumber type totalSeats')
-      .sort({ departureTime: 1 })
-      .lean();
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      fixedSchedule: false,
-      count: trips.length,
-      trips
+      fixedSchedule: true,
+      isDriverOrAttendant: false,
+      role: user.role,
+      user: { name: user.name, phone: user.phone, role: user.role },
+      schedules: [],
+      trips: [],
+      attendances,
+      leaves,
+      activeShift: activeShift ? {
+        id: activeShift._id,
+        startTime: activeShift.startTime,
+        status: activeShift.status
+      } : null,
+      agentProfile: {
+        office,
+        branchName,
+        shiftType: agentProfile?.shiftType || 'morning',
+        shiftName: agentProfile?.shiftName || 'Ca Sáng (06:30 - 14:30)'
+      }
     });
   } catch (error) {
     console.error('Lỗi lấy lịch làm việc:', error);
@@ -98,11 +151,11 @@ exports.getMySchedule = async (req, res) => {
 };
 
 // @desc    Submit a leave request
-// @route   POST /api/v1/users/leave
+// @route   POST /api/users/leave
 // @access  Private (All Staff)
 exports.submitLeave = async (req, res) => {
   try {
-    const { startDate, endDate, reason } = req.body;
+    const { startDate, endDate, reason, typeName } = req.body;
     if (!startDate || !endDate || !reason) {
       return res.status(400).json({ success: false, message: 'Vui lòng cung cấp đầy đủ thông tin: Ngày bắt đầu, Ngày kết thúc và Lý do xin nghỉ.' });
     }
@@ -113,12 +166,13 @@ exports.submitLeave = async (req, res) => {
 
     const startStr = new Date(startDate).toLocaleDateString('vi-VN');
     const endStr = new Date(endDate).toLocaleDateString('vi-VN');
-    const details = `Nghỉ từ ${startStr} đến ${endStr}. Lý do: ${reason}`;
+    const displayType = typeName || 'Đơn xin nghỉ phép';
+    const details = `${displayType}: Nghỉ từ ${startStr} đến ${endStr}. Lý do: ${reason}`;
 
     const leave = await LeaveRequest.create({
       userId: req.user.id,
       type: 'leave',
-      typeName: 'Đơn xin nghỉ phép',
+      typeName: displayType,
       details,
       startDate,
       endDate,
@@ -137,7 +191,7 @@ exports.submitLeave = async (req, res) => {
 };
 
 // @desc    Get my leave requests
-// @route   GET /api/v1/users/leave
+// @route   GET /api/users/leave
 // @access  Private (All Staff)
 exports.getMyLeaves = async (req, res) => {
   try {
@@ -166,7 +220,7 @@ exports.getMyLeaves = async (req, res) => {
 };
 
 // @desc    Get announcements/notifications by role
-// @route   GET /api/v1/users/notifications
+// @route   GET /api/users/notifications
 // @access  Private (All Staff)
 exports.getNotifications = async (req, res) => {
   try {
@@ -206,18 +260,11 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
   const startOfMonth = new Date(qYear, qMonth - 1, 1, 0, 0, 0, 0);
   const endOfMonth = new Date(qYear, qMonth, 0, 23, 59, 59, 999);
 
-  const absentSchedules = await WorkSchedule.find({
+  const absentAttendances = await Attendance.find({
     userId,
     date: { $gte: startOfMonth, $lte: endOfMonth },
-    status: { $in: ['absent', 'leave'] }
+    status: 'absent'
   }).lean();
-
-  const absentDates = new Set();
-  absentSchedules.forEach(s => {
-    if (s.date) {
-      absentDates.add(new Date(s.date).toISOString().split('T')[0]);
-    }
-  });
 
   const approvedLeaves = await LeaveRequest.find({
     userId,
@@ -226,51 +273,80 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
     endDate: { $gte: startOfMonth }
   }).lean();
 
+  const paidLeaveDates = new Set();
+  const unpaidLeaveDates = new Set();
+
   approvedLeaves.forEach(l => {
     if (l.startDate && l.endDate) {
       let cur = new Date(Math.max(new Date(l.startDate).getTime(), startOfMonth.getTime()));
       const end = new Date(Math.min(new Date(l.endDate).getTime(), endOfMonth.getTime()));
       cur.setHours(0, 0, 0, 0);
       end.setHours(0, 0, 0, 0);
+      const isUnpaid = (l.typeName || '').toLowerCase().includes('không hưởng lương');
       while (cur <= end) {
-        absentDates.add(cur.toISOString().split('T')[0]);
+        const dStr = cur.toISOString().split('T')[0];
+        if (isUnpaid) {
+          unpaidLeaveDates.add(dStr);
+        } else {
+          paidLeaveDates.add(dStr);
+        }
         cur.setDate(cur.getDate() + 1);
       }
     }
   });
+
+  const absentDates = new Set();
+  absentAttendances.forEach(s => {
+    if (s.date) {
+      const dStr = new Date(s.date).toISOString().split('T')[0];
+      // Ngày nghỉ phép năm (hưởng nguyên lương) không bị trừ lương
+      if (!paidLeaveDates.has(dStr)) {
+        absentDates.add(dStr);
+      }
+    }
+  });
+
+  // Bổ sung các ngày nghỉ không hưởng lương vào danh sách trừ lương
+  unpaidLeaveDates.forEach(dStr => absentDates.add(dStr));
 
   const absentDays = absentDates.size;
   const standardWorkingDays = 26;
   const dailyRate = details.base / standardWorkingDays;
   const absentDeduction = Math.round(absentDays * dailyRate);
 
-  // Tính các khoản hoàn ứng sự cố trên tuyến được Quản lý duyệt trong tháng
-  const approvedIncidents = await Incident.find({
-    reportedBy: userId,
-    scenario: 'self_resolved',
-    reimbursementStatus: { $in: ['approved', 'paid'] },
-    createdAt: { $gte: startOfMonth, $lte: endOfMonth }
-  }).lean();
+  // Chỉ truy vấn hoàn ứng sự cố động cho vai trò Tài xế (driver) từ bảng TripIncident
+  let incidentReimbursement = 0;
+  let incidentItems = [];
 
-  const incidentReimbursement = approvedIncidents.reduce(
-    (sum, inc) => sum + (inc.reimbursementAmount || 0),
-    0
-  );
+  if (userRole === 'driver') {
+    const approvedIncidents = await TripIncident.find({
+      reportedBy: userId,
+      scenario: 'self_resolved',
+      reimbursementStatus: { $in: ['approved', 'paid'] },
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+    }).lean();
 
-  const incidentItems = approvedIncidents.map(inc => ({
-    incidentCode: inc.incidentCode,
-    title: inc.title,
-    amount: inc.reimbursementAmount || 0,
-    status: inc.reimbursementStatus,
-    approvedAt: inc.reimbursementApprovedAt || inc.createdAt
-  }));
+    incidentReimbursement = approvedIncidents.reduce(
+      (sum, inc) => sum + (inc.reimbursementAmount || 0),
+      0
+    );
 
+    incidentItems = approvedIncidents.map(inc => ({
+      incidentCode: inc.incidentCode,
+      title: inc.title,
+      amount: inc.reimbursementAmount || 0,
+      status: inc.reimbursementStatus,
+      approvedAt: inc.reimbursementApprovedAt || inc.createdAt
+    }));
+  }
+
+  // Lương thực lĩnh thuần (Lương cơ bản + Phụ cấp - Bảo hiểm - Vắng mặt) lưu vào Payroll chuẩn 3NF
   const netSalary = Math.max(
     0,
-    details.base + details.allowance + incidentReimbursement - details.insurance - absentDeduction
+    details.base + details.allowance - details.insurance - absentDeduction
   );
 
-  const fullUser = await User.findById(userId).select('name phone').lean();
+  const fullUser = await User.findById(userId).select('name phone role').lean();
 
   const now = new Date();
   const nowYear = now.getFullYear();
@@ -278,20 +354,17 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
   const isFuture = qYear > nowYear || (qYear === nowYear && qMonth > nowMonth);
   const status = isFuture ? 'pending' : 'paid';
 
-  return await Payroll.findOneAndUpdate(
+  // Lưu bảng Payroll tinh gọn CHUẨN 3NF TUYỆT ĐỐI (KHÔNG LƯU incidentReimbursement vào Payroll)
+  const savedPayroll = await Payroll.findOneAndUpdate(
     { employeeId: userId, month: qMonth, year: qYear },
     {
       $set: {
-        phone: fullUser?.phone || 'N/A',
-        name: fullUser?.name || 'N/A',
-        role: userRole,
+        employeeId: userId,
+        month: qMonth,
+        year: qYear,
         baseSalary: details.base,
         allowance: details.allowance,
         insuranceDeduction: details.insurance,
-        absentDays,
-        absentDeduction,
-        incidentReimbursement,
-        incidentItems,
         netSalary,
         status,
         paymentDate: new Date(qYear, qMonth - 1, 5)
@@ -299,10 +372,22 @@ const computePayrollRecord = async (userId, userRole, qMonth, qYear) => {
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   ).lean();
+
+  // Ghép dữ liệu trả về cho frontend StaffSalaryPage.js (Kế thừa động từ User, Attendance, TripIncident)
+  return {
+    ...savedPayroll,
+    name: fullUser?.name || 'N/A',
+    phone: fullUser?.phone || 'N/A',
+    role: fullUser?.role || userRole,
+    absentDays,
+    absentDeduction,
+    incidentReimbursement,
+    incidentItems
+  };
 };
 
 // @desc    Get real payroll details (Fixed Salary minus Absent Days)
-// @route   GET /api/v1/users/salary
+// @route   GET /api/users/salary
 // @access  Private (All Staff & Managers)
 exports.getMySalary = async (req, res) => {
   try {
@@ -378,14 +463,75 @@ const isHoliday = (date) => {
   return false;
 };
 
+// Helper: Tự động đóng các ca trực đã hết giờ làm việc mà nhân viên quên check-out
+async function autoCloseExpiredShifts() {
+  try {
+    const activeSessions = await ShiftSession.find({ status: 'active' });
+    if (!activeSessions || activeSessions.length === 0) return;
+
+    const now = new Date();
+
+    for (const session of activeSessions) {
+      try {
+        const agentProfile = await TicketAgentProfile.findById(session.userId).lean();
+        const shiftType = agentProfile?.shiftType || 'morning';
+        const scheduledEndTimeStr = shiftType === 'evening' ? '22:00' : '14:30';
+        const [endH, endM] = scheduledEndTimeStr.split(':').map(Number);
+
+        const sessionDate = new Date(session.startTime || session.createdAt);
+        const scheduledEndDate = new Date(sessionDate);
+        scheduledEndDate.setHours(endH, endM, 0, 0);
+
+        // Khoảng đệm 15 phút sau giờ kết thúc ca quy định (hoặc nếu đã sang ngày mới)
+        const graceEndDate = new Date(scheduledEndDate.getTime() + 15 * 60 * 1000);
+
+        if (now > graceEndDate || now.getDate() !== sessionDate.getDate() || now.getMonth() !== sessionDate.getMonth()) {
+          session.status = 'closed';
+          session.isPaused = false;
+          session.pausedAt = null;
+          session.endTime = scheduledEndDate < now ? scheduledEndDate : now;
+          session.notes = session.notes
+            ? `${session.notes} | [Tự động đóng ca khi hết giờ trực]`
+            : '[Tự động đóng ca khi hết giờ trực]';
+          await session.save();
+
+          // Cập nhật bản ghi Attendance tương ứng (Chuẩn 3NF)
+          const dayStart = new Date(sessionDate.getFullYear(), sessionDate.getMonth(), sessionDate.getDate());
+          const diffMs = Math.max(0, session.endTime - (session.startTime || session.endTime));
+          const totalHours = parseFloat((diffMs / 3600000).toFixed(2));
+
+          await Attendance.findOneAndUpdate(
+            { userId: session.userId, date: dayStart, status: 'active' },
+            {
+              $set: {
+                checkOutTime: session.endTime,
+                status: 'closed',
+                totalHours,
+                note: 'Hệ thống tự động chốt ca sau giờ làm việc'
+              }
+            }
+          );
+        }
+      } catch (innerErr) {
+        console.warn('[autoCloseExpiredShifts inner error]:', innerErr.message);
+      }
+    }
+  } catch (err) {
+    console.error('[autoCloseExpiredShifts error]:', err);
+  }
+}
+
 // @desc    Start shift session for ticket agent or ticket manager (with optional Face ID biometric check)
-// @route   POST /api/v1/users/shift/start
+// @route   POST /api/users/shift/start
 // @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.startShift = async (req, res) => {
   try {
+    await autoCloseExpiredShifts();
     const {
-      counterNumber,
       initialCash,
+      expectedInitialCash,
+      cashDiscrepancy,
+      discrepancyNote,
       notes,
       faceDescriptor,
       checkInPhoto,
@@ -395,9 +541,7 @@ exports.startShift = async (req, res) => {
       gpsLng
     } = req.body;
 
-    if (!counterNumber) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp số quầy vé hoặc vị trí trực để mở ca.' });
-    }
+    const officeLocation = location || user?.assignedOffice || user?.branch?.branchName || 'Văn phòng bán vé';
 
     // Check if there is an active session
     const activeSession = await ShiftSession.findOne({ userId: req.user.id, status: 'active' }).lean();
@@ -409,18 +553,66 @@ exports.startShift = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id).select('+faceDescriptors +faceRegistered');
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản nhân viên.' });
+    }
+    const emp = await EmployeeProfile.findById(req.user.id).select('+faceDescriptors +faceRegistered');
+    const agent = await TicketAgentProfile.findById(req.user.id).lean();
+
+    // Kiểm tra giờ ca trực quy định: Nếu đã quá giờ kết thúc ca trong ngày thì khóa chấm công
+    const shiftType = agent?.shiftType || 'morning';
+    const scheduledEndTimeStr = shiftType === 'evening' ? '22:00' : '14:30';
+    const [endH, endM] = scheduledEndTimeStr.split(':').map(Number);
+    const now = new Date();
+    const scheduledEndDate = new Date(now);
+    scheduledEndDate.setHours(endH, endM, 0, 0);
+    const graceEndDate = new Date(scheduledEndDate.getTime() + 15 * 60 * 1000);
+
+    if (now > graceEndDate) {
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      await Attendance.findOneAndUpdate(
+        { userId: req.user.id, date: dayStart },
+        {
+          $setOnInsert: {
+            userId: req.user.id,
+            date: dayStart,
+            status: 'absent',
+            attendanceType: 'agent',
+            note: 'Vắng mặt (Quá giờ vào ca trực quy định)'
+          }
+        },
+        { upsert: true }
+      );
+
+      return res.status(400).json({
+        success: false,
+        message: 'Đã hết giờ ca trực hôm nay. Hệ thống đã khóa chấm công.'
+      });
+    }
+
+    const actualCashNum = Number(initialCash) || 0;
+    const expectedCashNum = (expectedInitialCash !== undefined && expectedInitialCash !== null)
+      ? Number(expectedInitialCash)
+      : actualCashNum;
+    const diff = (cashDiscrepancy !== undefined && cashDiscrepancy !== null)
+      ? Number(cashDiscrepancy)
+      : (actualCashNum - expectedCashNum);
+
+    if (diff !== 0 && (!discrepancyNote || !discrepancyNote.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tiền mặt thực nhận có chênh lệch so với két ca trước bàn giao. Vui lòng nhập lý do giải trình chênh lệch!'
+      });
     }
 
     let faceVerified = false;
     let faceDistance = null;
 
     if (faceDescriptor && Array.isArray(faceDescriptor) && faceDescriptor.length === 128) {
-      if (user.faceRegistered && Array.isArray(user.faceDescriptors) && user.faceDescriptors.length > 0) {
+      if (emp && emp.faceRegistered && Array.isArray(emp.faceDescriptors) && emp.faceDescriptors.length > 0) {
         // So khớp với mẫu khuôn mặt đã đăng ký
-        const distances = user.faceDescriptors.map(stored => {
+        const distances = emp.faceDescriptors.map(stored => {
           let sum = 0;
           for (let i = 0; i < 128; i++) {
             sum += (faceDescriptor[i] - stored[i]) ** 2;
@@ -439,64 +631,72 @@ exports.startShift = async (req, res) => {
         }
         faceVerified = true;
         faceDistance = parseFloat(bestDistance.toFixed(4));
-      } else {
+      } else if (emp) {
         // Tự động kích hoạt Face ID cho nhân viên chưa có mẫu
-        user.faceDescriptors = [faceDescriptor];
-        user.faceRegistered = true;
-        if (checkInPhoto) user.facePhoto = checkInPhoto;
-        await user.save();
+        emp.faceDescriptors = [faceDescriptor];
+        emp.faceRegistered = true;
+        if (checkInPhoto) emp.facePhoto = checkInPhoto;
+        await emp.save();
         faceVerified = true;
         faceDistance = 0.0;
       }
     }
 
     const startTime = new Date();
-    const assignedBranch = user.branch?.branchId || detectBranchFromLocation(counterNumber || location);
+    // Tạo ca trực tinh gọn chuẩn 3NF: Chỉ quản lý tiền két và vé, Face ID và ảnh chấm công được quản lý bên bảng Attendance
     const session = await ShiftSession.create({
       userId: req.user.id,
-      counterNumber,
-      initialCash: Number(initialCash) || 0,
+      initialCash: actualCashNum,
+      expectedInitialCash: expectedCashNum,
       notes: notes || '',
       startTime,
       status: 'active',
-      faceVerified,
-      faceDistance,
-      isLiveVerified: Boolean(isLiveVerified),
-      checkInPhoto: checkInPhoto || null,
-      location: location || counterNumber,
-      gpsLat: gpsLat || null,
-      gpsLng: gpsLng || null,
-      branchId: assignedBranch,
-      officeName: location || counterNumber,
-      reconciliationStatus: 'pending'
+      reconciliationStatus: diff !== 0 ? 'discrepancy' : 'pending'
     });
 
-    // Đồng bộ vào bảng Attendance để quản lý tập trung
+    // Đồng bộ vào bảng Attendance để quản lý tập trung (Chuẩn 3NF)
     try {
       const dayStart = new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate());
-      await Attendance.findOneAndUpdate(
+      let attNote = `Mở ca: ${officeLocation}`;
+      if (diff !== 0) {
+        attNote += ` [Lệch quỹ đầu ca: ${diff > 0 ? '+' : ''}${diff.toLocaleString('vi-VN')} đ | Lý do: ${discrepancyNote.trim()}]`;
+      } else if (notes) {
+        attNote += ` (${notes})`;
+      }
+
+      const att = await Attendance.findOneAndUpdate(
         { userId: req.user.id, date: dayStart },
         {
           $set: {
             userId: req.user.id,
-            employeeName: user.name,
-            employeePhone: user.phone,
-            role: user.role,
             date: dayStart,
             checkInTime: startTime,
             status: 'active',
+            attendanceType: 'agent',
             faceVerified,
             faceDistance,
             isLiveVerified: Boolean(isLiveVerified),
             checkInPhoto: checkInPhoto || null,
-            location: location || counterNumber,
             gpsLat: gpsLat || null,
             gpsLng: gpsLng || null,
-            note: `Mở ca quầy: ${counterNumber}`
+            note: attNote
           }
         },
         { upsert: true, new: true }
       );
+
+      if (att) {
+        await AgentAttendance.findOneAndUpdate(
+          { attendanceId: att._id },
+          {
+            $set: {
+              attendanceId: att._id,
+              initialCash: initialCash || 0
+            }
+          },
+          { upsert: true }
+        );
+      }
     } catch (attErr) {
       console.warn('Attendance sync error in startShift:', attErr.message);
     }
@@ -504,9 +704,15 @@ exports.startShift = async (req, res) => {
     res.status(201).json({
       success: true,
       message: faceVerified 
-        ? `Xác thực khuôn mặt Face ID thành công! Mở ca làm việc tại ${counterNumber}.`
-        : 'Mở ca làm việc tại quầy thành công.',
-      session
+        ? `Xác thực khuôn mặt Face ID thành công! Mở ca làm việc tại ${officeLocation}.`
+        : 'Mở ca làm việc thành công.',
+      session: {
+        ...session.toObject(),
+        faceVerified,
+        faceDistance,
+        checkInPhoto: checkInPhoto || null,
+        isLiveVerified: Boolean(isLiveVerified)
+      }
     });
   } catch (error) {
     console.error('Lỗi mở ca trực:', error);
@@ -515,11 +721,11 @@ exports.startShift = async (req, res) => {
 };
 
 // @desc    End shift session for ticket agent or manager force close
-// @route   POST /api/v1/users/shift/end
+// @route   POST /api/users/shift/end
 // @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.endShift = async (req, res) => {
   try {
-    const { notes, shiftId, faceDescriptor, checkOutPhoto, isLiveVerified } = req.body;
+    const { notes, earlyCloseReason, forceClose, shiftId, faceDescriptor, checkOutPhoto, isLiveVerified } = req.body;
     let session = null;
 
     // Quản lý phòng vé, Giám đốc hoặc Admin có quyền chốt ca cho bất kỳ quầy nào bằng shiftId
@@ -537,12 +743,14 @@ exports.endShift = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Ca làm việc này đã được chốt sổ trước đó.' });
     }
 
+    // Cho phép chốt ca linh hoạt theo thực tế bàn giao quầy, không bắt bẻ lý do đóng ca sớm hay trễ
+
     // Nếu người tự chốt ca là chủ ca trực và có gửi khuôn mặt để xác thực
     if (!shiftId || shiftId.toString() === session._id.toString()) {
       if (faceDescriptor && Array.isArray(faceDescriptor) && faceDescriptor.length === 128) {
-        const user = await User.findById(session.userId).select('+faceDescriptors +faceRegistered');
-        if (user && user.faceRegistered && Array.isArray(user.faceDescriptors) && user.faceDescriptors.length > 0) {
-          const distances = user.faceDescriptors.map(stored => {
+        const emp = await EmployeeProfile.findById(session.userId).select('+faceDescriptors +faceRegistered');
+        if (emp && emp.faceRegistered && Array.isArray(emp.faceDescriptors) && emp.faceDescriptors.length > 0) {
+          const distances = emp.faceDescriptors.map(stored => {
             let sum = 0;
             for (let i = 0; i < 128; i++) {
               sum += (faceDescriptor[i] - stored[i]) ** 2;
@@ -566,35 +774,57 @@ exports.endShift = async (req, res) => {
     const endTime = new Date();
     session.status = 'closed';
     session.endTime = endTime;
-    if (checkOutPhoto) {
-      session.checkOutPhoto = checkOutPhoto;
-    }
-    if (notes) {
-      session.notes = session.notes ? `${session.notes} | ${notes}` : notes;
+
+    const finalNote = notes || earlyCloseReason || '';
+    if (finalNote) {
+      session.notes = session.notes ? `${session.notes} | ${finalNote}` : finalNote;
     }
     await session.save();
 
-    // Đồng bộ vào bảng Attendance
+    // Đồng bộ vào bảng Attendance (Chuẩn 3NF)
     try {
       const dayStart = new Date(endTime.getFullYear(), endTime.getMonth(), endTime.getDate());
-      await Attendance.findOneAndUpdate(
+      const diffMs = endTime - (session.startTime || endTime);
+      const totalHours = parseFloat((Math.max(0, diffMs) / 3600000).toFixed(2));
+
+      const att = await Attendance.findOneAndUpdate(
         { userId: session.userId, date: dayStart, status: 'active' },
         {
           $set: {
             checkOutTime: endTime,
             status: 'closed',
+            totalHours,
             checkOutPhoto: checkOutPhoto || null,
-            note: notes ? `Đóng ca quầy. Ghi chú: ${notes}` : 'Đã hoàn tất ca trực quầy vé'
+            note: finalNote ? `Đóng ca quầy. ${finalNote}` : 'Đã hoàn tất ca trực quầy vé'
           }
-        }
+        },
+        { new: true }
       );
+
+      if (att) {
+        await AgentAttendance.findOneAndUpdate(
+          { attendanceId: att._id },
+          {
+            $set: {
+              cashCollected: session.cashRevenue || 0,
+              cashHandover: expectedEndingCash || 0,
+              cashDiscrepancy: discrepancy || 0,
+              totalTicketsSold: session.ticketsSold ? session.ticketsSold.length : 0
+            }
+          },
+          { upsert: true }
+        );
+      }
+
     } catch (attErr) {
       console.warn('Attendance sync error in endShift:', attErr.message);
     }
 
     res.status(200).json({
       success: true,
-      message: 'Chốt ca trực và hoàn tất đối soát doanh thu thành công.',
+      message: isEarlyClose
+        ? `Đã ghi nhận đóng ca sớm (lý do: ${earlyCloseReason || notes || 'Có việc đột xuất'}). Hoàn tất chốt ca.`
+        : 'Chốt ca trực và hoàn tất đối soát doanh thu thành công.',
       session
     });
   } catch (error) {
@@ -603,9 +833,92 @@ exports.endShift = async (req, res) => {
   }
 };
 
+// @desc    Pause shift session (Tạm khóa quầy / Nghỉ giữa ca)
+// @route   POST /api/users/shift/pause
+// @access  Private (Ticket Agent, Ticket Manager)
+exports.pauseShift = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy ca làm việc đang mở để tạm khóa.' });
+    }
+    session.isPaused = true;
+    session.pausedAt = new Date();
+    session.pauseReason = reason || 'Tạm khóa quầy / Nghỉ giữa ca';
+    await session.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Quầy vé đã được tạm khóa an toàn. Bạn có thể yên tâm nghỉ ngơi hoặc đi ăn trưa.',
+      session
+    });
+  } catch (error) {
+    console.error('Lỗi tạm khóa ca:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi tạm khóa ca trực.' });
+  }
+};
+
+// @desc    Resume shift session (Mở khóa quầy vé sau khi tạm nghỉ)
+// @route   POST /api/users/shift/resume
+// @access  Private (Ticket Agent, Ticket Manager)
+exports.resumeShift = async (req, res) => {
+  try {
+    const { password, faceDescriptor } = req.body;
+    const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
+    if (!session) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy ca làm việc để mở khóa.' });
+    }
+
+    const user = await User.findById(req.user.id).select('+password');
+    const emp = await EmployeeProfile.findById(req.user.id).select('+faceDescriptors +faceRegistered');
+
+    if (password) {
+      const verified = await bcrypt.compare(password, user.password);
+      if (!verified) {
+        return res.status(401).json({ success: false, message: 'Mật khẩu tài khoản không chính xác.' });
+      }
+    } else if (faceDescriptor && Array.isArray(faceDescriptor) && faceDescriptor.length === 128) {
+      if (emp && emp.faceRegistered && Array.isArray(emp.faceDescriptors) && emp.faceDescriptors.length > 0) {
+        const distances = emp.faceDescriptors.map(stored => {
+          let sum = 0;
+          for (let i = 0; i < 128; i++) {
+            sum += (faceDescriptor[i] - stored[i]) ** 2;
+          }
+          return Math.sqrt(sum);
+        });
+        const bestDistance = Math.min(...distances);
+        const THRESHOLD = 0.42;
+        if (bestDistance > THRESHOLD) {
+          return res.status(401).json({
+            success: false,
+            message: `Khuôn mặt trước camera không khớp (sai số: ${bestDistance.toFixed(4)}). Vui lòng thử lại hoặc nhập mật khẩu!`
+          });
+        }
+      }
+    }
+
+    session.isPaused = false;
+    session.pausedAt = null;
+    session.pauseReason = '';
+    await session.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Mở khóa ca trực thành công. Tiếp tục phục vụ khách hàng!',
+      session
+    });
+  } catch (error) {
+    console.error('Lỗi mở khóa ca:', error);
+    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi mở khóa ca trực.' });
+  }
+};
+
 exports.getCurrentShift = async (req, res) => {
   try {
+    await autoCloseExpiredShifts();
     const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' })
+      .populate('userId', 'name phone email role avatar branch assignedOffice')
       .populate({
         path: 'ticketsSold',
         select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount paymentMethod status createdAt tripId',
@@ -631,6 +944,19 @@ exports.getCurrentShift = async (req, res) => {
         }
       })
       .lean();
+
+    // Kế thừa / JOIN thông tin Face ID từ bảng Attendance mà KHÔNG CẦN thêm trường thừa vào ShiftSession
+    if (session) {
+      const sessionDate = new Date(session.startTime || session.createdAt);
+      const dayStart = new Date(sessionDate.getFullYear(), sessionDate.getMonth(), sessionDate.getDate());
+      const att = await Attendance.findOne({ userId: req.user.id, date: dayStart }).lean();
+
+      session.faceVerified = att?.faceVerified || false;
+      session.faceDistance = att?.faceDistance !== undefined ? att.faceDistance : null;
+      session.checkInPhoto = att?.checkInPhoto || null;
+      session.isLiveVerified = att?.isLiveVerified || false;
+    }
+
     res.status(200).json({
       success: true,
       session
@@ -642,7 +968,7 @@ exports.getCurrentShift = async (req, res) => {
 };
 
 // @desc    Get shift history
-// @route   GET /api/v1/users/shift/history
+// @route   GET /api/users/shift/history
 // @access  Private (Ticket Agent, Ticket Manager, GM, Admin)
 exports.getShiftHistory = async (req, res) => {
   try {
@@ -667,7 +993,7 @@ exports.getShiftHistory = async (req, res) => {
     }
 
     const history = await ShiftSession.find(query)
-      .populate('userId', 'name phone email role avatar')
+      .populate('userId', 'name phone email role avatar branch assignedOffice')
       .populate({
         path: 'ticketsSold',
         select: 'orderCode customerName customerPhone seats pricePerSeat totalAmount paymentMethod status createdAt tripId',
@@ -707,7 +1033,7 @@ exports.getShiftHistory = async (req, res) => {
 };
 
 // @desc    Verify and reconcile cash collection from ticket shift
-// @route   PATCH /api/v1/users/shift/:id/verify-cash
+// @route   PATCH /api/users/shift/:id/verify-cash
 // @access  Private (Ticket Manager, GM, Admin)
 exports.verifyShiftCash = async (req, res) => {
   try {
@@ -740,7 +1066,7 @@ exports.verifyShiftCash = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: `Đã xác nhận nộp tiền mặt ca trực quầy ${session.counterNumber} thành công.`,
+      message: 'Đã xác nhận nộp tiền mặt ca trực thành công.',
       session
     });
   } catch (error) {
@@ -749,9 +1075,96 @@ exports.verifyShiftCash = async (req, res) => {
   }
 };
 
+// @desc    Get closing cash balance of previous shift at specified counter
+// @route   GET /api/users/shift/counter-balance
+// @access  Private (Ticket Agent, Ticket Manager, GM, Admin)
+exports.getCounterBalance = async (req, res) => {
+  try {
+    await autoCloseExpiredShifts();
+    const { location } = req.query;
+
+    const locParam = (location || '').trim();
+    if (!locParam) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp vị trí phòng vé hoặc điểm bán.'
+      });
+    }
+
+    const safeLoc = locParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const matchedUsers = await User.find({
+      $or: [
+        { assignedOffice: { $regex: new RegExp(safeLoc, 'i') } },
+        { 'branch.branchName': { $regex: new RegExp(safeLoc, 'i') } }
+      ]
+    }).select('_id').lean();
+    const userIds = matchedUsers.map(u => u._id);
+
+    let lastShift = null;
+    if (userIds.length > 0) {
+      lastShift = await ShiftSession.findOne({
+        status: 'closed',
+        userId: { $in: userIds }
+      })
+        .sort({ endTime: -1, createdAt: -1 })
+        .populate('userId', 'name phone email role assignedOffice')
+        .lean();
+    }
+
+    // Fallback: Nếu không tìm thấy theo văn phòng này, lấy ca đã đóng gần nhất trong hệ thống
+    if (!lastShift) {
+      lastShift = await ShiftSession.findOne({ status: 'closed' })
+        .sort({ endTime: -1, createdAt: -1 })
+        .populate('userId', 'name phone email role assignedOffice')
+        .lean();
+    }
+
+    if (!lastShift) {
+      return res.status(200).json({
+        success: true,
+        hasLastShift: false,
+        suggestedCash: 500000,
+        message: 'Chưa có ca trực nào kết thúc trước đó tại văn phòng này. Áp dụng định mức bàn giao mặc định 500.000 đ.',
+        lastShift: null
+      });
+    }
+
+    const initialCash = Number(lastShift.initialCash) || 0;
+    const cashRevenue = Number(lastShift.cashRevenue) || 0;
+    const refundCash = Number(lastShift.refundCash) || 0;
+    const closingCash = Math.max(0, initialCash + cashRevenue - refundCash);
+
+    return res.status(200).json({
+      success: true,
+      hasLastShift: true,
+      suggestedCash: closingCash,
+      lastShift: {
+        _id: lastShift._id,
+        employeeName: lastShift.userId?.name || 'Nhân viên quầy',
+        employeePhone: lastShift.userId?.phone || '',
+        location: lastShift.userId?.assignedOffice || locParam,
+        startTime: lastShift.startTime,
+        endTime: lastShift.endTime,
+        initialCash,
+        cashRevenue,
+        refundCash,
+        closingCash,
+        reconciliationStatus: lastShift.reconciliationStatus
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi lấy số dư quỹ quầy vé:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi tra cứu số dư tiền mặt của quầy.'
+    });
+  }
+};
+
 // @desc    Find tickets/bookings by orderCode or customer phone number
 // @desc    Find tickets/bookings by orderCode, phone, customer name, date, status
-// @route   GET /api/v1/users/agent/tickets
+// @route   GET /api/users/agent/tickets
 // @access  Private (Ticket Agent)
 exports.lookupTickets = async (req, res) => {
   try {
@@ -834,7 +1247,7 @@ exports.lookupTickets = async (req, res) => {
 };
 
 // @desc    Submit booking directly at counter (automatically link and paid)
-// @route   POST /api/v1/users/agent/book
+// @route   POST /api/users/agent/book
 // @access  Private (Ticket Agent)
 exports.createCounterBooking = async (req, res) => {
   try {
@@ -842,6 +1255,31 @@ exports.createCounterBooking = async (req, res) => {
     
     if (!tripId || !seats || !seats.length || !pickup || !dropoff || !customerName || !customerPhone || !paymentMethod) {
       return res.status(400).json({ success: false, message: 'Vui lòng điền đầy đủ các trường thông tin bắt buộc.' });
+    }
+
+    // 0. Bắt lỗi định dạng dữ liệu đầu vào
+    const trimmedName = (customerName || '').trim();
+    if (trimmedName.length < 2) {
+      return res.status(400).json({ success: false, message: 'Họ và tên khách hàng phải có tối thiểu 2 ký tự.' });
+    }
+    if (/\d/.test(trimmedName)) {
+      return res.status(400).json({ success: false, message: 'Họ và tên khách hàng không được chứa chữ số.' });
+    }
+
+    const trimmedPhone = (customerPhone || '').trim().replace(/\s+/g, '');
+    const phoneRegex = /^(03|05|07|08|09)\d{8}$/;
+    if (!phoneRegex.test(trimmedPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại không hợp lệ. Vui lòng nhập số di động 10 chữ số (bắt đầu bằng 03, 05, 07, 08, 09).'
+      });
+    }
+
+    if (customerEmail && customerEmail.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(customerEmail.trim())) {
+        return res.status(400).json({ success: false, message: 'Địa chỉ Email không đúng định dạng.' });
+      }
     }
 
     // 1. Verify active shift session exists
@@ -873,7 +1311,7 @@ exports.createCounterBooking = async (req, res) => {
     if (!passenger) {
       // Auto-register membership account on their behalf
       const salt = await bcrypt.genSalt(10);
-      const tempPassword = await bcrypt.hash('123456', salt);
+      const tempPassword = await bcrypt.hash('Anbinh@2026', salt);
       passenger = await User.create({
         name: customerName,
         phone: customerPhone,
@@ -1021,7 +1459,7 @@ exports.createCounterBooking = async (req, res) => {
 };
 
 // @desc    Get list of supported banks for PayOS Payout
-// @route   GET /api/v1/users/banks-list
+// @route   GET /api/users/banks-list
 // @access  Public / Private
 exports.getBanksList = async (req, res) => {
   try {
@@ -1033,7 +1471,7 @@ exports.getBanksList = async (req, res) => {
 };
 
 // @desc    Cancel ticket directly at counter (applying refund rules & payOS Payout)
-// @route   POST /api/v1/users/agent/cancel-ticket/:id
+// @route   POST /api/users/agent/cancel-ticket/:id
 // @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.cancelTicketAtCounter = async (req, res) => {
   try {
@@ -1214,7 +1652,7 @@ exports.cancelTicketAtCounter = async (req, res) => {
 };
 
 // @desc    Verify QR ticket and check-in passenger
-// @route   POST /api/v1/users/agent/verify-ticket-qr
+// @route   POST /api/users/agent/verify-ticket-qr
 // @access  Private (Driver / Attendant / Agent)
 exports.verifyTicketQR = async (req, res) => {
   try {
@@ -1273,7 +1711,7 @@ exports.verifyTicketQR = async (req, res) => {
 };
 
 // @desc    Get bookings/passengers for a specific trip
-// @route   GET /api/v1/users/attendant/trip-bookings/:tripId
+// @route   GET /api/users/attendant/trip-bookings/:tripId
 // @access  Private (Attendant / Staff)
 exports.getTripBookings = async (req, res) => {
   try {
@@ -1302,7 +1740,7 @@ exports.getTripBookings = async (req, res) => {
 
 
 // @desc    Manual check-in for a passenger by Booking ID
-// @route   POST /api/v1/users/attendant/check-in/:bookingId
+// @route   POST /api/users/attendant/check-in/:bookingId
 // @access  Private (Attendant / Staff)
 exports.checkInPassenger = async (req, res) => {
   try {
@@ -1336,7 +1774,7 @@ exports.checkInPassenger = async (req, res) => {
 };
 
 // @desc    Get all leave requests (for managers)
-// @route   GET /api/v1/users/admin/leaves
+// @route   GET /api/users/admin/leaves
 // @access  Private (Managers / Admin)
 exports.getAllLeaves = async (req, res) => {
   try {
@@ -1386,7 +1824,7 @@ exports.getAllLeaves = async (req, res) => {
 };
 
 // @desc    Update a leave request status (approve/reject)
-// @route   PATCH /api/v1/users/admin/leaves/:id
+// @route   PATCH /api/users/admin/leaves/:id
 // @access  Private (Managers / Admin)
 exports.updateLeaveStatus = async (req, res) => {
   try {
@@ -1542,7 +1980,7 @@ const getRoleLabelHelper = (role) => {
 };
 
 // @desc    Get real-time attendance monitoring report for today
-// @route   GET /api/v1/users/admin/attendance
+// @route   GET /api/users/admin/attendance
 // @access  Private (Managers / Admin)
 exports.getManagerAttendance = async (req, res) => {
   try {
@@ -1581,11 +2019,6 @@ exports.getManagerAttendance = async (req, res) => {
       endDate: { $gte: todayStart }
     }).lean();
 
-    // 5. Fetch today's work schedules (if any)
-    const workSchedules = await WorkSchedule.find({
-      date: { $gte: todayStart, $lte: todayEnd }
-    }).lean();
-
     const attendanceList = [];
 
     let activeDirectCount = 0;
@@ -1604,9 +2037,6 @@ exports.getManagerAttendance = async (req, res) => {
       } else if (staff.role === 'attendant') {
         assignedTrip = todayTrips.find(t => t.assistant?.phone === staffPhone);
       }
-
-      // Find if employee has a work schedule today
-      const schedule = workSchedules.find(s => s.userId?.toString() === staffIdStr);
 
       // Track all staff members for today's attendance roster
       const isScheduled = true;
@@ -1635,8 +2065,8 @@ exports.getManagerAttendance = async (req, res) => {
       } else if (session) {
         startTimeStr = new Date(session.startTime).toLocaleTimeString('vi-VN');
         endTimeStr = session.endTime ? new Date(session.endTime).toLocaleTimeString('vi-VN') : '--:--:--';
-        if (session.counterNumber) {
-          locationStr = session.counterNumber;
+        if (staff.assignedOffice) {
+          locationStr = staff.assignedOffice;
         } else if (assignedTrip) {
           locationStr = `${assignedTrip.routeId?.startPoint || 'Bến xe'} (Xe ${assignedTrip.busId?.plateNumber || ''})`;
         } else if (staff.role === 'driver' || staff.role === 'attendant') {
@@ -1760,7 +2190,7 @@ exports.getManagerAttendance = async (req, res) => {
 };
 
 // @desc    Ghi nhận báo cáo sự cố hành trình & kỹ thuật phương tiện
-// @route   POST /api/v1/users/admin/incidents
+// @route   POST /api/users/admin/incidents
 // @access  Private (Ops Manager, Driver, Attendant, Fleet Manager, Admin)
 exports.createIncidentReport = async (req, res) => {
   try {
@@ -1811,7 +2241,7 @@ exports.createIncidentReport = async (req, res) => {
 // =========================================================================
 
 // @desc    Lấy báo cáo doanh thu phòng vé chi tiết theo chi nhánh, quầy, nhân viên, tuyến đường
-// @route   GET /api/v1/users/ticket-manager/revenue-report
+// @route   GET /api/users/ticket-manager/revenue-report
 // @access  Private (ticket_manager, general_manager, admin)
 exports.getTicketRevenueReport = async (req, res) => {
   try {
@@ -1822,12 +2252,14 @@ exports.getTicketRevenueReport = async (req, res) => {
       branchId = null;
     }
 
-    const { fromDate, toDate, counterNumber, staffId } = req.query;
+    const { fromDate, toDate, staffId } = req.query;
 
     // 1. Query ShiftSessions
     let shiftQuery = {};
-    if (branchId) shiftQuery.branchId = branchId;
-    if (counterNumber && counterNumber !== 'all') shiftQuery.counterNumber = counterNumber;
+    if (branchId) {
+      const branchUsers = await User.find({ 'branch.branchId': branchId }).select('_id').lean();
+      shiftQuery.userId = { $in: branchUsers.map(u => u._id) };
+    }
     if (staffId && staffId !== 'all') shiftQuery.userId = staffId;
 
     if (fromDate || toDate) {
@@ -1837,7 +2269,7 @@ exports.getTicketRevenueReport = async (req, res) => {
     }
 
     const shifts = await ShiftSession.find(shiftQuery)
-      .populate('userId', 'name phone email role')
+      .populate('userId', 'name phone email role assignedOffice')
       .sort({ startTime: -1 })
       .lean();
 
@@ -1861,8 +2293,8 @@ exports.getTicketRevenueReport = async (req, res) => {
       totalInitialCash += initial;
       totalTicketsFromShifts += tickets;
 
-      // Nhóm theo quầy
-      const cKey = s.counterNumber || 'Quầy vé';
+      // Nhóm theo văn phòng
+      const cKey = s.userId?.assignedOffice || 'Văn phòng bán vé';
       if (!counterMap[cKey]) {
         counterMap[cKey] = { counter: cKey, totalCash: 0, totalCashless: 0, totalRevenue: 0, ticketsCount: 0, shiftsCount: 0 };
       }
@@ -1952,7 +2384,7 @@ exports.getTicketRevenueReport = async (req, res) => {
 };
 
 // @desc    Lấy danh sách sự cố phòng vé
-// @route   GET /api/v1/users/ticket-manager/incidents
+// @route   GET /api/users/ticket-manager/incidents
 // @access  Private (ticket_manager, general_manager, admin, ticket_agent)
 exports.getTicketIncidents = async (req, res) => {
   try {
@@ -1962,7 +2394,7 @@ exports.getTicketIncidents = async (req, res) => {
     // Auto-seed dữ liệu mẫu thực tế cho chi nhánh SG nếu chưa có dữ liệu
     const branchToSeed = userRole === 'ticket_manager' ? userBranch : (req.query.branchId || 'sg');
     if (branchToSeed === 'sg') {
-      const existingCount = await Incident.countDocuments({ branchId: 'sg' });
+      const existingCount = await CounterIncident.countDocuments();
       if (existingCount === 0) {
         try {
           const agentMai = await User.findOne({ phone: '0944555666' });
@@ -1973,20 +2405,16 @@ exports.getTicketIncidents = async (req, res) => {
           const trucId = agentTruc ? agentTruc._id : req.user.id;
           const namId = managerNam ? managerNam._id : req.user.id;
 
-          await Incident.insertMany([
+          await CounterIncident.insertMany([
             {
               incidentCode: 'SC-20261104-001',
-              title: 'Máy in vé nhiệt EPSON quầy 01 kẹt cuộn phôi giấy, báo đèn Error đỏ',
+              title: 'Máy in vé nhiệt EPSON quầy kẹt cuộn phôi giấy, báo đèn Error đỏ',
               category: 'equipment',
               severity: 'urgent',
-              branchId: 'sg',
-              location: 'Văn phòng Sài Gòn (BXMĐ)',
-              counterNumber: 'Quầy 01',
               reportedBy: maiId,
               details: 'Khoảng 09:15 lúc khách đang xếp hàng đông mua vé đi Đà Lạt chuyến 10h, máy in vé bị kẹt phôi giấy, đèn Error nhấp nháy đỏ liên tục không xuất vé ra được.',
               initialAction: 'Em đã chuyển 3 khách sang quầy 02 của bạn Trúc in tạm, đã tắt nguồn khởi động lại máy in và gọi IT hỗ trợ nhưng chưa được.',
               status: 'open',
-              estimatedCost: 0,
               createdAt: new Date(Date.now() - 40 * 60 * 1000)
             },
             {
@@ -1994,15 +2422,11 @@ exports.getTicketIncidents = async (req, res) => {
               title: 'Máy quẹt thẻ POS VietinBank mất tín hiệu sóng 4G khi thanh toán vé',
               category: 'network',
               severity: 'high',
-              branchId: 'sg',
-              location: 'Văn phòng Sài Gòn (BXMT)',
-              counterNumber: 'Quầy 02',
               reportedBy: trucId,
               details: 'Máy POS quẹt thẻ của ngân hàng báo "No SIM Connection / GPRS Timeout". Khách quẹt thẻ thanh toán 2 vé đi Cần Thơ 360.000đ trừ tiền thẻ nhưng máy POS không nhả hóa đơn đối soát.',
               initialAction: 'Em đã hướng dẫn khách kiểm tra app ngân hàng, chuyển sang quét mã VietQR quầy vé. Đã báo Quản lý Nam để liên hệ kỹ thuật ngân hàng kiểm tra.',
               status: 'processing',
               resolutionNotes: 'Quản lý Võ Hoàng Nam đã liên hệ chuyên viên hỗ trợ POS VietinBank chi nhánh An Lạc, đang điều phối cấp lại SIM 4G và tiến hành đối soát hoàn tất giao dịch cho khách.',
-              estimatedCost: 0,
               createdAt: new Date(Date.now() - 25 * 3600 * 1000)
             },
             {
@@ -2010,9 +2434,6 @@ exports.getTicketIncidents = async (req, res) => {
               title: 'Khách khiếu nại trùng ghế 12B tuyến SG - Đà Lạt do đặt online cùng lúc',
               category: 'service',
               severity: 'medium',
-              branchId: 'sg',
-              location: 'Văn phòng Sài Gòn (BXMĐ)',
-              counterNumber: 'Quầy 01',
               reportedBy: maiId,
               details: 'Khách mua vé tại quầy đúng lúc hệ thống website vừa chốt giữ chỗ ghế 12B chuyến 20:00. Xuất hiện tình trạng 2 khách cùng cầm mã ghế 12B.',
               initialAction: 'Xin lỗi khách hàng và mời khách ngồi chờ tại phòng chờ VIP phòng vé để trình Quản lý chi nhánh xử lý.',
@@ -2020,7 +2441,6 @@ exports.getTicketIncidents = async (req, res) => {
               resolutionNotes: 'Quản lý Võ Hoàng Nam đã kiểm tra sơ đồ xe còn trống ghế 14B tầng dưới, đã chuyển vé và nâng hạng miễn phí cho khách kèm voucher nước 50.000đ. Khách vui vẻ đồng ý.',
               resolvedBy: namId,
               resolvedAt: new Date(Date.now() - 70 * 3600 * 1000),
-              estimatedCost: 50000,
               createdAt: new Date(Date.now() - 72 * 3600 * 1000)
             },
             {
@@ -2028,9 +2448,6 @@ exports.getTicketIncidents = async (req, res) => {
               title: 'Lệch tiền két thu ngân ca sáng thiếu 50.000đ do nhầm lẫn tiền thối',
               category: 'fund',
               severity: 'low',
-              branchId: 'sg',
-              location: 'Văn phòng Sài Gòn (BXMT)',
-              counterNumber: 'Quầy 02',
               reportedBy: trucId,
               details: 'Khi kết ca sáng 14:00, đếm tiền mặt két quầy thực tế thu 3.450.000đ, hệ thống ghi nhận 3.500.000đ. Lệch thiếu 50.000đ.',
               initialAction: 'Đã báo cáo trưởng ca và tạm dừng bàn giao ca để kiểm kê lại toàn bộ cuống vé đã xuất.',
@@ -2038,7 +2455,6 @@ exports.getTicketIncidents = async (req, res) => {
               resolutionNotes: 'Đã trích xuất camera quầy thu ngân lúc 10:15, nhân viên trả nhầm tờ 100k thay vì 50k cho khách. Nhân viên Đặng Thanh Trúc đã tự nguyện bù quỹ đủ 50.000đ, đã hoàn tất biên bản bàn giao két ca sáng.',
               resolvedBy: namId,
               resolvedAt: new Date(Date.now() - 140 * 3600 * 1000),
-              estimatedCost: 0,
               createdAt: new Date(Date.now() - 144 * 3600 * 1000)
             }
           ]);
@@ -2052,11 +2468,11 @@ exports.getTicketIncidents = async (req, res) => {
     if (userRole === 'ticket_agent') {
       // Nhân viên bán vé chỉ xem các sự cố do chính mình báo cáo lên quản lý
       query.reportedBy = req.user.id;
-    } else if (userRole === 'ticket_manager') {
-      // Quản lý phòng vé xem toàn bộ sự cố của nhân viên thuộc chi nhánh mình
-      query.branchId = userBranch;
-    } else if (req.query.branchId && req.query.branchId !== 'all') {
-      query.branchId = req.query.branchId;
+    } else if (userRole === 'ticket_manager' || (req.query.branchId && req.query.branchId !== 'all')) {
+      // Kế thừa qua User: Quản lý xem sự cố của nhân viên thuộc chi nhánh
+      const targetBranch = userRole === 'ticket_manager' ? userBranch : req.query.branchId;
+      const branchUsers = await User.find({ 'branch.branchId': targetBranch }).select('_id').lean();
+      query.reportedBy = { $in: branchUsers.map(u => u._id) };
     }
 
     if (req.query.reportedBy && req.query.reportedBy !== 'all' && userRole !== 'ticket_agent') {
@@ -2066,11 +2482,17 @@ exports.getTicketIncidents = async (req, res) => {
     if (req.query.category && req.query.category !== 'all') query.category = req.query.category;
     if (req.query.severity && req.query.severity !== 'all') query.severity = req.query.severity;
 
-    const incidents = await Incident.find(query)
-      .populate('reportedBy', 'name phone email role')
+    const rawIncidents = await CounterIncident.find(query)
+      .populate('reportedBy', 'name phone email role assignedOffice branch')
       .populate('resolvedBy', 'name phone email role')
       .sort({ createdAt: -1 })
       .lean();
+
+    const incidents = rawIncidents.map(inc => ({
+      ...inc,
+      location: inc.reportedBy?.assignedOffice || 'Văn phòng bán vé',
+      branchId: inc.reportedBy?.branch?.branchId || 'sg'
+    }));
 
     res.status(200).json({
       success: true,
@@ -2084,40 +2506,46 @@ exports.getTicketIncidents = async (req, res) => {
 };
 
 // @desc    Tạo báo cáo sự cố phòng vé mới
-// @route   POST /api/v1/users/ticket-manager/incidents
+// @route   POST /api/users/ticket-manager/incidents
 // @access  Private (ticket_manager, general_manager, admin, ticket_agent)
 exports.createTicketIncident = async (req, res) => {
   try {
-    const { title, category, severity, location, counterNumber, details, initialAction, estimatedCost } = req.body;
+    const { title, category, severity, details, initialAction } = req.body;
 
-    if (!title || !details) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tiêu đề và chi tiết sự cố.' });
+    if (!title || title.trim().length < 5) {
+      return res.status(400).json({ success: false, message: 'Tiêu đề tóm tắt sự cố phải có tối thiểu 5 ký tự.' });
+    }
+
+    if (!details || details.trim().length < 10) {
+      return res.status(400).json({ success: false, message: 'Mô tả chi tiết sự cố phải có tối thiểu 10 ký tự.' });
     }
 
     const code = `SC-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(100 + Math.random() * 900)}`;
 
-    const incident = await Incident.create({
+    const incident = await CounterIncident.create({
       incidentCode: code,
-      title,
+      title: title.trim(),
       category: category || 'equipment',
       severity: severity || 'medium',
-      branchId: req.user.branch?.branchId || req.body.branchId || 'sg',
-      location: location || 'Quầy vé chi nhánh',
-      counterNumber: counterNumber || '',
       reportedBy: req.user.id,
-      details,
-      initialAction: initialAction || '',
-      estimatedCost: Number(estimatedCost) || 0,
+      details: details.trim(),
+      initialAction: initialAction ? initialAction.trim() : '',
       status: 'open'
     });
 
-    await incident.populate('reportedBy', 'name phone role email');
+    await incident.populate('reportedBy', 'name phone role email assignedOffice branch');
+
+    const mappedIncident = {
+      ...incident.toObject(),
+      location: incident.reportedBy?.assignedOffice || 'Văn phòng bán vé',
+      branchId: incident.reportedBy?.branch?.branchId || 'sg'
+    };
 
     // Gửi thông báo cho quản lý chi nhánh
     try {
       await Notification.create({
         title: `[SỰ CỐ PHÒNG VÉ] ${title}`,
-        content: `Nhân viên ${req.user.name} vừa báo cáo sự cố: ${details} tại ${location}. Mức độ: ${severity || 'Vừa'}.`,
+        content: `Nhân viên ${req.user.name} vừa báo cáo sự cố: ${details} tại ${mappedIncident.location}. Mức độ: ${severity || 'Vừa'}.`,
         recipientRole: 'ticket_manager'
       });
     } catch {
@@ -2127,7 +2555,7 @@ exports.createTicketIncident = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Ghi nhận báo cáo sự cố thành công!',
-      incident
+      incident: mappedIncident
     });
   } catch (error) {
     console.error('Lỗi tạo sự cố phòng vé:', error);
@@ -2136,12 +2564,12 @@ exports.createTicketIncident = async (req, res) => {
 };
 
 // @desc    Cập nhật tiến độ xử lý sự cố phòng vé
-// @route   PATCH /api/v1/users/ticket-manager/incidents/:id
+// @route   PATCH /api/users/ticket-manager/incidents/:id
 // @access  Private (ticket_manager, general_manager, admin)
 exports.updateTicketIncident = async (req, res) => {
   try {
-    const { status, resolutionNotes, estimatedCost } = req.body;
-    const incident = await Incident.findById(req.params.id);
+    const { status, resolutionNotes } = req.body;
+    const incident = await CounterIncident.findById(req.params.id);
 
     if (!incident) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy sự cố cần cập nhật.' });
@@ -2149,7 +2577,6 @@ exports.updateTicketIncident = async (req, res) => {
 
     if (status) incident.status = status;
     if (resolutionNotes) incident.resolutionNotes = resolutionNotes;
-    if (estimatedCost !== undefined) incident.estimatedCost = Number(estimatedCost);
 
     if (status === 'resolved' || status === 'closed') {
       incident.resolvedBy = req.user.id;
@@ -2157,13 +2584,17 @@ exports.updateTicketIncident = async (req, res) => {
     }
 
     await incident.save();
-    await incident.populate('reportedBy', 'name phone role email');
+    await incident.populate('reportedBy', 'name phone role email assignedOffice branch');
     await incident.populate('resolvedBy', 'name phone role email');
 
     res.status(200).json({
       success: true,
       message: 'Cập nhật tiến độ xử lý sự cố thành công!',
-      incident
+      incident: {
+        ...incident.toObject(),
+        location: incident.reportedBy?.assignedOffice || 'Văn phòng bán vé',
+        branchId: incident.reportedBy?.branch?.branchId || 'sg'
+      }
     });
   } catch (error) {
     console.error('Lỗi cập nhật sự cố phòng vé:', error);
@@ -2172,7 +2603,7 @@ exports.updateTicketIncident = async (req, res) => {
 };
 
 // @desc    Lấy danh sách đánh giá & bình luận chuyến xe của khách hàng
-// @route   GET /api/v1/users/ticket-manager/feedbacks
+// @route   GET /api/users/ticket-manager/feedbacks
 // @access  Private (ticket_manager, general_manager, admin)
 exports.getTicketFeedbacks = async (req, res) => {
   try {
@@ -2252,7 +2683,7 @@ exports.getTicketFeedbacks = async (req, res) => {
 };
 
 // @desc    Quản lý phòng vé trả lời bình luận của khách hàng về chuyến xe
-// @route   PATCH /api/v1/users/ticket-manager/feedbacks/:id/reply
+// @route   PATCH /api/users/ticket-manager/feedbacks/:id/reply
 // @access  Private (ticket_manager, general_manager, admin)
 exports.replyTicketFeedback = async (req, res) => {
   try {
@@ -2296,11 +2727,11 @@ exports.replyTicketFeedback = async (req, res) => {
 };
 
 // @desc    Tạo phản hồi khách hàng ghi nhận tại quầy hoặc hotline
-// @route   POST /api/v1/users/ticket-manager/feedbacks
+// @route   POST /api/users/ticket-manager/feedbacks
 // @access  Private (ticket_manager, general_manager, admin, ticket_agent)
 exports.createTicketFeedback = async (req, res) => {
   try {
-    const { userName, customerPhone, rating, comment, tripId, counterNumber, category } = req.body;
+    const { userName, customerPhone, rating, comment, tripId, category } = req.body;
 
     if (!userName || !comment) {
       return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên khách hàng và nội dung nhận xét.' });
@@ -2312,7 +2743,6 @@ exports.createTicketFeedback = async (req, res) => {
       rating: Number(rating) || 5,
       comment,
       tripId: tripId || null,
-      counterNumber: counterNumber || 'Quầy vé trực tiếp',
       category: category || 'ticket_counter',
       branchId: req.user.branch?.branchId || req.body.branchId || 'sg',
       status: 'pending'
@@ -2330,7 +2760,7 @@ exports.createTicketFeedback = async (req, res) => {
 };
 
 // @desc    Xử lý & giải quyết khiếu nại/phản hồi khách hàng
-// @route   PATCH /api/v1/users/ticket-manager/feedbacks/:id/resolve
+// @route   PATCH /api/users/ticket-manager/feedbacks/:id/resolve
 // @access  Private (ticket_manager, general_manager, admin)
 exports.resolveTicketFeedback = async (req, res) => {
   try {
@@ -2365,7 +2795,7 @@ exports.resolveTicketFeedback = async (req, res) => {
 // =========================================================================
 
 // @desc    Tài xế báo cáo sự cố trên tuyến (Tự khắc phục & xin hoàn tiền; Cần cứu viện khẩn cấp)
-// @route   POST /api/v1/users/driver/incidents
+// @route   POST /api/users/driver/incidents
 // @access  Private (Driver, Admin)
 exports.createDriverIncident = async (req, res) => {
   try {
@@ -2393,12 +2823,11 @@ exports.createDriverIncident = async (req, res) => {
     const incidentCode = `SC-TX-${todayStr}-${randomSuffix}`;
 
     // Chỉ lưu những thông tin thực sự thuộc về sự cố, tái sử dụng dữ liệu quan hệ từ tripId và reportedBy
-    const incident = await Incident.create({
+    const incident = await TripIncident.create({
       incidentCode,
       title: title?.trim() || (isSelfResolved ? `Tự khắc phục: ${details.slice(0, 45)}...` : `Cứu hộ khẩn cấp: ${details.slice(0, 45)}...`),
       category: category || (isSelfResolved ? 'tire' : 'vehicle'),
       severity: isSelfResolved ? (severity || 'medium') : 'urgent',
-      source: 'driver_on_route',
       scenario: isSelfResolved ? 'self_resolved' : 'need_assistance',
       tripId: tripId || null,
       location: location?.trim() || 'Trên tuyến đường',
@@ -2438,12 +2867,11 @@ exports.createDriverIncident = async (req, res) => {
 };
 
 // @desc    Lấy danh sách sự cố do chính tài xế báo cáo
-// @route   GET /api/v1/users/driver/incidents
+// @route   GET /api/users/driver/incidents
 // @access  Private (Driver, Admin)
 exports.getDriverIncidents = async (req, res) => {
   try {
-    const incidents = await Incident.find({
-      source: 'driver_on_route',
+    const incidents = await TripIncident.find({
       reportedBy: req.user.id
     })
       .populate('reportedBy', 'name phone email role')
@@ -2471,19 +2899,19 @@ exports.getDriverIncidents = async (req, res) => {
 };
 
 // @desc    Quản lý vận tải lấy toàn bộ danh sách sự cố trên tuyến
-// @route   GET /api/v1/users/ops/incidents
+// @route   GET /api/users/ops/incidents
 // @access  Private (Ops Manager, Admin)
 exports.getOpsIncidents = async (req, res) => {
   try {
     const { scenario, status, reimbursementStatus, assistanceStatus } = req.query;
 
-    let query = { source: 'driver_on_route' };
+    let query = {};
     if (scenario && scenario !== 'all') query.scenario = scenario;
     if (status && status !== 'all') query.status = status;
     if (reimbursementStatus && reimbursementStatus !== 'all') query.reimbursementStatus = reimbursementStatus;
     if (assistanceStatus && assistanceStatus !== 'all') query.assistanceStatus = assistanceStatus;
 
-    const incidents = await Incident.find(query)
+    const incidents = await TripIncident.find(query)
       .populate('reportedBy', 'name phone email role')
       .populate('reimbursementApprovedBy', 'name phone role email')
       .populate('resolvedBy', 'name phone role email')
@@ -2509,7 +2937,7 @@ exports.getOpsIncidents = async (req, res) => {
 };
 
 // @desc    Quản lý vận tải duyệt hoàn ứng hoặc xác nhận đã chi trả tiền (Trường hợp A)
-// @route   PATCH /api/v1/users/ops/incidents/:id/reimbursement
+// @route   PATCH /api/users/ops/incidents/:id/reimbursement
 // @access  Private (Ops Manager, Admin)
 exports.reviewIncidentReimbursement = async (req, res) => {
   try {
@@ -2518,7 +2946,7 @@ exports.reviewIncidentReimbursement = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Trạng thái hoàn ứng không hợp lệ.' });
     }
 
-    const incident = await Incident.findById(req.params.id);
+    const incident = await TripIncident.findById(req.params.id);
     if (!incident) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ sự cố.' });
     }
@@ -2553,7 +2981,7 @@ exports.reviewIncidentReimbursement = async (req, res) => {
 };
 
 // @desc    Quản lý vận tải cập nhật tiến độ cứu hộ / điều người tới sửa (Trường hợp B)
-// @route   PATCH /api/v1/users/ops/incidents/:id/assistance
+// @route   PATCH /api/users/ops/incidents/:id/assistance
 // @access  Private (Ops Manager, Admin)
 exports.updateIncidentAssistance = async (req, res) => {
   try {
@@ -2562,7 +2990,7 @@ exports.updateIncidentAssistance = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Trạng thái cứu viện không hợp lệ.' });
     }
 
-    const incident = await Incident.findById(req.params.id);
+    const incident = await TripIncident.findById(req.params.id);
     if (!incident) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy hồ sơ sự cố.' });
     }
@@ -2594,7 +3022,7 @@ exports.updateIncidentAssistance = async (req, res) => {
 };
 
 // @desc    Gửi lại Email hóa đơn vé xe cho khách hàng (Hotline / Khách yêu cầu gửi lại)
-// @route   POST /api/v1/users/agent/resend-ticket/:id
+// @route   POST /api/users/agent/resend-ticket/:id
 // @access  Private (Ticket Agent, Ticket Manager, Admin)
 exports.resendTicketNotification = async (req, res) => {
   try {

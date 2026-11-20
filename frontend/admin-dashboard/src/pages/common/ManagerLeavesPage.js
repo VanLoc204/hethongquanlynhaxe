@@ -13,7 +13,7 @@ const ManagerLeavesPage = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/v1/users/admin/leaves', {
+      const res = await fetch('http://localhost:8000/api/users/admin/leaves', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -43,7 +43,7 @@ const ManagerLeavesPage = () => {
     }
 
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/users/admin/leaves/${id}`, {
+      const res = await fetch(`http://localhost:8000/api/users/admin/leaves/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

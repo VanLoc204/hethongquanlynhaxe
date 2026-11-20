@@ -376,7 +376,7 @@ const AIAssistantPage = () => {
     if (selectedSeats.length > 0 && earliestExpiry && nowTime >= earliestExpiry) {
       alert('Đã hết thời gian 5 phút giữ chỗ! Ghế đã được tự động mở khóa.');
       if (bookingModalTrip?._id) {
-        axios.post(`http://localhost:8000/api/v1/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
+        axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
           clientId: getClientId(),
           seats: selectedSeats
         }).catch(() => { });
@@ -394,7 +394,7 @@ const AIAssistantPage = () => {
           seats: selectedSeats
         });
         navigator.sendBeacon?.(
-          `http://localhost:8000/api/v1/trips/${bookingModalTrip._id}/unlock-all-my-seats`,
+          `http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`,
           new Blob([payload], { type: 'application/json' })
         );
       }
@@ -407,7 +407,7 @@ const AIAssistantPage = () => {
   useEffect(() => {
     const fetchPromos = async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/v1/promotions');
+        const res = await axios.get('http://localhost:8000/api/promotions');
         if (res.data && res.data.data) {
           setAvailableVouchers(res.data.data.filter(p => p.status === 'active'));
         }
@@ -434,7 +434,7 @@ const AIAssistantPage = () => {
     if (!bookingModalTrip?._id) return;
 
     const tripId = bookingModalTrip._id;
-    const es = new EventSource(`http://localhost:8000/api/v1/trips/${tripId}/seat-locks/stream`);
+    const es = new EventSource(`http://localhost:8000/api/trips/${tripId}/seat-locks/stream`);
 
     // 1. Nhận danh sách ghế đang bị khóa khi vừa kết nối
     es.addEventListener('INITIAL_LOCKS', (e) => {
@@ -635,7 +635,7 @@ const AIAssistantPage = () => {
         }));
 
       // 3. Gọi Backend Gemini AI Chat API
-      const res = await axios.post('http://localhost:8000/api/v1/chat', {
+      const res = await axios.post('http://localhost:8000/api/chat', {
         message: textToSend.trim(),
         sessionId,
         history: historyPayload
@@ -696,7 +696,7 @@ const AIAssistantPage = () => {
 
     // 1. Luôn tải thông tin chuyến xe mới nhất từ server (đảm bảo bookedSeats chuẩn xác 100% thời gian thực)
     try {
-      const res = await axios.get(`http://localhost:8000/api/v1/trips/${tripId}`);
+      const res = await axios.get(`http://localhost:8000/api/trips/${tripId}`);
       if (res.data?.trip) {
         tripData = res.data.trip;
       }
@@ -706,7 +706,7 @@ const AIAssistantPage = () => {
 
     // 2. Tải ngay các ghế đang bị khóa thời gian thực từ server
     try {
-      const lockRes = await axios.get(`http://localhost:8000/api/v1/trips/${tripId}/locked-seats`);
+      const lockRes = await axios.get(`http://localhost:8000/api/trips/${tripId}/locked-seats`);
       if (lockRes.data?.success && Array.isArray(lockRes.data.lockedSeats)) {
         const map = {};
         lockRes.data.lockedSeats.forEach(l => {
@@ -731,7 +731,7 @@ const AIAssistantPage = () => {
   const handleCloseBookingModal = async () => {
     if (bookingModalTrip && selectedSeats.length > 0) {
       try {
-        await axios.post(`http://localhost:8000/api/v1/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
+        await axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
           clientId: getClientId(),
           seats: selectedSeats
         });
@@ -762,7 +762,7 @@ const AIAssistantPage = () => {
     if (isSelected) {
       // Mở khóa ghế
       try {
-        await axios.post(`http://localhost:8000/api/v1/trips/${bookingModalTrip._id}/unlock-seat`, {
+        await axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-seat`, {
           seat: seatCode,
           clientId: myClientId
         });
@@ -776,7 +776,7 @@ const AIAssistantPage = () => {
     } else {
       // Khóa giữ chỗ ghế 5 phút
       try {
-        const res = await axios.post(`http://localhost:8000/api/v1/trips/${bookingModalTrip._id}/lock-seat`, {
+        const res = await axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/lock-seat`, {
           seat: seatCode,
           clientId: myClientId
         });
@@ -886,7 +886,7 @@ const AIAssistantPage = () => {
     }
 
     try {
-      const res = await axios.post('http://localhost:8000/api/v1/trips/book', {
+      const res = await axios.post('http://localhost:8000/api/trips/book', {
         tripId: bookingModalTrip._id,
         userId: isGuest ? 'user_guest' : (user?.id || user?._id || 'user_guest'),
         seats: selectedSeats,
@@ -919,7 +919,7 @@ const AIAssistantPage = () => {
 
     const interval = setInterval(async () => {
       try {
-        const res = await axios.get(`http://localhost:8000/api/v1/bookings/order/${createdBooking.orderCode}`);
+        const res = await axios.get(`http://localhost:8000/api/bookings/order/${createdBooking.orderCode}`);
         if (res.data?.success && res.data.booking?.status === 'paid') {
           clearInterval(interval);
           const routeText = bookingModalTrip?.routeId?.name || (bookingModalTrip?.routeId?.startPoint ? `${bookingModalTrip.routeId.startPoint} ➔ ${bookingModalTrip.routeId.endPoint}` : 'TP.HCM ➔ Đà Lạt');
@@ -951,7 +951,7 @@ const AIAssistantPage = () => {
   const handleSimulatePayment = async () => {
     if (!createdBooking) return;
     try {
-      await axios.post('http://localhost:8000/api/v1/trips/payment/webhook', {
+      await axios.post('http://localhost:8000/api/trips/payment/webhook', {
         code: '00',
         desc: 'success',
         data: {

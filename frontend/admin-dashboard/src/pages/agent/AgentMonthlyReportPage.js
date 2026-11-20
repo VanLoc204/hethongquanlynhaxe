@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import MonthlyRevenueReportModal from '../../components/MonthlyRevenueReportModal';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const formatCurrency = (val) => {
   return (val || 0).toLocaleString('vi-VN') + ' đ';
@@ -559,7 +559,7 @@ const AgentMonthlyReportPage = () => {
                         </div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: '700' }}>{s.counterNumber || 'Quầy vé'}</div>
+                        <div style={{ fontWeight: '700' }}>{s.userId?.assignedOffice || user?.assignedOffice || s.officeName || 'Văn phòng bán vé'}</div>
                         <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
                           {s.officeName || user?.branch?.branchName || 'Văn phòng Sài Gòn'}
                         </div>

@@ -473,7 +473,7 @@ Mở 3 cửa sổ Terminal riêng biệt tại thư mục gốc của dự án (
 ### Bước 5: Truy cập hệ thống trên Trình duyệt
 * **Giao diện Quản lý Admin Dashboard**: [http://localhost:3001](http://localhost:3001)
 * **Giao diện Khách hàng Customer App**: [http://localhost:3000](http://localhost:3000)
-* **Địa chỉ Backend API Gateway**: [http://localhost:8000/api/v1](http://localhost:8000/api/v1)
+* **Địa chỉ Backend API Gateway**: [http://localhost:8000/api](http://localhost:8000/api)
 
 ---
 
@@ -531,7 +531,7 @@ Mô hình Gateway (`nginx.conf`) gom cả 3 phân hệ (Khách hàng 3000, Quả
    * **Giao diện Quản trị / Tài xế / Phụ xe (Admin Dashboard):**
      `https://xxxx.ngrok-free.app/admin/`
    * **Backend API Gateway:**
-     `https://xxxx.ngrok-free.app/api/v1/`
+     `https://xxxx.ngrok-free.app/api/`
 
 ---
 

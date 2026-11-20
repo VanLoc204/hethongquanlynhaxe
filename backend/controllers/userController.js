@@ -1,8 +1,9 @@
 const userService = require('../services/userService');
 const User = require('../models/User');
+const EmployeeProfile = require('../models/EmployeeProfile');
 
 // @desc    Get all staff members
-// @route   GET /api/v1/users/staff
+// @route   GET /api/users/staff
 // @access  Private (General Manager / Admin / Ops Manager / Fleet Manager / Ticket Manager)
 exports.getStaff = async (req, res) => {
   try {
@@ -10,8 +11,8 @@ exports.getStaff = async (req, res) => {
     if (req.user && req.user.role === 'ticket_manager') {
       let branchId = req.user.branch?.branchId;
       if (!branchId) {
-        const currentMgr = await User.findById(req.user.id).select('branch').lean();
-        branchId = currentMgr?.branch?.branchId;
+        const emp = await EmployeeProfile.findById(req.user.id).lean();
+        branchId = emp?.branch?.branchId;
       }
       if (branchId) {
         filter = {
@@ -42,11 +43,22 @@ exports.getStaff = async (req, res) => {
 };
 
 // @desc    Create a new staff member
-// @route   POST /api/v1/users/staff
+// @route   POST /api/users/staff
 // @access  Private (General Manager / Admin / Ops Manager / Ticket Manager)
 exports.createStaff = async (req, res) => {
   try {
-    const { name, email, phone, password, role, status, branch } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      role,
+      status,
+      branch,
+      assignedOffice,
+      shiftType,
+      shiftName
+    } = req.body;
 
     // Phân quyền: Quản lý vận tải / đội xe chỉ được tạo tài khoản tài xế hoặc phụ xe
     if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
@@ -69,8 +81,8 @@ exports.createStaff = async (req, res) => {
       }
       let mgrBranch = req.user.branch;
       if (!mgrBranch || !mgrBranch.branchId) {
-        const currentMgr = await User.findById(req.user.id).select('branch').lean();
-        mgrBranch = currentMgr?.branch;
+        const emp = await EmployeeProfile.findById(req.user.id).lean();
+        mgrBranch = emp?.branch;
       }
       if (!mgrBranch || !mgrBranch.branchId) {
         return res.status(400).json({
@@ -88,7 +100,10 @@ exports.createStaff = async (req, res) => {
       password,
       role,
       status,
-      branch: branchData
+      branch: branchData,
+      assignedOffice,
+      shiftType,
+      shiftName
     });
 
     res.status(201).json({
@@ -106,12 +121,22 @@ exports.createStaff = async (req, res) => {
 };
 
 // @desc    Update a staff member
-// @route   PUT /api/v1/users/staff/:id
+// @route   PUT /api/users/staff/:id
 // @access  Private (General Manager / Admin / Ops Manager)
 exports.updateStaff = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, role, status, password } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      role,
+      status,
+      password,
+      assignedOffice,
+      shiftType,
+      shiftName
+    } = req.body;
 
     // Phân quyền: Quản lý vận tải / đội xe chỉ được sửa tài xế hoặc phụ xe
     if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
@@ -153,10 +178,11 @@ exports.updateStaff = async (req, res) => {
       }
       let mgrBranchId = req.user.branch?.branchId;
       if (!mgrBranchId) {
-        const currentMgr = await User.findById(req.user.id).select('branch').lean();
-        mgrBranchId = currentMgr?.branch?.branchId;
+        const emp = await EmployeeProfile.findById(req.user.id).lean();
+        mgrBranchId = emp?.branch?.branchId;
       }
-      if (mgrBranchId && targetUser.branch?.branchId && targetUser.branch.branchId !== mgrBranchId) {
+      const targetEmp = await EmployeeProfile.findById(id).lean();
+      if (mgrBranchId && targetEmp?.branch?.branchId && targetEmp.branch.branchId !== mgrBranchId) {
         return res.status(403).json({
           success: false,
           message: 'Quản lý phòng vé chỉ có quyền cập nhật nhân viên thuộc chi nhánh của mình.'
@@ -175,7 +201,18 @@ exports.updateStaff = async (req, res) => {
       branchData = req.user.branch;
     }
 
-    const staff = await userService.updateStaff(id, { name, email, phone, role, status, password, branch: branchData });
+    const staff = await userService.updateStaff(id, {
+      name,
+      email,
+      phone,
+      role,
+      status,
+      password,
+      branch: branchData,
+      assignedOffice,
+      shiftType,
+      shiftName
+    });
 
     res.status(200).json({
       success: true,
@@ -192,7 +229,7 @@ exports.updateStaff = async (req, res) => {
 };
 
 // @desc    Delete a staff member
-// @route   DELETE /api/v1/users/staff/:id
+// @route   DELETE /api/users/staff/:id
 // @access  Private (General Manager / Admin / Ops Manager / Ticket Manager)
 exports.deleteStaff = async (req, res) => {
   try {
@@ -259,7 +296,7 @@ exports.deleteStaff = async (req, res) => {
 };
 
 // @desc    Update user points
-// @route   PATCH /api/v1/users/:id/points
+// @route   PATCH /api/users/:id/points
 // @access  Internal
 exports.updateUserPoints = async (req, res) => {
   try {
@@ -291,7 +328,7 @@ exports.updateUserPoints = async (req, res) => {
 };
 
 // @desc    Get user by ID
-// @route   GET /api/v1/users/:id
+// @route   GET /api/users/:id
 // @access  Internal
 exports.getUserById = async (req, res) => {
   try {
@@ -326,7 +363,7 @@ exports.getUserById = async (req, res) => {
 };
 
 // @desc    Get member loyalty points and tier by phone
-// @route   GET /api/v1/users/member-by-phone/:phone
+// @route   GET /api/users/member-by-phone/:phone
 // @access  Public / Protected
 exports.getMemberByPhone = async (req, res) => {
   try {

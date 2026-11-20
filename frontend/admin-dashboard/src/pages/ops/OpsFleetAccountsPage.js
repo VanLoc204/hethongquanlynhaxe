@@ -10,7 +10,7 @@ import {
   captureSnapshot
 } from '../../utils/faceApiHelper';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const FLEET_ROLE_CONFIG = {
   driver: {

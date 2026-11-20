@@ -57,7 +57,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/v1/users/my-schedule', {
+      const res = await fetch('http://localhost:8000/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -110,7 +110,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
       if (!token) return;
       setLoadingAttendance(true);
       try {
-        const res = await fetch('http://localhost:8000/api/v1/attendance/mine', {
+        const res = await fetch('http://localhost:8000/api/attendance/mine', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
@@ -135,7 +135,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
     if (!token || !trip?._id || trip.journeyStatus === 'completed') return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/trips/${trip._id}`);
+        const res = await fetch(`http://localhost:8000/api/trips/${trip._id}`);
         const data = await res.json();
         if (data.success && data.trip) {
           setTrip(prev => ({
@@ -224,7 +224,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
     setIsUpdating(true);
     setError('');
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/trips/${trip._id}/update-journey`, {
+      const res = await fetch(`http://localhost:8000/api/trips/${trip._id}/update-journey`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

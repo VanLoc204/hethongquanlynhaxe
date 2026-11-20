@@ -60,6 +60,7 @@ const MonthlyRevenueReportModal = ({
     month = 10,
     year = 2026,
     summary = {},
+    userId = {},
     agentId = {},
     managerId = {},
     status = 'pending',
@@ -70,13 +71,14 @@ const MonthlyRevenueReportModal = ({
     digitalSignature = {}
   } = report;
 
-  const agentName = agentId?.name || 'Nhân viên bán vé';
+  const agentUser = userId?._id ? userId : (agentId?._id ? agentId : (userId || agentId));
+  const agentName = agentUser?.name || 'Nhân viên bán vé';
   const managerName = managerId?.name || digitalSignature?.signerName || 'Quản lý phòng vé';
-  const branchName = agentId?.branch?.branchName || 'Chi nhánh TP. Hồ Chí Minh';
+  const branchName = agentUser?.branch?.branchName || 'Chi nhánh TP. Hồ Chí Minh';
 
-  const shiftList = (report.shiftIds && report.shiftIds.length > 0 && typeof report.shiftIds[0] === 'object')
+  const shiftList = report.shifts || (report.shiftIds && report.shiftIds.length > 0 && typeof report.shiftIds[0] === 'object'
     ? report.shiftIds
-    : shifts;
+    : shifts);
 
   const totalRev = (summary.cashRevenue || 0) + (summary.cashlessRevenue || 0);
   const cashRate = totalRev > 0 ? Math.round(((summary.cashRevenue || 0) / totalRev) * 100) : 0;
@@ -526,7 +528,7 @@ const MonthlyRevenueReportModal = ({
                           <td style={{ textAlign: 'center' }}>{idx + 1}</td>
                           <td style={{ textAlign: 'center', fontSize: '0.78rem' }}>{formatDate(s.startTime)}</td>
                           <td>
-                            <div style={{ fontWeight: '700' }}>{s.counterNumber || 'Quầy vé'}</div>
+                            <div style={{ fontWeight: '700' }}>{s.userId?.assignedOffice || report?.userId?.assignedOffice || s.officeName || 'Văn phòng bán vé'}</div>
                             <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{s.officeName || branchName}</div>
                           </td>
                           <td style={{ textAlign: 'center', fontWeight: '700' }}>{shiftTickets}</td>

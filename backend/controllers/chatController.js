@@ -8,7 +8,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus
 
 const handleChat = async (req, res) => {
   try {
-    const { message, sessionId, history } = req.body;
+    const { message, sessionId, history, role, source } = req.body;
 
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -27,35 +27,50 @@ const handleChat = async (req, res) => {
     // 1. Kiểm tra xác thực người dùng (nếu có đăng nhập)
     let userId = null;
     let userName = 'Khách vãng lai';
+    let userRole = role || 'customer';
 
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       const token = req.headers.authorization.split(' ')[1];
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         userId = decoded.id;
-        userName = decoded.name || 'Thành viên';
+        userRole = decoded.role || userRole;
+        userName = decoded.name || (userRole === 'ticket_agent' ? 'Nhân viên bán vé' : 'Thành viên');
       } catch (err) {
         console.warn('[ChatController] Invalid or expired JWT token, treating as guest user.');
       }
     }
 
+    const isStaff = userRole === 'ticket_agent' || role === 'ticket_agent' || source === 'staff_agent';
+
     // 2. Làm sạch câu hỏi
     const cleanedMessage = message.trim().replace(/[<>]/g, '');
 
     // 3. Lấy phản hồi thông minh từ Gemini AI (kèm danh sách suggestedTripIds nếu có)
-    const aiResult = await getChatResponse(history || [], cleanedMessage);
+    const aiResult = await getChatResponse(history || [], cleanedMessage, { isStaff });
 
-    const replyText = typeof aiResult === 'object' && aiResult !== null
-      ? (aiResult.reply || 'Dạ, An Bình AI luôn sẵn sàng hỗ trợ quý khách!')
+    const rawReply = typeof aiResult === 'object' && aiResult !== null
+      ? (aiResult.reply || (isStaff ? 'Hệ thống đã ghi nhận câu hỏi của bạn. Vui lòng thử lại.' : 'Dạ, An Bình AI luôn sẵn sàng hỗ trợ quý khách!'))
       : String(aiResult);
 
-    const suggestedTripIds = (typeof aiResult === 'object' && Array.isArray(aiResult?.suggestedTripIds))
+    // Xóa triệt để các mã ID kỹ thuật (MongoDB ObjectId, (ID: ...)) khỏi phản hồi
+    const replyText = rawReply
+      .replace(/\s*[\(\[]\s*(?:ID|Mã\s*(?:chuyến|ID|vé)?)\s*:\s*[0-9a-fA-F]{24}\s*[\)\]]/gi, '')
+      .replace(/\s*(?:ID|Mã\s*(?:chuyến|ID|vé)?)\s*:\s*[0-9a-fA-F]{24}/gi, '')
+      .replace(/\s*[\(\[]\s*[0-9a-fA-F]{24}\s*[\)\]]/g, '')
+      .replace(/\b[0-9a-fA-F]{24}\b/g, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\[\s*\]/g, '')
+      .replace(/\s+([.,;:!?])/g, '$1')
+      .trim();
+
+    const suggestedTripIds = (!isStaff && typeof aiResult === 'object' && Array.isArray(aiResult?.suggestedTripIds))
       ? aiResult.suggestedTripIds
       : [];
 
-    // 4. Nếu có chuyến xe được AI gợi ý, truy vấn chi tiết từ DB để tạo Thẻ Đặt Vé Trực Tiếp
+    // 4. Nếu có chuyến xe được AI gợi ý, truy vấn chi tiết từ DB để tạo Thẻ Đặt Vé Trực Tiếp (chỉ dành cho khách hàng)
     let tripCards = [];
-    if (suggestedTripIds.length > 0) {
+    if (!isStaff && suggestedTripIds.length > 0) {
       try {
         const validIds = suggestedTripIds
           .filter(id => id && mongoose.Types.ObjectId.isValid(String(id)))

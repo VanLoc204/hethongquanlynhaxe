@@ -8,12 +8,12 @@ export const BRANCHES = [
     branchId: 'sg',
     branchName: 'Chi nhánh TP. Hồ Chí Minh',
     name: 'Chi nhánh TP. Hồ Chí Minh',
-    shortName: 'TP.HCM',
-    province: 'TP. Hồ Chí Minh',
-    keywords: ['hồ chí minh', 'sài gòn', 'tp.hcm', 'tp. hồ chí minh', 'bxmđ', 'bxmt', 'hcm'],
+    shortName: 'TP. Hồ Chí Minh',
+    province: 'Hồ Chí Minh',
+    keywords: ['hồ chí minh', 'sài gòn', 'tp.hcm', 'tp. hồ chí minh', 'bxmđ', 'bxmt', 'hcm', 'miền đông', 'miền tây'],
     offices: [
-      { id: 'sg-bxmd', name: 'Văn phòng Sài Gòn (BXMĐ)', address: '292 Đinh Bộ Lĩnh, P.26, Q. Bình Thạnh' },
-      { id: 'sg-bxmt', name: 'Văn phòng Sài Gòn (BXMT)', address: '395 Kinh Dương Vương, P. An Lạc, Q. Bình Tân' }
+      { id: 'sg-bxmd', name: 'Văn phòng Bến xe Miền Đông', address: '292 Đinh Bộ Lĩnh, Phường 26, Quận Bình Thạnh' },
+      { id: 'sg-bxmt', name: 'Văn phòng Bến xe Miền Tây', address: '395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân' }
     ]
   },
   {
@@ -22,10 +22,10 @@ export const BRANCHES = [
     name: 'Chi nhánh Đà Lạt',
     shortName: 'Đà Lạt',
     province: 'Lâm Đồng',
-    keywords: ['đà lạt', 'lâm đồng', 'bx liên tỉnh', 'bùi thị xuân', 'da lat'],
+    keywords: ['đà lạt', 'lâm đồng', 'bx liên tỉnh', 'bùi thị xuân', 'da lat', 'liên tỉnh'],
     offices: [
-      { id: 'dl-bxlt', name: 'Văn phòng Đà Lạt (BX Liên Tỉnh)', address: '01 Tô Hiến Thành, Phường 3, TP. Đà Lạt' },
-      { id: 'dl-btx', name: 'Văn phòng Đà Lạt (Bùi Thị Xuân)', address: 'Bùi Thị Xuân, Phường 2, TP. Đà Lạt' }
+      { id: 'dl-bxlt', name: 'Văn phòng Bến xe Liên Tỉnh', address: '01 Tô Hiến Thành, Phường 3, Đà Lạt' },
+      { id: 'dl-btx', name: 'Văn phòng Bùi Thị Xuân', address: 'Bùi Thị Xuân, Phường 2, Đà Lạt' }
     ]
   },
   {
@@ -34,10 +34,10 @@ export const BRANCHES = [
     name: 'Chi nhánh Cần Thơ',
     shortName: 'Cần Thơ',
     province: 'Cần Thơ',
-    keywords: ['cần thơ', 'bx trung tâm', 'ninh kiều', 'can tho'],
+    keywords: ['cần thơ', 'bx trung tâm', 'ninh kiều', 'can tho', 'trung tâm'],
     offices: [
-      { id: 'ct-bxtt', name: 'Văn phòng Cần Thơ (BX Trung Tâm)', address: 'Khu Đô Thị Nam Cần Thơ, Q. Cái Răng' },
-      { id: 'ct-nk', name: 'Văn phòng Cần Thơ (Ninh Kiều)', address: 'Đại lộ Hòa Bình, Q. Ninh Kiều, Cần Thơ' }
+      { id: 'ct-bxtt', name: 'Văn phòng Bến xe Trung Tâm', address: 'Khu Đô Thị Nam Cần Thơ, Quận Cái Răng' },
+      { id: 'ct-nk', name: 'Văn phòng Ninh Kiều', address: 'Đại lộ Hòa Bình, Quận Ninh Kiều, Cần Thơ' }
     ]
   }
 ];

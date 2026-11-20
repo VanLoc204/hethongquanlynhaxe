@@ -395,3 +395,121 @@ export function clearCanvas(canvas) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 }
+
+/**
+ * Phân tích góc mặt (Head Pose Estimation) và khoảng cách xa/gần cho tính năng Đăng Ký Face ID 3 Góc Tự Động
+ * @param {object} detection - Kết quả nhận diện (box)
+ * @param {object} landmarks - 68 điểm mốc khuôn mặt
+ * @param {number} videoWidth - Chiều rộng video (px)
+ * @param {number} videoHeight - Chiều cao video (px)
+ * @returns {object} { isValidPosition, positionStatus, faceRatio, pose, symmetryRatio, message }
+ */
+export function analyzeFacePose(detection, landmarks, videoWidth = 640, videoHeight = 480) {
+  if (!detection || !detection.box) {
+    return {
+      isValidPosition: false,
+      positionStatus: 'no_face',
+      faceRatio: 0,
+      pose: 'unknown',
+      symmetryRatio: 0,
+      message: 'Đưa mặt vào khung'
+    };
+  }
+
+  const box = detection.box;
+  const faceRatio = box.width / videoWidth;
+
+  // 1. Kiểm tra khoảng cách Xa / Gần
+  if (faceRatio < 0.20) {
+    return {
+      isValidPosition: false,
+      positionStatus: 'too_far',
+      faceRatio,
+      pose: 'unknown',
+      symmetryRatio: 0,
+      message: 'Đến gần camera hơn'
+    };
+  }
+
+  if (faceRatio > 0.70) {
+    return {
+      isValidPosition: false,
+      positionStatus: 'too_close',
+      faceRatio,
+      pose: 'unknown',
+      symmetryRatio: 0,
+      message: 'Lùi ra xa một chút'
+    };
+  }
+
+  // 2. Kiểm tra căn giữa tâm (Centering)
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  const offsetX = Math.abs(centerX - videoWidth / 2) / videoWidth;
+  const offsetY = Math.abs(centerY - videoHeight / 2) / videoHeight;
+
+  if (offsetX > 0.22 || offsetY > 0.24) {
+    return {
+      isValidPosition: false,
+      positionStatus: 'off_center',
+      faceRatio,
+      pose: 'unknown',
+      symmetryRatio: 0,
+      message: 'Căn mặt vào giữa tâm'
+    };
+  }
+
+  // 3. Phân tích góc quay (Head Pose Yaw) từ 68 điểm mốc hình học
+  if (!landmarks || !landmarks.positions || landmarks.positions.length < 46) {
+    return {
+      isValidPosition: true,
+      positionStatus: 'perfect',
+      faceRatio,
+      pose: 'front',
+      symmetryRatio: 0,
+      message: 'Nhìn thẳng'
+    };
+  }
+
+  const noseTip = landmarks.positions[30]; // Đầu mũi
+  const jawLeft = landmarks.positions[2];   // Viền má phía trái raw frame
+  const jawRight = landmarks.positions[14]; // Viền má phía phải raw frame
+  const eyeLeft = landmarks.positions[36];  // Khóe mắt phía trái raw frame
+  const eyeRight = landmarks.positions[45]; // Khóe mắt phía phải raw frame
+
+  const faceWidth = Math.abs(jawRight.x - jawLeft.x) || 1;
+  const dLeft = noseTip.x - jawLeft.x;
+  const dRight = jawRight.x - noseTip.x;
+  const symmetryRatio = (dLeft - dRight) / faceWidth;
+
+  const midEyeX = (eyeLeft.x + eyeRight.x) / 2;
+  const eyeSpan = Math.abs(eyeRight.x - eyeLeft.x) || 1;
+  const eyeOffset = (noseTip.x - midEyeX) / eyeSpan;
+
+  let pose = 'front';
+  let message = 'Nhìn thẳng';
+
+  // Chỉ phân loại 3 hướng: front | left | right (bỏ hoàn toàn giới hạn góc nghiêng quá lớn)
+  if (Math.abs(symmetryRatio) <= 0.08 && Math.abs(eyeOffset) <= 0.08) {
+    pose = 'front';
+    message = 'Nhìn thẳng';
+  } else if (symmetryRatio > 0.08 || eyeOffset > 0.08) {
+    pose = 'left';
+    message = 'Nghiêng trái';
+  } else if (symmetryRatio < -0.08 || eyeOffset < -0.08) {
+    pose = 'right';
+    message = 'Nghiêng phải';
+  } else {
+    pose = 'front';
+    message = 'Nhìn thẳng';
+  }
+
+  return {
+    isValidPosition: true,
+    positionStatus: 'perfect',
+    faceRatio,
+    pose,
+    symmetryRatio,
+    message
+  };
+}

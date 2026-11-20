@@ -5,7 +5,7 @@ const User = require('../models/User');
 const crypto = require('crypto');
 
 // @desc    Phụ xe nộp báo cáo thống kê hành khách sau chuyến đi
-// @route   POST /api/v1/users/attendant/trip-reports
+// @route   POST /api/users/attendant/trip-reports
 // @access  Private (Attendant, Ops Manager, Admin)
 exports.submitTripReport = async (req, res) => {
   try {
@@ -122,7 +122,7 @@ exports.submitTripReport = async (req, res) => {
 };
 
 // @desc    Lấy báo cáo theo tripId (cho Phụ xe kiểm tra trạng thái chuyến đang chọn)
-// @route   GET /api/v1/users/attendant/trip-reports/by-trip/:tripId
+// @route   GET /api/users/attendant/trip-reports/by-trip/:tripId
 // @access  Private (Attendant, Ops Manager, Admin)
 exports.getTripReportByTripId = async (req, res) => {
   try {
@@ -152,7 +152,7 @@ exports.getTripReportByTripId = async (req, res) => {
 };
 
 // @desc    Lấy danh sách các báo cáo chuyến xe (cho Quản lý Vận tải & Phụ xe)
-// @route   GET /api/v1/users/ops/trip-reports
+// @route   GET /api/users/ops/trip-reports
 // @access  Private (Ops Manager, Attendant, General Manager, Admin)
 exports.getTripReports = async (req, res) => {
   try {
@@ -217,7 +217,7 @@ exports.getTripReports = async (req, res) => {
 };
 
 // @desc    Lấy chi tiết một báo cáo chuyến xe theo ID
-// @route   GET /api/v1/users/ops/trip-reports/:id
+// @route   GET /api/users/ops/trip-reports/:id
 // @access  Private (Ops Manager, Attendant, General Manager, Admin)
 exports.getTripReportById = async (req, res) => {
   try {
@@ -242,7 +242,7 @@ exports.getTripReportById = async (req, res) => {
 };
 
 // @desc    Quản lý vận tải ký duyệt báo cáo chuyến xe bằng Chữ ký điện tử
-// @route   PATCH /api/v1/users/ops/trip-reports/:id/sign
+// @route   PATCH /api/users/ops/trip-reports/:id/sign
 // @access  Private (Ops Manager, General Manager, Admin)
 exports.signTripReport = async (req, res) => {
   try {
@@ -320,7 +320,7 @@ exports.signTripReport = async (req, res) => {
 };
 
 // @desc    Quét và tự động chốt danh sách hành khách lúc 00:00 (Midnight Auto-Submit)
-// @route   POST /api/v1/users/ops/trip-reports/auto-midnight-check
+// @route   POST /api/users/ops/trip-reports/auto-midnight-check
 // @access  Private (Ops Manager, Admin)
 exports.autoMidnightCheck = async (req, res) => {
   try {

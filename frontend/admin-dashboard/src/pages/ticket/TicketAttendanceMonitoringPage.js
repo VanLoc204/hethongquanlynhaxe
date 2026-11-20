@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useMemo } from 're
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById, getBranchName, getOfficesByBranchId } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const formatDateToISO = (date) => {
   if (!date) return '';
@@ -21,7 +21,7 @@ const exportShiftsToCsv = (shifts) => {
   csvContent += 'STT,Quầy / Văn phòng,Nhân viên trực,Số điện thoại,Giờ bắt đầu,Giờ kết thúc,Tiền đầu ca (VNĐ),Tiền mặt thu (VNĐ),QR/Online (VNĐ),Tổng doanh thu (VNĐ),Số vé bán,Trạng thái,Ghi chú ca trực\n';
 
   shifts.forEach((s, idx) => {
-    const counter = `"${(s.counterNumber || 'Quầy vé').replace(/"/g, '""')}"`;
+    const counter = `"${(s.userId?.assignedOffice || s.officeName || 'Văn phòng bán vé').replace(/"/g, '""')}"`;
     const name = `"${(s.userId?.name || 'Nhân viên').replace(/"/g, '""')}"`;
     const phone = `"${s.userId?.phone || ''}"`;
     const start = s.startTime ? `"${new Date(s.startTime).toLocaleString('vi-VN')}"` : '"--"';
@@ -77,12 +77,13 @@ const TicketAttendanceMonitoringPage = () => {
   const [endDate, setEndDate] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Lấy danh sách điểm bán vé (Quầy / Văn phòng) động từ dữ liệu ca trực
+  // Lấy danh sách điểm bán vé (Văn phòng / Chi nhánh) động từ dữ liệu ca trực
   const availableCounters = useMemo(() => {
     const set = new Set();
     shifts.forEach(s => {
-      if (s.counterNumber && s.counterNumber.trim()) {
-        set.add(s.counterNumber.trim());
+      const office = s.userId?.assignedOffice || s.officeName;
+      if (office && office.trim()) {
+        set.add(office.trim());
       }
     });
     return Array.from(set).sort();
@@ -285,7 +286,6 @@ const TicketAttendanceMonitoringPage = () => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          counterNumber: counterStr,
           initialCash: Number(managerInitialCash) || 0,
           notes: managerNotes
         })
@@ -354,7 +354,7 @@ const TicketAttendanceMonitoringPage = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast(`Đã đóng ca trực thành công cho quầy ${closeShiftModal.shift.counterNumber}`);
+        showToast('Đã đóng ca trực thành công!');
         setCloseShiftModal({ show: false, shift: null, notes: '' });
         fetchShifts();
         fetchManagerCurrentShift();
@@ -376,8 +376,9 @@ const TicketAttendanceMonitoringPage = () => {
       const sUserId = s.userId?._id || s.userId;
       const matchesStaff = selectedStaff === 'all' || sUserId === selectedStaff;
 
-      // 3. Điểm bán vé (Quầy / Văn phòng / Chi nhánh)
-      const matchesCounter = selectedCounter === 'all' || (s.counterNumber && s.counterNumber.trim() === selectedCounter);
+      // 3. Điểm bán vé (Văn phòng / Chi nhánh)
+      const officeStr = s.userId?.assignedOffice || s.officeName || '';
+      const matchesCounter = selectedCounter === 'all' || (officeStr && officeStr.trim() === selectedCounter);
 
       // 4. Lọc theo khoảng ngày (startTime)
       const shiftDateStr = s.startTime ? formatDateToISO(new Date(s.startTime)) : '';
@@ -403,7 +404,7 @@ const TicketAttendanceMonitoringPage = () => {
 
       // 7. Tìm kiếm từ khóa tự do
       const matchesSearch = !searchTerm.trim() ||
-        (s.counterNumber && s.counterNumber.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (officeStr && officeStr.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (s.userId?.name && s.userId.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (s.userId?.phone && s.userId.phone.includes(searchTerm.trim())) ||
         (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -448,9 +449,9 @@ const TicketAttendanceMonitoringPage = () => {
           boxShadow: '0 8px 20px rgba(0,0,0,0.18)', display: 'flex', alignItems: 'center', gap: '8px'
         }}>
           {toast.type === 'error' ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
           ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
           )}
           {toast.msg}
         </div>
@@ -521,7 +522,7 @@ const TicketAttendanceMonitoringPage = () => {
               display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s ease'
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
             Giám Sát Ca Trực Quầy Vé ({shifts.length})
           </button>
 
@@ -535,7 +536,7 @@ const TicketAttendanceMonitoringPage = () => {
               display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s ease'
             }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
             Chấm Công Ca Trực Quản Lý
             {managerSession && (
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
@@ -555,7 +556,7 @@ const TicketAttendanceMonitoringPage = () => {
                 {(totalCash + totalCashless).toLocaleString('vi-VN')} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>đ</span>
               </div>
               <div style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
                 {totalTickets} vé thực tế bán ra từ các ca
               </div>
             </div>
@@ -593,7 +594,7 @@ const TicketAttendanceMonitoringPage = () => {
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', paddingBottom: '1rem', borderBottom: '1px solid #f1f5f9', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
                   Khoảng ngày:
                 </span>
 
@@ -672,7 +673,7 @@ const TicketAttendanceMonitoringPage = () => {
                   }}
                   title="Khôi phục tất cả bộ lọc về mặc định"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg>
                   Đặt lại bộ lọc
                 </button>
               </div>
@@ -778,7 +779,7 @@ const TicketAttendanceMonitoringPage = () => {
                     style={{ width: '100%', padding: '0.5rem 0.85rem 0.5rem 2rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.78rem', outline: 'none' }}
                   />
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)' }}>
-                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
                 </div>
               </div>
@@ -829,7 +830,7 @@ const TicketAttendanceMonitoringPage = () => {
                         <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9', background: isActive ? '#f8fdf9' : 'transparent', whiteSpace: 'nowrap' }}>
                           <td style={{ padding: '12px 14px', color: '#64748b', whiteSpace: 'nowrap' }}>{index + 1}</td>
                           <td style={{ padding: '12px 14px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                            {s.counterNumber || 'Quầy vé'}
+                            {s.userId?.assignedOffice || s.officeName || 'Văn phòng vé'}
                           </td>
                           <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', whiteSpace: 'nowrap' }}>
@@ -1000,7 +1001,7 @@ const TicketAttendanceMonitoringPage = () => {
                     width: '42px', height: '42px', borderRadius: '50%', backgroundColor: '#dcfce7',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16a34a'
                   }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
                   </div>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1036,7 +1037,7 @@ const TicketAttendanceMonitoringPage = () => {
                 <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '700' }}>VỊ TRÍ / VĂN PHÒNG TRỰC</div>
                   <strong style={{ fontSize: '0.95rem', color: '#0f172a', display: 'block', marginTop: '3px' }}>
-                    {managerSession.counterNumber}
+                    {managerSession.userId?.assignedOffice || user?.assignedOffice || managerSession.officeName || 'Văn phòng quản lý'}
                   </strong>
                 </div>
 
@@ -1100,7 +1101,7 @@ const TicketAttendanceMonitoringPage = () => {
                     cursor: submittingManagerClose ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px'
                   }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                   {submittingManagerClose ? 'Đang chốt ca...' : 'Chốt Ca Trực Quản Lý & Lưu Hồ Sơ'}
                 </button>
               </form>
@@ -1191,7 +1192,7 @@ const TicketAttendanceMonitoringPage = () => {
                       cursor: submittingManagerShift ? 'not-allowed' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px'
                     }}
                   >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
                     {submittingManagerShift ? 'Đang mở ca...' : 'Bắt Đầu Ca Trực Quản Lý (Vào Ca)'}
                   </button>
                 </div>
@@ -1228,7 +1229,7 @@ const TicketAttendanceMonitoringPage = () => {
                     {managerShiftsHistory.map((s, idx) => (
                       <tr key={s._id} style={{ borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
                         <td style={{ padding: '10px 12px', color: '#64748b', whiteSpace: 'nowrap' }}>{idx + 1}</td>
-                        <td style={{ padding: '10px 12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>{s.counterNumber}</td>
+                        <td style={{ padding: '10px 12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>{s.userId?.assignedOffice || s.officeName || 'Văn phòng vé'}</td>
                         <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{new Date(s.startTime).toLocaleString('vi-VN')}</td>
                         <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{s.endTime ? new Date(s.endTime).toLocaleString('vi-VN') : 'Đang trực'}</td>
                         <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>{(s.initialCash || 0).toLocaleString('vi-VN')}&nbsp;₫</td>
@@ -1275,14 +1276,14 @@ const TicketAttendanceMonitoringPage = () => {
                   Chi Tiết Ca Trực & Bảng Đối Soát Vé Thật
                 </h2>
                 <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
-                  Quầy: <strong>{detailModal.shift.counterNumber}</strong> | Nhân viên: <strong>{detailModal.shift.userId?.name}</strong> ({detailModal.shift.userId?.phone})
+                  Văn phòng: <strong>{detailModal.shift.userId?.assignedOffice || detailModal.shift.officeName || 'Văn phòng bán vé'}</strong> | Nhân viên: <strong>{detailModal.shift.userId?.name}</strong> ({detailModal.shift.userId?.phone})
                 </div>
               </div>
               <button
                 onClick={() => setDetailModal({ show: false, shift: null })}
                 style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '6px' }}
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
 
@@ -1472,7 +1473,7 @@ const TicketAttendanceMonitoringPage = () => {
               Xác Nhận Chốt Ca Trực Thu Ngân
             </h3>
             <p style={{ fontSize: '0.78rem', color: '#475569', margin: '0 0 1rem 0' }}>
-              Bạn đang thực hiện chốt ca cho quầy <strong>{closeShiftModal.shift.counterNumber}</strong> (Nhân viên: <strong>{closeShiftModal.shift.userId?.name}</strong>). Sau khi chốt ca, trạng thái sẽ chuyển thành ĐÃ ĐÓNG CA và hoàn tất tổng kết tiền két.
+              Bạn đang thực hiện chốt ca cho nhân viên <strong>{closeShiftModal.shift.userId?.name}</strong> ({closeShiftModal.shift.userId?.assignedOffice || 'Văn phòng bán vé'}). Sau khi chốt ca, trạng thái sẽ chuyển thành ĐÃ ĐÓNG CA và hoàn tất tổng kết tiền két.
             </p>
 
             <div style={{ marginBottom: '1rem' }}>

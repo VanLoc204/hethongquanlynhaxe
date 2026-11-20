@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 // Helper định dạng ngày YYYY-MM-DD
 const formatDateToISO = (d) => {
@@ -116,9 +116,9 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
     }
   }, [token, startDate, endDate]);
 
-  // Danh sách các quầy vé có trong dữ liệu thực tế
+  // Danh sách các văn phòng làm việc có trong dữ liệu thực tế
   const availableCounters = useMemo(() => {
-    const list = rawHistory.map(s => s.counterNumber).filter(Boolean);
+    const list = rawHistory.map(s => s.officeName || s.location).filter(Boolean);
     return [...new Set(list)].sort();
   }, [rawHistory]);
 
@@ -130,8 +130,8 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
         return false;
       }
 
-      // b. Lọc theo Quầy vé trực
-      if (counterFilter !== 'all' && shift.counterNumber !== counterFilter) {
+      // b. Lọc theo Văn phòng làm việc
+      if (counterFilter !== 'all' && (shift.officeName || shift.location) !== counterFilter) {
         return false;
       }
 
@@ -155,11 +155,10 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
       // f. Lọc theo Từ khóa tìm kiếm tự do
       if (searchKeyword.trim()) {
         const kw = searchKeyword.toLowerCase();
-        const matchCounter = (shift.counterNumber || '').toLowerCase().includes(kw);
-        const matchOffice = (shift.officeName || '').toLowerCase().includes(kw);
+        const matchOffice = (shift.officeName || shift.location || '').toLowerCase().includes(kw);
         const matchDate = (shift.date || '').toLowerCase().includes(kw);
         const matchNotes = (shift.notes || '').toLowerCase().includes(kw);
-        if (!matchCounter && !matchOffice && !matchDate && !matchNotes) {
+        if (!matchOffice && !matchDate && !matchNotes) {
           return false;
         }
       }
@@ -219,8 +218,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
     const headers = [
       'STT',
       'Ngày làm việc',
-      'Quầy bán vé',
-      'Văn phòng / Chi nhánh',
+      'Quầy trực',
       'Giờ vào ca',
       'Giờ tan ca',
       'Số giờ làm (h)',
@@ -237,8 +235,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
     const rows = filteredHistory.map((s, idx) => [
       idx + 1,
       `"${s.date || ''}"`,
-      `"${s.counterNumber || ''}"`,
-      `"${s.officeName || ''}"`,
+      `"${s.officeName || s.location || 'Văn phòng bán vé'}"`,
       `"${s.checkInTime || ''}"`,
       `"${s.checkOutTime || ''}"`,
       s.durationHours || 0,
@@ -255,7 +252,6 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
     rows.push([]);
     rows.push([
       'TỔNG KẾT BỘ LỌC',
-      '',
       '',
       '',
       '',
@@ -289,7 +285,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
       boxSizing: 'border-box',
       color: '#1e293b'
     }}>
-      
+
       {/* ================= PHẦN 1 (Ở TRÊN): TIÊU ĐỀ THEO MẪU ================= */}
       <div style={{
         background: '#ffffff',
@@ -305,32 +301,18 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
         gap: '1rem',
         boxSizing: 'border-box'
       }}>
-        {/* Bên trái: Tiêu đề + Badge + Dòng mô tả (không icon) */}
+        {/* Bên trái: Tiêu đề + Dòng mô tả (không icon) */}
         <div style={{ minWidth: 0, flex: '1 1 auto', whiteSpace: 'nowrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', whiteSpace: 'nowrap' }}>
-            <h1 style={{
-              margin: 0,
-              fontSize: '1.3rem',
-              fontWeight: '800',
-              color: '#0f172a',
-              letterSpacing: '-0.3px',
-              whiteSpace: 'nowrap'
-            }}>
-              Lịch Sử Chấm Công Nhân Viên Bán Vé
-            </h1>
-            <span style={{
-              background: '#eff6ff',
-              color: '#2563eb',
-              border: '1px solid #bfdbfe',
-              padding: '2px 8px',
-              borderRadius: '6px',
-              fontSize: '0.75rem',
-              fontWeight: '700',
-              whiteSpace: 'nowrap'
-            }}>
-              Nhân Viên Bán Vé
-            </span>
-          </div>
+          <h1 style={{
+            margin: '0 0 4px 0',
+            fontSize: '1.3rem',
+            fontWeight: '800',
+            color: '#0f172a',
+            letterSpacing: '-0.3px',
+            whiteSpace: 'nowrap'
+          }}>
+            Lịch Sử Chấm Công Nhân Viên Bán Vé
+          </h1>
           <p style={{
             margin: 0,
             color: '#475569',
@@ -418,7 +400,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
       </div>
 
       {/* ================= PHẦN 2 (Ở DƯỚI): KHU VỰC CHỨC NĂNG ================= */}
-      
+
       {/* 2.1. HỆ THỐNG BỘ LỌC CHẤM CÔNG TOÀN DIỆN */}
       <div style={{
         background: '#ffffff',
@@ -542,34 +524,9 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
           gap: '12px',
           paddingTop: '0.85rem'
         }}>
-          {/* Lọc Quầy vé & Khung ca */}
+          {/* Lọc Khung ca */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, whiteSpace: 'nowrap' }}>
             <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', whiteSpace: 'nowrap' }}>
-              Quầy vé:
-            </span>
-            <select
-              value={counterFilter}
-              onChange={(e) => setCounterFilter(e.target.value)}
-              style={{
-                padding: '5px 8px',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
-                fontSize: '0.82rem',
-                backgroundColor: '#f8fafc',
-                color: '#0f172a',
-                outline: 'none',
-                cursor: 'pointer',
-                fontWeight: '600',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <option value="all">Tất cả quầy</option>
-              {availableCounters.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-
-            <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', marginLeft: '6px', whiteSpace: 'nowrap' }}>
               Ca trực:
             </span>
             <select
@@ -922,8 +879,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
             <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', whiteSpace: 'nowrap' }}>
               <th style={{ padding: '11px 14px', fontWeight: '700', textAlign: 'center', width: '40px', whiteSpace: 'nowrap' }}>#</th>
               <th style={{ padding: '11px 14px', fontWeight: '700', whiteSpace: 'nowrap' }}>Ngày làm việc</th>
-              <th style={{ padding: '11px 14px', fontWeight: '700', whiteSpace: 'nowrap' }}>Quầy vé</th>
-              <th style={{ padding: '11px 14px', fontWeight: '700', whiteSpace: 'nowrap' }}>Văn phòng / Chi nhánh</th>
+              <th style={{ padding: '11px 14px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>Văn phòng trực</th>
               <th style={{ padding: '11px 14px', fontWeight: '700', whiteSpace: 'nowrap' }}>Giờ vào ca</th>
               <th style={{ padding: '11px 14px', fontWeight: '700', whiteSpace: 'nowrap' }}>Giờ tan ca</th>
               <th style={{ padding: '11px 14px', fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>Số giờ làm</th>
@@ -938,13 +894,13 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="13" style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>
+                <td colSpan="12" style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>
                   Đang tải bảng chấm công của bạn...
                 </td>
               </tr>
             ) : filteredHistory.length === 0 ? (
               <tr>
-                <td colSpan="13" style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>
+                <td colSpan="12" style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>
                   Không tìm thấy bản ghi chấm công nào phù hợp với bộ lọc đã chọn.
                 </td>
               </tr>
@@ -974,14 +930,11 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
                       {shift.date}
                     </td>
 
-                    {/* Quầy vé */}
-                    <td style={{ padding: '10px 14px', fontWeight: '700', color: '#1e293b', whiteSpace: 'nowrap' }}>
-                      {shift.counterNumber || 'Quầy 01'}
-                    </td>
-
-                    {/* Văn phòng / Chi nhánh */}
-                    <td style={{ padding: '10px 14px', color: '#475569', whiteSpace: 'nowrap' }}>
-                      {shift.officeName || 'Văn phòng Sài Gòn (BXMT)'}
+                    {/* Văn phòng trực */}
+                    <td style={{ padding: '10px 14px', textAlign: 'center', color: '#1e293b', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                      <span style={{ background: '#f1f5f9', color: '#0f172a', padding: '3px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: '700' }}>
+                        {shift.officeName || shift.location || 'Văn phòng vé'}
+                      </span>
                     </td>
 
                     {/* Giờ vào ca */}
@@ -1170,7 +1123,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
           zIndex: 9999,
           padding: '1rem'
         }}
-        onClick={() => setSelectedShift(null)}
+          onClick={() => setSelectedShift(null)}
         >
           <div
             style={{
@@ -1197,7 +1150,7 @@ const AgentAttendanceReportPage = ({ setActiveTab }) => {
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
-                  Chi Tiết Ca Trực: {selectedShift.counterNumber}
+                  Chi Tiết Ca Trực - {selectedShift.officeName || selectedShift.location || 'Văn phòng vé'}
                 </h3>
                 <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
                   Ngày: <b>{selectedShift.date}</b> • {selectedShift.officeName}

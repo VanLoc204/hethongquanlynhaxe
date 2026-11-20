@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import MonthlyFleetExpenseReportModal from '../../components/MonthlyFleetExpenseReportModal';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const formatCurrency = (val) => {
   return (val || 0).toLocaleString('vi-VN') + ' đ';

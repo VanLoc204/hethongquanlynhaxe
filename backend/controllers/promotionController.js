@@ -1,7 +1,7 @@
 const Promotion = require('../models/Promotion');
 
 // @desc    Get all promotions with statistics
-// @route   GET /api/v1/promotions
+// @route   GET /api/promotions
 exports.getPromotions = async (req, res, next) => {
   try {
     const { search, status, discountType } = req.query;
@@ -52,7 +52,7 @@ exports.getPromotions = async (req, res, next) => {
 };
 
 // @desc    Create new promotion
-// @route   POST /api/v1/promotions
+// @route   POST /api/promotions
 exports.createPromotion = async (req, res, next) => {
   try {
     const {
@@ -105,7 +105,7 @@ exports.createPromotion = async (req, res, next) => {
 };
 
 // @desc    Update promotion
-// @route   PUT /api/v1/promotions/:id
+// @route   PUT /api/promotions/:id
 exports.updatePromotion = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -143,7 +143,7 @@ exports.updatePromotion = async (req, res, next) => {
 };
 
 // @desc    Toggle status (active <-> inactive)
-// @route   PATCH /api/v1/promotions/:id/toggle-status
+// @route   PATCH /api/promotions/:id/toggle-status
 exports.togglePromotionStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -170,7 +170,7 @@ exports.togglePromotionStatus = async (req, res, next) => {
 };
 
 // @desc    Delete promotion
-// @route   DELETE /api/v1/promotions/:id
+// @route   DELETE /api/promotions/:id
 exports.deletePromotion = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -193,7 +193,7 @@ exports.deletePromotion = async (req, res, next) => {
 };
 
 // @desc    Validate promotion code for checkout
-// @route   POST /api/v1/promotions/validate
+// @route   POST /api/promotions/validate
 exports.validatePromotion = async (req, res, next) => {
   try {
     const { code, orderAmount } = req.body;

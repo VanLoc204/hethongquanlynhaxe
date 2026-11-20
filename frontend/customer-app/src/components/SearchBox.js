@@ -36,7 +36,7 @@ const SearchBox = ({
   useEffect(() => {
     const fetchLocations = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/v1/trips/routes');
+        const response = await fetch('http://localhost:8000/api/trips/routes');
         const data = await response.json();
         if (data && data.success) {
           setFromLocations(data.origins || []);

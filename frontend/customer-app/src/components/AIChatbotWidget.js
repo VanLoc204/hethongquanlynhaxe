@@ -90,7 +90,7 @@ const AIChatbotWidget = () => {
       }
 
       const response = await axios.post(
-        'http://localhost:8000/api/v1/reviews/chat',
+        'http://localhost:8000/api/reviews/chat',
         {
           message: textToSend.trim(),
           sessionId,

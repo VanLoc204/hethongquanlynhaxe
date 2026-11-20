@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import MonthlyFleetExpenseReportModal from '../../components/MonthlyFleetExpenseReportModal';
 import MonthlyAreaRevenueReportModal from '../../components/MonthlyAreaRevenueReportModal';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 const DEFAULT_IMAGE = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80';
 
 // Generate dynamic templates for bus layouts based on passenger count and type if database layout is empty

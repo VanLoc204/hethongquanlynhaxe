@@ -11,7 +11,7 @@ import {
 } from '../../utils/faceApiHelper';
 import { getBranchById, getBranchName } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const STATUS_CONFIG = {
   active: { label: 'Đang hoạt động', bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },

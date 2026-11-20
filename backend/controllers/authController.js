@@ -1,7 +1,65 @@
 const authService = require('../services/authService');
+const CustomerProfile = require('../models/CustomerProfile');
+const EmployeeProfile = require('../models/EmployeeProfile');
+const TicketAgentProfile = require('../models/TicketAgentProfile');
+
+// Helper build full user response from separated profiles
+async function buildUserResponse(user) {
+  const base = {
+    id: user._id,
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    status: user.status || 'active'
+  };
+
+  if (user.role === 'customer') {
+    const cust = await CustomerProfile.findById(user._id).lean();
+    return {
+      ...base,
+      points: cust?.points ?? 0,
+      membershipTier: cust?.membershipTier || 'Bronze'
+    };
+  }
+
+  // Employee
+  const emp = await EmployeeProfile.findById(user._id).select('+faceDescriptors').lean();
+  let branch = emp?.branch || { branchId: 'sg', branchName: 'Chi nhánh TP. Hồ Chí Minh' };
+  let assignedOffice = '';
+  let shiftType = '';
+  let shiftName = '';
+
+  if (['ticket_agent', 'ticket_manager'].includes(user.role)) {
+    const agent = await TicketAgentProfile.findById(user._id).lean();
+    assignedOffice = agent?.assignedOffice || (branch.branchId === 'dl' ? 'Văn phòng Bến xe Liên Tỉnh' : branch.branchId === 'ct' ? 'Văn phòng Bến xe Trung Tâm' : 'Văn phòng Bến xe Miền Đông');
+    shiftType = agent?.shiftType || 'morning';
+    shiftName = agent?.shiftName || 'Ca Sáng (06:30 - 14:30)';
+    branch = {
+      ...branch,
+      assignedOffices: [assignedOffice]
+    };
+  }
+
+  const hasFaceEnrolled = Boolean(emp?.faceRegistered && Array.isArray(emp?.faceDescriptors) && emp?.faceDescriptors?.length > 0);
+
+  return {
+    ...base,
+    employeeCode: emp?.employeeCode || '',
+    branch,
+    assignedOffice,
+    shiftType,
+    shiftName,
+    faceRegistered: hasFaceEnrolled,
+    facePhoto: emp?.facePhoto || null,
+    points: 0,
+    membershipTier: 'Bronze'
+  };
+}
 
 // @desc    Register a new customer
-// @route   POST /api/v1/auth/register
+// @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
@@ -15,20 +73,21 @@ exports.register = async (req, res) => {
     }
 
     const { user, token } = await authService.registerUser({ name, email, phone, password });
+    
+    // Tự động tạo CustomerProfile cho khách hàng mới đăng ký
+    await CustomerProfile.findOneAndUpdate(
+      { _id: user._id },
+      { $setOnInsert: { points: 150, membershipTier: 'Bronze' } },
+      { upsert: true, new: true }
+    );
+
+    const userRes = await buildUserResponse(user);
 
     res.status(201).json({
       success: true,
       message: 'Đăng ký tài khoản thành công.',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        points: user.points !== undefined && user.points !== null ? user.points : 0,
-        membershipTier: user.membershipTier || 'Bronze'
-      }
+      user: userRes
     });
   } catch (error) {
     console.error('Lỗi đăng ký:', error);
@@ -40,7 +99,7 @@ exports.register = async (req, res) => {
 };
 
 // @desc    Login user
-// @route   POST /api/v1/auth/login
+// @route   POST /api/auth/login
 // @access  Public
 exports.login = async (req, res) => {
   try {
@@ -54,21 +113,13 @@ exports.login = async (req, res) => {
     }
 
     const { user, token } = await authService.loginUser({ loginKey, password });
+    const userRes = await buildUserResponse(user);
 
     res.status(200).json({
       success: true,
       message: 'Đăng nhập thành công.',
       token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        branch: user.branch,
-        points: user.points !== undefined && user.points !== null ? user.points : 0,
-        membershipTier: user.membershipTier || 'Bronze'
-      }
+      user: userRes
     });
   } catch (error) {
     console.warn(`[Auth] Đăng nhập không thành công: ${error.message} (Tài khoản: ${req.body?.loginKey})`);
@@ -80,24 +131,15 @@ exports.login = async (req, res) => {
 };
 
 // @desc    Get current user profile
-// @route   GET /api/v1/auth/me
+// @route   GET /api/auth/me
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
     const user = await authService.getUserProfile(req.user.id);
+    const userRes = await buildUserResponse(user);
     res.status(200).json({
       success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        status: user.status,
-        branch: user.branch,
-        points: user.points !== undefined && user.points !== null ? user.points : 0,
-        membershipTier: user.membershipTier || 'Bronze'
-      }
+      user: userRes
     });
   } catch (error) {
     console.error('Lỗi lấy profile:', error);
@@ -109,7 +151,7 @@ exports.getMe = async (req, res) => {
 };
 
 // @desc    Update user details
-// @route   PUT /api/v1/auth/updatedetails
+// @route   PUT /api/auth/updatedetails
 // @access  Private
 exports.updateDetails = async (req, res) => {
   try {
@@ -138,19 +180,12 @@ exports.updateDetails = async (req, res) => {
     }
 
     const user = await authService.updateUserDetails(req.user.id, { name: trimmedName, email: trimmedEmail });
+    const userRes = await buildUserResponse(user);
 
     res.status(200).json({
       success: true,
       message: 'Cập nhật thông tin cá nhân thành công.',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        points: user.points !== undefined && user.points !== null ? user.points : 0,
-        membershipTier: user.membershipTier || 'Bronze'
-      }
+      user: userRes
     });
   } catch (error) {
     console.error('Lỗi cập nhật profile:', error);
@@ -162,7 +197,7 @@ exports.updateDetails = async (req, res) => {
 };
 
 // @desc    Update password
-// @route   PUT /api/v1/auth/updatepassword
+// @route   PUT /api/auth/updatepassword
 // @access  Private
 exports.restrictTo = (...roles) => {
   return (req, res, next) => {
@@ -219,7 +254,7 @@ exports.updatePassword = async (req, res) => {
 };
 
 // @desc    Forgot password (simple reset/simulation)
-// @route   POST /api/v1/auth/forgotpassword
+// @route   POST /api/auth/forgotpassword
 // @access  Public
 exports.forgotPassword = async (req, res) => {
   try {
@@ -248,7 +283,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 // @desc    Send OTP to email for password recovery
-// @route   POST /api/v1/auth/forgotpassword/send-otp
+// @route   POST /api/auth/forgotpassword/send-otp
 // @access  Public
 exports.sendForgotPasswordOTP = async (req, res) => {
   try {
@@ -275,7 +310,7 @@ exports.sendForgotPasswordOTP = async (req, res) => {
 };
 
 // @desc    Verify OTP for password recovery
-// @route   POST /api/v1/auth/forgotpassword/verify-otp
+// @route   POST /api/auth/forgotpassword/verify-otp
 // @access  Public
 exports.verifyForgotPasswordOTP = async (req, res) => {
   try {
@@ -302,7 +337,7 @@ exports.verifyForgotPasswordOTP = async (req, res) => {
 };
 
 // @desc    Reset password with verified resetToken
-// @route   POST /api/v1/auth/forgotpassword/reset
+// @route   POST /api/auth/forgotpassword/reset
 // @access  Public
 exports.resetForgotPasswordWithToken = async (req, res) => {
   try {
@@ -328,7 +363,7 @@ exports.resetForgotPasswordWithToken = async (req, res) => {
 };
 
 // @desc    Send OTP to email for authenticated change password (2FA)
-// @route   POST /api/v1/auth/changepassword/send-otp
+// @route   POST /api/auth/changepassword/send-otp
 // @access  Private
 exports.sendChangePasswordOTP = async (req, res) => {
   try {
@@ -336,9 +371,14 @@ exports.sendChangePasswordOTP = async (req, res) => {
     const result = await authService.sendChangePasswordOTP(req.user.id, { currentPassword, newPassword });
     res.status(200).json({
       success: true,
-      message: 'Mã xác thực OTP đã được gửi đến email của bạn.',
+      message: result.emailSent
+        ? 'Mã xác thực OTP đã được gửi đến email của bạn.'
+        : 'Mã xác thực OTP đã được tạo trong hệ thống.',
       email: result.email,
-      expiresIn: result.expiresIn
+      expiresIn: result.expiresIn,
+      otp: result.otp,
+      emailSent: result.emailSent,
+      emailError: result.emailError
     });
   } catch (error) {
     console.error('Lỗi gửi OTP đổi mật khẩu:', error);
@@ -350,7 +390,7 @@ exports.sendChangePasswordOTP = async (req, res) => {
 };
 
 // @desc    Verify OTP and update password (2FA)
-// @route   PUT /api/v1/auth/changepassword/verify-and-update
+// @route   PUT /api/auth/changepassword/verify-and-update
 // @access  Private
 exports.verifyChangePasswordOTP = async (req, res) => {
   try {

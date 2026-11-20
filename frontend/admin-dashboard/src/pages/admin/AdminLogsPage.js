@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const MOCK_LOGS = [
-  { _id: 'LOG-2398', id: 'LOG-2398', timestamp: '15:58:01  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'SYSTEM', action: 'GET /api/v1/system/logs', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Lấy danh sách nhật ký hoạt động hệ thống thành công. Mã phản hồi: 200 OK.' },
-  { _id: 'LOG-2878', id: 'LOG-2878', timestamp: '15:58:01  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'SYSTEM', action: 'GET /api/v1/system/logs', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Truy vấn nhật ký hoạt động hệ thống định kỳ. Mã phản hồi: 200 OK.' },
-  { _id: 'LOG-1862', id: 'LOG-1862', timestamp: '15:57:49  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'USERS', action: 'Xem danh sách nhân sự (GET /api/v1/users/staff)', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Truy xuất danh sách tài khoản nhân sự và phân quyền RBAC thành công.' },
-  { _id: 'LOG-1863', id: 'LOG-1863', timestamp: '15:57:49  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'USERS', action: 'Xem danh sách nhân sự (GET /api/v1/users/staff)', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Yêu cầu xem danh sách nhân sự hoàn tất.' },
-  { _id: 'LOG-2171', id: 'LOG-2171', timestamp: '15:57:49  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'USERS', action: 'Cập nhật thông tin nhân viên (PUT /api/v1/users/staff)', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Thay đổi trạng thái tài khoản nhân viên ID 6ab252b4 thành active.' },
+  { _id: 'LOG-2398', id: 'LOG-2398', timestamp: '15:58:01  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'SYSTEM', action: 'GET /api/system/logs', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Lấy danh sách nhật ký hoạt động hệ thống thành công. Mã phản hồi: 200 OK.' },
+  { _id: 'LOG-2878', id: 'LOG-2878', timestamp: '15:58:01  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'SYSTEM', action: 'GET /api/system/logs', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Truy vấn nhật ký hoạt động hệ thống định kỳ. Mã phản hồi: 200 OK.' },
+  { _id: 'LOG-1862', id: 'LOG-1862', timestamp: '15:57:49  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'USERS', action: 'Xem danh sách nhân sự (GET /api/users/staff)', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Truy xuất danh sách tài khoản nhân sự và phân quyền RBAC thành công.' },
+  { _id: 'LOG-1863', id: 'LOG-1863', timestamp: '15:57:49  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'USERS', action: 'Xem danh sách nhân sự (GET /api/users/staff)', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Yêu cầu xem danh sách nhân sự hoàn tất.' },
+  { _id: 'LOG-2171', id: 'LOG-2171', timestamp: '15:57:49  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'USERS', action: 'Cập nhật thông tin nhân viên (PUT /api/users/staff)', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Thay đổi trạng thái tài khoản nhân viên ID 6ab252b4 thành active.' },
 ];
 
 const MODULE_STYLES = {
@@ -64,8 +64,8 @@ const AdminLogsPage = () => {
       const data = await res.json();
       if (data.success && data.logs && data.logs.length > 0) {
         const formattedLogs = data.logs.map((item, idx) => {
-          let cleanAction = item.action || item.method || 'GET /api/v1/system/logs';
-          // Avoid duplicate (GET /api/v1...) tags if action already has it
+          let cleanAction = item.action || item.method || 'GET /api/system/logs';
+          // Avoid duplicate (GET /api...) tags if action already has it
           if (cleanAction.includes('(')) {
             const parts = cleanAction.split('(');
             cleanAction = `${parts[0].trim()} (${parts[1].replace(/\)+$/, '')})`;

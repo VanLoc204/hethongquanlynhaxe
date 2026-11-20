@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const exportTicketManagerToExcel = (shifts = [], proposals = [], leaves = [], branchName = '') => {
   let csvContent = '\uFEFF'; // UTF-8 BOM for Microsoft Excel
@@ -13,7 +13,7 @@ const exportTicketManagerToExcel = (shifts = [], proposals = [], leaves = [], br
   csvContent += 'STT,Quầy / Văn phòng,Nhân viên trực,Bắt đầu ca,Kết thúc ca,Tiền đầu ca (VNĐ),Thu tiền mặt (VNĐ),Thu QR/Online (VNĐ),Số vé bán,Trạng thái\n';
 
   shifts.forEach((shift, index) => {
-    const counter = `"${(shift.counterNumber || 'Quầy vé').replace(/"/g, '""')}"`;
+    const counter = `"${(shift.userId?.assignedOffice || shift.officeName || 'Văn phòng bán vé').replace(/"/g, '""')}"`;
     const staff = `"${(shift.userId?.name || 'Nhân viên').replace(/"/g, '""')}"`;
     const start = shift.startTime ? `"${new Date(shift.startTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}"` : '"--"';
     const end = shift.endTime ? `"${new Date(shift.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}"` : '"Đang trực"';
@@ -333,7 +333,7 @@ const TicketManagerOverview = ({ setActiveTab, onRefresh }) => {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0f172a' }}>
-                          {shift.counterNumber || 'Quầy vé'}
+                          {shift.userId?.assignedOffice || shift.officeName || 'Văn phòng bán vé'}
                         </span>
                         <span style={{
                           fontSize: '0.62rem', fontWeight: '700', padding: '1px 6px', borderRadius: '10px',

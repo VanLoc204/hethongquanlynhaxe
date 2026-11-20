@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentShiftSummaryPage = () => {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
   const [activeShift, setActiveShift] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,7 +17,7 @@ const AgentShiftSummaryPage = () => {
     setError('');
     try {
       // 1. Ca trực đang mở hiện tại
-      const activeRes = await fetch('http://localhost:8000/api/v1/users/shift/current', {
+      const activeRes = await fetch('http://localhost:8000/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const activeData = await activeRes.json();
@@ -28,7 +28,7 @@ const AgentShiftSummaryPage = () => {
       }
 
       // 2. Lịch sử các ca trực đã chốt
-      const historyRes = await fetch('http://localhost:8000/api/v1/users/shift/history', {
+      const historyRes = await fetch('http://localhost:8000/api/users/shift/history', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const historyData = await historyRes.json();
@@ -46,7 +46,34 @@ const AgentShiftSummaryPage = () => {
     fetchShiftData();
   }, [token]);
 
-  // Xử lý đóng ca & bàn giao doanh thu
+  // Xử lý tạm khóa quầy
+  const handlePauseShift = async () => {
+    setClosing(true);
+    setError('');
+    try {
+      const res = await fetch('http://localhost:8000/api/users/shift/pause', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ reason: 'Nghỉ trưa / Giải lao giữa ca' })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess('Quầy vé đã được tạm khóa an toàn. Bạn có thể yên tâm nghỉ ngơi.');
+        fetchShiftData();
+      } else {
+        setError(data.message || 'Không thể tạm khóa ca.');
+      }
+    } catch (err) {
+      setError('Lỗi kết nối khi tạm khóa ca.');
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  // Xử lý đóng ca & bàn giao doanh thu (Check-out)
   const handleCloseShift = async (e) => {
     if (e) e.preventDefault();
     if (!activeShift) return;
@@ -55,7 +82,7 @@ const AgentShiftSummaryPage = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('http://localhost:8000/api/v1/users/shift/end', {
+      const res = await fetch('http://localhost:8000/api/users/shift/end', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +92,7 @@ const AgentShiftSummaryPage = () => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccess('Đóng ca làm việc và nộp báo cáo kết chuyển doanh thu thành công!');
+        setSuccess(data.message || 'Đóng ca làm việc và nộp báo cáo kết chuyển doanh thu thành công!');
         setActiveShift(null);
         setNotes('');
         fetchShiftData();
@@ -95,7 +122,7 @@ const AgentShiftSummaryPage = () => {
 
   return (
     <div style={{ animation: 'fadeIn 0.25s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', boxSizing: 'border-box' }}>
-      
+
       {/* CSS Cục Bộ Chuẩn Giao Diện Bán Vé & Quản Lý - Đồng Bộ Kích Thước & Tuyệt Đối Không Dùng Icon */}
       <style>{`
         .shift-panel-box {
@@ -244,22 +271,9 @@ const AgentShiftSummaryPage = () => {
       <div className="shift-panel-box">
         <div className="shift-header-wrap">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Tổng Kết Doanh Thu Ca Trực
-              </h1>
-              <span style={{
-                background: '#eff6ff',
-                color: '#2563eb',
-                border: '1px solid #bfdbfe',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.68rem',
-                fontWeight: '700'
-              }}>
-                Nhân Viên Bán Vé
-              </span>
-            </div>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Tổng Kết Doanh Thu Ca Trực
+            </h1>
 
             <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '6px' }}>
               Nhân viên đóng ca làm việc bến xe để đối soát tổng lượng tiền mặt thối nhận và kết chuyển các giao dịch không tiền mặt.
@@ -269,7 +283,7 @@ const AgentShiftSummaryPage = () => {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {activeShift ? (
               <span className="badge-shift badge-active" style={{ padding: '6px 12px', fontSize: '0.76rem' }}>
-                Đang Mở Ca: {activeShift.counterNumber}
+                Đang Mở Ca
               </span>
             ) : (
               <span className="badge-shift badge-closed" style={{ padding: '6px 12px', fontSize: '0.76rem' }}>
@@ -314,7 +328,7 @@ const AgentShiftSummaryPage = () => {
       {/* ========================================================= */}
       {activeShift ? (
         <div className="shift-two-col">
-          
+
           {/* CỘT TRÁI: ĐỐI SOÁT TÀI CHÍNH VÀ TIỀN MẶT BÀN GIAO */}
           <div className="shift-panel-box" style={{ justifyContent: 'space-between' }}>
             <div>
@@ -330,8 +344,8 @@ const AgentShiftSummaryPage = () => {
               {/* Thông tin ca trực */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: '1rem' }}>
                 <div className="shift-info-row">
-                  <span style={{ color: '#64748b' }}>Địa chỉ quầy trực:</span>
-                  <strong style={{ color: '#0f172a' }}>{activeShift.counterNumber}</strong>
+                  <span style={{ color: '#64748b' }}>Địa chỉ văn phòng trực:</span>
+                  <strong style={{ color: '#0f172a' }}>{activeShift.userId?.assignedOffice || user?.assignedOffice || user?.branch?.branchName || 'Văn phòng bán vé'}</strong>
                 </div>
                 <div className="shift-info-row">
                   <span style={{ color: '#64748b' }}>Thời gian bắt đầu ca:</span>
@@ -487,7 +501,7 @@ const AgentShiftSummaryPage = () => {
             </div>
 
             <span style={{ fontSize: '0.74rem', color: '#2563eb', fontWeight: '700' }}>
-              Quầy: {activeShift.counterNumber}
+              Văn phòng: {activeShift.userId?.assignedOffice || user?.assignedOffice || user?.branch?.branchName || 'Văn phòng bán vé'}
             </span>
           </div>
 
@@ -585,7 +599,7 @@ const AgentShiftSummaryPage = () => {
             </div>
 
             <span style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: '700' }}>
-              Trích xuất từ két quầy: {activeShift.counterNumber}
+              Trích xuất từ két: {activeShift.userId?.assignedOffice || user?.assignedOffice || user?.branch?.branchName || 'Văn phòng bán vé'}
             </span>
           </div>
 
@@ -711,7 +725,7 @@ const AgentShiftSummaryPage = () => {
                         </div>
                       </td>
                       <td>
-                        <div style={{ fontWeight: '600', color: '#0f172a' }}>{item.counterNumber}</div>
+                        <div style={{ fontWeight: '600', color: '#0f172a' }}>{item.userId?.assignedOffice || user?.assignedOffice || user?.branch?.branchName || 'Văn phòng bán vé'}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '3px', flexWrap: 'wrap' }}>
                           <span className={`badge-shift ${item.status === 'active' ? 'badge-active' : 'badge-closed'}`}>
                             {item.status === 'active' ? 'Đang Mở Ca' : 'Đã Đóng Ca'}
@@ -759,7 +773,6 @@ const AgentShiftSummaryPage = () => {
           </div>
         )}
       </div>
-
     </div>
   );
 };

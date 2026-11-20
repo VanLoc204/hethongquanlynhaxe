@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
 import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute } from '../../utils/mapRoutingUtils';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 
 const OpsTrackingPage = () => {
   const { token } = useContext(AuthContext);
@@ -358,7 +358,7 @@ const OpsTrackingPage = () => {
       lastUpdated = new Date();
       isLiveDevice = true;
     } else if (typeof busLat === 'number' && typeof busLng === 'number') {
-      // Tọa độ từ MongoDB do thiết bị tài xế gửi lên qua PUT /api/v1/trips/:id/live-gps
+      // Tọa độ từ MongoDB do thiết bị tài xế gửi lên qua PUT /api/trips/:id/live-gps
       const diffMs = lastUpdated ? Date.now() - new Date(lastUpdated).getTime() : 999999;
       isLiveDevice = diffMs < 45000; // Tín hiệu trong vòng 45s xem như đang trực tiếp
     } else {

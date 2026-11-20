@@ -5,7 +5,20 @@ const Bus = require('../models/Bus');
 const ShiftSession = require('../models/ShiftSession');
 const User = require('../models/User');
 const Route = require('../models/Route');
-const { BRANCHES, getBranchById, detectBranchFromLocation } = require('../constants/branches');
+
+const BRANCHES = [
+  { branchId: 'sg', branchName: 'Chi nhánh TP. Hồ Chí Minh' },
+  { branchId: 'dl', branchName: 'Chi nhánh Đà Lạt' },
+  { branchId: 'ct', branchName: 'Chi nhánh Cần Thơ' }
+];
+
+const detectBranchFromLocation = (loc) => {
+  if (!loc || typeof loc !== 'string') return 'sg';
+  const t = loc.toLowerCase();
+  if (t.includes('đà lạt') || t.includes('lâm đồng') || t.includes('bxlt') || t.includes('bùi thị xuân')) return 'dl';
+  if (t.includes('cần thơ') || t.includes('ninh kiều') || t.includes('bxtt')) return 'ct';
+  return 'sg';
+};
 
 // Helper to determine branch of a trip from its route start point
 function getTripBranch(trip) {
@@ -16,7 +29,7 @@ function getTripBranch(trip) {
 }
 
 // @desc    Get targets and real operational data comparison with branch filtering & ticket agent performance
-// @route   GET /api/v1/targets
+// @route   GET /api/targets
 // @access  Private (General Manager, Admin)
 exports.getTargets = async (req, res) => {
   try {
@@ -356,7 +369,7 @@ exports.getTargets = async (req, res) => {
 };
 
 // @desc    Create or Update operational target for a specific month and year
-// @route   POST /api/v1/targets
+// @route   POST /api/targets
 // @access  Private (General Manager, Admin)
 exports.saveTarget = async (req, res) => {
   try {

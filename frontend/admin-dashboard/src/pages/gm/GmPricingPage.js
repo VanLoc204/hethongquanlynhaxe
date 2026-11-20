@@ -3,7 +3,7 @@ import { AuthContext } from '../../context/AuthContext';
 import GmDynamicPricingPage from './GmDynamicPricingPage';
 import { getBranchName } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+const API_BASE = 'http://localhost:8000/api';
 const DAYS_MAP = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
 const GmPricingPage = () => {

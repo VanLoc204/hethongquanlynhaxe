@@ -29,7 +29,7 @@ const systemLogger = (req, res, next) => {
     const statusCode = res.statusCode;
 
     // Filter out internal system health polling from cluttering audit logs
-    if (req.originalUrl.startsWith('/api/v1/system/health') || req.originalUrl === '/health') {
+    if (req.originalUrl.startsWith('/api/system/health') || req.originalUrl === '/health') {
       return;
     }
 
