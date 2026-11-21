@@ -29,6 +29,16 @@ export const AuthProvider = ({ children }) => {
       try {
         const res = await axios.get(`${API_URL}/me`);
         if (res.data.success) {
+          const storedBootId = localStorage.getItem('customer_server_boot_id');
+          // Nếu máy chủ vừa khởi động lại (bootId không khớp hoặc session cũ chưa có bootId):
+          if (res.data.serverBootId && (!storedBootId || storedBootId !== res.data.serverBootId)) {
+            console.warn('[Customer Auth] Máy chủ đã khởi động lại phiên mới. Đặt lại session.');
+            logout();
+            return;
+          }
+          if (res.data.serverBootId) {
+            localStorage.setItem('customer_server_boot_id', res.data.serverBootId);
+          }
           setUser(res.data.user);
           setIsAuthenticated(true);
         } else {
@@ -52,6 +62,9 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.post(`${API_URL}/login`, { loginKey, password });
       if (res.data.success) {
         localStorage.setItem('token', res.data.token);
+        if (res.data.serverBootId) {
+          localStorage.setItem('customer_server_boot_id', res.data.serverBootId);
+        }
         setToken(res.data.token);
         setUser(res.data.user);
         setIsAuthenticated(true);
@@ -74,6 +87,9 @@ export const AuthProvider = ({ children }) => {
       const res = await axios.post(`${API_URL}/register`, { name, email, phone, password });
       if (res.data.success) {
         localStorage.setItem('token', res.data.token);
+        if (res.data.serverBootId) {
+          localStorage.setItem('customer_server_boot_id', res.data.serverBootId);
+        }
         setToken(res.data.token);
         setUser(res.data.user);
         setIsAuthenticated(true);
@@ -91,6 +107,7 @@ export const AuthProvider = ({ children }) => {
   // Logout User
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('customer_server_boot_id');
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);

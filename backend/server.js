@@ -22,8 +22,9 @@ const startServer = async () => {
       console.log(`=======================================================`);
     });
 
-    // 3. Periodic midnight / auto-freeze check for unsubmitted trip reports
+    // 3. Periodic midnight / auto-freeze check for unsubmitted trip reports & auto-close attendances
     const { autoMidnightCheck } = require('./controllers/tripReportController');
+    const { autoCloseEndOfDayAttendances } = require('./controllers/attendanceController');
     setInterval(async () => {
       try {
         const dummyReq = {};
@@ -36,6 +37,7 @@ const startServer = async () => {
           }
         };
         await autoMidnightCheck(dummyReq, dummyRes);
+        await autoCloseEndOfDayAttendances();
       } catch (err) {
         // Silently catch background interval error
       }

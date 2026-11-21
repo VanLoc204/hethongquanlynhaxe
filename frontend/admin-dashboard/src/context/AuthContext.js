@@ -21,6 +21,7 @@ export const AuthProvider = ({ children }) => {
           // Token không còn tồn tại trong CSDL -> xóa session cũ và logout
           localStorage.removeItem('admin_token');
           localStorage.removeItem('admin_user');
+          localStorage.removeItem('admin_server_boot_id');
           setToken('');
           setUser(null);
           return null;
@@ -28,7 +29,24 @@ export const AuthProvider = ({ children }) => {
         return res.json();
       })
       .then(data => {
-        if (data && isMounted && data.success && data.user) {
+        if (!data || !isMounted) return;
+
+        const storedBootId = localStorage.getItem('admin_server_boot_id');
+        // Nếu máy chủ vừa được khởi động lại (bootId không khớp hoặc session cũ chưa có bootId):
+        if (data.serverBootId && (!storedBootId || storedBootId !== data.serverBootId)) {
+          console.warn('[Admin Auth] Máy chủ vừa được bật lại phiên mới. Xóa phiên cũ và yêu cầu đăng nhập lại.');
+          localStorage.removeItem('admin_token');
+          localStorage.removeItem('admin_user');
+          localStorage.removeItem('admin_server_boot_id');
+          setToken('');
+          setUser(null);
+          return;
+        }
+
+        if (data.success && data.user) {
+          if (data.serverBootId) {
+            localStorage.setItem('admin_server_boot_id', data.serverBootId);
+          }
           setUser(prev => ({ ...(prev || {}), ...data.user }));
           localStorage.setItem('admin_user', JSON.stringify(data.user));
         }
@@ -56,6 +74,9 @@ export const AuthProvider = ({ children }) => {
         }
         localStorage.setItem('admin_token', data.token);
         localStorage.setItem('admin_user', JSON.stringify(data.user));
+        if (data.serverBootId) {
+          localStorage.setItem('admin_server_boot_id', data.serverBootId);
+        }
         setToken(data.token);
         setUser(data.user);
         return { success: true };
@@ -80,6 +101,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
+    localStorage.removeItem('admin_server_boot_id');
     setToken('');
     setUser(null);
   };

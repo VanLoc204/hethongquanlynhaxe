@@ -19,12 +19,21 @@ const path = require('path');
 
 const app = express();
 
+// Khởi tạo mã phiên làm việc duy nhất mỗi khi khởi động server
+const SERVER_BOOT_ID = Date.now().toString();
+app.locals.serverBootId = SERVER_BOOT_ID;
+
 // Global Middlewares
 app.set('trust proxy', 1);
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use((req, res, next) => {
+  res.setHeader('X-Server-Boot-Id', SERVER_BOOT_ID);
+  req.serverBootId = SERVER_BOOT_ID;
+  next();
+});
 app.use(systemLogger);
 app.use('/face-models', express.static(path.join(__dirname, 'public/face-models')));
 

@@ -87,7 +87,8 @@ exports.register = async (req, res) => {
       success: true,
       message: 'Đăng ký tài khoản thành công.',
       token,
-      user: userRes
+      user: userRes,
+      serverBootId: req.serverBootId || req.app?.locals?.serverBootId || ''
     });
   } catch (error) {
     console.error('Lỗi đăng ký:', error);
@@ -119,7 +120,8 @@ exports.login = async (req, res) => {
       success: true,
       message: 'Đăng nhập thành công.',
       token,
-      user: userRes
+      user: userRes,
+      serverBootId: req.serverBootId || req.app?.locals?.serverBootId || ''
     });
   } catch (error) {
     console.warn(`[Auth] Đăng nhập không thành công: ${error.message} (Tài khoản: ${req.body?.loginKey})`);
@@ -139,7 +141,8 @@ exports.getMe = async (req, res) => {
     const userRes = await buildUserResponse(user);
     res.status(200).json({
       success: true,
-      user: userRes
+      user: userRes,
+      serverBootId: req.serverBootId || req.app?.locals?.serverBootId || ''
     });
   } catch (error) {
     console.error('Lỗi lấy profile:', error);

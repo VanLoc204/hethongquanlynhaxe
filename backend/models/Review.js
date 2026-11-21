@@ -2,17 +2,23 @@ const mongoose = require('mongoose');
 
 const reviewSchema = new mongoose.Schema(
   {
+    // Khóa ngoại tham chiếu Trip._id (Chuyến xe được đánh giá)
     tripId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Trip',
       required: false
     },
-    userName: {
-      type: String,
-      required: [true, 'Tên người dùng là bắt buộc.']
+    // Khóa ngoại tham chiếu Booking._id để lấy thông tin hành khách ở tầng Logic
+    bookingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Booking',
+      required: false
     },
-    customerName: {
-      type: String
+    // Khóa ngoại tham chiếu User._id nếu khách hàng đã có tài khoản
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: false
     },
     rating: {
       type: Number,
@@ -24,17 +30,9 @@ const reviewSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Nội dung nhận xét là bắt buộc.']
     },
-    customerPhone: {
-      type: String,
-      default: ''
-    },
-    branchId: {
-      type: String,
-      default: 'sg'
-    },
     category: {
       type: String,
-      default: 'bus_quality' // 'bus_quality' | 'service' | 'staff' | 'general'
+      default: 'bus_quality' // 'bus_quality' | 'service' | 'staff' | 'general' | 'ticket_counter'
     },
     status: {
       type: String,
@@ -74,15 +72,4 @@ const reviewSchema = new mongoose.Schema(
   }
 );
 
-// Đồng bộ customerName và userName khi lưu
-reviewSchema.pre('save', function (next) {
-  if (this.userName && !this.customerName) {
-    this.customerName = this.userName;
-  } else if (this.customerName && !this.userName) {
-    this.userName = this.customerName;
-  }
-  next();
-});
-
 module.exports = mongoose.model('Review', reviewSchema);
-

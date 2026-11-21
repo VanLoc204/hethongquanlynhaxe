@@ -984,9 +984,16 @@ exports.getShiftHistory = async (req, res) => {
         query.startTime = { $gte: start, $lte: end };
       }
       if (req.user.role === 'ticket_manager') {
-        query.branchId = req.user.branch?.branchId || 'sg';
+        const targetBranchId = req.user.branch?.branchId || 'sg';
+        const branchUserIds = await User.find({ 'branch.branchId': targetBranchId }).distinct('_id');
+        if (!query.userId) {
+          query.userId = { $in: branchUserIds };
+        }
       } else if (req.query.branchId && req.query.branchId !== 'all') {
-        query.branchId = req.query.branchId;
+        const branchUserIds = await User.find({ 'branch.branchId': req.query.branchId }).distinct('_id');
+        if (!query.userId) {
+          query.userId = { $in: branchUserIds };
+        }
       }
     } else {
       query.userId = req.user.id;
@@ -1020,6 +1027,32 @@ exports.getShiftHistory = async (req, res) => {
       })
       .sort({ startTime: -1 })
       .lean();
+
+    // Kế thừa / JOIN thông tin Face ID từ bảng Attendance mà KHÔNG CẦN thêm trường thừa vào ShiftSession
+    if (history.length > 0) {
+      const userIds = history.map(h => h.userId?._id || h.userId).filter(Boolean);
+      const attendances = await Attendance.find({
+        userId: { $in: userIds }
+      }).select('userId date faceVerified isLiveVerified faceDistance checkInPhoto status').lean();
+
+      const attMap = new Map();
+      attendances.forEach(att => {
+        if (att.date && att.userId) {
+          const dStr = new Date(att.date).toISOString().slice(0, 10);
+          attMap.set(`${att.userId.toString()}_${dStr}`, att);
+        }
+      });
+
+      history.forEach(item => {
+        const uId = item.userId?._id?.toString() || item.userId?.toString();
+        const dStr = new Date(item.startTime || item.createdAt).toISOString().slice(0, 10);
+        const att = attMap.get(`${uId}_${dStr}`);
+        item.faceVerified = att ? Boolean(att.faceVerified) : false;
+        item.faceDistance = att?.faceDistance !== undefined ? att.faceDistance : null;
+        item.isLiveVerified = att ? Boolean(att.isLiveVerified) : false;
+        item.checkInPhoto = att?.checkInPhoto || null;
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -1512,8 +1545,29 @@ exports.cancelTicketAtCounter = async (req, res) => {
       });
     }
 
-    // Kiểm tra ca trực nếu chọn hoàn tiền mặt
+    // BẮT BUỘC: KHÓA TÍNH NĂNG HỦY VÉ NẾU CHƯA CHẤM CÔNG VÀO CA HÔM NAY
+    const vnDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const y = vnDate.getFullYear();
+    const m = String(vnDate.getMonth() + 1).padStart(2, '0');
+    const d = String(vnDate.getDate()).padStart(2, '0');
+    const todayStart = new Date(`${y}-${m}-${d}T00:00:00.000+07:00`);
+    const todayEnd = new Date(`${y}-${m}-${d}T23:59:59.999+07:00`);
+
+    const activeAtt = await Attendance.findOne({
+      userId: req.user.id,
+      date: { $gte: todayStart, $lte: todayEnd },
+      status: 'active'
+    });
     const session = await ShiftSession.findOne({ userId: req.user.id, status: 'active' });
+
+    if (!activeAtt && !session) {
+      return res.status(403).json({
+        success: false,
+        message: 'Thao tác hủy vé bị khóa: Bạn chưa thực hiện chấm công vào ca hôm nay. Vui lòng chấm công ca trực trước khi thực hiện hủy vé!'
+      });
+    }
+
+    // Kiểm tra ca trực nếu chọn hoàn tiền mặt
     if (refundMethod === 'cash' && !session && req.user.role === 'ticket_agent') {
       return res.status(400).json({
         success: false,
@@ -2569,6 +2623,14 @@ exports.createTicketIncident = async (req, res) => {
 exports.updateTicketIncident = async (req, res) => {
   try {
     const { status, resolutionNotes } = req.body;
+
+    if (!resolutionNotes || typeof resolutionNotes !== 'string' || resolutionNotes.trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chỉ đạo / Phương án giải quyết sự cố của Quản lý là bắt buộc (tối thiểu 5 ký tự).'
+      });
+    }
+
     const incident = await CounterIncident.findById(req.params.id);
 
     if (!incident) {
@@ -2576,7 +2638,7 @@ exports.updateTicketIncident = async (req, res) => {
     }
 
     if (status) incident.status = status;
-    if (resolutionNotes) incident.resolutionNotes = resolutionNotes;
+    incident.resolutionNotes = resolutionNotes.trim();
 
     if (status === 'resolved' || status === 'closed') {
       incident.resolvedBy = req.user.id;
@@ -2607,19 +2669,9 @@ exports.updateTicketIncident = async (req, res) => {
 // @access  Private (ticket_manager, general_manager, admin)
 exports.getTicketFeedbacks = async (req, res) => {
   try {
-    const userRole = req.user.role;
-    const userBranch = req.user.branch?.branchId || 'sg';
-    const targetBranch = userRole === 'ticket_manager' ? userBranch : (req.query.branchId || 'sg');
-
     let query = {};
-    if (targetBranch && targetBranch !== 'all') {
-      if (targetBranch === 'sg') {
-        query.$or = [{ branchId: 'sg' }, { branchId: { $exists: false } }, { branchId: '' }];
-      } else {
-        query.branchId = targetBranch;
-      }
-    }
 
+    // Cho phép Quản lý phòng vé xem toàn bộ phản hồi từ khách hàng không bị giới hạn bởi branchId
     if (req.query.rating && req.query.rating !== 'all') {
       query.rating = Number(req.query.rating);
     }
@@ -2631,6 +2683,8 @@ exports.getTicketFeedbacks = async (req, res) => {
     }
 
     const feedbacks = await Review.find(query)
+      .populate('bookingId', 'customerName customerPhone customerEmail')
+      .populate('userId', 'name phone email')
       .populate({
         path: 'tripId',
         select: 'routeId busId departureTime arrivalTime price driver assistant',
@@ -2644,13 +2698,25 @@ exports.getTicketFeedbacks = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    // Gọi thông tin khách hàng từ Booking/User ở tầng Logic, không lưu trùng lặp vào model Review
+    const formattedFeedbacks = feedbacks.map(f => {
+      const custName = f.bookingId?.customerName || f.userId?.name || f.customerName || f.userName || 'Hành khách';
+      const custPhone = f.bookingId?.customerPhone || f.userId?.phone || f.customerPhone || '';
+      return {
+        ...f,
+        customerName: custName,
+        userName: custName,
+        customerPhone: custPhone
+      };
+    });
+
     // Tính toán chỉ số CSAT & phân bố sao
     let totalScore = 0;
     const ratingDistribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
     let positiveCount = 0;
     let repliedCount = 0;
 
-    feedbacks.forEach(f => {
+    formattedFeedbacks.forEach(f => {
       const r = Math.min(5, Math.max(1, Math.round(f.rating || 5)));
       totalScore += f.rating || 5;
       ratingDistribution[r] = (ratingDistribution[r] || 0) + 1;
@@ -2658,7 +2724,7 @@ exports.getTicketFeedbacks = async (req, res) => {
       if (f.isReplied || f.replyContent) repliedCount++;
     });
 
-    const count = feedbacks.length;
+    const count = formattedFeedbacks.length;
     const avgRating = count > 0 ? (totalScore / count).toFixed(1) : '5.0';
     const positiveRate = count > 0 ? Math.round((positiveCount / count) * 100) : 100;
     const repliedRate = count > 0 ? Math.round((repliedCount / count) * 100) : 0;
@@ -2674,7 +2740,7 @@ exports.getTicketFeedbacks = async (req, res) => {
         ratingDistribution,
         totalFeedbacks: count
       },
-      feedbacks
+      feedbacks: formattedFeedbacks
     });
   } catch (error) {
     console.error('Lỗi lấy danh sách phản hồi khách hàng:', error);
@@ -2731,20 +2797,19 @@ exports.replyTicketFeedback = async (req, res) => {
 // @access  Private (ticket_manager, general_manager, admin, ticket_agent)
 exports.createTicketFeedback = async (req, res) => {
   try {
-    const { userName, customerPhone, rating, comment, tripId, category } = req.body;
+    const { rating, comment, tripId, bookingId, userId, category } = req.body;
 
-    if (!userName || !comment) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên khách hàng và nội dung nhận xét.' });
+    if (!comment) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp nội dung nhận xét.' });
     }
 
     const feedback = await Review.create({
-      userName,
-      customerPhone: customerPhone || '',
+      tripId: tripId || null,
+      bookingId: bookingId || null,
+      userId: userId || req.user?.id || null,
       rating: Number(rating) || 5,
       comment,
-      tripId: tripId || null,
       category: category || 'ticket_counter',
-      branchId: req.user.branch?.branchId || req.body.branchId || 'sg',
       status: 'pending'
     });
 

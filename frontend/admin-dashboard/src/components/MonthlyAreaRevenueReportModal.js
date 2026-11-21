@@ -52,7 +52,6 @@ const MonthlyAreaRevenueReportModal = ({
     year = 2026,
     ticketManagerId = {},
     summary = {},
-    counterBreakdown = [],
     staffBreakdown = [],
     ticketManagerNotes = '',
     status = 'pending',
@@ -133,16 +132,18 @@ const MonthlyAreaRevenueReportModal = ({
           background-color: #f1f5f9;
           color: #0f172a;
           border: 1px solid #94a3b8;
-          padding: 6px 8px;
+          padding: 6px 10px;
           font-size: 0.78rem;
           font-weight: 700;
           text-align: center;
+          white-space: nowrap;
         }
         .revenue-report-table td {
           border: 1px solid #cbd5e1;
-          padding: 5px 8px;
+          padding: 6px 10px;
           font-size: 0.8rem;
           color: #0f172a;
+          white-space: nowrap;
         }
       `}</style>
 
@@ -150,7 +151,7 @@ const MonthlyAreaRevenueReportModal = ({
         className="crystal-report-modal"
         style={{
           backgroundColor: '#ffffff',
-          width: '950px',
+          width: '980px',
           maxWidth: '96vw',
           maxHeight: '94vh',
           borderRadius: '8px',
@@ -303,20 +304,22 @@ const MonthlyAreaRevenueReportModal = ({
         </div>
 
         {/* NỘI DUNG VĂN BẢN TRANG A4 BÁO CÁO */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '2.5rem 1rem 5rem 1rem', display: 'flex', justifyContent: 'center', backgroundColor: '#e2e8f0' }}>
           <div
             className="report-printable-area"
             style={{
               backgroundColor: '#ffffff',
-              width: '850px',
-              minHeight: '1050px',
-              padding: '24mm 20mm',
+              width: '900px',
+              minHeight: '1350px',
+              padding: '24mm 18mm 50mm 18mm',
               color: '#0f172a',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              boxShadow: '0 8px 24px rgba(15, 23, 42, 0.12)',
               fontFamily: '"Times New Roman", Times, serif',
-              position: 'relative',
               fontSize: '0.88rem',
-              lineHeight: 1.45
+              lineHeight: 1.45,
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column'
             }}
           >
             {/* HEADER CÔNG TY (ĐỒNG BỘ 100% ERP) */}
@@ -405,35 +408,35 @@ const MonthlyAreaRevenueReportModal = ({
               <div style={{ fontWeight: '800', fontSize: '0.92rem', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
                 I. BẢNG TỔNG HỢP DOANH THU &amp; PHÂN LOẠI DÒNG TIỀN THỰC THU
               </div>
-              <table className="revenue-report-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="revenue-report-table" style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <tbody>
                   <tr>
-                    <td style={{ width: '60%', fontWeight: '600' }}>
+                    <td style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>
                       1. Doanh thu Tiền mặt thu trực tiếp tại quầy vé (Đối soát nộp quỹ két):
                     </td>
-                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#c2410c' }}>
+                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#c2410c', whiteSpace: 'nowrap' }}>
                       {formatCurrency(summary.cashRevenue)} ({summary.cashRate || 0}%)
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ fontWeight: '600' }}>
+                    <td style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>
                       2. Doanh thu Chuyển khoản / Quét mã VietQR (Tài khoản công ty):
                     </td>
-                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#15803d' }}>
+                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#15803d', whiteSpace: 'nowrap' }}>
                       {formatCurrency(summary.cashlessRevenue)} ({summary.cashlessRate || 0}%)
                     </td>
                   </tr>
                   <tr style={{ backgroundColor: '#f0fdf4', borderTop: '2px solid #0f172a' }}>
-                    <td style={{ fontWeight: '900', color: '#166534', fontSize: '0.92rem' }}>
+                    <td style={{ fontWeight: '900', color: '#166534', fontSize: '0.92rem', whiteSpace: 'nowrap' }}>
                       TỔNG DOANH THU THỰC THU KHU VỰC THÁNG {month}/{year}:
                     </td>
-                    <td style={{ fontWeight: '900', textAlign: 'right', color: '#15803d', fontSize: '1.05rem' }}>
+                    <td style={{ fontWeight: '900', textAlign: 'right', color: '#15803d', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
                       {formatCurrency(summary.totalRevenue)}
                     </td>
                   </tr>
                   <tr style={{ fontSize: '0.78rem', color: '#475569' }}>
-                    <td>Tổng lượt vé xuất bán qua các ca trực tại chi nhánh:</td>
-                    <td style={{ textAlign: 'right', fontWeight: '700' }}>
+                    <td style={{ whiteSpace: 'nowrap' }}>Tổng lượt vé xuất bán qua các ca trực tại chi nhánh:</td>
+                    <td style={{ textAlign: 'right', fontWeight: '700', whiteSpace: 'nowrap' }}>
                       {(summary.totalTickets || 0).toLocaleString('vi-VN')} vé ({summary.shiftsCount || 0} ca trực)
                     </td>
                   </tr>
@@ -441,95 +444,49 @@ const MonthlyAreaRevenueReportModal = ({
               </table>
             </div>
 
-            {/* 3. BẢNG THỐNG KÊ DOANH THU THEO TỪNG QUẦY / ĐIỂM BÁN VÉ THUỘC KHU VỰC */}
+            {/* II. BẢNG THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH */}
             <div style={{ marginBottom: '1.25rem' }}>
               <div style={{ fontWeight: '800', fontSize: '0.92rem', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
-                II. THỐNG KÊ DOANH THU THEO TỪNG QUẦY / ĐIỂM BÁN VÉ THUỘC KHU VỰC
+                II. THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH
               </div>
-              <table className="revenue-report-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="revenue-report-table" style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '40px' }}>STT</th>
-                    <th>Quầy / Điểm Bán Vé</th>
-                    <th style={{ width: '130px' }}>Tiền Mặt Tại Quầy</th>
-                    <th style={{ width: '130px' }}>Chuyển Khoản / QR</th>
-                    <th style={{ width: '140px' }}>Tổng Doanh Thu</th>
-                    <th style={{ width: '75px' }}>Tỷ Trọng</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {counterBreakdown.map((c, idx) => (
-                    <tr key={idx}>
-                      <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                      <td style={{ fontWeight: '700' }}>{c.counter}</td>
-                      <td style={{ textAlign: 'right', color: '#c2410c', fontWeight: '700' }}>
-                        {formatCurrency(c.totalCash)}
-                      </td>
-                      <td style={{ textAlign: 'right', color: '#15803d', fontWeight: '700' }}>
-                        {formatCurrency(c.totalCashless)}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: '800' }}>
-                        {formatCurrency(c.totalRevenue)}
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: '700' }}>
-                        {c.rate}%
-                      </td>
-                    </tr>
-                  ))}
-                  <tr style={{ backgroundColor: '#f8fafc', fontWeight: '800' }}>
-                    <td colSpan={2} style={{ textAlign: 'center', textTransform: 'uppercase' }}>TỔNG CỘNG:</td>
-                    <td style={{ textAlign: 'right', color: '#c2410c' }}>{formatCurrency(summary.cashRevenue)}</td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>{formatCurrency(summary.cashlessRevenue)}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(summary.totalRevenue)}</td>
-                    <td style={{ textAlign: 'center' }}>100%</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* 4. BẢNG THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH */}
-            <div style={{ marginBottom: '1.25rem' }}>
-              <div style={{ fontWeight: '800', fontSize: '0.92rem', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
-                III. THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH
-              </div>
-              <table className="revenue-report-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: '40px' }}>STT</th>
-                    <th>Họ Tên Nhân Viên</th>
-                    <th style={{ width: '100px' }}>Số Điện Thoại</th>
-                    <th style={{ width: '130px' }}>Tiền Mặt Thu Được</th>
-                    <th style={{ width: '130px' }}>Chuyển Khoản / QR</th>
-                    <th style={{ width: '140px' }}>Tổng Doanh Thu</th>
-                    <th style={{ width: '75px' }}>Tỷ Trọng</th>
+                    <th style={{ width: '38px', whiteSpace: 'nowrap' }}>STT</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Họ Tên Nhân Viên</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Số Điện Thoại</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Tiền Mặt Thu Được</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Chuyển Khoản / QR</th>
+                    <th style={{ whiteSpace: 'nowrap' }}>Tổng Doanh Thu</th>
+                    <th style={{ width: '75px', whiteSpace: 'nowrap' }}>Tỷ Trọng</th>
                   </tr>
                 </thead>
                 <tbody>
                   {staffBreakdown.map((s, idx) => (
                     <tr key={idx}>
-                      <td style={{ textAlign: 'center' }}>{idx + 1}</td>
-                      <td style={{ fontWeight: '700' }}>{s.staffName}</td>
-                      <td style={{ textAlign: 'center', fontFamily: 'monospace' }}>{s.phone || 'N/A'}</td>
-                      <td style={{ textAlign: 'right', color: '#c2410c', fontWeight: '700' }}>
+                      <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                      <td style={{ fontWeight: '700', whiteSpace: 'nowrap' }}>{s.staffName}</td>
+                      <td style={{ textAlign: 'center', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{s.phone || 'N/A'}</td>
+                      <td style={{ textAlign: 'right', color: '#c2410c', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         {formatCurrency(s.totalCash)}
                       </td>
-                      <td style={{ textAlign: 'right', color: '#15803d', fontWeight: '700' }}>
+                      <td style={{ textAlign: 'right', color: '#15803d', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         {formatCurrency(s.totalCashless)}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: '800' }}>
+                      <td style={{ textAlign: 'right', fontWeight: '800', whiteSpace: 'nowrap' }}>
                         {formatCurrency(s.totalRevenue)}
                       </td>
-                      <td style={{ textAlign: 'center', fontWeight: '700' }}>
+                      <td style={{ textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>
                         {s.rate}%
                       </td>
                     </tr>
                   ))}
                   <tr style={{ backgroundColor: '#f8fafc', fontWeight: '800' }}>
-                    <td colSpan={3} style={{ textAlign: 'center', textTransform: 'uppercase' }}>TỔNG CỘNG:</td>
-                    <td style={{ textAlign: 'right', color: '#c2410c' }}>{formatCurrency(summary.cashRevenue)}</td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>{formatCurrency(summary.cashlessRevenue)}</td>
-                    <td style={{ textAlign: 'right' }}>{formatCurrency(summary.totalRevenue)}</td>
-                    <td style={{ textAlign: 'center' }}>100%</td>
+                    <td colSpan={3} style={{ textAlign: 'center', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>TỔNG CỘNG:</td>
+                    <td style={{ textAlign: 'right', color: '#c2410c', whiteSpace: 'nowrap' }}>{formatCurrency(summary.cashRevenue)}</td>
+                    <td style={{ textAlign: 'right', color: '#15803d', whiteSpace: 'nowrap' }}>{formatCurrency(summary.cashlessRevenue)}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{formatCurrency(summary.totalRevenue)}</td>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>100%</td>
                   </tr>
                 </tbody>
               </table>
@@ -754,12 +711,9 @@ const MonthlyAreaRevenueReportModal = ({
             {/* CHÂN TRANG VĂN BẢN */}
             <div
               style={{
-                position: 'absolute',
-                bottom: '15mm',
-                left: '20mm',
-                right: '20mm',
+                marginTop: '3.5rem',
+                paddingTop: '16px',
                 borderTop: '1px solid #cbd5e1',
-                paddingTop: '6px',
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '0.72rem',

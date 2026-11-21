@@ -406,24 +406,19 @@ exports.createPricingProposal = async (req, res) => {
       });
     }
 
-    const branchId = req.user.branch?.branchId || 'sg';
     const proposal = await PricingProposal.create({
       proposerId: req.user.id,
-      proposerName: req.user.name || 'Quản lý phòng vé',
-      proposerPhone: req.user.phone || '',
       title: title.trim(),
       proposalCategory,
       routeId,
       busType: busType || 'all',
       proposalType: proposalType || (proposalCategory === 'base_price' ? 'fixed_price' : 'percentage'),
-      adjustmentPercentage: Number(adjustmentPercentage) || 0,
       currentPrice: Number(currentPrice) || 0,
       proposedPrice: Number(proposedPrice),
       effectiveFrom: new Date(effectiveFrom),
       effectiveTo: effectiveTo ? new Date(effectiveTo) : null,
       reason: reason.trim(),
-      status: 'pending',
-      branchId
+      status: 'pending'
     });
 
     // Tạo thông báo cho Ban Giám đốc
@@ -468,25 +463,44 @@ exports.getPricingProposals = async (req, res) => {
     if (busType && busType !== 'all') query.busType = busType;
     if (proposalCategory && proposalCategory !== 'all') query.proposalCategory = proposalCategory;
 
-    // Phân quyền chi nhánh cho Ticket Manager
+    const User = require('../models/User');
+
+    // Phân quyền chi nhánh cho Ticket Manager hoặc lọc theo branchId (truy vấn theo Users thuộc chi nhánh)
     if (req.user.role === 'ticket_manager') {
       const myBranch = req.user.branch?.branchId || 'sg';
-      query.branchId = myBranch;
+      const branchUsers = await User.find({ 'branch.branchId': myBranch }).distinct('_id');
+      query.proposerId = { $in: branchUsers };
     } else if (branchId && branchId !== 'all') {
-      query.branchId = branchId;
+      const branchUsers = await User.find({ 'branch.branchId': branchId }).distinct('_id');
+      query.proposerId = { $in: branchUsers };
     }
 
     const proposals = await PricingProposal.find(query)
       .populate('routeId', 'name startPoint endPoint distance')
-      .populate('proposerId', 'name phone email role')
+      .populate('proposerId', 'name phone email role branch')
       .populate('reviewedBy', 'name phone role')
       .sort({ createdAt: -1 })
       .lean();
 
+    // Định dạng dữ liệu với các thuộc tính tính toán động từ bảng User và công thức giá
+    const formattedProposals = proposals.map((p) => {
+      const currentPrice = Number(p.currentPrice) || 0;
+      const proposedPrice = Number(p.proposedPrice) || 0;
+      const calcPct = currentPrice > 0 ? Math.round(((proposedPrice - currentPrice) / currentPrice) * 100) : 0;
+
+      return {
+        ...p,
+        proposerName: p.proposerId?.name || 'Quản lý phòng vé',
+        proposerPhone: p.proposerId?.phone || '',
+        branchId: p.proposerId?.branch?.branchId || 'sg',
+        adjustmentPercentage: calcPct
+      };
+    });
+
     res.status(200).json({
       success: true,
-      count: proposals.length,
-      proposals
+      count: formattedProposals.length,
+      proposals: formattedProposals
     });
   } catch (error) {
     console.error('Lỗi lấy danh sách đề xuất giá vé:', error);
@@ -584,7 +598,11 @@ exports.reviewPricingProposal = async (req, res) => {
         } 
         // 2. Nếu là đề xuất ĐIỀU CHỈNH GIÁ VÉ (adjustment)
         else {
-          if (proposal.proposalType === 'percentage' && proposal.adjustmentPercentage !== 0) {
+          const calcPct = proposal.currentPrice > 0
+            ? Math.round(((proposal.proposedPrice - proposal.currentPrice) / proposal.currentPrice) * 100)
+            : 0;
+
+          if (proposal.proposalType === 'percentage' && calcPct !== 0) {
             await pricingService.createRule({
               name: `[Phòng vé đề xuất] ${proposal.title}`,
               routeId: proposal.routeId._id.toString(),
@@ -592,7 +610,7 @@ exports.reviewPricingProposal = async (req, res) => {
               busType: proposal.busType,
               dayOfWeek: [],
               adjustmentType: 'percentage',
-              adjustmentValue: proposal.adjustmentPercentage,
+              adjustmentValue: calcPct,
               isActive: true
             });
           } else if (proposal.proposalType === 'fixed_price' || proposal.proposalType === 'flat') {

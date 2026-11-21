@@ -87,20 +87,33 @@ const AgentTicketsPage = ({ setActiveTab }) => {
     }
   };
 
-  // Lấy thông tin ca trực quầy hiện tại
+  // Lấy thông tin ca trực & trạng thái chấm công hôm nay
   const fetchShiftStatus = async () => {
     try {
+      // 1. Kiểm tra ShiftSession (đối với nhân viên bán vé trực ca két tiền)
       const res = await fetch('http://localhost:8000/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.session && data.session.status === 'active') {
         setActiveShift(data.session);
-      } else {
-        setActiveShift(null);
+        return;
       }
+
+      // 2. Kiểm tra Attendance chấm công Face ID hôm nay (đối với Quản lý phòng vé & nhân sự khác)
+      const attRes = await fetch('http://localhost:8000/api/attendance/mine', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const attData = await attRes.json();
+      if (attRes.ok && attData.success && attData.todayStatus === 'active') {
+        setActiveShift({ status: 'active', source: 'attendance' });
+        return;
+      }
+
+      setActiveShift(null);
     } catch (err) {
       console.warn('Không thể nạp thông tin ca trực:', err);
+      setActiveShift(null);
     }
   };
 
@@ -1052,7 +1065,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
                                 className="btn-action btn-action-danger"
                                 disabled={!activeShift}
                                 onClick={() => handleOpenCancelConfirmation(booking)}
-                                title={!activeShift ? 'Vui lòng mở ca trực để thực hiện hủy vé' : 'Hủy vé và hoàn tiền theo quy định (trước 5 ngày)'}
+                                title={!activeShift ? 'Thao tác bị khóa: Vui lòng chấm công vào ca hôm nay để thực hiện hủy vé' : 'Hủy vé và hoàn tiền theo quy định (trước 5 ngày)'}
                               >
                                 Hủy Vé
                               </button>
@@ -1600,15 +1613,15 @@ const AgentTicketsPage = ({ setActiveTab }) => {
               marginBottom: '1rem'
             }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#dc2626' }} />
-              YÊU CẦU MỞ CA ĐỂ THAO TÁC KÉT TIỀN
+              YÊU CẦU CHẤM CÔNG VÀO CA ĐỂ HỦY VÉ
             </div>
 
             <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: '#0f172a', margin: '0 0 0.5rem 0' }}>
-              Chưa Mở Ca Trực Quầy Vé
+              Chưa Chấm Công Vào Ca Hôm Nay
             </h3>
 
             <p style={{ color: '#64748b', fontSize: '0.85rem', lineHeight: '1.5', margin: '0 auto 1.5rem auto' }}>
-              Hành động hủy vé và hoàn tiền mặt cho hành khách yêu cầu mở két tiền và ghi nhận vào ca trực của nhân viên. Vui lòng chấm công mở ca trước khi thao tác.
+              Thao tác hủy vé và hoàn tiền cho hành khách yêu cầu nhân viên phải hoàn tất chấm công vào ca làm việc hôm nay. Vui lòng chấm công ca trực trước khi thao tác.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1616,7 +1629,9 @@ const AgentTicketsPage = ({ setActiveTab }) => {
                 type="button"
                 onClick={() => {
                   setShowShiftRequiredModal(false);
-                  if (setActiveTab) setActiveTab('agent-attendance');
+                  if (setActiveTab) {
+                    setActiveTab(user?.role === 'ticket_agent' ? 'agent-attendance' : 'staff-attendance');
+                  }
                 }}
                 style={{
                   backgroundColor: '#2563eb',
@@ -1630,7 +1645,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
                   boxShadow: '0 4px 14px rgba(37, 99, 235, 0.35)'
                 }}
               >
-                Chấm Công Face ID &amp; Mở Ca Ngay ➔
+                Đến Trang Chấm Công Ca Trực
               </button>
 
               <button
