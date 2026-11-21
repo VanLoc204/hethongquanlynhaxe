@@ -5,15 +5,8 @@ const pricingProposalSchema = new mongoose.Schema(
     proposerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'Người lập đề xuất là bắt buộc.'],
       index: true
-    },
-    proposerName: {
-      type: String,
-      required: true
-    },
-    proposerPhone: {
-      type: String
     },
     title: {
       type: String,
@@ -39,10 +32,6 @@ const pricingProposalSchema = new mongoose.Schema(
       type: String,
       enum: ['percentage', 'fixed_price', 'flat'],
       default: 'percentage'
-    },
-    adjustmentPercentage: {
-      type: Number,
-      default: 0
     },
     currentPrice: {
       type: Number,
@@ -79,12 +68,6 @@ const pricingProposalSchema = new mongoose.Schema(
     },
     reviewedAt: {
       type: Date
-    },
-    branchId: {
-      type: String,
-      enum: ['sg', 'dl', 'ct'],
-      default: 'sg',
-      index: true
     }
   },
   {

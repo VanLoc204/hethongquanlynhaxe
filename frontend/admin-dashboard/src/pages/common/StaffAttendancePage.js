@@ -127,7 +127,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
   };
 
   // 1. Lấy tọa độ GPS trình duyệt
-  useEffect(() => {
+  const requestGpsLocation = useCallback(() => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
@@ -136,18 +136,33 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
           setGpsCoords({
             lat,
             lng,
-            text: `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E (Độ chính xác cao)`
+            isReal: true,
+            text: `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E (GPS thiết bị)`
           });
         },
         () => {
-          setGpsCoords({ lat: 10.7769, lng: 106.7009, text: '10.7769°N, 106.7009°E (Mặc định TP.HCM)' });
+          setGpsCoords({
+            lat: 10.7769,
+            lng: 106.7009,
+            isReal: false,
+            text: '10.7769°N, 106.7009°E (Mặc định TP.HCM - Bấm để lấy GPS thực)'
+          });
         },
         { timeout: 8000, enableHighAccuracy: true }
       );
     } else {
-      setGpsCoords({ lat: 10.7769, lng: 106.7009, text: '10.7769°N, 106.7009°E (Mặc định TP.HCM)' });
+      setGpsCoords({
+        lat: 10.7769,
+        lng: 106.7009,
+        isReal: false,
+        text: '10.7769°N, 106.7009°E (Mặc định TP.HCM)'
+      });
     }
   }, []);
+
+  useEffect(() => {
+    requestGpsLocation();
+  }, [requestGpsLocation]);
 
   // 2. Nạp dữ liệu chấm công từ Backend API
   const fetchMyAttendance = useCallback(async () => {
@@ -311,31 +326,40 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
     };
   }, [cameraActive, modelsReady, registeredDescriptors, user]);
 
-  // 5. Chấm công vào ca (Check-in)
+  // 5. Chấm công vào ca (Check-in với Face ID - Đồng bộ luồng nhân viên bán vé)
   const handleCheckIn = async () => {
+    if (!cameraActive) {
+      showToast('Vui lòng bật camera để nhận diện khuôn mặt!', 'error');
+      return;
+    }
+    if (!faceDetected) {
+      showToast('Chưa nhận diện được khuôn mặt. Vui lòng nhìn thẳng vào camera!', 'error');
+      return;
+    }
     if (!videoRef.current) return;
     setActionLoading(true);
 
     try {
-      let descriptor = null;
-      let photoSnap = null;
+      const detectRes = await detectFaceAndExtractDescriptor(videoRef.current, 416);
+      if (!detectRes || !detectRes.descriptor || detectRes.descriptor.length !== 128) {
+        showToast('Ảnh quét chưa rõ nét. Vui lòng giữ yên khuôn mặt!', 'error');
+        setActionLoading(false);
+        return;
+      }
 
-      if (cameraActive) {
-        const detectRes = await detectFaceAndExtractDescriptor(videoRef.current);
-        if (detectRes && detectRes.descriptor) {
-          descriptor = Array.from(detectRes.descriptor);
-          photoSnap = captureSnapshot(videoRef.current);
+      const descriptor = Array.from(detectRes.descriptor);
+
+      // Nếu đã có Face ID: So khớp trước ở client để phản hồi ngay nếu không đúng người
+      if (faceRegistered && registeredDescriptors.length > 0) {
+        const matchCheck = verifyFaceMatch(descriptor, registeredDescriptors, 0.42);
+        if (!matchCheck.isMatch) {
+          showToast(`Khuôn mặt không khớp (${matchCheck.similarity}%). Vui lòng không điểm danh hộ!`, 'error');
+          setActionLoading(false);
+          return;
         }
       }
 
-      // Nếu chưa có descriptor từ camera, tạo descriptor mô phỏng an toàn nếu người dùng chưa mở camera
-      if (!descriptor) {
-        if (faceRegistered && registeredDescriptors.length > 0) {
-          descriptor = registeredDescriptors[0];
-        } else {
-          descriptor = Array(128).fill(0.05);
-        }
-      }
+      const photoSnap = captureSnapshot(videoRef.current, 0.75, 480);
 
       const payload = {
         faceDescriptor: descriptor,
@@ -358,6 +382,10 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
       const data = await res.json();
       if (res.ok && data.success) {
         showToast(data.message || 'Bắt đầu ca trực thành công!', 'success');
+        setFaceRegistered(true);
+        if (registeredDescriptors.length === 0) {
+          setRegisteredDescriptors([descriptor]);
+        }
         await fetchMyAttendance();
         if (cameraActive) handleStopCamera();
       } else {
@@ -370,30 +398,39 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
     }
   };
 
-  // 6. Chấm công tan ca (Check-out)
+  // 6. Chấm công tan ca (Check-out với Face ID)
   const handleCheckOut = async () => {
+    if (!cameraActive) {
+      showToast('Vui lòng bật camera để xác thực tan ca!', 'error');
+      return;
+    }
+    if (!faceDetected) {
+      showToast('Chưa nhận diện được khuôn mặt. Vui lòng nhìn thẳng vào camera!', 'error');
+      return;
+    }
     if (!videoRef.current) return;
     setActionLoading(true);
 
     try {
-      let descriptor = null;
-      let photoSnap = null;
+      const detectRes = await detectFaceAndExtractDescriptor(videoRef.current, 416);
+      if (!detectRes || !detectRes.descriptor || detectRes.descriptor.length !== 128) {
+        showToast('Ảnh quét chưa rõ nét. Vui lòng giữ yên khuôn mặt!', 'error');
+        setActionLoading(false);
+        return;
+      }
 
-      if (cameraActive) {
-        const detectRes = await detectFaceAndExtractDescriptor(videoRef.current);
-        if (detectRes && detectRes.descriptor) {
-          descriptor = Array.from(detectRes.descriptor);
-          photoSnap = captureSnapshot(videoRef.current);
+      const descriptor = Array.from(detectRes.descriptor);
+
+      if (faceRegistered && registeredDescriptors.length > 0) {
+        const matchCheck = verifyFaceMatch(descriptor, registeredDescriptors, 0.42);
+        if (!matchCheck.isMatch) {
+          showToast(`Khuôn mặt không khớp khi tan ca (${matchCheck.similarity}%).`, 'error');
+          setActionLoading(false);
+          return;
         }
       }
 
-      if (!descriptor) {
-        if (faceRegistered && registeredDescriptors.length > 0) {
-          descriptor = registeredDescriptors[0];
-        } else {
-          descriptor = Array(128).fill(0.05);
-        }
-      }
+      const photoSnap = captureSnapshot(videoRef.current, 0.75, 480);
 
       const payload = {
         faceDescriptor: descriptor,
@@ -472,25 +509,6 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
     }
   };
 
-  // 8. Đặt lại bản ghi ca trực hôm nay (Phục vụ Demo / Test)
-  const handleResetToday = async () => {
-    if (!window.confirm('Bạn có chắc chắn muốn đặt lại (reset) trạng thái ca trực hôm nay để thực hiện lại luồng chấm công demo?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/attendance/reset-today`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast('Đã đặt lại trạng thái ca trực hôm nay thành công!', 'success');
-        await fetchMyAttendance();
-      } else {
-        showToast(data.message || 'Không thể reset ca trực.', 'error');
-      }
-    } catch (err) {
-      showToast('Lỗi kết nối khi reset ca trực.', 'error');
-    }
-  };
 
   return (
     <div style={{ padding: '24px 28px', backgroundColor: '#f8fafc', minHeight: '100vh', fontFamily: 'inherit' }}>
@@ -547,9 +565,6 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
               {roleInfo.title.toUpperCase()}
             </span>
           </div>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-            Nhân sự: <strong>{user?.name || 'Cán bộ quản lý'}</strong> • SĐT: <strong>{user?.phone || '--'}</strong>
-          </p>
         </div>
 
         {/* Nút chuyển đổi Tab & Nút Hành Động */}
@@ -585,22 +600,6 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
             }}
           >
             Lịch Sử Chấm Công ({attendanceHistory.length})
-          </button>
-          <button
-            onClick={handleResetToday}
-            title="Đặt lại trạng thái ca trực hôm nay để thực hiện lại luồng demo"
-            style={{
-              padding: '8px 12px',
-              borderRadius: '8px',
-              fontSize: '0.75rem',
-              fontWeight: '700',
-              border: '1px solid #cbd5e1',
-              backgroundColor: '#ffffff',
-              color: '#64748b',
-              cursor: 'pointer'
-            }}
-          >
-            Đặt lại hôm nay
           </button>
         </div>
       </div>
@@ -684,7 +683,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
             Tổng Giờ Làm Việc Lũy Kế
           </div>
           <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#0f172a' }}>
-            {summaryStats.totalWorkHours || (attendanceHistory.length * 8)} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>giờ</span>
+            {summaryStats.totalWorkHours !== undefined && summaryStats.totalWorkHours !== null ? summaryStats.totalWorkHours : 0} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>giờ</span>
           </div>
           <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px' }}>
             Chuẩn ca: 8.0 giờ / ngày
@@ -725,9 +724,6 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
               </span>
             )}
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '6px' }}>
-            Đối soát chuẩn 128-D Vector
-          </div>
         </div>
       </div>
 
@@ -739,7 +735,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div>
                 <h2 style={{ fontSize: '1rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                  Camera Nhận Diện Khuôn Mặt AI (Face ID Live)
+                  Camera Nhận Diện Khuôn Mặt AI
                 </h2>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
                   Xác thực danh tính người thật, chống điểm danh hộ &amp; gian lận ca trực
@@ -867,31 +863,27 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
               </div>
             )}
 
-            {/* Thanh công cụ Đăng Ký / Cập Nhật Face ID */}
-            {cameraActive && (
+            {/* Thanh công cụ Đăng Ký / Cập Nhật Face ID (Học hỏi theo chuẩn luồng nhân viên bán vé) */}
+            {!faceRegistered && (
               <div style={{
                 marginTop: '16px',
-                padding: '14px 18px',
-                backgroundColor: !faceRegistered ? '#fffbeb' : '#f8fafc',
+                padding: '12px 16px',
+                backgroundColor: '#fffbeb',
                 borderRadius: '8px',
-                border: !faceRegistered ? '1px solid #fde68a' : '1px solid #e2e8f0',
+                border: '1px solid #fde68a',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 gap: '12px'
               }}>
-                <div style={{ fontSize: '0.78rem', color: !faceRegistered ? '#92400e' : '#475569' }}>
-                  {!faceRegistered ? (
-                    <span><strong>Bước 1:</strong> Bạn chưa đăng ký mẫu khuôn mặt. Nhấn nút bên cạnh để quét đăng ký Face ID 3 góc mặt tự động (chuẩn sinh trắc học)!</span>
-                  ) : (
-                    <span><strong>Face ID đã lưu:</strong> Nếu muốn cập nhật lại 3 góc mặt sinh trắc học mới, bạn có thể quét lại bất kỳ lúc nào.</span>
-                  )}
+                <div style={{ fontSize: '0.78rem', color: '#92400e' }}>
+                  <strong>Chưa có mẫu Face ID:</strong> Bạn có thể nhấn nút "Đăng Ký Khuôn Mặt Face ID (3 Góc Tự Động)" bên cạnh để lưu mẫu trước, hoặc bật camera rồi bấm "BẮT ĐẦU CA TRỰC" để hệ thống tự động lưu mẫu và kích hoạt Face ID ngay lần đầu!
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowAutoEnrollModal(true)}
                   style={{
-                    backgroundColor: !faceRegistered ? '#2563eb' : '#0284c7',
+                    backgroundColor: '#2563eb',
                     color: '#ffffff',
                     border: 'none',
                     padding: '8px 16px',
@@ -903,7 +895,43 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
                     boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
                   }}
                 >
-                  {!faceRegistered ? 'Đăng Ký Face ID (3 Góc Tự Động)' : 'Quét Lại Mẫu Face ID'}
+                  Đăng Ký Khuôn Mặt Face ID (3 Góc Tự Động)
+                </button>
+              </div>
+            )}
+
+            {faceRegistered && cameraActive && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                backgroundColor: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                  <strong>Face ID đã lưu:</strong> Nếu muốn cập nhật lại 3 góc mặt sinh trắc học mới, bạn có thể quét lại bất kỳ lúc nào.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAutoEnrollModal(true)}
+                  style={{
+                    backgroundColor: '#0284c7',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontSize: '0.75rem',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                  }}
+                >
+                  Quét Lại Mẫu Face ID
                 </button>
               </div>
             )}
@@ -918,18 +946,28 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
               </h2>
 
               {/* Tọa độ GPS Tự Động */}
-              <div style={{
-                marginBottom: '20px',
-                padding: '12px 14px',
-                backgroundColor: '#f8fafc',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                fontSize: '0.75rem',
-                color: '#64748b'
-              }}>
-                <div style={{ fontWeight: '700', color: '#475569', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }}></span>
-                  ĐỊNH VỊ GPS THỜI GIAN THỰC
+              <div
+                onClick={!gpsCoords.isReal ? requestGpsLocation : undefined}
+                title={!gpsCoords.isReal ? 'Nhấn để thử kết nối lại GPS thiết bị thực tế' : 'Đã kết nối GPS thiết bị'}
+                style={{
+                  marginBottom: '20px',
+                  padding: '12px 14px',
+                  backgroundColor: '#f8fafc',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '0.75rem',
+                  color: '#64748b',
+                  cursor: !gpsCoords.isReal ? 'pointer' : 'default'
+                }}
+              >
+                <div style={{ fontWeight: '700', color: '#475569', marginBottom: '3px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: gpsCoords.isReal ? '#10b981' : '#f59e0b', display: 'inline-block' }}></span>
+                    ĐỊNH VỊ GPS THỜI GIAN THỰC
+                  </div>
+                  {!gpsCoords.isReal && (
+                    <span style={{ color: '#2563eb', fontSize: '0.7rem', fontWeight: '700' }}>Cập nhật GPS</span>
+                  )}
                 </div>
                 <div style={{ fontFamily: 'monospace', color: '#0f172a', fontWeight: '600' }}>{gpsCoords.text}</div>
               </div>
@@ -1106,10 +1144,10 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
                       </td>
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ fontWeight: '700', color: '#0f172a' }}>
-                          {item.tripRoute || item.officeName || item.location || roleInfo.title}
+                          {item.officeName || item.tripRoute || roleInfo.title}
                         </div>
                         <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                          {item.location || item.officeName || 'Văn phòng điều hành'}
+                          {item.branchName || 'Chi nhánh TP.HCM'}
                         </div>
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center', fontFamily: 'monospace', fontWeight: '700', color: '#047857' }}>
@@ -1119,7 +1157,7 @@ const StaffAttendancePage = ({ setActiveTab, defaultView = 'checkin' }) => {
                         {item.checkOutTime || (item.endTime ? new Date(item.endTime).toLocaleTimeString('vi-VN') : '--:--:--')}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center', fontWeight: '700' }}>
-                        {item.durationHours ? `${item.durationHours}h` : '8.0h'}
+                        {item.durationText || (item.durationHours !== undefined && item.durationHours !== null ? `${item.durationHours}h` : '--')}
                       </td>
                       <td style={{ padding: '12px 16px', textAlign: 'center' }}>
                         {item.faceVerified ? (

@@ -207,6 +207,7 @@ const TicketMonthlyReportsReviewPage = () => {
           display: flex;
           flex-direction: column;
           gap: 0.35rem;
+          white-space: nowrap;
         }
 
         .kpi-review-card.warning {
@@ -223,6 +224,7 @@ const TicketMonthlyReportsReviewPage = () => {
           width: 100%;
           border-collapse: collapse;
           font-size: 0.82rem;
+          white-space: nowrap;
         }
 
         .review-custom-table th {
@@ -231,13 +233,16 @@ const TicketMonthlyReportsReviewPage = () => {
           font-weight: 700;
           padding: 0.65rem 0.85rem;
           border: 1px solid #cbd5e1;
-          text-align: left;
+          text-align: center;
+          white-space: nowrap;
         }
 
         .review-custom-table td {
           padding: 0.65rem 0.85rem;
           border: 1px solid #e2e8f0;
           color: #1e293b;
+          text-align: center;
+          white-space: nowrap;
         }
 
         .review-custom-table tbody tr:hover {
@@ -425,59 +430,70 @@ const TicketMonthlyReportsReviewPage = () => {
           <table className="review-custom-table">
             <thead>
               <tr>
-                <th style={{ width: '35px', textAlign: 'center' }}>STT</th>
-                <th>Mã Hồ Sơ</th>
-                <th>Nhân Viên Bán Vé</th>
-                <th style={{ width: '95px', textAlign: 'center' }}>Kỳ Báo Cáo</th>
-                <th style={{ width: '65px', textAlign: 'center' }}>Số Ca</th>
-                <th style={{ width: '65px', textAlign: 'center' }}>Số Vé</th>
-                <th style={{ width: '120px', textAlign: 'right' }}>Tiền Mặt (VNĐ)</th>
-                <th style={{ width: '120px', textAlign: 'right' }}>Chuyển Khoản (VNĐ)</th>
-                <th style={{ width: '135px', textAlign: 'right' }}>Tổng Doanh Thu</th>
-                <th style={{ width: '125px' }}>Thời Gian Nộp</th>
-                <th style={{ width: '110px', textAlign: 'center' }}>Trạng Thái</th>
-                <th style={{ width: '140px', textAlign: 'center' }}>Thao Tác</th>
+                <th style={{ width: '45px', textAlign: 'center', whiteSpace: 'nowrap' }}>STT</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Mã Hồ Sơ</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Nhân Viên Bán Vé</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Kỳ Báo Cáo</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Số Ca</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Số Vé</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Tiền Mặt (VNĐ)</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Chuyển Khoản (VNĐ)</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Tổng Doanh Thu</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Thời Gian Nộp</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Trạng Thái</th>
+                <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Thao Tác</th>
               </tr>
             </thead>
             <tbody>
               {reports.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontStyle: 'italic' }}>
+                  <td colSpan={12} style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontStyle: 'italic', whiteSpace: 'nowrap' }}>
                     Không tìm thấy báo cáo doanh thu nào phù hợp với bộ lọc hiện tại.
                   </td>
                 </tr>
               ) : (
                 reports.map((r, idx) => (
                   <tr key={r._id || idx}>
-                    <td style={{ textAlign: 'center', fontWeight: '700' }}>{idx + 1}</td>
-                    <td style={{ fontWeight: '700', color: '#1e3a8a' }}>{r.reportCode}</td>
-                    <td>
-                      <div style={{ fontWeight: '700' }}>{(r.userId || r.agentId)?.name || 'Nhân viên bán vé'}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                        {(r.userId || r.agentId)?.phone} • {(r.userId || r.agentId)?.branch?.branchName || 'Chi nhánh TP.HCM'}
-                      </div>
+                    <td style={{ textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                    <td style={{ textAlign: 'center', fontWeight: '700', color: '#1e3a8a', whiteSpace: 'nowrap' }}>
+                      {r.reportCode}
                     </td>
-                    <td style={{ textAlign: 'center', fontWeight: '700' }}>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontWeight: '700' }}>{(r.userId || r.agentId)?.name || 'Nhân viên bán vé'}</span>
+                      {(r.userId || r.agentId)?.phone && (
+                        <span style={{ color: '#64748b', fontSize: '0.78rem', marginLeft: '6px' }}>
+                          ({(r.userId || r.agentId)?.phone})
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>
                       Tháng {r.month}/{r.year}
                     </td>
-                    <td style={{ textAlign: 'center' }}>{r.summary?.totalShifts || 0}</td>
-                    <td style={{ textAlign: 'center' }}>{r.summary?.totalTickets || 0}</td>
-                    <td style={{ textAlign: 'right' }}>{(r.summary?.cashRevenue || 0).toLocaleString('vi-VN')}</td>
-                    <td style={{ textAlign: 'right' }}>{(r.summary?.cashlessRevenue || 0).toLocaleString('vi-VN')}</td>
-                    <td style={{ textAlign: 'right', fontWeight: '800', color: '#166534' }}>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{r.summary?.totalShifts || 0}</td>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>{r.summary?.totalTickets || 0}</td>
+                    <td style={{ textAlign: 'center', color: '#c2410c', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                      {(r.summary?.cashRevenue || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td style={{ textAlign: 'center', color: '#15803d', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                      {(r.summary?.cashlessRevenue || 0).toLocaleString('vi-VN')} đ
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: '800', color: '#166534', whiteSpace: 'nowrap' }}>
                       {formatCurrency(r.summary?.totalRevenue)}
                     </td>
-                    <td style={{ fontSize: '0.75rem' }}>{formatDateTime(r.submittedAt)}</td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td style={{ textAlign: 'center', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                      {formatDateTime(r.submittedAt)}
+                    </td>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {r.status === 'approved' && (
                         <span
                           style={{
                             backgroundColor: '#dcfce7',
                             color: '#15803d',
                             fontWeight: '700',
-                            padding: '3px 8px',
+                            padding: '4px 10px',
                             borderRadius: '12px',
-                            fontSize: '0.72rem'
+                            fontSize: '0.75rem',
+                            whiteSpace: 'nowrap'
                           }}
                         >
                           Đã Ký Duyệt
@@ -489,9 +505,10 @@ const TicketMonthlyReportsReviewPage = () => {
                             backgroundColor: '#fef3c7',
                             color: '#b45309',
                             fontWeight: '700',
-                            padding: '3px 8px',
+                            padding: '4px 10px',
                             borderRadius: '12px',
-                            fontSize: '0.72rem'
+                            fontSize: '0.75rem',
+                            whiteSpace: 'nowrap'
                           }}
                         >
                           Chờ Duyệt
@@ -503,27 +520,29 @@ const TicketMonthlyReportsReviewPage = () => {
                             backgroundColor: '#fee2e2',
                             color: '#b91c1c',
                             fontWeight: '700',
-                            padding: '3px 8px',
+                            padding: '4px 10px',
                             borderRadius: '12px',
-                            fontSize: '0.72rem'
+                            fontSize: '0.75rem',
+                            whiteSpace: 'nowrap'
                           }}
                         >
                           Từ Chối
                         </span>
                       )}
                     </td>
-                    <td style={{ textAlign: 'center' }}>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <button
                         onClick={() => handleOpenDetail(r._id)}
                         style={{
                           backgroundColor: r.status === 'pending' ? '#16a34a' : '#2563eb',
                           color: '#ffffff',
                           border: 'none',
-                          padding: '0.4rem 0.85rem',
+                          padding: '0.45rem 1rem',
                           borderRadius: '4px',
                           fontSize: '0.78rem',
                           fontWeight: '700',
-                          cursor: 'pointer'
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
                         }}
                       >
                         {r.status === 'pending' ? 'Thẩm Định & Ký' : 'Xem / In A4'}

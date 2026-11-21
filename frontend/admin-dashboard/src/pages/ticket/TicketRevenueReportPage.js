@@ -14,31 +14,22 @@ const formatDateToISO = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// Xuất file CSV (UTF-8) gồm đầy đủ 4 nội dung cốt lõi của khu vực
-const exportAreaRevenueToCsv = (summary, counterBreakdown, staffBreakdown, branchName, periodLabel) => {
+// Xuất file CSV (UTF-8) gồm tổng hợp doanh thu và danh sách nhân viên
+const exportAreaRevenueToCsv = (summary, staffBreakdown, branchName, periodLabel) => {
   let csvContent = '\uFEFF';
   csvContent += `BÁO CÁO KHU VỰC - AN BÌNH LINES\n`;
   csvContent += `Khu vực / Chi nhánh: ${branchName}\n`;
   csvContent += `Kỳ báo cáo: ${periodLabel}\n`;
   csvContent += `Thời gian xuất: ${new Date().toLocaleString('vi-VN')}\n\n`;
 
-  // Mục 1 & 2: Tổng doanh thu và phân loại dòng tiền
+  // Mục 1: Tổng doanh thu và phân loại dòng tiền
   csvContent += '--- I. TỔNG HỢP DOANH THU & PHÂN LOẠI DÒNG TIỀN KHU VỰC ---\n';
   csvContent += `1. Tổng doanh thu thực thu của khu vực: ${summary.totalRevenue.toLocaleString('vi-VN')} VNĐ\n`;
-  csvContent += `2. Doanh thu tiền mặt tại quầy (cần đối soát nộp quỹ): ${summary.cashRevenue.toLocaleString('vi-VN')} VNĐ (${summary.cashRate}%)\n`;
+  csvContent += `2. Doanh thu tiền mặt tại quầy: ${summary.cashRevenue.toLocaleString('vi-VN')} VNĐ (${summary.cashRate}%)\n`;
   csvContent += `3. Doanh thu chuyển khoản / Quét mã VietQR: ${summary.cashlessRevenue.toLocaleString('vi-VN')} VNĐ (${summary.cashlessRate}%)\n\n`;
 
-  // Mục 3: Thống kê doanh thu theo từng quầy / điểm bán vé
-  csvContent += '--- II. THỐNG KÊ DOANH THU THEO TỪNG QUẦY / ĐIỂM BÁN VÉ THUỘC KHU VỰC ---\n';
-  csvContent += 'STT,Quầy / Điểm bán vé,Tiền mặt tại quầy (VNĐ),Chuyển khoản QR (VNĐ),Tổng doanh thu (VNĐ),Tỷ trọng (%)\n';
-  counterBreakdown.forEach((c, idx) => {
-    const rate = summary.totalRevenue > 0 ? ((c.totalRevenue / summary.totalRevenue) * 100).toFixed(1) : '0.0';
-    csvContent += `${idx + 1},"${c.counter}",${c.totalCash},${c.totalCashless},${c.totalRevenue},${rate}%\n`;
-  });
-  csvContent += `TỔNG CỘNG,,${summary.cashRevenue},${summary.cashlessRevenue},${summary.totalRevenue},100%\n\n`;
-
-  // Mục 4: Thống kê doanh thu theo từng nhân viên bán vé trong chi nhánh
-  csvContent += '--- III. THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH ---\n';
+  // Mục 2: Thống kê doanh thu theo từng nhân viên bán vé trong chi nhánh
+  csvContent += '--- II. THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH ---\n';
   csvContent += 'STT,Họ và tên nhân viên,Số điện thoại,Tiền mặt thu được (VNĐ),Chuyển khoản QR (VNĐ),Tổng doanh thu (VNĐ),Tỷ trọng (%)\n';
   staffBreakdown.forEach((s, idx) => {
     const rate = summary.totalRevenue > 0 ? ((s.totalRevenue / summary.totalRevenue) * 100).toFixed(1) : '0.0';
@@ -73,7 +64,6 @@ const TicketRevenueReportPage = () => {
   const [toast, setToast] = useState(null);
   const [data, setData] = useState({
     summary: { totalRevenue: 0, cashRevenue: 0, cashlessRevenue: 0, initialCash: 0, ticketsCount: 0, shiftsCount: 0, cashRate: 0, cashlessRate: 0 },
-    counterBreakdown: [],
     staffBreakdown: []
   });
 
@@ -289,7 +279,6 @@ const TicketRevenueReportPage = () => {
     cashlessRate: 0
   };
 
-  const counterBreakdown = data.counterBreakdown || [];
   const staffBreakdown = data.staffBreakdown || [];
   const { month: currentM, year: currentY } = getCurrentReportMonthYear();
 
@@ -322,15 +311,19 @@ const TicketRevenueReportPage = () => {
           color: #334155;
           font-size: 0.76rem;
           font-weight: 700;
-          padding: 10px 12px;
+          padding: 10px 14px;
           border-bottom: 2px solid #cbd5e1;
           letter-spacing: 0.3px;
+          white-space: nowrap;
+          text-align: left;
         }
         .area-report-table td {
-          padding: 10px 12px;
+          padding: 10px 14px;
           font-size: 0.8rem;
           color: #1e293b;
           border-bottom: 1px solid #f1f5f9;
+          white-space: nowrap;
+          text-align: left;
         }
         .area-report-table tr:hover td {
           background-color: #f8fafc;
@@ -434,7 +427,7 @@ const TicketRevenueReportPage = () => {
                     boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
                   }}
                 >
-                  {existingReport.status === 'approved' ? '✓ Xem Bản In Quyết Toán' : '📄 Xem Phiếu Trình Duyệt'}
+                  {existingReport.status === 'approved' ? 'Xem Bản In Quyết Toán' : 'Xem Phiếu Trình Duyệt'}
                 </button>
               ) : (
                 <button
@@ -457,7 +450,7 @@ const TicketRevenueReportPage = () => {
             )}
 
             <button
-              onClick={() => exportAreaRevenueToCsv(summary, counterBreakdown, staffBreakdown, branchName, getPeriodLabel())}
+              onClick={() => exportAreaRevenueToCsv(summary, staffBreakdown, branchName, getPeriodLabel())}
               style={{
                 backgroundColor: '#ffffff',
                 border: '1px solid #cbd5e1',
@@ -470,22 +463,6 @@ const TicketRevenueReportPage = () => {
               }}
             >
               Xuất Excel (CSV)
-            </button>
-
-            <button
-              onClick={() => window.print()}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                fontWeight: '700',
-                padding: '6px 14px',
-                borderRadius: '6px',
-                fontSize: '0.78rem',
-                cursor: 'pointer'
-              }}
-            >
-              In Báo Cáo
             </button>
 
             <button
@@ -575,9 +552,9 @@ const TicketRevenueReportPage = () => {
           }}>
             <div>
               <span style={{ fontWeight: '800', color: existingReport.status === 'approved' ? '#166534' : existingReport.status === 'rejected' ? '#991b1b' : '#b45309' }}>
-                {existingReport.status === 'approved' && '✓ BÁO CÁO ĐÃ ĐƯỢC BAN GIÁM ĐỐC PHÊ DUYỆT QUYẾT TOÁN'}
-                {existingReport.status === 'pending' && '⏳ BÁO CÁO ĐANG CHỜ BAN GIÁM ĐỐC THẨM ĐỊNH & PHÊ DUYỆT'}
-                {existingReport.status === 'rejected' && '✕ BÁO CÁO BỊ BAN GIÁM ĐỐC TỪ CHỐI / YÊU CẦU GIẢI TRÌNH'}
+                {existingReport.status === 'approved' && 'BÁO CÁO ĐÃ ĐƯỢC BAN GIÁM ĐỐC PHÊ DUYỆT QUYẾT TOÁN'}
+                {existingReport.status === 'pending' && 'BÁO CÁO ĐANG CHỜ BAN GIÁM ĐỐC THẨM ĐỊNH & PHÊ DUYỆT'}
+                {existingReport.status === 'rejected' && 'BÁO CÁO BỊ BAN GIÁM ĐỐC TỪ CHỐI / YÊU CẦU GIẢI TRÌNH'}
               </span>
               <span style={{ marginLeft: '8px', color: '#475569' }}>
                 (Mã văn bản: <strong>{existingReport.reportCode}</strong> — Nộp ngày {new Date(existingReport.submittedAt).toLocaleDateString('vi-VN')})
@@ -629,18 +606,18 @@ const TicketRevenueReportPage = () => {
             padding: '1.2rem 1.4rem',
             boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
           }}>
-            <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+            <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
               1. TỔNG DOANH THU THỰC THU KHU VỰC
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', margin: '6px 0 2px 0' }}>
-              {summary.totalRevenue.toLocaleString('vi-VN')}&nbsp;<span style={{ fontSize: '1rem', fontWeight: '700', color: '#64748b' }}>₫</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', margin: '6px 0 2px 0', whiteSpace: 'nowrap' }}>
+              {summary.totalRevenue.toLocaleString('vi-VN')}&nbsp;<span style={{ fontSize: '1rem', fontWeight: '700', color: '#64748b' }}>đ</span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#475569', fontWeight: '600' }}>
+            <div style={{ fontSize: '0.75rem', color: '#475569', fontWeight: '600', whiteSpace: 'nowrap' }}>
               Kỳ báo cáo: <strong>{getPeriodLabel()}</strong>
             </div>
           </div>
 
-          {/* Card 2: Doanh thu tiền mặt tại quầy (Cần đối soát nộp quỹ) */}
+          {/* Card 2: Doanh thu tiền mặt tại quầy */}
           <div style={{
             background: '#ffffff',
             borderRadius: '12px',
@@ -649,26 +626,13 @@ const TicketRevenueReportPage = () => {
             padding: '1.2rem 1.4rem',
             boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.74rem', color: '#c2410c', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                2A. DOANH THU TIỀN MẶT TẠI QUẦY
-              </div>
-              <span style={{
-                backgroundColor: '#ffedd5',
-                color: '#9a3412',
-                fontSize: '0.68rem',
-                fontWeight: '800',
-                padding: '2px 7px',
-                borderRadius: '4px',
-                border: '1px solid #fdba74'
-              }}>
-                Cần đối soát nộp quỹ
-              </span>
+            <div style={{ fontSize: '0.74rem', color: '#c2410c', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+              2A. DOANH THU TIỀN MẶT TẠI QUẦY
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#ea580c', margin: '6px 0 2px 0' }}>
-              {summary.cashRevenue.toLocaleString('vi-VN')}&nbsp;<span style={{ fontSize: '1rem', fontWeight: '700', color: '#ea580c' }}>₫</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#ea580c', margin: '6px 0 2px 0', whiteSpace: 'nowrap' }}>
+              {summary.cashRevenue.toLocaleString('vi-VN')}&nbsp;<span style={{ fontSize: '1rem', fontWeight: '700', color: '#ea580c' }}>đ</span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#9a3412', fontWeight: '600' }}>
+            <div style={{ fontSize: '0.75rem', color: '#9a3412', fontWeight: '600', whiteSpace: 'nowrap' }}>
               Chiếm <strong>{summary.cashRate}%</strong> tổng doanh thu thực thu khu vực
             </div>
           </div>
@@ -682,32 +646,19 @@ const TicketRevenueReportPage = () => {
             padding: '1.2rem 1.4rem',
             boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.74rem', color: '#15803d', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
-                2B. DOANH THU CHUYỂN KHOẢN / VIETQR
-              </div>
-              <span style={{
-                backgroundColor: '#dcfce7',
-                color: '#166534',
-                fontSize: '0.68rem',
-                fontWeight: '800',
-                padding: '2px 7px',
-                borderRadius: '4px',
-                border: '1px solid #86efac'
-              }}>
-                Thanh toán số hóa
-              </span>
+            <div style={{ fontSize: '0.74rem', color: '#15803d', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+              2B. DOANH THU CHUYỂN KHOẢN / VIETQR
             </div>
-            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#16a34a', margin: '6px 0 2px 0' }}>
-              {summary.cashlessRevenue.toLocaleString('vi-VN')}&nbsp;<span style={{ fontSize: '1rem', fontWeight: '700', color: '#16a34a' }}>₫</span>
+            <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#16a34a', margin: '6px 0 2px 0', whiteSpace: 'nowrap' }}>
+              {summary.cashlessRevenue.toLocaleString('vi-VN')}&nbsp;<span style={{ fontSize: '1rem', fontWeight: '700', color: '#16a34a' }}>đ</span>
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: '600' }}>
+            <div style={{ fontSize: '0.75rem', color: '#166534', fontWeight: '600', whiteSpace: 'nowrap' }}>
               Chiếm <strong>{summary.cashlessRate}%</strong> tổng doanh thu thực thu khu vực
             </div>
           </div>
         </div>
 
-        {/* 3. BẢNG THỐNG KÊ DOANH THU THEO TỪNG QUẦY / ĐIỂM BÁN VÉ THUỘC KHU VỰC */}
+        {/* 3. BẢNG THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH */}
         <div style={{
           background: '#ffffff',
           borderRadius: '12px',
@@ -717,98 +668,7 @@ const TicketRevenueReportPage = () => {
         }}>
           <div style={{ marginBottom: '0.85rem' }}>
             <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
-              3. Thống Kê Doanh Thu Theo Từng Quầy / Điểm Bán Vé Thuộc Khu Vực
-            </h2>
-            <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px' }}>
-              Chi tiết doanh số bán vé, tỷ trọng đóng góp và số tiền mặt cần thu hồi theo từng điểm giao dịch trong khu vực.
-            </div>
-          </div>
-
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', fontSize: '0.82rem' }}>
-              Đang thống kê doanh thu theo quầy vé...
-            </div>
-          ) : counterBreakdown.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontSize: '0.82rem', backgroundColor: '#f8fafc', borderRadius: '6px' }}>
-              Chưa ghi nhận doanh thu tại các quầy vé trong kỳ báo cáo này.
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto', width: '100%' }}>
-              <table className="area-report-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                <thead>
-                  <tr>
-                    <th style={{ width: '50px', textAlign: 'center' }}>STT</th>
-                    <th>Quầy / Điểm Bán Vé</th>
-                    <th style={{ textAlign: 'right' }}>Tiền Mặt Tại Quầy (Nộp Quỹ)</th>
-                    <th style={{ textAlign: 'right' }}>Chuyển Khoản / VietQR</th>
-                    <th style={{ textAlign: 'right' }}>Tổng Doanh Thu</th>
-                    <th style={{ width: '100px', textAlign: 'center' }}>Tỷ Trọng</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {counterBreakdown.map((c, idx) => {
-                    const rate = summary.totalRevenue > 0 ? ((c.totalRevenue / summary.totalRevenue) * 100).toFixed(1) : '0.0';
-                    return (
-                      <tr key={idx}>
-                        <td style={{ textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{idx + 1}</td>
-                        <td style={{ fontWeight: '700', color: '#0f172a' }}>{c.counter}</td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#c2410c' }}>
-                          {c.totalCash.toLocaleString('vi-VN')}&nbsp;₫
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#15803d' }}>
-                          {c.totalCashless.toLocaleString('vi-VN')}&nbsp;₫
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
-                          {c.totalRevenue.toLocaleString('vi-VN')}&nbsp;₫
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <span style={{
-                            backgroundColor: '#f1f5f9',
-                            color: '#334155',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontWeight: '700',
-                            fontSize: '0.72rem'
-                          }}>
-                            {rate}%
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {/* Dòng tổng cộng */}
-                  <tr style={{ backgroundColor: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: '800' }}>
-                    <td colSpan={2} style={{ textAlign: 'left', textTransform: 'uppercase', color: '#0f172a' }}>
-                      Tổng Cộng Khu Vực:
-                    </td>
-                    <td style={{ textAlign: 'right', color: '#c2410c' }}>
-                      {summary.cashRevenue.toLocaleString('vi-VN')}&nbsp;₫
-                    </td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>
-                      {summary.cashlessRevenue.toLocaleString('vi-VN')}&nbsp;₫
-                    </td>
-                    <td style={{ textAlign: 'right', color: '#0f172a', fontSize: '0.92rem' }}>
-                      {summary.totalRevenue.toLocaleString('vi-VN')}&nbsp;₫
-                    </td>
-                    <td style={{ textAlign: 'center', color: '#0f172a' }}>100%</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* 4. BẢNG THỐNG KÊ DOANH THU THEO TỪNG NHÂN VIÊN BÁN VÉ TRONG CHI NHÁNH */}
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '12px',
-          border: '1px solid #e2e8f0',
-          padding: '1.25rem 1.4rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-        }}>
-          <div style={{ marginBottom: '0.85rem' }}>
-            <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
-              4. Thống Kê Doanh Thu Theo Từng Nhân Viên Bán Vé Trong Chi Nhánh
+              3. Thống Kê Doanh Thu Theo Từng Nhân Viên Bán Vé Trong Chi Nhánh
             </h2>
             <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px' }}>
               Theo dõi năng suất bán hàng thực tế, doanh thu trực tiếp thu tiền mặt và chuyển khoản của từng nhân sự phòng vé.
@@ -828,13 +688,13 @@ const TicketRevenueReportPage = () => {
               <table className="area-report-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '50px', textAlign: 'center' }}>STT</th>
-                    <th>Nhân Viên Bán Vé</th>
-                    <th>Số Điện Thoại</th>
-                    <th style={{ textAlign: 'right' }}>Tiền Mặt Thu Được</th>
-                    <th style={{ textAlign: 'right' }}>Chuyển Khoản / VietQR</th>
-                    <th style={{ textAlign: 'right' }}>Tổng Doanh Thu</th>
-                    <th style={{ width: '100px', textAlign: 'center' }}>Tỷ Trọng</th>
+                    <th style={{ width: '60px', textAlign: 'left', whiteSpace: 'nowrap' }}>STT</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Nhân Viên Bán Vé</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Số Điện Thoại</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Tiền Mặt Thu Được</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Chuyển Khoản / VietQR</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Tổng Doanh Thu</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Tỷ Trọng</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -842,26 +702,27 @@ const TicketRevenueReportPage = () => {
                     const rate = summary.totalRevenue > 0 ? ((s.totalRevenue / summary.totalRevenue) * 100).toFixed(1) : '0.0';
                     return (
                       <tr key={idx}>
-                        <td style={{ textAlign: 'center', color: '#64748b', fontWeight: '600' }}>{idx + 1}</td>
-                        <td style={{ fontWeight: '700', color: '#0f172a' }}>{s.staffName}</td>
-                        <td style={{ color: '#64748b', fontSize: '0.76rem', fontFamily: 'monospace' }}>{s.phone || 'N/A'}</td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#c2410c' }}>
-                          {s.totalCash.toLocaleString('vi-VN')}&nbsp;₫
+                        <td style={{ textAlign: 'left', color: '#64748b', fontWeight: '600', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                        <td style={{ fontWeight: '700', color: '#0f172a', textAlign: 'left', whiteSpace: 'nowrap' }}>{s.staffName}</td>
+                        <td style={{ color: '#64748b', fontSize: '0.76rem', fontFamily: 'monospace', textAlign: 'left', whiteSpace: 'nowrap' }}>{s.phone || 'N/A'}</td>
+                        <td style={{ textAlign: 'left', fontWeight: '700', color: '#c2410c', whiteSpace: 'nowrap' }}>
+                          {s.totalCash.toLocaleString('vi-VN')}&nbsp;đ
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#15803d' }}>
-                          {s.totalCashless.toLocaleString('vi-VN')}&nbsp;₫
+                        <td style={{ textAlign: 'left', fontWeight: '700', color: '#15803d', whiteSpace: 'nowrap' }}>
+                          {s.totalCashless.toLocaleString('vi-VN')}&nbsp;đ
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
-                          {s.totalRevenue.toLocaleString('vi-VN')}&nbsp;₫
+                        <td style={{ textAlign: 'left', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                          {s.totalRevenue.toLocaleString('vi-VN')}&nbsp;đ
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                           <span style={{
                             backgroundColor: '#f1f5f9',
                             color: '#334155',
                             padding: '2px 8px',
                             borderRadius: '4px',
                             fontWeight: '700',
-                            fontSize: '0.72rem'
+                            fontSize: '0.72rem',
+                            whiteSpace: 'nowrap'
                           }}>
                             {rate}%
                           </span>
@@ -871,19 +732,19 @@ const TicketRevenueReportPage = () => {
                   })}
                   {/* Dòng tổng cộng */}
                   <tr style={{ backgroundColor: '#f8fafc', borderTop: '2px solid #cbd5e1', fontWeight: '800' }}>
-                    <td colSpan={3} style={{ textAlign: 'left', textTransform: 'uppercase', color: '#0f172a' }}>
+                    <td colSpan={3} style={{ textAlign: 'left', textTransform: 'uppercase', color: '#0f172a', whiteSpace: 'nowrap' }}>
                       Tổng Cộng Nhân Viên:
                     </td>
-                    <td style={{ textAlign: 'right', color: '#c2410c' }}>
-                      {summary.cashRevenue.toLocaleString('vi-VN')}&nbsp;₫
+                    <td style={{ textAlign: 'left', color: '#c2410c', whiteSpace: 'nowrap' }}>
+                      {summary.cashRevenue.toLocaleString('vi-VN')}&nbsp;đ
                     </td>
-                    <td style={{ textAlign: 'right', color: '#15803d' }}>
-                      {summary.cashlessRevenue.toLocaleString('vi-VN')}&nbsp;₫
+                    <td style={{ textAlign: 'left', color: '#15803d', whiteSpace: 'nowrap' }}>
+                      {summary.cashlessRevenue.toLocaleString('vi-VN')}&nbsp;đ
                     </td>
-                    <td style={{ textAlign: 'right', color: '#0f172a', fontSize: '0.92rem' }}>
-                      {summary.totalRevenue.toLocaleString('vi-VN')}&nbsp;₫
+                    <td style={{ textAlign: 'left', color: '#0f172a', fontSize: '0.92rem', whiteSpace: 'nowrap' }}>
+                      {summary.totalRevenue.toLocaleString('vi-VN')}&nbsp;đ
                     </td>
-                    <td style={{ textAlign: 'center', color: '#0f172a' }}>100%</td>
+                    <td style={{ textAlign: 'left', color: '#0f172a', whiteSpace: 'nowrap' }}>100%</td>
                   </tr>
                 </tbody>
               </table>
@@ -891,7 +752,7 @@ const TicketRevenueReportPage = () => {
           )}
         </div>
 
-        {/* 5. LỊCH SỬ DANH SÁCH HỒ SƠ BÁO CÁO ĐÃ GỬI */}
+        {/* 4. LỊCH SỬ DANH SÁCH HỒ SƠ BÁO CÁO ĐÃ GỬI */}
         <div style={{
           background: '#ffffff',
           borderRadius: '12px',
@@ -909,7 +770,7 @@ const TicketRevenueReportPage = () => {
           }}>
             <div>
               <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0, textTransform: 'uppercase' }}>
-                5. Lịch Sử Danh Sách Hồ Sơ Báo Cáo Đã Gửi
+                4. Lịch Sử Danh Sách Hồ Sơ Báo Cáo Đã Gửi
               </h2>
               <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px' }}>
                 Theo dõi tiến độ thẩm định, phê duyệt và tra cứu lại bản in các báo cáo khu vực đã nộp lên Ban Giám Đốc.
@@ -945,14 +806,14 @@ const TicketRevenueReportPage = () => {
               <table className="area-report-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: '130px' }}>Mã Báo Cáo</th>
-                    <th style={{ width: '110px' }}>Kỳ Báo Cáo</th>
-                    <th style={{ textAlign: 'right' }}>Tổng Thực Thu</th>
-                    <th style={{ textAlign: 'right' }}>Tiền Mặt Quầy</th>
-                    <th style={{ textAlign: 'right' }}>Chuyển Khoản / QR</th>
-                    <th style={{ width: '140px', textAlign: 'center' }}>Thời Gian Gửi</th>
-                    <th style={{ width: '120px', textAlign: 'center' }}>Trạng Thái</th>
-                    <th style={{ width: '110px', textAlign: 'center' }}>Thao Tác</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Mã Báo Cáo</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Kỳ Báo Cáo</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Tổng Thực Thu</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Tiền Mặt Quầy</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Chuyển Khoản / QR</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Thời Gian Gửi</th>
+                    <th style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>Trạng Thái</th>
+                    <th style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>Thao Tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -967,9 +828,10 @@ const TicketRevenueReportPage = () => {
                             fontWeight: '800',
                             padding: '3px 8px',
                             borderRadius: '4px',
-                            display: 'inline-block'
+                            display: 'inline-block',
+                            whiteSpace: 'nowrap'
                           }}>
-                            ✓ Đã phê duyệt
+                            Đã phê duyệt
                           </span>
                         );
                       }
@@ -982,9 +844,10 @@ const TicketRevenueReportPage = () => {
                             fontWeight: '800',
                             padding: '3px 8px',
                             borderRadius: '4px',
-                            display: 'inline-block'
+                            display: 'inline-block',
+                            whiteSpace: 'nowrap'
                           }}>
-                            ✕ Từ chối
+                            Từ chối
                           </span>
                         );
                       }
@@ -996,39 +859,40 @@ const TicketRevenueReportPage = () => {
                           fontWeight: '800',
                           padding: '3px 8px',
                           borderRadius: '4px',
-                          display: 'inline-block'
+                          display: 'inline-block',
+                          whiteSpace: 'nowrap'
                         }}>
-                          ⏳ Chờ duyệt
+                          Chờ duyệt
                         </span>
                       );
                     };
 
                     return (
                       <tr key={item._id}>
-                        <td style={{ fontWeight: '800', color: '#1d4ed8' }}>
+                        <td style={{ fontWeight: '800', color: '#1d4ed8', textAlign: 'left', whiteSpace: 'nowrap' }}>
                           {item.reportCode}
                         </td>
-                        <td style={{ fontWeight: '700', color: '#0f172a' }}>
+                        <td style={{ fontWeight: '700', color: '#0f172a', textAlign: 'left', whiteSpace: 'nowrap' }}>
                           Tháng {item.month}/{item.year}
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
-                          {(item.summary?.totalRevenue || 0).toLocaleString('vi-VN')}&nbsp;₫
+                        <td style={{ textAlign: 'left', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                          {(item.summary?.totalRevenue || 0).toLocaleString('vi-VN')}&nbsp;đ
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#c2410c' }}>
-                          {(item.summary?.cashRevenue || 0).toLocaleString('vi-VN')}&nbsp;₫
+                        <td style={{ textAlign: 'left', fontWeight: '700', color: '#c2410c', whiteSpace: 'nowrap' }}>
+                          {(item.summary?.cashRevenue || 0).toLocaleString('vi-VN')}&nbsp;đ
                         </td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#15803d' }}>
-                          {(item.summary?.cashlessRevenue || 0).toLocaleString('vi-VN')}&nbsp;₫
+                        <td style={{ textAlign: 'left', fontWeight: '700', color: '#15803d', whiteSpace: 'nowrap' }}>
+                          {(item.summary?.cashlessRevenue || 0).toLocaleString('vi-VN')}&nbsp;đ
                         </td>
-                        <td style={{ textAlign: 'center', fontSize: '0.75rem', color: '#64748b' }}>
+                        <td style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', whiteSpace: 'nowrap' }}>
                           {item.submittedAt ? new Date(item.submittedAt).toLocaleString('vi-VN', {
                             hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric'
                           }) : '--'}
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                           {statusBadge()}
                         </td>
-                        <td style={{ textAlign: 'center' }}>
+                        <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                           <button
                             onClick={() => {
                               setSelectedReportForModal(item);
@@ -1042,7 +906,8 @@ const TicketRevenueReportPage = () => {
                               fontSize: '0.72rem',
                               padding: '4px 10px',
                               borderRadius: '5px',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
                             }}
                           >
                             Bản in
@@ -1093,15 +958,15 @@ const TicketRevenueReportPage = () => {
             <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 12px', marginBottom: '1rem', fontSize: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span style={{ color: '#64748b' }}>Tổng doanh thu thực thu:</span>
-                <strong style={{ color: '#0f172a' }}>{summary.totalRevenue.toLocaleString('vi-VN')} ₫</strong>
+                <strong style={{ color: '#0f172a' }}>{summary.totalRevenue.toLocaleString('vi-VN')} đ</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                 <span style={{ color: '#64748b' }}>Tiền mặt tại quầy (nộp quỹ):</span>
-                <strong style={{ color: '#ea580c' }}>{summary.cashRevenue.toLocaleString('vi-VN')} ₫</strong>
+                <strong style={{ color: '#ea580c' }}>{summary.cashRevenue.toLocaleString('vi-VN')} đ</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#64748b' }}>Chuyển khoản VietQR:</span>
-                <strong style={{ color: '#16a34a' }}>{summary.cashlessRevenue.toLocaleString('vi-VN')} ₫</strong>
+                <strong style={{ color: '#16a34a' }}>{summary.cashlessRevenue.toLocaleString('vi-VN')} đ</strong>
               </div>
             </div>
 

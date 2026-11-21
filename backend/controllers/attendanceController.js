@@ -56,6 +56,70 @@ function formatShortTime(date) {
   });
 }
 
+// ─── Helper: Tự động đóng các ca chấm công còn mở (active) cuối ngày ────────
+async function autoCloseEndOfDayAttendances() {
+  try {
+    const now = new Date();
+    const vnDate = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const y = vnDate.getFullYear();
+    const m = String(vnDate.getMonth() + 1).padStart(2, '0');
+    const d = String(vnDate.getDate()).padStart(2, '0');
+    const todayStart = new Date(`${y}-${m}-${d}T00:00:00.000+07:00`);
+
+    // Cuối ngày: từ 23:50 tối hoặc bất kỳ ca nào của những ngày trước hôm nay
+    const isEndOfToday = vnDate.getHours() >= 23 && vnDate.getMinutes() >= 50;
+    const query = {
+      status: 'active',
+      date: isEndOfToday ? { $lte: todayStart } : { $lt: todayStart }
+    };
+
+    const expiredAttendances = await Attendance.find(query);
+    for (const att of expiredAttendances) {
+      const attDate = new Date(att.date || att.checkInTime || att.createdAt);
+      const defaultCheckOut = new Date(attDate);
+      defaultCheckOut.setHours(17, 30, 0, 0);
+
+      const inTime = att.checkInTime || defaultCheckOut;
+      const outTime = defaultCheckOut > inTime ? defaultCheckOut : new Date(inTime.getTime() + 8 * 3600 * 1000);
+      const diffMs = Math.max(0, outTime - inTime);
+      const totalHours = parseFloat((diffMs / 3600000).toFixed(2)) || 8.0;
+
+      att.status = 'closed';
+      att.checkOutTime = outTime;
+      att.totalHours = totalHours;
+      att.note = att.note
+        ? `${att.note} | [Tự động chốt ca cuối ngày do nhân viên quên check-out]`
+        : '[Tự động chốt ca cuối ngày do nhân viên quên check-out]';
+      await att.save();
+
+      if (att.attendanceType === 'crew') {
+        await CrewAttendance.findOneAndUpdate(
+          { attendanceId: att._id },
+          { $set: { actualArrival: outTime } }
+        );
+      }
+    }
+
+    // Tự động đóng các ShiftSession chưa chốt ca của nhân viên quầy vé từ ngày trước
+    const expiredShifts = await ShiftSession.find({
+      status: 'active',
+      startTime: isEndOfToday ? { $lte: new Date(`${y}-${m}-${d}T23:59:59.999+07:00`) } : { $lt: todayStart }
+    });
+    for (const s of expiredShifts) {
+      s.status = 'closed';
+      s.endTime = new Date(new Date(s.startTime).setHours(22, 0, 0, 0));
+      s.notes = s.notes
+        ? `${s.notes} | [Tự động đóng ca cuối ngày]`
+        : '[Tự động đóng ca cuối ngày do nhân viên quên kết ca]';
+      await s.save();
+    }
+  } catch (err) {
+    console.error('[autoCloseEndOfDayAttendances error]:', err);
+  }
+}
+
+exports.autoCloseEndOfDayAttendances = autoCloseEndOfDayAttendances;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. ĐĂNG KÝ KHUÔN MẶT (Quản lý vận tải thực hiện tại Quản lý tài khoản đội xe)
 // POST /api/attendance/register-face
@@ -97,15 +161,23 @@ exports.registerFace = async (req, res) => {
       });
     }
 
-    const emp = await EmployeeProfile.findByIdAndUpdate(
-      userId,
-      {
+    let emp = await EmployeeProfile.findById(userId);
+    if (!emp) {
+      const empCode = 'NV' + String(userId).slice(-6).toUpperCase();
+      emp = new EmployeeProfile({
+        _id: userId,
+        employeeCode: empCode,
         faceDescriptors,
         faceRegistered: true,
         ...(facePhoto ? { facePhoto } : {})
-      },
-      { upsert: true, new: true }
-    );
+      });
+      await emp.save();
+    } else {
+      emp.faceDescriptors = faceDescriptors;
+      emp.faceRegistered = true;
+      if (facePhoto) emp.facePhoto = facePhoto;
+      await emp.save();
+    }
 
     return res.status(200).json({
       success: true,
@@ -131,6 +203,7 @@ exports.registerFace = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 exports.checkIn = async (req, res) => {
   try {
+    await autoCloseEndOfDayAttendances();
     const { faceDescriptor, tripId, location, gpsLat, gpsLng, checkInPhoto, isLiveVerified } = req.body;
     const userId = req.user?.id || req.user?._id;
 
@@ -144,26 +217,43 @@ exports.checkIn = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản.' });
 
-    const emp = await EmployeeProfile.findById(userId).select('+faceDescriptors +faceRegistered assignedOffice branchId');
-    if (!emp || !emp.faceRegistered || !emp.faceDescriptors || emp.faceDescriptors.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Bạn chưa đăng ký khuôn mặt Face ID. Vui lòng liên hệ Quản lý Vận tải để được kích hoạt khuôn mặt.'
+    let emp = await EmployeeProfile.findById(userId).select('+faceDescriptors +faceRegistered assignedOffice branchId');
+    if (!emp) {
+      const empCode = 'NV' + String(userId).slice(-6).toUpperCase();
+      emp = new EmployeeProfile({
+        _id: userId,
+        employeeCode: empCode,
+        faceRegistered: false,
+        faceDescriptors: []
       });
     }
 
-    // Nhận diện khuôn mặt sinh trắc học
-    const THRESHOLD = 0.38;
-    const distances = emp.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
-    const bestDistance = Math.min(...distances);
-    const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length;
+    let faceVerified = false;
+    let bestDistance = 0.0;
+    const hasStoredFace = Boolean(emp && emp.faceRegistered && Array.isArray(emp.faceDescriptors) && emp.faceDescriptors.length > 0);
 
-    if (bestDistance > THRESHOLD || avgDistance > 0.42) {
-      return res.status(401).json({
-        success: false,
-        message: `Khuôn mặt trước camera không trùng khớp với nhân sự ${user.name} (sai số: ${bestDistance.toFixed(4)}, ngưỡng cho phép: ${THRESHOLD}). Vui lòng không điểm danh hộ!`,
-        faceDistance: bestDistance
-      });
+    if (hasStoredFace) {
+      // Trường hợp 1 (Đã có Face ID): So khớp sinh trắc học với các mẫu khuôn mặt đã lưu
+      const THRESHOLD = 0.42;
+      const distances = emp.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
+      bestDistance = Math.min(...distances);
+
+      if (bestDistance > THRESHOLD) {
+        return res.status(401).json({
+          success: false,
+          message: 'Khuôn mặt không trùng khớp với hồ sơ. Vui lòng không điểm danh hộ!',
+          faceDistance: bestDistance
+        });
+      }
+      faceVerified = true;
+    } else {
+      // Trường hợp 2 (Chưa có Face ID): Tự động kích hoạt & lưu mẫu Face ID từ lượt chấm công đầu tiên (học hỏi theo chuẩn luồng nhân viên bán vé)
+      emp.faceDescriptors = [faceDescriptor];
+      emp.faceRegistered = true;
+      if (checkInPhoto) emp.facePhoto = checkInPhoto;
+      await emp.save();
+      faceVerified = true;
+      bestDistance = 0.0;
     }
 
     const now = new Date();
@@ -227,14 +317,14 @@ exports.checkIn = async (req, res) => {
           if (existingAtt.status === 'active') {
             return res.status(400).json({
               success: false,
-              message: `Bạn đã bắt đầu ca cho chuyến này từ ${formatTime(existingAtt.checkInTime)}. Hãy tan ca (Check-out) khi hoàn thành chuyến đi!`,
+              message: `Bạn đang có ca trực mở từ ${formatTime(existingAtt.checkInTime)}. Vui lòng tan ca trước khi mở ca mới!`,
               data: existingAtt
             });
           }
           if (existingAtt.status === 'closed') {
             return res.status(400).json({
               success: false,
-              message: `Bạn đã hoàn thành ca cho chuyến này (vào lúc ${formatTime(existingAtt.checkInTime)} — tan ca ${formatTime(existingAtt.checkOutTime)}).`
+              message: `Bạn đã hoàn thành ca trực này hôm nay (${formatTime(existingAtt.checkInTime)} - ${formatTime(existingAtt.checkOutTime)}).`
             });
           }
         }
@@ -246,14 +336,14 @@ exports.checkIn = async (req, res) => {
         if (existingToday.status === 'active') {
           return res.status(400).json({
             success: false,
-            message: `Bạn đã bắt đầu ca làm việc hôm nay từ ${formatTime(existingToday.checkInTime)}. Hãy chọn 'Tan ca' (Check-out) khi hoàn thành ngày làm việc!`,
+            message: `Bạn đang trong ca trực (vào ca lúc ${formatTime(existingToday.checkInTime)}). Vui lòng chọn Tan ca khi hoàn thành!`,
             data: existingToday
           });
         }
         if (existingToday.status === 'closed') {
           return res.status(400).json({
             success: false,
-            message: `Bạn đã hoàn thành ca làm việc hôm nay (Vào ca: ${formatTime(existingToday.checkInTime)} — Tan ca: ${formatTime(existingToday.checkOutTime)}).`
+            message: `Bạn đã hoàn thành ca làm việc hôm nay (${formatTime(existingToday.checkInTime)} - ${formatTime(existingToday.checkOutTime)}).`
           });
         }
       }
@@ -390,20 +480,18 @@ exports.checkOut = async (req, res) => {
 
     const user = await User.findById(userId);
     const emp = await EmployeeProfile.findById(userId).select('+faceDescriptors');
-    if (!emp || !emp.faceDescriptors || emp.faceDescriptors.length === 0) {
-      return res.status(400).json({ success: false, message: 'Chưa đăng ký khuôn mặt.' });
-    }
-
-    const THRESHOLD = 0.38;
-    const distances = emp.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
-    const bestDistance = Math.min(...distances);
-    const avgDistance = distances.reduce((a, b) => a + b, 0) / distances.length;
-    if (bestDistance > THRESHOLD || avgDistance > 0.42) {
-      return res.status(401).json({
-        success: false,
-        message: `Khuôn mặt không trùng khớp với ${user.name} khi tan ca (sai số: ${bestDistance.toFixed(4)}, ngưỡng: ${THRESHOLD}).`,
-        faceDistance: bestDistance
-      });
+    
+    if (emp && emp.faceDescriptors && emp.faceDescriptors.length > 0) {
+      const THRESHOLD = 0.42;
+      const distances = emp.faceDescriptors.map(stored => euclideanDistance(faceDescriptor, stored));
+      const bestDistance = Math.min(...distances);
+      if (bestDistance > THRESHOLD) {
+        return res.status(401).json({
+          success: false,
+          message: 'Khuôn mặt không trùng khớp khi xác thực tan ca.',
+          faceDistance: bestDistance
+        });
+      }
     }
 
     // Tìm bản ghi đang active của nhân viên
@@ -497,6 +585,7 @@ exports.checkOut = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 exports.getMyAttendance = async (req, res) => {
   try {
+    await autoCloseEndOfDayAttendances();
     const userId = req.user?.id || req.user?._id;
     const limit = parseInt(req.query.limit) || 100;
 
@@ -658,37 +747,57 @@ exports.getMyAttendance = async (req, res) => {
       attTicketRecords.forEach(att => {
         const attDateKey = new Date(att.date || att.checkInTime || att.createdAt).toLocaleDateString('vi-VN');
         if (!seenDates.has(attDateKey)) {
-          let durationH = att.totalHours || 0;
+          let durationH = 0;
+          let durationText = '';
+
           if (att.status === 'active') {
             activeShiftsCount += 1;
             const diffMs = Math.max(0, nowTime - new Date(att.checkInTime || att.createdAt));
-            durationH = +(diffMs / 3600000).toFixed(1);
+            durationH = +(diffMs / 3600000).toFixed(2);
+            durationText = 'Đang trực';
           } else {
             closedShiftsCount += 1;
             if (att.checkOutTime && att.checkInTime) {
               const diffMs = Math.max(0, new Date(att.checkOutTime) - new Date(att.checkInTime));
-              durationH = +(diffMs / 3600000).toFixed(1);
-            } else if (!durationH) {
-              durationH = 8.0;
+              const diffMins = Math.floor(diffMs / 60000);
+              durationH = +(diffMs / 3600000).toFixed(2);
+              if (diffMs < 60000) {
+                durationText = `${Math.max(1, Math.round(diffMs / 1000))}s`;
+              } else if (diffMins < 60) {
+                durationText = `${diffMins} phút`;
+              } else {
+                const h = Math.floor(diffMins / 60);
+                const m = diffMins % 60;
+                durationText = m > 0 ? `${h}h ${m}p` : `${h}h`;
+              }
+            } else if (typeof att.totalHours === 'number') {
+              durationH = att.totalHours;
+              durationText = `${durationH}h`;
+            } else {
+              durationH = 0;
+              durationText = '--';
             }
           }
           totalWorkHours += durationH;
           if (att.faceVerified) faceVerifiedCount += 1;
 
-          const office = emp?.assignedOffice || 'Văn phòng bán vé';
+          const office = att.location || emp?.assignedOffice || (emp?.branch?.branchName ? emp.branch.branchName : 'Văn phòng quản lý');
+          const branchName = emp?.branch?.branchName || 'Chi nhánh TP.HCM';
 
           combinedHistory.push({
             id: att._id,
             tripRoute: office,
-            busPlateNumber: 'Văn phòng vé',
+            busPlateNumber: 'Văn phòng',
             officeName: office,
-            branchId: emp?.branchId || 'sg',
+            branchName,
+            branchId: emp?.branchId || emp?.branch?.branchId || 'sg',
             date: attDateKey,
             startTime: att.checkInTime || att.createdAt,
             endTime: att.checkOutTime || null,
             checkInTime: formatTime(att.checkInTime),
             checkOutTime: att.checkOutTime ? formatTime(att.checkOutTime) : '--:--:--',
             durationHours: durationH,
+            durationText: durationText,
             status: att.status,
             initialCash: 0,
             cashRevenue: 0,
@@ -724,8 +833,8 @@ exports.getMyAttendance = async (req, res) => {
         totalShifts,
         activeShiftsCount,
         closedShiftsCount,
-        totalWorkHours: +totalWorkHours.toFixed(1),
-        avgHoursPerShift: totalShifts > 0 ? +(totalWorkHours / totalShifts).toFixed(1) : 0,
+        totalWorkHours: +totalWorkHours.toFixed(2),
+        avgHoursPerShift: totalShifts > 0 ? +(totalWorkHours / totalShifts).toFixed(2) : 0,
         totalRevenue: totalCashRevenue + totalCashlessRevenue,
         totalCashRevenue,
         totalCashlessRevenue,
@@ -1163,6 +1272,7 @@ exports.getMyAttendance = async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 exports.getTodayAttendance = async (req, res) => {
   try {
+    await autoCloseEndOfDayAttendances();
     const { dateStr, dayStart, dayEnd } = getDayRangeVN(req.query.date);
 
     // 1. Lấy tất cả các Chuyến xe trong ngày được chọn

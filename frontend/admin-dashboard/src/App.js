@@ -410,7 +410,7 @@ function DashboardLayout() {
       case 'ticket-leaves':
         return 'Duyệt đơn xin nghỉ nhân viên bán vé';
       case 'ticket-attendance':
-        return 'Giám sát ca trực & đối soát quỹ phòng vé';
+        return 'Giám sát ca trực phòng vé';
       case 'ticket-proposals':
         return 'Đề xuất điều chỉnh giá vé';
       case 'ticket-reports':

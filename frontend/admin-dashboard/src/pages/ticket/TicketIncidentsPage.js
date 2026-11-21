@@ -60,25 +60,12 @@ const TicketIncidentsPage = () => {
   const [staffFilter, setStaffFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal tạo sự cố khẩn cấp (khi Quản lý muốn tự ghi nhận)
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [submittingCreate, setSubmittingCreate] = useState(false);
-  const [newIncident, setNewIncident] = useState({
-    title: '',
-    category: 'equipment',
-    severity: 'medium',
-    location: 'Văn phòng Sài Gòn (BXMĐ)',
-    details: '',
-    initialAction: '',
-    estimatedCost: ''
-  });
-
   // Modal tiếp nhận và chỉ đạo xử lý sự cố
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [updateStatus, setUpdateStatus] = useState('processing');
   const [updateNotes, setUpdateNotes] = useState('');
-  const [updateCost, setUpdateCost] = useState('');
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -129,46 +116,23 @@ const TicketIncidentsPage = () => {
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [incidents]);
 
-  // Xử lý tạo mới sự cố nội bộ
-  const handleCreateIncident = async (e) => {
-    e.preventDefault();
-    setSubmittingCreate(true);
-    try {
-      const res = await fetch(`${API_BASE}/users/ticket-manager/incidents`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...newIncident,
-          branchId: managerBranchId
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        showToast('Ghi nhận sự cố thành công!');
-        setShowCreateModal(false);
-        setNewIncident({
-          title: '', category: 'equipment', severity: 'medium',
-          location: 'Văn phòng Sài Gòn (BXMĐ)',
-          details: '', initialAction: '', estimatedCost: ''
-        });
-        fetchIncidents();
-      } else {
-        showToast(data.message || 'Không thể tạo sự cố.', 'error');
-      }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    } finally {
-      setSubmittingCreate(false);
-    }
-  };
-
   // Xử lý cập nhật tiến độ xử lý & gửi chỉ đạo cho nhân viên
   const handleUpdateIncident = async (e) => {
     e.preventDefault();
     if (!selectedIncident) return;
+
+    // Validate form bắt lỗi
+    const trimmedNotes = updateNotes.trim();
+    if (!trimmedNotes) {
+      setFormError('Vui lòng nhập nội dung chỉ đạo / phương án giải quyết cho nhân viên quầy vé.');
+      return;
+    }
+    if (trimmedNotes.length < 5) {
+      setFormError('Nội dung chỉ đạo / phương án giải quyết phải có tối thiểu 5 ký tự.');
+      return;
+    }
+
+    setFormError('');
     setSubmittingUpdate(true);
     try {
       const res = await fetch(`${API_BASE}/users/ticket-manager/incidents/${selectedIncident._id}`, {
@@ -179,8 +143,7 @@ const TicketIncidentsPage = () => {
         },
         body: JSON.stringify({
           status: updateStatus,
-          resolutionNotes: updateNotes,
-          estimatedCost: updateCost ? Number(updateCost) : selectedIncident.estimatedCost
+          resolutionNotes: trimmedNotes
         })
       });
       const data = await res.json();
@@ -189,10 +152,14 @@ const TicketIncidentsPage = () => {
         setSelectedIncident(null);
         fetchIncidents();
       } else {
-        showToast(data.message || 'Không thể cập nhật sự cố.', 'error');
+        const errMsg = data.message || 'Không thể cập nhật sự cố.';
+        setFormError(errMsg);
+        showToast(errMsg, 'error');
       }
     } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
+      const errMsg = 'Lỗi kết nối máy chủ khi cập nhật sự cố.';
+      setFormError(errMsg);
+      showToast(errMsg, 'error');
     } finally {
       setSubmittingUpdate(false);
     }
@@ -266,17 +233,6 @@ const TicketIncidentsPage = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              style={{
-                backgroundColor: '#ffffff', border: '1px solid #cbd5e1', color: '#334155',
-                fontWeight: '700', padding: '0.6rem 1.15rem', borderRadius: '8px', fontSize: '0.8rem',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', whiteSpace: 'nowrap'
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Ghi Nhận Sự Cố Nội Bộ
-            </button>
             <button
               onClick={() => { fetchIncidents(); showToast('Đã làm mới danh sách sự cố tiếp nhận!'); }}
               style={{
@@ -436,12 +392,13 @@ const TicketIncidentsPage = () => {
           </div>
         ) : (
           <div style={{ overflowX: 'auto', width: '100%', WebkitOverflowScrolling: 'touch' }}>
-            <table style={{ width: '100%', minWidth: '1350px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+            <table style={{ width: '100%', minWidth: '1450px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
               <thead>
                 <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: '700' }}>
                   <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>STT</th>
                   <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Mã sự cố</th>
                   <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Nhân viên gửi báo cáo</th>
+                  <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Số điện thoại</th>
                   <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Vị trí / Quầy vé</th>
                   <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Tiêu đề & Phân loại sự cố</th>
                   <th style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>Mức độ</th>
@@ -456,7 +413,6 @@ const TicketIncidentsPage = () => {
                   const sBadge = getSeverityBadge(inc.severity);
                   const stBadge = getStatusBadge(inc.status);
                   const dateStr = inc.createdAt ? new Date(inc.createdAt).toLocaleString('vi-VN') : '--';
-                  const reporterInitial = inc.reportedBy?.name ? inc.reportedBy.name.charAt(0).toUpperCase() : 'N';
 
                   return (
                     <tr key={inc._id} style={{ borderBottom: '1px solid #f1f5f9', whiteSpace: 'nowrap' }}>
@@ -466,20 +422,13 @@ const TicketIncidentsPage = () => {
                       </td>
 
                       {/* Nhân viên gửi báo cáo */}
-                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{
-                            width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#eff6ff',
-                            color: '#2563eb', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.75rem', border: '1px solid #bfdbfe'
-                          }}>
-                            {reporterInitial}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: '700', color: '#0f172a' }}>{inc.reportedBy?.name || 'Nhân viên'}</div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{inc.reportedBy?.phone}</div>
-                          </div>
-                        </div>
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', fontWeight: '700', color: '#0f172a' }}>
+                        {inc.reportedBy?.name || 'Nhân viên'}
+                      </td>
+
+                      {/* Số điện thoại */}
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: '#475569', fontWeight: '600' }}>
+                        {inc.reportedBy?.phone || '--'}
                       </td>
 
                       {/* Vị trí quầy vé */}
@@ -560,7 +509,7 @@ const TicketIncidentsPage = () => {
                             setSelectedIncident(inc);
                             setUpdateStatus(inc.status === 'open' ? 'processing' : inc.status);
                             setUpdateNotes(inc.resolutionNotes || '');
-                            setUpdateCost(inc.estimatedCost || '');
+                            setFormError('');
                           }}
                           style={{
                             padding: '6px 14px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700',
@@ -579,135 +528,6 @@ const TicketIncidentsPage = () => {
           </div>
         )}
       </div>
-
-      {/* Modal Quản lý ghi nhận sự cố nội bộ */}
-      {showCreateModal && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.65)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '1rem'
-        }}>
-          <div style={{
-            background: '#ffffff', borderRadius: '16px', maxWidth: '580px', width: '100%',
-            padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', maxHeight: '90vh', overflowY: 'auto'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-              <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                Ghi Nhận Sự Cố Nội Bộ Tại {branchName}
-              </h2>
-              <button onClick={() => setShowCreateModal(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '1.25rem' }}>✕</button>
-            </div>
-
-            <form onSubmit={handleCreateIncident} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Tiêu đề tóm tắt sự cố *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Máy in vé quầy 01 bị kẹt phôi vé liên tục..."
-                  value={newIncident.title}
-                  onChange={(e) => setNewIncident({ ...newIncident, title: e.target.value })}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                    Phân loại sự cố *
-                  </label>
-                  <select
-                    value={newIncident.category}
-                    onChange={(e) => setNewIncident({ ...newIncident, category: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
-                  >
-                    <option value="equipment">Thiết bị & Máy in/POS</option>
-                    <option value="network">Mạng truyền tải & Phần mềm</option>
-                    <option value="fund">Quỹ két & Tiền mặt</option>
-                    <option value="service">Dịch vụ & Khiếu nại khách</option>
-                    <option value="other">Khác</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                    Mức độ nghiêm trọng *
-                  </label>
-                  <select
-                    value={newIncident.severity}
-                    onChange={(e) => setNewIncident({ ...newIncident, severity: e.target.value })}
-                    style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem', background: '#ffffff' }}
-                  >
-                    <option value="urgent">Khẩn cấp (Ngưng bán vé)</option>
-                    <option value="high">Mức cao</option>
-                    <option value="medium">Trung bình</option>
-                    <option value="low">Mức thấp</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Vị trí xảy ra *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newIncident.location}
-                  onChange={(e) => setNewIncident({ ...newIncident, location: e.target.value })}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Mô tả chi tiết sự cố *
-                </label>
-                <textarea
-                  required
-                  rows="3"
-                  placeholder="Mô tả cụ thể hiện tượng xảy ra và ảnh hưởng đến quầy..."
-                  value={newIncident.details}
-                  onChange={(e) => setNewIncident({ ...newIncident, details: e.target.value })}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Biện pháp ứng phó tạm thời
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ví dụ: Chuyển khách sang Quầy 02 in vé..."
-                  value={newIncident.initialAction}
-                  onChange={(e) => setNewIncident({ ...newIncident, initialAction: e.target.value })}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingCreate}
-                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}
-                >
-                  {submittingCreate ? 'Đang lưu...' : 'Lưu Sự Cố'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Modal Tiếp Nhận & Chỉ Đạo Phương Án Khắc Phục */}
       {selectedIncident && (
@@ -728,7 +548,7 @@ const TicketIncidentsPage = () => {
                   {selectedIncident.title} • {selectedIncident.location}
                 </div>
               </div>
-              <button onClick={() => setSelectedIncident(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '1.25rem' }}>✕</button>
+              <button onClick={() => { setSelectedIncident(null); setFormError(''); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', fontSize: '1.25rem' }}>✕</button>
             </div>
 
             {/* Thông tin nhân viên báo cáo */}
@@ -750,6 +570,18 @@ const TicketIncidentsPage = () => {
               )}
             </div>
 
+            {/* Bắt lỗi / Thông báo lỗi form */}
+            {formError && (
+              <div style={{
+                backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c',
+                padding: '10px 14px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '600',
+                marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px'
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>{formError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleUpdateIncident} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
@@ -768,36 +600,35 @@ const TicketIncidentsPage = () => {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formError ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                   Chỉ đạo / Phương án giải quyết của Quản lý chi nhánh *
                 </label>
                 <textarea
-                  required
-                  rows="3"
+                  rows="4"
                   placeholder="Ghi rõ hướng dẫn xử lý cho nhân viên, phương án thay thế thiết bị hoặc kỹ thuật hỗ trợ..."
                   value={updateNotes}
-                  onChange={(e) => setUpdateNotes(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
+                  onChange={(e) => {
+                    setUpdateNotes(e.target.value);
+                    if (formError) setFormError('');
+                  }}
+                  style={{
+                    width: '100%', padding: '0.65rem 0.85rem', borderRadius: '8px',
+                    border: formError ? '1.5px solid #dc2626' : '1px solid #cbd5e1',
+                    fontSize: '0.82rem', outline: 'none',
+                    backgroundColor: formError ? '#fffaf0' : '#ffffff'
+                  }}
                 />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
-                  Chi phí thực tế phát sinh (VNĐ nếu có)
-                </label>
-                <input
-                  type="number"
-                  placeholder="0"
-                  value={updateCost}
-                  onChange={(e) => setUpdateCost(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem 0.85rem', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.82rem' }}
-                />
+                {formError && (
+                  <div style={{ color: '#dc2626', fontSize: '0.74rem', marginTop: '4px', fontWeight: '600' }}>
+                    * Vui lòng không để trống mục chỉ đạo / phương án giải quyết.
+                  </div>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
                 <button
                   type="button"
-                  onClick={() => setSelectedIncident(null)}
+                  onClick={() => { setSelectedIncident(null); setFormError(''); }}
                   style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}
                 >
                   Đóng

@@ -363,16 +363,65 @@ const LoginPage = () => {
           position: relative;
         }
 
+        .mobile-only-section {
+          display: none !important;
+        }
+
         /* RESPONSIVE MEDIA QUERIES */
         @media (max-width: 1080px) {
           .login-main-container {
-            grid-template-columns: 1fr !important;
-            gap: 2rem !important;
-            padding: 2rem 1.5rem !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            align-items: center !important;
+            flex: 1 !important;
+            padding: 1.25rem 1.25rem !important;
             max-width: 480px !important;
+            width: 100% !important;
+            min-height: 0 !important;
           }
           .login-hero-section {
             display: none !important;
+          }
+          .mobile-only-section {
+            display: flex !important;
+          }
+          .mobile-top-section {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex: 1 !important;
+            width: 100% !important;
+            max-width: 360px !important;
+            margin: 0 !important;
+            padding: 0.75rem 0 !important;
+            text-align: center !important;
+          }
+          .mobile-bottom-section {
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            flex: 1 !important;
+            width: 100% !important;
+            max-width: 360px !important;
+            margin: 0 !important;
+            padding: 0.75rem 0 !important;
+          }
+          .login-card-wrapper {
+            flex: 1 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            width: 100% !important;
+            max-width: 360px !important;
+            margin: 0 auto !important;
+            height: 100% !important;
+          }
+          .login-card h2 {
+            text-align: center !important;
           }
           .login-header {
             padding: 0.85rem 1.5rem !important;
@@ -390,14 +439,30 @@ const LoginPage = () => {
 
         @media (max-width: 640px) {
           .login-main-container {
-            padding: 1.25rem 1rem !important;
+            padding: 0.85rem 1rem !important;
+            box-sizing: border-box !important;
+          }
+          .login-card-wrapper {
+            width: 100% !important;
+            max-width: 360px !important;
+            margin: 0 auto !important;
           }
           .login-card {
-            padding: 1.75rem 1.25rem !important;
-            border-radius: 16px !important;
+            width: 100% !important;
+            max-width: 350px !important;
+            margin: 0 auto !important;
+            padding: 1.5rem 1.25rem !important;
+            border-radius: 18px !important;
+            box-sizing: border-box !important;
           }
           .login-card h2 {
-            font-size: 1.38rem !important;
+            font-size: 1.45rem !important;
+            margin-bottom: 1.15rem !important;
+            text-align: center !important;
+          }
+          .mobile-slogan-title {
+            font-size: 1.55rem !important;
+            line-height: 1.35 !important;
           }
           .login-header {
             padding: 0.75rem 1rem !important;
@@ -410,6 +475,12 @@ const LoginPage = () => {
             flex-wrap: wrap !important;
             justify-content: center !important;
             gap: 0.75rem !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .mobile-slogan-title {
+            font-size: 1.35rem !important;
           }
         }
       `}</style>
@@ -649,8 +720,31 @@ const LoginPage = () => {
 
         </div>
 
-        {/* Right Column: Clean White Login Card */}
-        <div className="login-card-wrapper" style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+        {/* Right Column: Clean White Login Card + Mobile Responsive Content */}
+        <div className="login-card-wrapper" style={{
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          maxWidth: '440px',
+          margin: '0 auto'
+        }}>
+
+          {/* VÙNG NỘI DUNG PHÍA TRÊN CHO THIẾT BỊ DI ĐỘNG (MOBILE ONLY) */}
+          <div className="mobile-only-section mobile-top-section" style={{ width: '100%', maxWidth: '360px', textAlign: 'center' }}>
+            <h1 className="mobile-slogan-title" style={{
+              fontSize: '1.55rem',
+              fontWeight: '800',
+              color: '#ffffff',
+              margin: '0',
+              lineHeight: '1.35',
+              letterSpacing: '-0.3px',
+              textAlign: 'center'
+            }}>
+              Hành Trình Thông Minh,<br />
+              <span style={{ color: '#38bdf8' }}>Kết Nối Trọn Vẹn Niềm Tin</span>
+            </h1>
+          </div>
 
           <div className="login-card" style={{
             width: '100%',
@@ -674,13 +768,10 @@ const LoginPage = () => {
               background: 'linear-gradient(90deg, #38bdf8 0%, #2563eb 50%, #818cf8 100%)'
             }} />
 
-            {/* Title & Subtitle */}
-            <h2 style={{ fontSize: '1.6rem', fontWeight: '900', color: '#0f172a', margin: '0 0 6px 0', letterSpacing: '-0.3px' }}>
-              Đăng Nhập Hệ Thống
+            {/* Title */}
+            <h2 style={{ fontSize: '1.6rem', fontWeight: '900', color: '#0f172a', margin: '0 0 1.25rem 0', letterSpacing: '-0.3px', textAlign: 'center' }}>
+              Đăng nhập
             </h2>
-            <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '0 0 1.5rem 0', lineHeight: '1.45' }}>
-              Dành cho Cán bộ Quản lý, Điều hành tuyến &amp; Nhân viên vận hành
-            </p>
 
             {/* Login Form */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
@@ -855,6 +946,34 @@ const LoginPage = () => {
 
 
 
+          </div>
+
+          {/* VÙNG NỘI DUNG PHÍA DƯỚI CHO THIẾT BỊ DI ĐỘNG (MOBILE ONLY) */}
+          <div className="mobile-only-section mobile-bottom-section" style={{ width: '100%', maxWidth: '360px' }}>
+            {/* Thẻ 3 chỉ số thống kê ấn tượng */}
+            <div className="glass-card" style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              borderRadius: '12px',
+              padding: '0.75rem 0.85rem',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '0.4rem',
+              textAlign: 'center'
+            }}>
+              <div>
+                <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#ffffff', lineHeight: '1.1' }}>5.000.000+</div>
+                <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px', textTransform: 'uppercase' }}>Lượt khách</div>
+              </div>
+              <div style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.12)' }}>
+                <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#ffffff', lineHeight: '1.1' }}>63</div>
+                <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px', textTransform: 'uppercase' }}>Tỉnh thành</div>
+              </div>
+              <div style={{ borderLeft: '1px solid rgba(255, 255, 255, 0.12)' }}>
+                <div style={{ fontSize: '1.05rem', fontWeight: '900', color: '#38bdf8', lineHeight: '1.1' }}>99.9%</div>
+                <div style={{ fontSize: '0.62rem', color: '#94a3b8', marginTop: '2px', textTransform: 'uppercase' }}>Đúng giờ</div>
+              </div>
+            </div>
           </div>
 
         </div>

@@ -52,12 +52,11 @@ const TicketCustomerFeedbackPage = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Nạp danh sách đánh giá & bình luận chuyến xe
+  // Nạp danh sách đánh giá & bình luận chuyến xe toàn hệ thống
   const fetchFeedbacks = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (managerBranchId) params.append('branchId', managerBranchId);
       if (ratingFilter !== 'all') params.append('rating', ratingFilter);
       if (replyFilter !== 'all') params.append('isReplied', replyFilter === 'replied' ? 'true' : 'false');
 
@@ -181,7 +180,7 @@ const TicketCustomerFeedbackPage = () => {
                 Đánh Giá &amp; Bình Luận Chuyến Xe Của Khách Hàng
               </h1>
               <span style={{ fontSize: '0.74rem', background: '#dcfce7', color: '#15803d', padding: '3px 10px', borderRadius: '20px', fontWeight: '700', whiteSpace: 'nowrap' }}>
-                {branchName}
+                Toàn Hệ Thống
               </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '6px 0 0 0' }}>
@@ -230,23 +229,23 @@ const TicketCustomerFeedbackPage = () => {
           </div>
         </div>
 
-        <div style={{ background: '#ffffff', padding: '1.15rem 1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>ĐÃ ĐƯỢC QUẢN LÝ PHẢN HỒI</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#2563eb', margin: '4px 0', whiteSpace: 'nowrap' }}>
-            {csat.repliedCount || 0}&nbsp;<span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>/ {csat.totalFeedbacks} bình luận</span>
+        <div style={{ background: '#f0fdf4', padding: '1.15rem 1.25rem', borderRadius: '14px', border: '1px solid #bbf7d0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '0.7rem', color: '#166534', fontWeight: '800', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>ĐÃ ĐƯỢC QUẢN LÝ PHẢN HỒI</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#166534', margin: '4px 0', whiteSpace: 'nowrap' }}>
+            {csat.repliedCount || 0}&nbsp;<span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#166534' }}>/ {csat.totalFeedbacks || feedbacks.length} bình luận</span>
           </div>
-          <div style={{ fontSize: '0.74rem', color: '#2563eb', fontWeight: '600', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '0.74rem', color: '#15803d', fontWeight: '600', whiteSpace: 'nowrap' }}>
             Tỷ lệ phản hồi đạt {csat.repliedRate || 0}%
           </div>
         </div>
 
-        <div style={{ background: '#ffffff', padding: '1.15rem 1.25rem', borderRadius: '14px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>TỔNG BÌNH LUẬN GHI NHẬN</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '4px 0', whiteSpace: 'nowrap' }}>
-            {feedbacks.length}&nbsp;<span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>lượt</span>
+        <div style={{ background: '#fffbeb', padding: '1.15rem 1.25rem', borderRadius: '14px', border: '1px solid #fde68a', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '0.7rem', color: '#b45309', fontWeight: '800', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>BÌNH LUẬN CHƯA PHẢN HỒI</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#b45309', margin: '4px 0', whiteSpace: 'nowrap' }}>
+            {Math.max(0, (csat.totalFeedbacks || feedbacks.length) - (csat.repliedCount || 0))}&nbsp;<span style={{ fontSize: '0.85rem', fontWeight: '600' }}>bình luận</span>
           </div>
-          <div style={{ fontSize: '0.74rem', color: '#64748b', whiteSpace: 'nowrap' }}>
-            Toàn bộ chuyến xe thuộc {branchName}
+          <div style={{ fontSize: '0.74rem', color: '#d97706', fontWeight: '600', whiteSpace: 'nowrap' }}>
+            Cần quản lý chi nhánh phản hồi ngay
           </div>
         </div>
       </div>
@@ -367,27 +366,20 @@ const TicketCustomerFeedbackPage = () => {
 
                       {/* Hành khách */}
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{
-                            width: '28px', height: '28px', borderRadius: '50%', backgroundColor: '#f0fdf4',
-                            color: '#16a34a', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '0.75rem', border: '1px solid #bbf7d0'
-                          }}>
-                            {custInitial}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: '700', color: '#0f172a' }}>{custName}</div>
-                            <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{fb.customerPhone || '0903******'}</div>
-                          </div>
-                        </div>
+                        <span style={{ fontWeight: '700', color: '#0f172a' }}>{custName}</span>
+                        {fb.customerPhone && (
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '6px' }}>
+                            ({fb.customerPhone})
+                          </span>
+                        )}
                       </td>
 
                       {/* Tuyến xe & Biển số */}
                       <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                        <div style={{ fontWeight: '700', color: '#1e293b' }}>{routeName}</div>
-                        <div style={{ fontSize: '0.7rem', color: '#2563eb' }}>
-                          Xe: {busPlate} • {busType}
-                        </div>
+                        <span style={{ fontWeight: '700', color: '#1e293b' }}>{routeName}</span>
+                        <span style={{ fontSize: '0.75rem', color: '#2563eb', marginLeft: '6px' }}>
+                          (Xe: {busPlate} • {busType})
+                        </span>
                       </td>
 
                       {/* Đánh giá sao */}

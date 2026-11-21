@@ -85,6 +85,17 @@ const TicketPricingProposalPage = () => {
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [effectiveTo, setEffectiveTo] = useState('');
   const [reason, setReason] = useState('');
+  const [errors, setErrors] = useState({});
+
+  // Clear single field error helper
+  const clearError = (field) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   // Notification Toast Helper
   const showToast = (message, type = 'success') => {
@@ -223,13 +234,17 @@ const TicketPricingProposalPage = () => {
 
   // Recalculate price on route change
   const handleRouteChange = (rId) => {
+    clearError('routeId');
+    clearError('proposedPrice');
+    clearError('adjustmentPercentage');
     setRouteId(rId);
     const base = getRouteBasePrice(rId, busType);
     setCurrentPrice(base);
 
     if (proposalCategory === 'adjustment') {
       if (proposalType === 'percentage') {
-        setProposedPrice(Math.round(base * (1 + Number(adjustmentPercentage) / 100)));
+        const pct = adjustmentPercentage !== '' ? Number(adjustmentPercentage) : 10;
+        setProposedPrice(Math.round(base * (1 + pct / 100)));
       }
     } else {
       setProposedPrice(base);
@@ -238,13 +253,16 @@ const TicketPricingProposalPage = () => {
 
   // Recalculate price on bus type change
   const handleBusTypeChange = (bType) => {
+    clearError('proposedPrice');
+    clearError('adjustmentPercentage');
     setBusType(bType);
     const base = getRouteBasePrice(routeId, bType);
     setCurrentPrice(base);
 
     if (proposalCategory === 'adjustment') {
       if (proposalType === 'percentage') {
-        setProposedPrice(Math.round(base * (1 + Number(adjustmentPercentage) / 100)));
+        const pct = adjustmentPercentage !== '' ? Number(adjustmentPercentage) : 10;
+        setProposedPrice(Math.round(base * (1 + pct / 100)));
       }
     } else {
       setProposedPrice(base);
@@ -253,18 +271,30 @@ const TicketPricingProposalPage = () => {
 
   // Percentage change handler
   const handlePercentageChange = (pct) => {
+    clearError('adjustmentPercentage');
+    clearError('proposedPrice');
+    if (pct === '') {
+      setAdjustmentPercentage('');
+      return;
+    }
     const num = Number(pct);
     setAdjustmentPercentage(num);
-    if (currentPrice > 0) {
+    if (currentPrice > 0 && !isNaN(num)) {
       setProposedPrice(Math.round(currentPrice * (1 + num / 100)));
     }
   };
 
   // Proposed price direct input handler
   const handleProposedPriceChange = (val) => {
-    const num = Number(val) || 0;
+    clearError('proposedPrice');
+    clearError('adjustmentPercentage');
+    if (val === '') {
+      setProposedPrice('');
+      return;
+    }
+    const num = Number(val);
     setProposedPrice(num);
-    if (currentPrice > 0) {
+    if (currentPrice > 0 && !isNaN(num)) {
       const pct = Math.round(((num - currentPrice) / currentPrice) * 100);
       setAdjustmentPercentage(pct);
     }
@@ -273,6 +303,7 @@ const TicketPricingProposalPage = () => {
   // Open modal with preselected category
   const handleOpenCreateModal = (cat = 'adjustment') => {
     setShowDropdown(false);
+    setErrors({});
     setProposalCategory(cat);
 
     const initialRoutes = selectableRoutes.length > 0 ? selectableRoutes : routes;
@@ -313,6 +344,7 @@ const TicketPricingProposalPage = () => {
 
   // Switch category inside modal
   const handleSwitchCategoryTab = (newCat) => {
+    setErrors({});
     setProposalCategory(newCat);
     const defaultBus = newCat === 'base_price' && busTypes.length > 0 ? busTypes[0] : 'all';
     setBusType(defaultBus);
@@ -334,22 +366,93 @@ const TicketPricingProposalPage = () => {
     }
   };
 
+  // Validate proposal form inputs
+  const validateForm = () => {
+    const newErrors = {};
+
+    // 1. Tiêu đề đề xuất
+    const trimmedTitle = (title || '').trim();
+    if (!trimmedTitle) {
+      newErrors.title = 'Vui lòng nhập tiêu đề hồ sơ đề xuất.';
+    } else if (trimmedTitle.length < 6) {
+      newErrors.title = 'Tiêu đề đề xuất quá ngắn, tối thiểu từ 6 ký tự.';
+    } else if (trimmedTitle.length > 200) {
+      newErrors.title = 'Tiêu đề đề xuất quá dài, không vượt quá 200 ký tự.';
+    }
+
+    // 2. Tuyến đường áp dụng
+    if (!routeId) {
+      newErrors.routeId = 'Vui lòng chọn tuyến đường áp dụng đề xuất.';
+    }
+
+    // 3. Tỷ lệ điều chỉnh (trong tab adjustment và loại percentage)
+    if (proposalCategory === 'adjustment' && proposalType === 'percentage') {
+      const pct = Number(adjustmentPercentage);
+      if (adjustmentPercentage === '' || isNaN(pct) || pct === 0) {
+        newErrors.adjustmentPercentage = 'Tỷ lệ điều chỉnh không thể bằng 0%. Vui lòng nhập số dương để phụ thu hoặc số âm để giảm giá.';
+      } else if (pct < -50) {
+        newErrors.adjustmentPercentage = 'Mức giảm giá mùa vụ tối đa không vượt quá -50%.';
+      } else if (pct > 100) {
+        newErrors.adjustmentPercentage = 'Mức phụ thu mùa vụ tối đa không vượt quá +100%.';
+      }
+    }
+
+    // 4. Mức giá đề xuất
+    const priceNum = Number(proposedPrice);
+    if (proposedPrice === '' || proposedPrice === undefined || proposedPrice === null || isNaN(priceNum) || priceNum <= 0) {
+      newErrors.proposedPrice = 'Vui lòng nhập mức giá vé hợp lệ lớn hơn 0.';
+    } else if (priceNum < 10000) {
+      newErrors.proposedPrice = 'Mức giá vé tối thiểu theo quy định là 10.000 đ.';
+    } else if (priceNum > 5000000) {
+      newErrors.proposedPrice = 'Mức giá vé không được vượt quá 5.000.000 đ.';
+    } else if (proposalCategory === 'base_price' && priceNum === Number(currentPrice)) {
+      newErrors.proposedPrice = 'Mức giá cơ sở mới đang trùng với giá niêm yết hiện hành (chưa có sự điều chỉnh giá).';
+    } else if (proposalCategory === 'adjustment' && priceNum === Number(currentPrice)) {
+      newErrors.proposedPrice = 'Giá vé sau điều chỉnh đang trùng với giá niêm yết hiện hành (chưa có sự điều chỉnh giá).';
+    }
+
+    // 5. Ngày bắt đầu hiệu lực
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    if (!effectiveFrom) {
+      newErrors.effectiveFrom = 'Vui lòng chọn ngày bắt đầu hiệu lực.';
+    } else if (effectiveFrom < todayStr) {
+      newErrors.effectiveFrom = 'Ngày bắt đầu hiệu lực không được nằm trong quá khứ.';
+    }
+
+    // 6. Ngày kết thúc hiệu lực
+    if (proposalCategory === 'adjustment') {
+      if (!effectiveTo) {
+        newErrors.effectiveTo = 'Đề xuất giá mùa vụ / phụ thu bắt buộc phải có ngày kết thúc hiệu lực.';
+      } else if (effectiveFrom && effectiveTo < effectiveFrom) {
+        newErrors.effectiveTo = 'Ngày kết thúc không được trước ngày bắt đầu hiệu lực.';
+      }
+    } else {
+      if (effectiveTo && effectiveFrom && effectiveTo < effectiveFrom) {
+        newErrors.effectiveTo = 'Ngày kết thúc không được trước ngày bắt đầu hiệu lực.';
+      }
+    }
+
+    // 7. Căn cứ & giải trình
+    const trimmedReason = (reason || '').trim();
+    if (!trimmedReason) {
+      newErrors.reason = 'Vui lòng nhập căn cứ & giải trình thực tế để Ban Giám Đốc xem xét phê duyệt.';
+    } else if (trimmedReason.length < 10) {
+      newErrors.reason = 'Nội dung giải trình quá ngắn (tối thiểu 10 ký tự) để thể hiện rõ căn cứ thay đổi.';
+    } else if (trimmedReason.length > 1000) {
+      newErrors.reason = 'Nội dung giải trình quá dài, vui lòng tóm lược dưới 1000 ký tự.';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   // Submit proposal
   const handleSubmitProposal = async (e) => {
     e.preventDefault();
 
-    if (!title.trim() || !routeId || proposedPrice === undefined || proposedPrice === '' || !effectiveFrom || !reason.trim()) {
-      showToast('Vui lòng hoàn thiện tất cả các trường dữ liệu bắt buộc (*).', 'error');
-      return;
-    }
-
-    if (proposalCategory === 'adjustment' && !effectiveTo) {
-      showToast('Đề xuất điều chỉnh giá vé mùa vụ yêu cầu phải xác định ngày kết thúc hiệu lực.', 'error');
-      return;
-    }
-
-    if (effectiveTo && new Date(effectiveFrom) > new Date(effectiveTo)) {
-      showToast('Ngày bắt đầu hiệu lực không được muộn hơn ngày kết thúc hiệu lực.', 'error');
+    if (!validateForm()) {
+      showToast('Vui lòng kiểm tra và điều chỉnh các trường dữ liệu chưa hợp lệ.', 'error');
       return;
     }
 
@@ -384,6 +487,7 @@ const TicketPricingProposalPage = () => {
             : 'Đã gửi hồ sơ đề xuất điều chỉnh giá vé mùa vụ lên Ban Giám Đốc thành công.'
         );
         setShowModal(false);
+        setErrors({});
         fetchProposals();
       } else {
         showToast(data.message || 'Không thể khởi tạo phiếu đề xuất.', 'error');
@@ -434,7 +538,7 @@ const TicketPricingProposalPage = () => {
       const matchesSearch =
         !searchTerm.trim() ||
         p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.proposerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.proposerId?.name || p.proposerName)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p._id.toLowerCase().includes(searchTerm.toLowerCase());
 
@@ -1019,7 +1123,7 @@ const TicketPricingProposalPage = () => {
                       <td style={{ padding: '12px 12px', maxWidth: '240px' }}>
                         <div style={{ fontWeight: '700', color: '#0f172a', lineHeight: 1.35 }}>{p.title}</div>
                         <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '3px' }}>
-                          Lập bởi: {p.proposerName} &bull; {new Date(p.createdAt).toLocaleDateString('vi-VN')}
+                          Lập bởi: {p.proposerId?.name || p.proposerName} &bull; {new Date(p.createdAt).toLocaleDateString('vi-VN')}
                         </div>
                       </td>
 
@@ -1414,7 +1518,10 @@ const TicketPricingProposalPage = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setErrors({});
+                }}
                 style={{
                   background: '#f1f5f9',
                   border: 'none',
@@ -1531,7 +1638,24 @@ const TicketPricingProposalPage = () => {
             )}
 
             {/* FORM */}
-            <form onSubmit={handleSubmitProposal} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            <form onSubmit={handleSubmitProposal} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {/* Error Summary Banner if any errors */}
+              {Object.keys(errors).length > 0 && (
+                <div
+                  style={{
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '6px',
+                    padding: '0.6rem 0.85rem',
+                    fontSize: '0.72rem',
+                    color: '#b91c1c',
+                    lineHeight: 1.45
+                  }}
+                >
+                  Dữ liệu nhập chưa hợp lệ ({Object.keys(errors).length} mục cần điều chỉnh). Vui lòng kiểm tra các trường được đánh dấu viền đỏ bên dưới trước khi trình Ban Giám Đốc.
+                </div>
+              )}
+
               {/* Title */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: '700', color: '#1e293b', marginBottom: '4px' }}>
@@ -1539,9 +1663,11 @@ const TicketPricingProposalPage = () => {
                 </label>
                 <input
                   type="text"
-                  required
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (errors.title) clearError('title');
+                  }}
                   placeholder={
                     proposalCategory === 'adjustment'
                       ? 'Nhập tiêu đề biên bản (VD: Đề xuất phụ thu 15% dịp Lễ 30/4 tuyến TP.HCM - Đà Lạt)'
@@ -1551,10 +1677,18 @@ const TicketPricingProposalPage = () => {
                     width: '100%',
                     padding: '0.5rem 0.75rem',
                     borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.78rem'
+                    border: errors.title ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: errors.title ? '#fef2f2' : '#ffffff',
+                    fontSize: '0.78rem',
+                    outline: 'none',
+                    boxSizing: 'border-box'
                   }}
                 />
+                {errors.title && (
+                  <div style={{ color: '#ef4444', fontSize: '0.7rem', marginTop: '3px', fontWeight: '500' }}>
+                    {errors.title}
+                  </div>
+                )}
               </div>
 
               {/* Route & Bus Type */}
@@ -1570,9 +1704,11 @@ const TicketPricingProposalPage = () => {
                       width: '100%',
                       padding: '0.5rem 0.75rem',
                       borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
+                      border: errors.routeId ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: errors.routeId ? '#fef2f2' : '#ffffff',
                       fontSize: '0.78rem',
-                      background: '#ffffff'
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   >
                     {selectableRoutes.map((r) => (
@@ -1581,6 +1717,11 @@ const TicketPricingProposalPage = () => {
                       </option>
                     ))}
                   </select>
+                  {errors.routeId && (
+                    <div style={{ color: '#ef4444', fontSize: '0.7rem', marginTop: '3px', fontWeight: '500' }}>
+                      {errors.routeId}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1596,7 +1737,9 @@ const TicketPricingProposalPage = () => {
                       borderRadius: '6px',
                       border: '1px solid #cbd5e1',
                       fontSize: '0.78rem',
-                      background: '#ffffff'
+                      background: '#ffffff',
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   >
                     <option value="all">Tất cả các hạng xe</option>
@@ -1615,7 +1758,7 @@ const TicketPricingProposalPage = () => {
                   background: '#f8fafc',
                   padding: '0.85rem 1rem',
                   borderRadius: '8px',
-                  border: '1px solid #e2e8f0'
+                  border: (errors.proposedPrice || errors.adjustmentPercentage) ? '1.5px solid #fca5a5' : '1px solid #e2e8f0'
                 }}
               >
                 {/* Current Price Readout */}
@@ -1651,6 +1794,8 @@ const TicketPricingProposalPage = () => {
                         <select
                           value={proposalType}
                           onChange={(e) => {
+                            clearError('adjustmentPercentage');
+                            clearError('proposedPrice');
                             setProposalType(e.target.value);
                             if (e.target.value === 'percentage') {
                               handlePercentageChange(adjustmentPercentage || 10);
@@ -1662,7 +1807,9 @@ const TicketPricingProposalPage = () => {
                             borderRadius: '6px',
                             border: '1px solid #cbd5e1',
                             fontSize: '0.75rem',
-                            background: '#ffffff'
+                            background: '#ffffff',
+                            outline: 'none',
+                            boxSizing: 'border-box'
                           }}
                         >
                           <option value="percentage">Theo tỷ lệ phần trăm (%)</option>
@@ -1673,7 +1820,7 @@ const TicketPricingProposalPage = () => {
                       {proposalType === 'percentage' ? (
                         <div>
                           <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: '600', color: '#475569', marginBottom: '3px' }}>
-                            Tỷ lệ điều chỉnh (+/- %)
+                            Tỷ lệ điều chỉnh (+/- %) *
                           </label>
                           <input
                             type="number"
@@ -1684,11 +1831,19 @@ const TicketPricingProposalPage = () => {
                               width: '100%',
                               padding: '0.45rem 0.6rem',
                               borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
+                              border: errors.adjustmentPercentage ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                              backgroundColor: errors.adjustmentPercentage ? '#fef2f2' : '#ffffff',
                               fontSize: '0.76rem',
-                              fontWeight: '700'
+                              fontWeight: '700',
+                              outline: 'none',
+                              boxSizing: 'border-box'
                             }}
                           />
+                          {errors.adjustmentPercentage && (
+                            <div style={{ color: '#ef4444', fontSize: '0.68rem', marginTop: '3px', fontWeight: '500' }}>
+                              {errors.adjustmentPercentage}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div>
@@ -1779,19 +1934,26 @@ const TicketPricingProposalPage = () => {
                   </label>
                   <input
                     type="number"
-                    required
                     value={proposedPrice}
                     onChange={(e) => handleProposedPriceChange(e.target.value)}
                     style={{
                       width: '100%',
                       padding: '0.5rem 0.75rem',
                       borderRadius: '6px',
-                      border: '1px solid #1e40af',
+                      border: errors.proposedPrice ? '1.5px solid #ef4444' : '1.5px solid #1e40af',
+                      backgroundColor: errors.proposedPrice ? '#fef2f2' : '#ffffff',
                       fontSize: '0.95rem',
                       fontWeight: '800',
-                      color: '#1e40af'
+                      color: errors.proposedPrice ? '#dc2626' : '#1e40af',
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   />
+                  {errors.proposedPrice && (
+                    <div style={{ color: '#ef4444', fontSize: '0.7rem', marginTop: '4px', fontWeight: '500' }}>
+                      {errors.proposedPrice}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1803,17 +1965,28 @@ const TicketPricingProposalPage = () => {
                   </label>
                   <input
                     type="date"
-                    required
                     value={effectiveFrom}
-                    onChange={(e) => setEffectiveFrom(e.target.value)}
+                    onChange={(e) => {
+                      setEffectiveFrom(e.target.value);
+                      if (errors.effectiveFrom) clearError('effectiveFrom');
+                      if (errors.effectiveTo) clearError('effectiveTo');
+                    }}
                     style={{
                       width: '100%',
                       padding: '0.45rem 0.75rem',
                       borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.76rem'
+                      border: errors.effectiveFrom ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: errors.effectiveFrom ? '#fef2f2' : '#ffffff',
+                      fontSize: '0.76rem',
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   />
+                  {errors.effectiveFrom && (
+                    <div style={{ color: '#ef4444', fontSize: '0.7rem', marginTop: '3px', fontWeight: '500' }}>
+                      {errors.effectiveFrom}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -1822,26 +1995,39 @@ const TicketPricingProposalPage = () => {
                   </label>
                   <input
                     type="date"
-                    required={proposalCategory === 'adjustment'}
                     value={effectiveTo}
-                    onChange={(e) => setEffectiveTo(e.target.value)}
+                    onChange={(e) => {
+                      setEffectiveTo(e.target.value);
+                      if (errors.effectiveTo) clearError('effectiveTo');
+                    }}
                     style={{
                       width: '100%',
                       padding: '0.45rem 0.75rem',
                       borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.76rem'
+                      border: errors.effectiveTo ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: errors.effectiveTo ? '#fef2f2' : '#ffffff',
+                      fontSize: '0.76rem',
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   />
-                  {proposalCategory === 'base_price' && !effectiveTo && (
-                    <div style={{ fontSize: '0.65rem', color: '#15803d', marginTop: '3px', fontWeight: '600' }}>
-                      Để trống = Áp dụng dài hạn cho đến khi có quyết định sửa đổi mới
+                  {errors.effectiveTo ? (
+                    <div style={{ color: '#ef4444', fontSize: '0.7rem', marginTop: '3px', fontWeight: '500' }}>
+                      {errors.effectiveTo}
                     </div>
-                  )}
-                  {proposalCategory === 'adjustment' && durationDays && (
-                    <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '3px', fontWeight: '600' }}>
-                      Tổng thời gian áp dụng: {durationDays} ngày
-                    </div>
+                  ) : (
+                    <>
+                      {proposalCategory === 'base_price' && !effectiveTo && (
+                        <div style={{ fontSize: '0.65rem', color: '#15803d', marginTop: '3px', fontWeight: '600' }}>
+                          Để trống = Áp dụng dài hạn cho đến khi có quyết định sửa đổi mới
+                        </div>
+                      )}
+                      {proposalCategory === 'adjustment' && durationDays && (
+                        <div style={{ fontSize: '0.65rem', color: '#475569', marginTop: '3px', fontWeight: '600' }}>
+                          Tổng thời gian áp dụng: {durationDays} ngày
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1852,10 +2038,12 @@ const TicketPricingProposalPage = () => {
                   Căn cứ &amp; Giải trình thực tế đề xuất *
                 </label>
                 <textarea
-                  required
                   rows={2}
                   value={reason}
-                  onChange={(e) => setReason(e.target.value)}
+                  onChange={(e) => {
+                    setReason(e.target.value);
+                    if (errors.reason) clearError('reason');
+                  }}
                   placeholder={
                     proposalCategory === 'adjustment'
                       ? 'Nêu rõ căn cứ thực tế (Lưu lượng khách đặt tại phòng vé tăng cao dịp Lễ, chi phí quay đầu xe rỗng, khảo sát mặt bằng thị trường...)'
@@ -1865,18 +2053,29 @@ const TicketPricingProposalPage = () => {
                     width: '100%',
                     padding: '0.5rem 0.75rem',
                     borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
+                    border: errors.reason ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: errors.reason ? '#fef2f2' : '#ffffff',
                     fontSize: '0.78rem',
-                    resize: 'vertical'
+                    resize: 'vertical',
+                    outline: 'none',
+                    boxSizing: 'border-box'
                   }}
                 />
+                {errors.reason && (
+                  <div style={{ color: '#ef4444', fontSize: '0.7rem', marginTop: '3px', fontWeight: '500' }}>
+                    {errors.reason}
+                  </div>
+                )}
               </div>
 
               {/* Modal Action Buttons */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setErrors({});
+                  }}
                   style={{
                     padding: '0.5rem 1rem',
                     borderRadius: '6px',

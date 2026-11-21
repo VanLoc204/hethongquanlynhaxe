@@ -1135,7 +1135,7 @@ const GmPricingPage = () => {
                               <span style={{ fontWeight: '700', color: '#0f172a' }}>{p.title}</span>
                             </div>
                             <div style={{ fontSize: '0.68rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span>Người lập: {p.proposerName} ({new Date(p.createdAt).toLocaleDateString('vi-VN')})</span>
+                              <span>Người lập: {p.proposerId?.name || p.proposerName} ({new Date(p.createdAt).toLocaleDateString('vi-VN')})</span>
                               {p.branchId && (
                                 <span style={{ background: '#eff6ff', color: '#1e40af', padding: '1px 6px', borderRadius: '4px', fontWeight: '600', fontSize: '0.65rem', border: '1px solid #bfdbfe' }}>
                                   {getBranchName(p.branchId)}

@@ -9,20 +9,13 @@ const monthlyAreaRevenueReportSchema = new mongoose.Schema(
       trim: true,
       index: true
     },
+    // Khóa ngoại tham chiếu User._id của Quản lý bán vé nộp tờ trình báo cáo
+    // Chi nhánh được lấy trực tiếp từ ticketManagerId.branch.branchId trong bảng User
     ticketManagerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
       index: true
-    },
-    branchId: {
-      type: String,
-      default: 'sg',
-      index: true
-    },
-    branchName: {
-      type: String,
-      default: 'Chi nhánh TP. Hồ Chí Minh'
     },
     month: {
       type: Number,
@@ -34,42 +27,6 @@ const monthlyAreaRevenueReportSchema = new mongoose.Schema(
       type: Number,
       required: true
     },
-    // Mục 1 & 2: Tổng doanh thu và phân loại dòng tiền
-    summary: {
-      totalRevenue: { type: Number, default: 0 },
-      cashRevenue: { type: Number, default: 0 },
-      cashlessRevenue: { type: Number, default: 0 },
-      cashRate: { type: Number, default: 0 },
-      cashlessRate: { type: Number, default: 0 },
-      totalTickets: { type: Number, default: 0 },
-      shiftsCount: { type: Number, default: 0 }
-    },
-    // Mục 3: Thống kê doanh thu theo từng quầy / điểm bán vé thuộc khu vực
-    counterBreakdown: [
-      {
-        counter: { type: String, required: true },
-        shiftsCount: { type: Number, default: 0 },
-        totalCash: { type: Number, default: 0 },
-        totalCashless: { type: Number, default: 0 },
-        totalRevenue: { type: Number, default: 0 },
-        ticketsCount: { type: Number, default: 0 },
-        rate: { type: Number, default: 0 }
-      }
-    ],
-    // Mục 4: Thống kê doanh thu theo từng nhân viên bán vé trong chi nhánh
-    staffBreakdown: [
-      {
-        staffId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-        staffName: { type: String, required: true },
-        phone: { type: String, default: '' },
-        shiftsCount: { type: Number, default: 0 },
-        totalCash: { type: Number, default: 0 },
-        totalCashless: { type: Number, default: 0 },
-        totalRevenue: { type: Number, default: 0 },
-        ticketsCount: { type: Number, default: 0 },
-        rate: { type: Number, default: 0 }
-      }
-    ],
     ticketManagerNotes: {
       type: String,
       default: ''
@@ -80,6 +37,7 @@ const monthlyAreaRevenueReportSchema = new mongoose.Schema(
       default: 'pending',
       index: true
     },
+    // Khóa ngoại tham chiếu User._id của Lãnh đạo Ban Giám Đốc phê duyệt
     directorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -97,9 +55,9 @@ const monthlyAreaRevenueReportSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    // Khối xác thực chữ ký số điện tử chống chỉnh sửa dữ liệu kế toán
     digitalSignature: {
       isSigned: { type: Boolean, default: false },
-      signerName: { type: String, default: '' },
       signedAt: { type: Date, default: null },
       certCode: { type: String, default: '' },
       hash: { type: String, default: '' }
@@ -110,8 +68,7 @@ const monthlyAreaRevenueReportSchema = new mongoose.Schema(
   }
 );
 
-// Tránh trùng lặp báo cáo cùng tháng/năm/chi nhánh
-monthlyAreaRevenueReportSchema.index({ branchId: 1, month: 1, year: 1 });
+// Tránh trùng lặp báo cáo cùng tháng/năm của cùng 1 Quản lý bán vé
+monthlyAreaRevenueReportSchema.index({ ticketManagerId: 1, month: 1, year: 1 });
 
 module.exports = mongoose.model('MonthlyAreaRevenueReport', monthlyAreaRevenueReportSchema);
-
