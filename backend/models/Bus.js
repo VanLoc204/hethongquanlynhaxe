@@ -40,27 +40,26 @@ const busSchema = new mongoose.Schema(
       enum: ['ready', 'maintenance', 'repairing', 'inactive'],
       default: 'ready'
     },
-    maintenanceInfo: {
-      description: { type: String },
-      garage: { type: String },
-      estimatedCompletion: { type: Date },
-      estimatedCost: { type: Number },
-      isMajor: { type: Boolean, default: false },
-      approvalStatus: {
-        type: String,
-        enum: ['auto_approved', 'pending_approval', 'approved', 'rejected', null],
-        default: 'auto_approved'
-      },
-      proposedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-      approvedAt: { type: Date },
-      approvalNote: { type: String, default: '' },
-      rejectionReason: { type: String, default: '' }
+    // Tham chiếu đến đợt bảo trì/sửa chữa hiện tại nếu xe đang ở xưởng (nếu có)
+    currentMaintenance: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Maintenance',
+      default: null
     }
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
+
+// Virtual: Tự động trích xuất thông tin xưởng từ currentMaintenance (không lưu dư thừa trong DB)
+busSchema.virtual('maintenanceInfo').get(function () {
+  if (this.currentMaintenance && typeof this.currentMaintenance === 'object') {
+    return this.currentMaintenance;
+  }
+  return null;
+});
 
 module.exports = mongoose.model('Bus', busSchema);

@@ -15,8 +15,7 @@ const COMPONENT_THRESHOLDS = {
 const FleetForecastPage = () => {
   const { token } = useContext(AuthContext);
 
-  const [buses, setBuses] = useState([]);
-  const [trips, setTrips] = useState([]);
+  const [fleetAnalytics, setFleetAnalytics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBusId, setSelectedBusId] = useState(null);
   const [filterRisk, setFilterRisk] = useState('all'); // 'all' | 'high' | 'medium' | 'good'
@@ -28,31 +27,25 @@ const FleetForecastPage = () => {
   const [dispatchGarage, setDispatchGarage] = useState('Garage Thiên Phúc');
   const [dispatchDescription, setDispatchDescription] = useState('');
   const [dispatchEstimatedCost, setDispatchEstimatedCost] = useState('');
+  const [dispatchEstimatedCompletion, setDispatchEstimatedCompletion] = useState('');
   const [loadingDispatch, setLoadingDispatch] = useState(false);
 
-  // Fetch real data
+  // Fetch forecast data calculated from Backend Controller & Service
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [resBuses, resTrips] = await Promise.all([
-        fetch(`${API_BASE}/trips/fleet/buses`, { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch(`${API_BASE}/trips/ops/trips`, { headers: { 'Authorization': `Bearer ${token}` } })
-      ]);
-
-      const dataBuses = await resBuses.json();
-      const dataTrips = await resTrips.json();
-
-      let busList = [];
-      if (resBuses.ok && dataBuses.success) {
-        busList = (dataBuses.buses || []).filter(b => b.status === 'approved');
-        setBuses(busList);
-        if (busList.length > 0 && !selectedBusId) {
-          setSelectedBusId(busList[0]._id);
+      const res = await fetch(`${API_BASE}/trips/fleet/forecast`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const analytics = data.fleetAnalytics || [];
+        setFleetAnalytics(analytics);
+        if (analytics.length > 0 && !selectedBusId) {
+          setSelectedBusId(analytics[0].bus._id);
         }
-      }
-
-      if (resTrips.ok && dataTrips.success) {
-        setTrips(dataTrips.trips || []);
+      } else {
+        setErrorMsg(data.message || 'Lỗi khi tải dữ liệu dự báo từ máy chủ.');
       }
     } catch (err) {
       console.error('Lỗi tải dữ liệu dự báo:', err);
@@ -68,113 +61,13 @@ const FleetForecastPage = () => {
     }
   }, [token]);
 
-  // Compute analytics for each bus
-  const fleetAnalytics = useMemo(() => {
-    return buses.map(bus => {
-      // Find trips for this bus
-      const busTrips = trips.filter(t => t.busId && (t.busId._id === bus._id || t.busId === bus._id));
-      const tripCount = busTrips.length;
-
-      // Calculate total km from trips
-      let totalKm = 0;
-      busTrips.forEach(t => {
-        const distStr = t.routeId?.distance || '';
-        const match = distStr.match(/(\d+)/);
-        const km = match ? parseInt(match[1], 10) : 250;
-        totalKm += km;
-      });
-
-      // Default reasonable baseline if brand new or 0 trips
-      if (totalKm === 0) {
-        totalKm = 32000;
-      }
-
-      // Calculate wear for 5 components
-      const oilKmSince = totalKm % COMPONENT_THRESHOLDS.oil.cycleKm;
-      const oilWear = Math.min(100, Math.round((oilKmSince / COMPONENT_THRESHOLDS.oil.cycleKm) * 100));
-      const oilRemainKm = Math.max(0, COMPONENT_THRESHOLDS.oil.cycleKm - oilKmSince);
-
-      const brakeKmSince = totalKm % COMPONENT_THRESHOLDS.brakes.cycleKm;
-      const brakeWear = Math.min(100, Math.round((brakeKmSince / COMPONENT_THRESHOLDS.brakes.cycleKm) * 100));
-      const brakeRemainKm = Math.max(0, COMPONENT_THRESHOLDS.brakes.cycleKm - brakeKmSince);
-
-      const tireKmSince = totalKm % COMPONENT_THRESHOLDS.tires.cycleKm;
-      const tireWear = Math.min(100, Math.round((tireKmSince / COMPONENT_THRESHOLDS.tires.cycleKm) * 100));
-      const tireRemainKm = Math.max(0, COMPONENT_THRESHOLDS.tires.cycleKm - tireKmSince);
-
-      const coolKmSince = totalKm % COMPONENT_THRESHOLDS.cooling.cycleKm;
-      const coolWear = Math.min(100, Math.round((coolKmSince / COMPONENT_THRESHOLDS.cooling.cycleKm) * 100));
-      const coolRemainKm = Math.max(0, COMPONENT_THRESHOLDS.cooling.cycleKm - coolKmSince);
-
-      const battKmSince = totalKm % COMPONENT_THRESHOLDS.battery.cycleKm;
-      const battWear = Math.min(100, Math.round((battKmSince / COMPONENT_THRESHOLDS.battery.cycleKm) * 100));
-      const battRemainKm = Math.max(0, COMPONENT_THRESHOLDS.battery.cycleKm - battKmSince);
-
-      const components = [
-        { key: 'oil', ...COMPONENT_THRESHOLDS.oil, wear: oilWear, kmSince: oilKmSince, remainKm: oilRemainKm },
-        { key: 'brakes', ...COMPONENT_THRESHOLDS.brakes, wear: brakeWear, kmSince: brakeKmSince, remainKm: brakeRemainKm },
-        { key: 'tires', ...COMPONENT_THRESHOLDS.tires, wear: tireWear, kmSince: tireKmSince, remainKm: tireRemainKm },
-        { key: 'cooling', ...COMPONENT_THRESHOLDS.cooling, wear: coolWear, kmSince: coolKmSince, remainKm: coolRemainKm },
-        { key: 'battery', ...COMPONENT_THRESHOLDS.battery, wear: battWear, kmSince: battKmSince, remainKm: battRemainKm }
-      ];
-
-      // Highest wear component
-      const highestWear = [...components].sort((a, b) => b.wear - a.wear)[0];
-
-      // Overall health score: 100 minus weighted wear
-      const avgWear = Math.round(components.reduce((sum, c) => sum + c.wear, 0) / components.length);
-      const healthScore = Math.max(40, Math.round(100 - (highestWear.wear * 0.55 + avgWear * 0.45)));
-
-      // Risk category
-      let riskLevel = 'good'; // 'high' | 'medium' | 'good'
-      let riskLabel = 'Vận hành tối ưu';
-      if (highestWear.wear >= 85 || healthScore < 60) {
-        riskLevel = 'high';
-        riskLabel = 'Ưu tiên bảo dưỡng';
-      } else if (highestWear.wear >= 70 || healthScore < 75) {
-        riskLevel = 'medium';
-        riskLabel = 'Cần theo dõi';
-      }
-
-      // Predicted days until next service (average 260 km/day)
-      const daysUntil = Math.max(1, Math.round(highestWear.remainKm / 260));
-      const nextDate = new Date();
-      nextDate.setDate(nextDate.getDate() + daysUntil);
-
-      // Estimated cost of upcoming maintenance
-      const dueComponents = components.filter(c => c.wear >= 70);
-      const predictedCost = dueComponents.length > 0
-        ? dueComponents.reduce((sum, c) => sum + c.baseCost, 0)
-        : highestWear.baseCost;
-
-      // Recommended action
-      let recommendation = 'Phương tiện đạt chuẩn kỹ thuật, tiếp tục vận hành theo lịch trình.';
-      if (highestWear.wear >= 85) {
-        recommendation = `Cần lập lịch thay thế ${highestWear.name.toLowerCase()} trước hành trình tiếp theo để bảo đảm an toàn.`;
-      } else if (highestWear.wear >= 70) {
-        recommendation = `Theo dõi sát ${highestWear.name.toLowerCase()} trong các đợt kiểm tra cuối ngày, còn khoảng ${highestWear.remainKm.toLocaleString('vi-VN')} km.`;
-      }
-
-      return {
-        bus,
-        tripCount,
-        totalKm,
-        components,
-        highestWear,
-        healthScore,
-        riskLevel,
-        riskLabel,
-        daysUntil,
-        nextDate,
-        predictedCost,
-        recommendation
-      };
-    });
-  }, [buses, trips]);
-
   // Overall fleet KPIs
   const totalFleetKm = useMemo(() => {
     return fleetAnalytics.reduce((sum, a) => sum + a.totalKm, 0);
+  }, [fleetAnalytics]);
+
+  const totalFleetTrips = useMemo(() => {
+    return fleetAnalytics.reduce((sum, a) => sum + (a.tripCount || 0), 0);
   }, [fleetAnalytics]);
 
   const avgFleetHealth = useMemo(() => {
@@ -216,8 +109,23 @@ const FleetForecastPage = () => {
   const handleOpenDispatch = (item) => {
     setDispatchModalBus(item);
     setDispatchGarage('Garage Thiên Phúc');
-    setDispatchDescription(`Bảo dưỡng dự phòng kỹ thuật: ${item.highestWear.name} (Hao mòn ${item.highestWear.wear}%)`);
+
+    // Lấy các hạng mục kỹ thuật vượt mức yêu cầu (hao mòn >= 70%)
+    const dueComponents = (item.components || []).filter(c => c.wear >= 70);
+    const desc = dueComponents.length > 0
+      ? `Bảo dưỡng kỹ thuật: ${dueComponents.map(c => c.name).join(', ')}`
+      : `Bảo dưỡng kỹ thuật: ${item.highestWear?.name || 'Kiểm tra định kỳ'}`;
+
+    setDispatchDescription(desc);
     setDispatchEstimatedCost(item.predictedCost);
+    if (item.nextDate) {
+      const d = new Date(item.nextDate);
+      setDispatchEstimatedCompletion(d.toISOString().substring(0, 10));
+    } else {
+      const defaultDate = new Date();
+      defaultDate.setDate(defaultDate.getDate() + 7);
+      setDispatchEstimatedCompletion(defaultDate.toISOString().substring(0, 10));
+    }
   };
 
   // Confirm Dispatch to Maintenance
@@ -225,12 +133,37 @@ const FleetForecastPage = () => {
     e.preventDefault();
     if (!dispatchModalBus) return;
 
+    if (!dispatchGarage || !dispatchGarage.trim()) {
+      setErrorMsg('Vui lòng nhập Tên xưởng / Garage tiếp nhận phương tiện.');
+      return;
+    }
+    if (!dispatchDescription || !dispatchDescription.trim()) {
+      setErrorMsg('Vui lòng nhập Nội dung thực hiện bảo dưỡng kỹ thuật.');
+      return;
+    }
+    if (dispatchEstimatedCost === '' || dispatchEstimatedCost === null || dispatchEstimatedCost === undefined) {
+      setErrorMsg('Vui lòng nhập Chi phí dự kiến.');
+      return;
+    }
+    const costNum = Number(dispatchEstimatedCost);
+    if (isNaN(costNum) || costNum < 0) {
+      setErrorMsg('Chi phí dự kiến phải là một số hợp lệ lớn hơn hoặc bằng 0.');
+      return;
+    }
+    if (!dispatchEstimatedCompletion) {
+      setErrorMsg('Vui lòng chọn Ngày dự kiến hoàn tất.');
+      return;
+    }
+
     setLoadingDispatch(true);
     setSuccessMsg('');
     setErrorMsg('');
 
     try {
       const busId = dispatchModalBus.bus._id;
+      const compDate = new Date(dispatchEstimatedCompletion);
+
+      // 1. Cập nhật trạng thái phương tiện sang 'maintenance'
       const res = await fetch(`${API_BASE}/trips/fleet/buses/${busId}`, {
         method: 'PUT',
         headers: {
@@ -242,17 +175,42 @@ const FleetForecastPage = () => {
           maintenanceInfo: {
             description: dispatchDescription.trim(),
             garage: dispatchGarage.trim(),
-            estimatedCompletion: dispatchModalBus.nextDate,
-            estimatedCost: Number(dispatchEstimatedCost) || 0
+            estimatedCompletion: compDate,
+            estimatedCost: costNum
           }
         })
       });
 
       const data = await res.json();
       if (res.ok && data.success) {
-        setSuccessMsg(`Đã chuyển xe ${dispatchModalBus.bus.plateNumber} vào diện bảo dưỡng kỹ thuật thành công.`);
+        // 2. Ghi nhật ký điều chuyển vào MongoDB BusStatusLog để đồng bộ sổ theo dõi kỹ thuật
+        try {
+          await fetch(`${API_BASE}/trips/fleet/status-logs`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              busId: dispatchModalBus.bus._id,
+              plateNumber: dispatchModalBus.bus.plateNumber,
+              busType: dispatchModalBus.bus.type,
+              fromStatus: dispatchModalBus.bus.activeStatus || 'ready',
+              toStatus: 'maintenance',
+              time: new Date().toISOString(),
+              details: `Chuyển trạng thái sang: Đang bảo dưỡng. Nơi thực hiện: ${dispatchGarage.trim()}. Nội dung: ${dispatchDescription.trim()}. Ngày dự kiến xong: ${compDate.toLocaleDateString('vi-VN')}. Chi phí dự kiến: ${costNum.toLocaleString('vi-VN')} VNĐ.`,
+              garage: dispatchGarage.trim(),
+              cost: costNum,
+              approvalStatus: costNum >= 10000000 ? 'pending' : 'approved'
+            })
+          });
+        } catch (logErr) {
+          console.error('Lỗi lưu nhật ký trạng thái xe vào CSDL:', logErr);
+        }
+
+        setSuccessMsg(`Đã lập lệnh chuyển xe ${dispatchModalBus.bus.plateNumber} vào xưởng bảo dưỡng kỹ thuật thành công!`);
         setDispatchModalBus(null);
-        fetchData();
+        await fetchData();
       } else {
         setErrorMsg(data.message || 'Lỗi khi cập nhật trạng thái bảo dưỡng.');
       }
@@ -260,6 +218,58 @@ const FleetForecastPage = () => {
       setErrorMsg('Lỗi kết nối máy chủ khi chuyển bảo dưỡng.');
     } finally {
       setLoadingDispatch(false);
+    }
+  };
+
+  // Direct Acceptance: Xác nhận nghiệm thu hoàn tất xuất xưởng & Reset thanh hao mòn kỹ thuật về số km ban đầu
+  const handleConfirmAcceptance = async (item) => {
+    if (!item || !item.bus) return;
+    const bus = item.bus;
+
+    const cost = Number(bus.maintenanceInfo?.estimatedCost || item.predictedCost || 0);
+    const garageName = bus.maintenanceInfo?.garage?.trim() || 'Garage Thiên Phúc';
+    const dueComponents = (item.components || []).filter(c => c.wear >= 70);
+    const defaultDesc = dueComponents.length > 0
+      ? `Bảo dưỡng kỹ thuật hoàn tất: ${dueComponents.map(c => c.name).join(', ')}`
+      : `Bảo dưỡng kỹ thuật hoàn tất: ${item.highestWear?.name || 'Kiểm tra định kỳ'}`;
+    const desc = bus.maintenanceInfo?.description?.trim() || defaultDesc;
+
+    setLoading(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      const payload = {
+        busId: bus._id,
+        plateNumber: bus.plateNumber,
+        type: bus.activeStatus || 'maintenance',
+        description: desc,
+        garage: garageName,
+        cost: cost,
+        startDate: bus.updatedAt || new Date(),
+        endDate: new Date()
+      };
+
+      const res = await fetch(`${API_BASE}/trips/fleet/maintenance-records`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccessMsg(`Xác nhận nghiệm thu xuất xưởng xe ${bus.plateNumber} thành công! Phương tiện đã chuyển về trạng thái Sẵn sàng hoạt động và các thanh dự báo hao mòn kỹ thuật đã được reset về số km ban đầu.`);
+        await fetchData();
+      } else {
+        setErrorMsg(data.message || 'Lỗi khi nghiệm thu phương tiện.');
+      }
+    } catch (err) {
+      setErrorMsg('Lỗi kết nối máy chủ khi nghiệm thu.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -412,7 +422,7 @@ const FleetForecastPage = () => {
             Dự Báo Bảo Trì & Sức Khỏe Kỹ Thuật Đội Xe
           </h1>
           <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-            Phân tích mức độ hao mòn các cụm chi tiết máy theo chu kỳ km vận hành thực tế của toàn bộ 5 phương tiện.
+            Dự báo ước tính mức độ hao mòn và chu kỳ bảo trì dựa trên lịch trình thực tế, tự động loại trừ chuyến trùng thời điểm nằm xưởng.
           </p>
         </div>
 
@@ -518,7 +528,7 @@ const FleetForecastPage = () => {
             </span>
           </div>
           <div style={{ fontSize: '0.72rem', color: '#475569', fontWeight: '600' }}>
-            {trips.length} chuyến thực hiện
+            {totalFleetTrips} chuyến thực tế
           </div>
         </div>
 
@@ -590,17 +600,32 @@ const FleetForecastPage = () => {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                      <span style={{
-                        fontSize: '0.68rem',
-                        fontWeight: '700',
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        backgroundColor: isHigh ? '#fee2e2' : isMedium ? '#fef3c7' : '#ecfdf5',
-                        color: isHigh ? '#b91c1c' : isMedium ? '#b45309' : '#15803d',
-                        whiteSpace: 'nowrap'
-                      }}>
-                        {item.riskLabel}
-                      </span>
+                      {(item.bus.activeStatus === 'maintenance' || item.bus.activeStatus === 'repairing') ? (
+                        <span style={{
+                          fontSize: '0.65rem',
+                          fontWeight: '800',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: '#fff7ed',
+                          color: '#c2410c',
+                          border: '1px solid #fed7aa',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          Đang trong xưởng
+                        </span>
+                      ) : (
+                        <span style={{
+                          fontSize: '0.68rem',
+                          fontWeight: '700',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          backgroundColor: isHigh ? '#fee2e2' : isMedium ? '#fef3c7' : '#ecfdf5',
+                          color: isHigh ? '#b91c1c' : isMedium ? '#b45309' : '#15803d',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {item.riskLabel}
+                        </span>
+                      )}
                       <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#0f172a' }}>
                         SK: {item.healthScore}%
                       </span>
@@ -641,7 +666,12 @@ const FleetForecastPage = () => {
                     {selectedBusAnalytics.bus.type}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
-                    Sức chứa: {selectedBusAnalytics.bus.totalSeats} chỗ • Tổng tích lũy: {selectedBusAnalytics.totalKm.toLocaleString('vi-VN')} km ({selectedBusAnalytics.tripCount} chuyến)
+                    Sức chứa: {selectedBusAnalytics.bus.totalSeats} chỗ • Tổng tích lũy: {selectedBusAnalytics.totalKm.toLocaleString('vi-VN')} km ({selectedBusAnalytics.tripCount} chuyến thực tế)
+                  </div>
+                  <div style={{ display: 'flex', gap: '14px', marginTop: '5px', fontSize: '0.72rem', color: '#475569', flexWrap: 'wrap' }}>
+                    <span>Cường độ: <strong style={{ color: '#0f172a' }}>{selectedBusAnalytics.avgDailyKm} km/ngày</strong></span>
+                    <span>Thời gian xưởng: <strong style={{ color: '#0f172a' }}>{selectedBusAnalytics.workshopDays} ngày</strong></span>
+                    <span>Ngày lăn bánh: <strong style={{ color: '#0f172a' }}>{selectedBusAnalytics.activeOperatingDays} ngày</strong></span>
                   </div>
                 </div>
               </div>
@@ -656,22 +686,54 @@ const FleetForecastPage = () => {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => handleOpenDispatch(selectedBusAnalytics)}
-                  style={{
-                    backgroundColor: '#0f172a',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '7px 14px',
-                    fontSize: '0.76rem',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                  }}
-                >
-                  Đưa Vào Bảo Dưỡng
-                </button>
+                {(selectedBusAnalytics.bus.activeStatus === 'maintenance' || selectedBusAnalytics.bus.activeStatus === 'repairing') ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      backgroundColor: '#fff7ed',
+                      color: '#c2410c',
+                      border: '1px solid #fed7aa',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      fontWeight: '800'
+                    }}>
+                      Đang trong xưởng ({selectedBusAnalytics.bus.maintenanceInfo?.garage || 'Xưởng nội bộ'})
+                    </span>
+                    <button
+                      onClick={() => handleConfirmAcceptance(selectedBusAnalytics)}
+                      style={{
+                        backgroundColor: '#059669',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '7px 14px',
+                        fontSize: '0.76rem',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(5,150,105,0.2)'
+                      }}
+                    >
+                      Nghiệm thu hoàn tất xuất xưởng
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleOpenDispatch(selectedBusAnalytics)}
+                    style={{
+                      backgroundColor: '#0f172a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '7px 14px',
+                      fontSize: '0.76rem',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                    }}
+                  >
+                    Đưa Vào Bảo Dưỡng
+                  </button>
+                )}
               </div>
             </div>
 
@@ -771,6 +833,20 @@ const FleetForecastPage = () => {
               })}
             </div>
 
+            {/* Note about forecast methodology */}
+            <div style={{
+              marginTop: '4px',
+              padding: '8px 12px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              fontSize: '0.72rem',
+              color: '#64748b',
+              lineHeight: '1.4'
+            }}>
+              <strong style={{ color: '#334155' }}>Ghi chú mô hình dự báo:</strong> Số liệu cự ly và ngày vào xưởng là chỉ số ước tính dựa trên lịch sử vận hành thực tế. Hệ thống tự động so khớp thời điểm nghiệm thu xuất xưởng thực tế (Timestamp) với giờ khởi hành của từng chuyến xe để đảm bảo tính chuẩn xác.
+            </div>
+
           </div>
         ) : null}
 
@@ -852,7 +928,10 @@ const FleetForecastPage = () => {
                       {item.bus.type}
                     </td>
                     <td style={{ color: '#475569' }}>
-                      {item.totalKm.toLocaleString('vi-VN')} km ({item.tripCount} chuyến)
+                      <div style={{ fontWeight: '600' }}>{item.totalKm.toLocaleString('vi-VN')} km</div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '1px' }}>
+                        {item.tripCount} chuyến thực tế • {item.avgDailyKm} km/ngày
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -911,21 +990,41 @@ const FleetForecastPage = () => {
                         >
                           Chi tiết
                         </button>
-                        <button
-                          onClick={() => handleOpenDispatch(item)}
-                          style={{
-                            background: '#0f172a',
-                            border: 'none',
-                            borderRadius: '4px',
-                            padding: '3px 8px',
-                            fontSize: '0.7rem',
-                            fontWeight: '700',
-                            color: '#ffffff',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Vào xưởng
-                        </button>
+
+                        {(item.bus.activeStatus === 'maintenance' || item.bus.activeStatus === 'repairing') ? (
+                          <button
+                            onClick={() => handleConfirmAcceptance(item)}
+                            style={{
+                              background: '#059669',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '3px 8px',
+                              fontSize: '0.7rem',
+                              fontWeight: '700',
+                              color: '#ffffff',
+                              cursor: 'pointer'
+                            }}
+                            title="Xác nhận nghiệm thu xuất xưởng và reset chu kỳ hao mòn"
+                          >
+                            Nghiệm thu
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenDispatch(item)}
+                            style={{
+                              background: '#0f172a',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '3px 8px',
+                              fontSize: '0.7rem',
+                              fontWeight: '700',
+                              color: '#ffffff',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Vào xưởng
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -955,7 +1054,7 @@ const FleetForecastPage = () => {
             background: '#ffffff',
             borderRadius: '14px',
             width: '90%',
-            maxWidth: '460px',
+            maxWidth: '520px',
             boxShadow: '0 20px 25px -5px rgba(0,0,0,0.15)',
             padding: '1.4rem 1.5rem',
             display: 'flex',
@@ -966,7 +1065,7 @@ const FleetForecastPage = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
               <div>
                 <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748b' }}>
-                  Lập Lệnh Bảo Dưỡng Dự Phòng
+                  Lập Lệnh Bảo Dưỡng Kỹ Thuật
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                   <div className="plate-box-mini">{dispatchModalBus.bus.plateNumber}</div>
@@ -983,83 +1082,141 @@ const FleetForecastPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleConfirmDispatch} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <form onSubmit={handleConfirmDispatch} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Trạng thái vận hành mới */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
-                  Garage Tiếp Nhận Kỹ Thuật *
+                  Trạng thái vận hành mới
                 </label>
-                <input
-                  type="text"
-                  value={dispatchGarage}
-                  onChange={(e) => setDispatchGarage(e.target.value)}
-                  required
-                  style={{
-                    padding: '8px 10px',
-                    fontSize: '0.85rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    outline: 'none'
-                  }}
-                />
+                <div style={{
+                  padding: '9px 12px',
+                  fontSize: '0.84rem',
+                  fontWeight: '700',
+                  backgroundColor: '#fff7ed',
+                  color: '#c2410c',
+                  border: '1px solid #fed7aa',
+                  borderRadius: '6px'
+                }}>
+                  Đang bảo dưỡng
+                </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
-                  Dự Toán Ngân Sách Dự Kiến (VNĐ)
-                </label>
-                <input
-                  type="number"
-                  value={dispatchEstimatedCost}
-                  onChange={(e) => setDispatchEstimatedCost(e.target.value)}
-                  min="0"
-                  style={{
-                    padding: '8px 10px',
-                    fontSize: '0.85rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
-                  Nội Dung & Hạng Mục Cần Bảo Trì *
-                </label>
-                <textarea
-                  rows="3"
-                  value={dispatchDescription}
-                  onChange={(e) => setDispatchDescription(e.target.value)}
-                  required
-                  style={{
-                    padding: '8px 10px',
-                    fontSize: '0.85rem',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '6px',
-                    outline: 'none',
-                    resize: 'none'
-                  }}
-                />
-              </div>
-
+              {/* Khung màu cam THÔNG TIN XƯỞNG BẢO DƯỠNG & SỬA CHỮA */}
               <div style={{
-                backgroundColor: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '6px',
-                padding: '8px 10px',
-                fontSize: '0.72rem',
-                color: '#475569'
+                backgroundColor: '#fffaf5',
+                border: '1px solid #fed7aa',
+                borderRadius: '8px',
+                padding: '14px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px'
               }}>
-                Hệ thống sẽ chuyển trạng thái xe sang <strong>Đang bảo dưỡng</strong> và cập nhật thông số vào sổ theo dõi kỹ thuật.
+                <div style={{
+                  fontWeight: '800',
+                  color: '#c2410c',
+                  fontSize: '0.78rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.3px'
+                }}>
+                  THÔNG TIN XƯỞNG BẢO DƯỠNG & SỬA CHỮA
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
+                    Garage / Nơi thực hiện *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ví dụ: Garage Thiên Phúc, Hyundai Service..."
+                    value={dispatchGarage}
+                    onChange={(e) => setDispatchGarage(e.target.value)}
+                    required
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '0.84rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      backgroundColor: '#ffffff',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
+                    Nội dung thực hiện *
+                  </label>
+                  <textarea
+                    rows="2"
+                    placeholder="Ví dụ: Thay dầu động cơ, lọc gió, kiểm tra phanh..."
+                    value={dispatchDescription}
+                    onChange={(e) => setDispatchDescription(e.target.value)}
+                    required
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '0.84rem',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      backgroundColor: '#ffffff',
+                      outline: 'none',
+                      resize: 'none'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
+                      Chi phí dự kiến (VNĐ) *
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="Ví dụ: 800000"
+                      value={dispatchEstimatedCost}
+                      onChange={(e) => setDispatchEstimatedCost(e.target.value)}
+                      required
+                      min="0"
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '0.84rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.76rem', fontWeight: '700', color: '#334155' }}>
+                      Ngày dự kiến hoàn tất *
+                    </label>
+                    <input
+                      type="date"
+                      value={dispatchEstimatedCompletion}
+                      onChange={(e) => setDispatchEstimatedCompletion(e.target.value)}
+                      required
+                      style={{
+                        padding: '8px 12px',
+                        fontSize: '0.84rem',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
+              {/* Nút bấm thao tác */}
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '6px' }}>
                 <button
                   type="button"
                   onClick={() => setDispatchModalBus(null)}
                   style={{
-                    padding: '7px 14px',
-                    fontSize: '0.78rem',
+                    padding: '8px 16px',
+                    fontSize: '0.8rem',
                     fontWeight: '700',
                     border: '1px solid #cbd5e1',
                     borderRadius: '6px',
@@ -1074,18 +1231,19 @@ const FleetForecastPage = () => {
                 <button
                   type="submit"
                   style={{
-                    padding: '7px 16px',
-                    fontSize: '0.78rem',
+                    padding: '8px 20px',
+                    fontSize: '0.8rem',
                     fontWeight: '700',
                     border: 'none',
                     borderRadius: '6px',
-                    backgroundColor: '#0f172a',
+                    backgroundColor: '#2563eb',
                     color: '#ffffff',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
                   }}
                   disabled={loadingDispatch}
                 >
-                  {loadingDispatch ? 'Đang xử lý...' : 'Xác Nhận Đưa Vào Xưởng'}
+                  {loadingDispatch ? 'Đang cập nhật...' : 'Lưu cập nhật trạng thái'}
                 </button>
               </div>
             </form>

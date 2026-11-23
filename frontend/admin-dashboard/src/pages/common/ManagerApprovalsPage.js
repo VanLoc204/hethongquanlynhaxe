@@ -197,37 +197,62 @@ const ManagerApprovalsPage = () => {
     setLoading(true);
     setError('');
 
-    const mapMaintenanceBus = (bus) => {
-      const mInfo = bus.maintenanceInfo || {};
+    const mapMaintenanceBus = (maint) => {
+      const busObj = (maint.busId && typeof maint.busId === 'object') ? maint.busId : (maint.rawBus || maint);
+      const plateNumber = busObj.plateNumber || maint.plateNumber || 'N/A';
+      const busType = busObj.type || 'Xe khách';
+      const totalSeats = busObj.totalSeats || 0;
+
+      const cost = Number(maint.cost || maint.maintenanceInfo?.estimatedCost || 0);
+      const garage = maint.garage || maint.maintenanceInfo?.garage || 'Gara Ô tô An Phát Sài Gòn';
+      const description = maint.description || maint.maintenanceInfo?.description || 'Bảo dưỡng / sửa chữa lớn cấp xưởng';
+
       let effectiveStatus = 'pending';
-      if (mInfo.approvalStatus === 'approved') effectiveStatus = 'approved';
-      else if (mInfo.approvalStatus === 'rejected') effectiveStatus = 'rejected';
+      const rawStatus = maint.approvalStatus || maint.maintenanceInfo?.approvalStatus;
+      if (rawStatus === 'approved') effectiveStatus = 'approved';
+      else if (rawStatus === 'rejected') effectiveStatus = 'rejected';
       else effectiveStatus = 'pending';
 
-      const sender = (mInfo.proposedBy && typeof mInfo.proposedBy === 'object') ? {
-        name: mInfo.proposedBy.name || 'Quản lý Đội xe',
-        role: mInfo.proposedBy.role || 'fleet_manager',
-        phone: mInfo.proposedBy.phone || '0988888888'
+      const proposedBy = maint.proposedBy || maint.maintenanceInfo?.proposedBy;
+      const sender = (proposedBy && typeof proposedBy === 'object') ? {
+        name: proposedBy.name || 'Phạm Minh Tuấn',
+        role: proposedBy.role || 'fleet_manager',
+        phone: proposedBy.phone || '0988888888'
       } : {
-        name: 'Quản lý Đội xe',
+        name: 'Phạm Minh Tuấn',
         role: 'fleet_manager',
         phone: '0988888888'
       };
 
-      const costFormatted = Number(mInfo.estimatedCost || 0).toLocaleString('vi-VN') + ' ₫';
+      const costFormatted = cost.toLocaleString('vi-VN') + ' ₫';
 
       return {
-        id: bus._id,
+        id: maint._id,
         sender,
         type: 'maintenance',
-        typeName: 'Chi phí bảo trì xe',
-        details: `Đề xuất phê duyệt ngân sách bảo trì xe ${bus.plateNumber}: ${costFormatted} (Gara: ${mInfo.garage || 'N/A'}). Hạng mục: ${mInfo.description || 'Không có mô tả chi tiết'}`,
-        createdAt: bus.updatedAt || bus.createdAt,
+        typeName: 'Chi phí bảo trì xe (≥ 10tr)',
+        details: `Đề xuất phê duyệt ngân sách bảo trì xe ${plateNumber}: ${costFormatted} (Gara: ${garage}). Hạng mục: ${description}`,
+        createdAt: maint.createdAt || maint.updatedAt,
         status: effectiveStatus,
-        plateNumber: bus.plateNumber,
-        rawBus: bus,
-        maintenanceInfo: mInfo,
-        cost: mInfo.estimatedCost
+        plateNumber: plateNumber,
+        rawBus: {
+          _id: busObj._id,
+          plateNumber,
+          type: busType,
+          totalSeats
+        },
+        maintenanceInfo: {
+          garage,
+          description,
+          estimatedCost: cost,
+          approvalStatus: effectiveStatus,
+          approvedAt: maint.approvedAt || maint.endDate || maint.updatedAt,
+          approvalNote: maint.approvalNote || (effectiveStatus === 'approved' ? 'Ban Giám Đốc đã đồng ý cấp ngân sách bảo trì' : ''),
+          rejectionReason: maint.rejectionReason,
+          startDate: maint.startDate,
+          endDate: maint.endDate
+        },
+        cost: cost
       };
     };
 
@@ -247,7 +272,7 @@ const ManagerApprovalsPage = () => {
         if (res.ok && data.success) {
           const mappedBuses = (data.buses || []).map(bus => ({
             id: bus._id,
-            sender: { name: user.name || 'Quản lý Đội xe', role: 'fleet_manager', phone: user.phone || '0988888888' },
+            sender: { name: user.name || 'Quản lý Xe', role: 'fleet_manager', phone: user.phone || '0988888888' },
             type: 'bus',
             typeName: 'Thêm xe mới',
             details: `Yêu cầu phê duyệt xe mới biển số ${bus.plateNumber} (${bus.type}, ${bus.totalSeats} chỗ)`,
@@ -280,24 +305,6 @@ const ManagerApprovalsPage = () => {
             rawReport: rep
           }));
           merged = [...merged, ...mappedExpenses];
-        }
-
-        const areaRevRes = await fetch(`${API_BASE}/users/area-revenue-reports`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const areaRevData = await areaRevRes.json();
-        if (areaRevRes.ok && areaRevData.success) {
-          const mappedAreaRev = (areaRevData.reports || []).map(rep => ({
-            id: rep._id,
-            sender: rep.ticketManagerId || { name: 'Lê Trọng Nghĩa', role: 'ticket_manager', phone: '0977888999' },
-            type: 'area_revenue',
-            typeName: 'Doanh thu khu vực',
-            details: `Báo cáo doanh thu ${rep.branchName || 'Chi nhánh'} Tháng ${rep.month}/${rep.year} (${rep.reportCode}) - Tổng thực thu: ${formatCurrency(rep.summary?.totalRevenue)}. Tiền mặt quầy: ${formatCurrency(rep.summary?.cashRevenue)}, VietQR/CK: ${formatCurrency(rep.summary?.cashlessRevenue)}`,
-            createdAt: rep.submittedAt || rep.createdAt,
-            status: rep.status || 'pending',
-            rawReport: rep
-          }));
-          merged = [...merged, ...mappedAreaRev];
         }
 
         merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -354,7 +361,7 @@ const ManagerApprovalsPage = () => {
         if (busRes.ok && busData.success) {
           const mappedBuses = (busData.buses || []).map(bus => ({
             id: bus._id,
-            sender: { name: 'Quản lý Đội xe', role: 'fleet_manager', phone: '0988888888' },
+            sender: { name: 'Quản lý Xe', role: 'fleet_manager', phone: '0988888888' },
             type: 'bus',
             typeName: 'Thêm xe mới',
             details: `Yêu cầu phê duyệt xe mới biển số ${bus.plateNumber} (${bus.type}, ${bus.totalSeats} chỗ)`,
@@ -929,7 +936,9 @@ const ManagerApprovalsPage = () => {
             Trung Tâm Phê Duyệt Hồ Sơ & Đơn Từ
           </h1>
           <p style={{ margin: '3px 0 0', fontSize: '0.8rem', color: '#64748b' }}>
-            Phê duyệt đơn nghỉ phép của nhân sự, hồ sơ thêm phương tiện mới và yêu cầu mở tuyến của Quản lý xe.
+            {user?.role === 'fleet_manager'
+              ? 'Theo dõi tiến độ phê duyệt hồ sơ thêm xe mới, tờ trình ngân sách bảo trì lớn (≥ 10 triệu) và các báo cáo gửi Ban Giám Đốc.'
+              : 'Phê duyệt đơn nghỉ phép của nhân sự, hồ sơ thêm phương tiện mới, ngân sách bảo dưỡng lớn và yêu cầu mở tuyến.'}
           </p>
         </div>
 
@@ -1078,7 +1087,7 @@ const ManagerApprovalsPage = () => {
               {user?.role !== 'fleet_manager' && <option value="route">Yêu cầu thêm tuyến</option>}
               <option value="maintenance">Chi phí bảo trì xe (≥ 10tr)</option>
               <option value="fleet_expense">Chi tiêu đội xe hàng tháng</option>
-              <option value="area_revenue">Doanh thu khu vực hàng tháng</option>
+              {user?.role !== 'fleet_manager' && <option value="area_revenue">Doanh thu khu vực hàng tháng</option>}
             </select>
           </div>
         </div>
@@ -1271,15 +1280,6 @@ const ManagerApprovalsPage = () => {
                       <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {user?.role === 'fleet_manager' ? (
                           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-                            <span style={{
-                              color: item.status === 'approved' ? '#166534' : item.status === 'rejected' ? '#991b1b' : '#b45309',
-                              fontSize: '0.74rem',
-                              fontWeight: '700'
-                            }}>
-                              {item.status === 'pending' && 'Chờ duyệt'}
-                              {item.status === 'approved' && 'Đã duyệt'}
-                              {item.status === 'rejected' && 'Từ chối'}
-                            </span>
                             {item.type === 'bus' && item.rawBus && (
                               <button
                                 onClick={() => setSelectedBus(item.rawBus)}

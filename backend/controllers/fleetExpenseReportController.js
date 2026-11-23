@@ -1,8 +1,9 @@
 const crypto = require('crypto');
 const MonthlyFleetExpenseReport = require('../models/MonthlyFleetExpenseReport');
-const MaintenanceRecord = require('../models/MaintenanceRecord');
+const Maintenance = require('../models/Maintenance');
 const Bus = require('../models/Bus');
 const Trip = require('../models/Trip');
+const Route = require('../models/Route');
 const User = require('../models/User');
 
 // Helper tính khoảng thời gian tháng theo UTC/Local
@@ -14,15 +15,140 @@ const getMonthRange = (year, month) => {
   return { start, end };
 };
 
-// Định mức nhiên liệu tiêu chuẩn (Lít / 100 Km)
-const getStandardFuelRate = (type) => {
-  const t = (type || '').toLowerCase();
-  if (t.includes('limousine')) return 15.0;
-  if (t.includes('giường') || t.includes('phòng')) return 22.0;
-  return 18.0;
-};
+/**
+ * TẦNG LOGIC NGHIỆP VỤ (BUSINESS LOGIC LAYER)
+ * Tính toán động toàn bộ dữ liệu tổng hợp, chi phí, cự ly và trạng thái đội xe từ các bảng cơ sở:
+ * - Bus: Lấy danh mục xe, trạng thái hiện tại
+ * - Trip + Route: Lấy số chuyến thực tế, tổng km lăn bánh
+ * - Maintenance: Lấy chi phí bảo dưỡng định kỳ, sửa chữa sự cố, số ngày nằm xưởng
+ */
+const calculateMonthlyMetrics = async (year, month) => {
+  const m = parseInt(month, 10);
+  const y = parseInt(year, 10);
+  const { start, end } = getMonthRange(y, m);
 
-const DIESEL_UNIT_PRICE = 21500; // 21.500 đ / Lít
+  // 1. Lấy tất cả xe trong hệ thống
+  const buses = await Bus.find({ status: 'approved' });
+
+  // 2. Lấy tất cả chuyến xe trong tháng (loại trừ các chuyến bị hủy)
+  const trips = await Trip.find({
+    departureTime: { $gte: start, $lt: end },
+    status: { $nin: ['cancelled'] }
+  }).populate('routeId');
+
+  // 3. Lấy tất cả phiếu bảo trì/sửa chữa trong tháng (chỉ lấy bảo dưỡng và sửa chữa, loại bỏ trạng thái bãi lưu)
+  const maintenanceList = await Maintenance.find({
+    type: { $in: ['maintenance', 'repairing'] },
+    $or: [
+      { endDate: { $gte: start, $lt: end } },
+      { createdAt: { $gte: start, $lt: end } }
+    ]
+  }).populate('busId', 'plateNumber type').sort({ createdAt: -1 });
+
+  let totalDistanceKm = 0;
+  let totalMaintenanceCost = 0;
+  let totalScheduledCost = 0;
+  let totalRepairCost = 0;
+  let totalScheduledCount = 0;
+  let totalRepairCount = 0;
+  let totalWorkshopDays = 0;
+
+  // Chi tiết từng xe
+  const busDetails = buses.map((bus) => {
+    const busIdStr = bus._id.toString();
+
+    // Các chuyến xe thuộc xe này trong tháng
+    const busTrips = trips.filter((t) => t.busId && (t.busId._id ? t.busId._id.toString() : t.busId.toString()) === busIdStr);
+    let busDistance = 0;
+    busTrips.forEach((t) => {
+      const distStr = t.routeId?.distance || '';
+      const match = distStr.match(/(\d+)/);
+      busDistance += match ? parseInt(match[1], 10) : 250;
+    });
+
+    // Bảo dưỡng/sửa chữa thuộc xe này trong tháng
+    const busMaints = maintenanceList.filter((rec) => rec.busId && (rec.busId._id ? rec.busId._id.toString() : rec.busId.toString()) === busIdStr);
+    const scheduledMaints = busMaints.filter(rec => rec.type !== 'repairing');
+    const repairMaints = busMaints.filter(rec => rec.type === 'repairing');
+
+    const scheduledCost = scheduledMaints.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const repCost = repairMaints.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+    const maintCost = scheduledCost + repCost;
+
+    // Tính tổng thời gian nằm xưởng của xe trong tháng
+    let totalWorkshopMs = 0;
+    busMaints.forEach(rec => {
+      const s = new Date(rec.startDate || rec.createdAt).getTime();
+      const e = new Date(rec.endDate || rec.updatedAt || rec.startDate || rec.createdAt).getTime();
+      if (e > s) totalWorkshopMs += (e - s);
+    });
+    const workshopDays = Math.round(totalWorkshopMs / (24 * 3600 * 1000));
+    const maintDetails = busMaints.map(rec => rec.description).filter(Boolean).join('; ');
+
+    totalDistanceKm += busDistance;
+    totalMaintenanceCost += maintCost;
+    totalScheduledCost += scheduledCost;
+    totalRepairCost += repCost;
+    totalScheduledCount += scheduledMaints.length;
+    totalRepairCount += repairMaints.length;
+    totalWorkshopDays += workshopDays;
+
+    return {
+      busId: bus._id,
+      plateNumber: bus.plateNumber,
+      busType: bus.type,
+      tripsCount: busTrips.length,
+      distanceKm: busDistance,
+      maintenanceCost: maintCost,
+      scheduledMaintCost: scheduledCost,
+      repairCost: repCost,
+      maintCount: busMaints.length,
+      scheduledMaintCount: scheduledMaints.length,
+      repairCount: repairMaints.length,
+      workshopDays,
+      maintDetails,
+      activeStatus: bus.activeStatus || 'ready'
+    };
+  });
+
+  const readyBuses = buses.filter((b) => b.activeStatus === 'ready' || !b.activeStatus).length;
+  const maintBuses = buses.filter((b) => b.activeStatus === 'maintenance' || b.activeStatus === 'repairing').length;
+  const availabilityRate = buses.length > 0 ? Math.round((readyBuses / buses.length) * 100) : 100;
+
+  const summary = {
+    totalExpenses: totalMaintenanceCost,
+    totalMaintenanceCost,
+    scheduledMaintCost: totalScheduledCost,
+    repairCost: totalRepairCost,
+    maintenanceCount: maintenanceList.length,
+    scheduledMaintCount: totalScheduledCount,
+    repairCount: totalRepairCount,
+    totalTrips: trips.length,
+    totalDistanceKm,
+    totalWorkshopDays,
+    readyBusesCount: readyBuses,
+    maintenanceBusesCount: maintBuses,
+    availabilityRate
+  };
+
+  const formattedMaintRecords = maintenanceList.map((rec) => ({
+    _id: rec._id,
+    recordId: rec._id,
+    plateNumber: rec.busId?.plateNumber || 'Phương tiện',
+    garage: rec.garage || 'Garage Đối tác',
+    description: rec.description || 'Bảo dưỡng kỹ thuật',
+    type: rec.type || 'maintenance',
+    cost: Number(rec.cost) || 0,
+    date: rec.endDate || rec.createdAt
+  }));
+
+  return {
+    summary,
+    busDetails,
+    maintenanceRecords: formattedMaintRecords,
+    maintenanceRecordIds: maintenanceList.map(rec => rec._id)
+  };
+};
 
 // 1. Xem trước dữ liệu tổng hợp chi phí tháng (Preview)
 exports.getFleetExpensePreview = async (req, res) => {
@@ -34,90 +160,11 @@ exports.getFleetExpensePreview = async (req, res) => {
 
     const m = parseInt(month, 10);
     const y = parseInt(year, 10);
-    const { start, end } = getMonthRange(y, m);
 
-    // Lấy tất cả xe trong hệ thống
-    const buses = await Bus.find({ status: 'approved' });
+    // Tính toán động từ Logic nghiệp vụ
+    const calculated = await calculateMonthlyMetrics(y, m);
 
-    // Lấy tất cả chuyến xe trong tháng
-    const trips = await Trip.find({
-      departureTime: { $gte: start, $lt: end },
-      status: { $in: ['completed', 'running', 'scheduled'] }
-    }).populate('routeId');
-
-    // Lấy tất cả phiếu bảo trì/sửa chữa trong tháng
-    const maintenanceList = await MaintenanceRecord.find({
-      $or: [
-        { endDate: { $gte: start, $lt: end } },
-        { createdAt: { $gte: start, $lt: end } }
-      ]
-    }).sort({ createdAt: -1 });
-
-    let totalDistanceKm = 0;
-    let totalFuelLiters = 0;
-    let totalMaintenanceCost = 0;
-    let maintenanceCount = maintenanceList.length;
-
-    // Chi tiết từng xe
-    const busDetails = buses.map((bus) => {
-      const busIdStr = bus._id.toString();
-
-      // Các chuyến xe thuộc xe này trong tháng
-      const busTrips = trips.filter((t) => t.busId && t.busId.toString() === busIdStr);
-      let busDistance = 0;
-      busTrips.forEach((t) => {
-        const distStr = t.routeId?.distance || '';
-        const match = distStr.match(/(\d+)/);
-        busDistance += match ? parseInt(match[1], 10) : 250;
-      });
-
-      const fuelRate = getStandardFuelRate(bus.type);
-      const fuelLiters = Math.round((busDistance * fuelRate) / 100);
-      const fuelCost = fuelLiters * DIESEL_UNIT_PRICE;
-
-      // Bảo dưỡng thuộc xe này trong tháng
-      const busMaints = maintenanceList.filter((m) => m.busId && m.busId.toString() === busIdStr);
-      const maintCost = busMaints.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
-
-      totalDistanceKm += busDistance;
-      totalFuelLiters += fuelLiters;
-      totalMaintenanceCost += maintCost;
-
-      return {
-        busId: bus._id,
-        plateNumber: bus.plateNumber,
-        busType: bus.type,
-        tripsCount: busTrips.length,
-        distanceKm: busDistance,
-        fuelLiters,
-        fuelCost,
-        maintenanceCost: maintCost,
-        maintCount: busMaints.length,
-        activeStatus: bus.activeStatus || 'ready'
-      };
-    });
-
-    const totalFuelCost = totalFuelLiters * DIESEL_UNIT_PRICE;
-    const totalExpenses = totalMaintenanceCost + totalFuelCost;
-
-    const readyBuses = buses.filter((b) => b.activeStatus === 'ready' || !b.activeStatus).length;
-    const maintBuses = buses.filter((b) => b.activeStatus === 'maintenance' || b.activeStatus === 'repairing').length;
-    const availabilityRate = buses.length > 0 ? Math.round((readyBuses / buses.length) * 100) : 100;
-
-    const summary = {
-      totalExpenses,
-      totalMaintenanceCost,
-      maintenanceCount,
-      totalDistanceKm,
-      totalFuelLiters,
-      fuelUnitPrice: DIESEL_UNIT_PRICE,
-      totalFuelCost,
-      readyBusesCount: readyBuses,
-      maintenanceBusesCount: maintBuses,
-      availabilityRate
-    };
-
-    // Kiểm tra báo cáo đã tồn tại chưa
+    // Kiểm tra xem báo cáo đã từng được lưu/nộp chưa
     const existingReport = await MonthlyFleetExpenseReport.findOne({
       month: m,
       year: y
@@ -125,43 +172,64 @@ exports.getFleetExpensePreview = async (req, res) => {
       .populate('fleetManagerId', 'name phone email role')
       .populate('directorId', 'name phone email role');
 
+    // Kiểm tra điều kiện hết tháng: Báo cáo tháng m chỉ được gửi từ ngày 01/(m+1)
+    const now = new Date();
+    const nextMonthStart = new Date(y, m, 1, 0, 0, 0);
+    const isMonthEnded = now >= nextMonthStart;
+
+    let responseReport = null;
+    if (existingReport) {
+      responseReport = {
+        ...existingReport.toObject(),
+        summary: calculated.summary,
+        busDetails: calculated.busDetails,
+        maintenanceRecords: calculated.maintenanceRecords
+      };
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         month: m,
         year: y,
-        summary,
-        busDetails,
-        maintenanceRecords: maintenanceList.map((rec) => ({
-          recordId: rec._id,
-          plateNumber: rec.plateNumber,
-          garage: rec.garage || 'Garage Đối tác',
-          description: rec.description || 'Bảo dưỡng định kỳ',
-          type: rec.type || 'maintenance',
-          cost: Number(rec.cost) || 0,
-          date: rec.endDate || rec.createdAt
-        })),
-        existingReport
+        isMonthEnded,
+        summary: calculated.summary,
+        busDetails: calculated.busDetails,
+        maintenanceRecords: calculated.maintenanceRecords,
+        report: responseReport
       }
     });
   } catch (error) {
     console.error('getFleetExpensePreview error:', error);
-    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy dữ liệu chi phí đội xe.' });
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy dữ liệu xem trước báo cáo.' });
   }
 };
 
-// 2. Quản lý Đội xe nộp Báo cáo Chi tiêu Tháng lên Ban Giám đốc
+// 2. Nộp Báo cáo Chi tiêu lên Ban Giám Đốc (Chỉ lưu các trường chưa có + ID liên kết)
 exports.submitFleetExpenseReport = async (req, res) => {
   try {
     const { month, year, fleetManagerNotes } = req.body;
     if (!month || !year) {
-      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tháng và năm báo cáo.' });
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tháng và năm cần nộp báo cáo.' });
     }
 
     const m = parseInt(month, 10);
     const y = parseInt(year, 10);
 
-    // Kiểm tra xem đã có báo cáo đang pending hoặc approved chưa
+    // Kiểm tra quy tắc nghiệp vụ: Chỉ được gửi sau khi hết tháng
+    const now = new Date();
+    const nextMonthStart = new Date(y, m, 1, 0, 0, 0);
+    const isMonthEnded = now >= nextMonthStart;
+    if (!isMonthEnded) {
+      const nextMonthStr = String(m < 12 ? m + 1 : 1).padStart(2, '0');
+      const nextYearNum = m < 12 ? y : y + 1;
+      return res.status(400).json({
+        success: false,
+        message: `Báo cáo chi tiêu Đội xe Tháng ${m}/${y} chỉ được gửi lên Ban Giám đốc sau khi kết thúc tháng (từ ngày 01/${nextMonthStr}/${nextYearNum}). Hiện tại tháng này đang trong kỳ vận hành, chỉ xem trước số liệu.`
+      });
+    }
+
+    // Kiểm tra xem đã có báo cáo đang approved chưa
     const existing = await MonthlyFleetExpenseReport.findOne({ month: m, year: y });
     if (existing && existing.status === 'approved') {
       return res.status(400).json({
@@ -170,87 +238,8 @@ exports.submitFleetExpenseReport = async (req, res) => {
       });
     }
 
-    const { start, end } = getMonthRange(y, m);
-    const buses = await Bus.find({ status: 'approved' });
-    const trips = await Trip.find({
-      departureTime: { $gte: start, $lt: end },
-      status: { $in: ['completed', 'running', 'scheduled'] }
-    }).populate('routeId');
-
-    const maintenanceList = await MaintenanceRecord.find({
-      $or: [
-        { endDate: { $gte: start, $lt: end } },
-        { createdAt: { $gte: start, $lt: end } }
-      ]
-    }).sort({ createdAt: -1 });
-
-    let totalDistanceKm = 0;
-    let totalFuelLiters = 0;
-    let totalMaintenanceCost = 0;
-
-    const busDetails = buses.map((bus) => {
-      const busIdStr = bus._id.toString();
-      const busTrips = trips.filter((t) => t.busId && t.busId.toString() === busIdStr);
-      let busDistance = 0;
-      busTrips.forEach((t) => {
-        const distStr = t.routeId?.distance || '';
-        const match = distStr.match(/(\d+)/);
-        busDistance += match ? parseInt(match[1], 10) : 250;
-      });
-
-      const fuelRate = getStandardFuelRate(bus.type);
-      const fuelLiters = Math.round((busDistance * fuelRate) / 100);
-      const fuelCost = fuelLiters * DIESEL_UNIT_PRICE;
-
-      const busMaints = maintenanceList.filter((rec) => rec.busId && rec.busId.toString() === busIdStr);
-      const maintCost = busMaints.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
-
-      totalDistanceKm += busDistance;
-      totalFuelLiters += fuelLiters;
-      totalMaintenanceCost += maintCost;
-
-      return {
-        busId: bus._id,
-        plateNumber: bus.plateNumber,
-        busType: bus.type,
-        tripsCount: busTrips.length,
-        distanceKm: busDistance,
-        fuelLiters,
-        fuelCost,
-        maintenanceCost: maintCost,
-        maintCount: busMaints.length,
-        activeStatus: bus.activeStatus || 'ready'
-      };
-    });
-
-    const totalFuelCost = totalFuelLiters * DIESEL_UNIT_PRICE;
-    const totalExpenses = totalMaintenanceCost + totalFuelCost;
-    const readyBuses = buses.filter((b) => b.activeStatus === 'ready' || !b.activeStatus).length;
-    const maintBuses = buses.filter((b) => b.activeStatus === 'maintenance' || b.activeStatus === 'repairing').length;
-    const availabilityRate = buses.length > 0 ? Math.round((readyBuses / buses.length) * 100) : 100;
-
-    const summary = {
-      totalExpenses,
-      totalMaintenanceCost,
-      maintenanceCount: maintenanceList.length,
-      totalDistanceKm,
-      totalFuelLiters,
-      fuelUnitPrice: DIESEL_UNIT_PRICE,
-      totalFuelCost,
-      readyBusesCount: readyBuses,
-      maintenanceBusesCount: maintBuses,
-      availabilityRate
-    };
-
-    const formattedMaintRecords = maintenanceList.map((rec) => ({
-      recordId: rec._id,
-      plateNumber: rec.plateNumber,
-      garage: rec.garage || 'Garage Đối tác',
-      description: rec.description || 'Bảo dưỡng kỹ thuật',
-      type: rec.type || 'maintenance',
-      cost: Number(rec.cost) || 0,
-      date: rec.endDate || rec.createdAt
-    }));
+    // Tính toán số liệu động để lấy danh sách ID các phiếu bảo trì
+    const calculated = await calculateMonthlyMetrics(y, m);
 
     const countReports = await MonthlyFleetExpenseReport.countDocuments();
     const seq = String(countReports + 1).padStart(3, '0');
@@ -258,36 +247,42 @@ exports.submitFleetExpenseReport = async (req, res) => {
 
     let report;
     if (existing && existing.status === 'rejected') {
-      // Cập nhật lại báo cáo bị từ chối
-      existing.summary = summary;
-      existing.busDetails = busDetails;
-      existing.maintenanceRecords = formattedMaintRecords;
+      // Cập nhật lại báo cáo bị từ chối: Chỉ lưu ID phiếu và ghi chú mới
+      existing.maintenanceRecords = calculated.maintenanceRecordIds;
       existing.fleetManagerNotes = fleetManagerNotes || '';
       existing.status = 'pending';
       existing.submittedAt = new Date();
       existing.directorNotes = '';
       existing.reviewedAt = null;
-      report = await existing.save();
+      await existing.save();
+      report = existing;
     } else {
+      // Tạo mới: Chỉ lưu các trường riêng biệt và ID liên kết
       report = await MonthlyFleetExpenseReport.create({
         reportCode,
         fleetManagerId: req.user._id,
         branchId: req.user.branch?.code || 'sg',
         month: m,
         year: y,
-        summary,
-        busDetails,
-        maintenanceRecords: formattedMaintRecords,
+        maintenanceRecords: calculated.maintenanceRecordIds,
         fleetManagerNotes: fleetManagerNotes || '',
         status: 'pending',
         submittedAt: new Date()
       });
     }
 
+    // Trả về dữ liệu kết hợp cho giao diện hiển thị
+    const responseReport = {
+      ...report.toObject(),
+      summary: calculated.summary,
+      busDetails: calculated.busDetails,
+      maintenanceRecords: calculated.maintenanceRecords
+    };
+
     return res.status(201).json({
       success: true,
       message: `Đã nộp Báo cáo Chi tiêu Đội xe tháng ${m}/${y} lên Ban Giám đốc thành công!`,
-      report
+      report: responseReport
     });
   } catch (error) {
     console.error('submitFleetExpenseReport error:', error);
@@ -308,10 +303,23 @@ exports.getFleetExpenseReports = async (req, res) => {
       .populate('directorId', 'name phone email role')
       .sort({ year: -1, month: -1, createdAt: -1 });
 
+    // Tầng logic tính toán bổ sung summary cho từng báo cáo lịch sử
+    const enrichedReports = await Promise.all(
+      reports.map(async (rep) => {
+        const calculated = await calculateMonthlyMetrics(rep.year, rep.month);
+        return {
+          ...rep.toObject(),
+          summary: calculated.summary,
+          busDetails: calculated.busDetails,
+          maintenanceRecords: calculated.maintenanceRecords
+        };
+      })
+    );
+
     return res.status(200).json({
       success: true,
-      count: reports.length,
-      reports
+      count: enrichedReports.length,
+      reports: enrichedReports
     });
   } catch (error) {
     console.error('getFleetExpenseReports error:', error);
@@ -331,9 +339,17 @@ exports.getFleetExpenseReportById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy báo cáo chi tiêu này.' });
     }
 
+    const calculated = await calculateMonthlyMetrics(report.year, report.month);
+    const enrichedReport = {
+      ...report.toObject(),
+      summary: calculated.summary,
+      busDetails: calculated.busDetails,
+      maintenanceRecords: calculated.maintenanceRecords
+    };
+
     return res.status(200).json({
       success: true,
-      report
+      report: enrichedReport
     });
   } catch (error) {
     console.error('getFleetExpenseReportById error:', error);
@@ -356,46 +372,52 @@ exports.approveFleetExpenseReport = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Báo cáo này đã được phê duyệt trước đó.' });
     }
 
-    // Tạo chữ ký điện tử xác thực
-    const signerName = req.user.name || 'Ban Giám đốc An Bình Lines';
-    const signedAt = new Date();
-    const certCode = `CERT-GM-${Date.now().toString(36).toUpperCase()}`;
-    const signPayload = `${report.reportCode}|${report.summary.totalExpenses}|${req.user._id}|${signedAt.toISOString()}`;
-    const hash = crypto.createHash('sha256').update(signPayload).digest('hex');
+    const calculated = await calculateMonthlyMetrics(report.year, report.month);
+
+    // Tạo chữ ký điện tử SHA-256 từ dữ liệu tính toán và thông tin người duyệt
+    const payloadToSign = `${report.reportCode}|${report.month}|${report.year}|${calculated.summary.totalExpenses}|${req.user._id}|${Date.now()}`;
+    const signatureHash = crypto.createHash('sha256').update(payloadToSign).digest('hex');
 
     report.status = 'approved';
     report.directorId = req.user._id;
-    report.directorNotes = directorNotes || 'Đã kiểm tra đối soát, duyệt quyết toán chi phí vận hành đội xe.';
-    report.reviewedAt = signedAt;
+    report.directorNotes = directorNotes || 'Đã kiểm tra đối soát hóa đơn gara và duyệt quyết toán chi phí bảo trì đội xe.';
+    report.reviewedAt = new Date();
     report.digitalSignature = {
       isSigned: true,
-      signerName,
-      signedAt,
-      certCode,
-      hash
+      signerName: req.user.name || 'Ban Giám Đốc',
+      signedAt: new Date(),
+      certificateSerial: `CERT-AB-${Date.now()}`,
+      signatureHash
     };
 
     await report.save();
 
+    const responseReport = {
+      ...report.toObject(),
+      summary: calculated.summary,
+      busDetails: calculated.busDetails,
+      maintenanceRecords: calculated.maintenanceRecords
+    };
+
     return res.status(200).json({
       success: true,
-      message: `Đã phê duyệt và ký số báo cáo chi tiêu ${report.reportCode} thành công!`,
-      report
+      message: 'Ban Giám đốc đã ký duyệt điện tử báo cáo chi tiêu đội xe thành công!',
+      report: responseReport
     });
   } catch (error) {
     console.error('approveFleetExpenseReport error:', error);
-    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi duyệt báo cáo chi tiêu.' });
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi phê duyệt báo cáo.' });
   }
 };
 
-// 6. Ban Giám đốc Từ chối Báo cáo Chi tiêu (Yêu cầu giải trình)
+// 6. Ban Giám đốc Từ chối Báo cáo (Yêu cầu giải trình lại)
 exports.rejectFleetExpenseReport = async (req, res) => {
   try {
     const { id } = req.params;
-    const { rejectionReason } = req.body;
+    const { directorNotes } = req.body;
 
-    if (!rejectionReason || !rejectionReason.trim()) {
-      return res.status(400).json({ success: false, message: 'Vui lòng nhập lý do từ chối / yêu cầu giải trình.' });
+    if (!directorNotes || !directorNotes.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp lý do từ chối hoặc yêu cầu giải trình.' });
     }
 
     const report = await MonthlyFleetExpenseReport.findById(id);
@@ -403,21 +425,32 @@ exports.rejectFleetExpenseReport = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy báo cáo chi tiêu.' });
     }
 
+    if (report.status === 'approved') {
+      return res.status(400).json({ success: false, message: 'Báo cáo đã được phê duyệt, không thể từ chối.' });
+    }
+
     report.status = 'rejected';
     report.directorId = req.user._id;
-    report.directorNotes = rejectionReason.trim();
+    report.directorNotes = directorNotes;
     report.reviewedAt = new Date();
 
     await report.save();
 
+    const calculated = await calculateMonthlyMetrics(report.year, report.month);
+    const responseReport = {
+      ...report.toObject(),
+      summary: calculated.summary,
+      busDetails: calculated.busDetails,
+      maintenanceRecords: calculated.maintenanceRecords
+    };
+
     return res.status(200).json({
       success: true,
-      message: `Đã gửi yêu cầu hiệu chỉnh/giải trình cho báo cáo ${report.reportCode}.`,
-      report
+      message: 'Đã gửi yêu cầu giải trình / từ chối báo cáo chi tiêu đến Quản lý Xe.',
+      report: responseReport
     });
   } catch (error) {
     console.error('rejectFleetExpenseReport error:', error);
-    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi từ chối báo cáo chi tiêu.' });
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi từ chối báo cáo.' });
   }
 };
-

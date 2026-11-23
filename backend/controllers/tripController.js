@@ -1140,13 +1140,91 @@ exports.getMaintenanceRecords = async (req, res) => {
   }
 };
 
+// @desc    Get fleet predictive maintenance analytics and forecast
+// @route   GET /api/trips/fleet/forecast
+// @access  Private
+exports.getFleetForecast = async (req, res) => {
+  try {
+    const fleetAnalytics = await tripService.getFleetForecast();
+    res.status(200).json({
+      success: true,
+      fleetAnalytics
+    });
+  } catch (error) {
+    console.error('Lỗi tính toán dự báo bảo trì đội xe:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi phân tích dự báo đội xe.'
+    });
+  }
+};
+
+// @desc    Get bus status change audit logs
+// @route   GET /api/trips/fleet/status-logs
+// @access  Private
+exports.getBusStatusLogs = async (req, res) => {
+  try {
+    const logs = await tripService.getBusStatusLogs();
+    res.status(200).json({
+      success: true,
+      logs
+    });
+  } catch (error) {
+    console.error('Lỗi lấy nhật ký điều chuyển trạng thái xe:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi lấy nhật ký trạng thái xe.'
+    });
+  }
+};
+
+// @desc    Create a bus status change log
+// @route   POST /api/trips/fleet/status-logs
+// @access  Private (Fleet Manager / Ops Manager / Admin)
+exports.createBusStatusLog = async (req, res) => {
+  try {
+    const { busId, plateNumber, busType, fromStatus, toStatus, details, garage, cost, approvalStatus, time } = req.body;
+    if (!plateNumber || !toStatus) {
+      return res.status(400).json({
+        success: false,
+        message: 'Thiếu thông tin biển số hoặc trạng thái đích.'
+      });
+    }
+
+    const log = await tripService.createBusStatusLog({
+      busId,
+      plateNumber,
+      busType,
+      fromStatus,
+      toStatus,
+      details,
+      garage,
+      cost: Number(cost) || 0,
+      approvalStatus: approvalStatus || 'approved',
+      time: time || new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Ghi nhật ký điều chuyển trạng thái xe thành công.',
+      log
+    });
+  } catch (error) {
+    console.error('Lỗi tạo nhật ký điều chuyển trạng thái xe:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Lỗi hệ thống khi ghi nhật ký trạng thái xe.'
+    });
+  }
+};
+
 // @desc    Create a completed maintenance record
 // @route   POST /api/trips/fleet/maintenance-records
 // @access  Private (Fleet Manager)
 exports.createMaintenanceRecord = async (req, res) => {
   try {
     const { busId, plateNumber, type, description, garage, cost, startDate, endDate } = req.body;
-    if (!busId || !plateNumber || !description || !garage || cost === undefined) {
+    if (!busId || !description || !garage || cost === undefined) {
       return res.status(400).json({
         success: false,
         message: 'Vui lòng cung cấp đầy đủ thông tin bảo trì.'

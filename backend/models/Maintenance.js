@@ -1,19 +1,21 @@
 const mongoose = require('mongoose');
 
-const maintenanceRecordSchema = new mongoose.Schema(
+/**
+ * Model Maintenance (Bảng Quản Lý Kỹ Thuật & Nhật Ký Biến Động Vận Hành)
+ * 
+ * Lưu trữ toàn bộ các đợt bảo dưỡng định kỳ, sửa chữa sự cố,
+ * cũng như các biến động điều chuyển bãi lưu (inactive) và xuất bến (ready).
+ */
+const maintenanceSchema = new mongoose.Schema(
   {
     busId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Bus',
       required: [true, 'Mã xe là bắt buộc.']
     },
-    plateNumber: {
-      type: String,
-      required: [true, 'Biển số xe là bắt buộc.']
-    },
     type: {
       type: String,
-      enum: ['maintenance', 'repairing'],
+      enum: ['maintenance', 'repairing', 'inactive', 'ready'],
       default: 'maintenance'
     },
     description: {
@@ -22,11 +24,11 @@ const maintenanceRecordSchema = new mongoose.Schema(
     },
     garage: {
       type: String,
-      required: [true, 'Garage/Nơi thực hiện là bắt buộc.']
+      default: '-'
     },
     cost: {
       type: Number,
-      required: [true, 'Chi phí là bắt buộc.'],
+      default: 0,
       min: [0, 'Chi phí không thể âm.']
     },
     estimatedCost: {
@@ -39,8 +41,8 @@ const maintenanceRecordSchema = new mongoose.Schema(
     },
     approvalStatus: {
       type: String,
-      enum: ['auto_approved', 'pending_approval', 'approved', 'rejected'],
-      default: 'auto_approved'
+      enum: ['pending_approval', 'approved', 'rejected'],
+      default: 'approved'
     },
     proposedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -75,4 +77,4 @@ const maintenanceRecordSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model('MaintenanceRecord', maintenanceRecordSchema);
+module.exports = mongoose.model('Maintenance', maintenanceSchema, 'maintenances');

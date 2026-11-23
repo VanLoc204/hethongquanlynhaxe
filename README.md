@@ -424,56 +424,148 @@ Dựa vào chỉ số phần trăm hoàn thành hành trình ($P_{\text{progress
 
 ---
 
-## 8. Hướng Dẫn Khởi Chạy Code Local (Development Mode)
+## 8. Hướng Dẫn Khởi Chạy Kết Hợp Docker & Localhost Cùng Lúc (Hybrid Development Workflow)
 
-Chế độ khởi chạy Local dành cho việc phát triển, kiểm thử và debug trực tiếp code Node.js & ReactJS trên máy cục bộ, kết nối với cơ sở dữ liệu MongoDB chạy trong Docker Container.
+Mô hình phát triển kết hợp (**Hybrid Workflow**) là phương pháp tối ưu nhất cho quá trình lập trình, kiểm thử và debug:
+* **Hạ tầng dữ liệu (Database & Message Broker)** chạy ổn định, cô lập trong **Docker Containers**.
+* **Mã nguồn ứng dụng (Backend & Frontends)** chạy trực tiếp trên **Localhost** (Node.js & ReactJS) để tận dụng cơ chế Hot-Reload (sửa code tự động cập nhật ngay trên trình duyệt mà không cần build lại image Docker).
 
-### Bước 1: Dừng các Docker Container ứng dụng không cần thiết (Nếu đang chạy)
-Mở Terminal tại thư mục gốc dự án để tắt các container app cũ (chỉ giữ container Database):
+---
+
+### A. Phân Định Dịch Vụ: Docker vs Localhost
+
+| Thành phần | Dịch vụ cụ thể | Nền tảng chạy | Cổng / Địa chỉ kết nối | Mục đích sử dụng |
+| :--- | :--- | :---: | :---: | :--- |
+| **Database** | MongoDB 6.0 (`bus_mongodb`) | **Docker** | `localhost:27018` | Lưu trữ toàn bộ dữ liệu NoSQL hệ thống |
+| **Cache & Realtime** | Redis 7.0 (`bus_redis`) | **Docker** | `localhost:6379` | Quản lý cache phiên và tọa độ GPS xe chạy |
+| **Message Queue** | RabbitMQ 3.11 (`bus_rabbitmq`) | **Docker** | `localhost:5672` (AMQP)<br>`localhost:15672` (UI) | Điều phối hàng đợi tác vụ bất đồng bộ |
+| **Relational DB** | MySQL 8.0 (`bus_mysql`) | **Docker** | `localhost:3306` | Sẵn sàng cho tích hợp dữ liệu kế toán |
+| **Backend API** | Node.js Express API Monolith | **Localhost** | `http://localhost:8000` | Xử lý logic, API nghiệp vụ, thuật toán |
+| **Quản trị viên** | ReactJS Admin Dashboard | **Localhost** | `http://localhost:3001` | Giao diện cho Ban Giám đốc, Quản lý, Nhân viên |
+| **Khách hàng** | ReactJS Customer App | **Localhost** | `http://localhost:3000` | Giao diện cho Hành khách đặt vé và AI Chatbot |
+
+> [!NOTE]
+> File cấu hình `backend/.env` trên localhost đã được cấu hình sẵn kết nối vào cổng MongoDB container của Docker qua biến:  
+> `MONGO_URI=mongodb://127.0.0.1:27018/bus_management`
+
+---
+
+### B. Quy Trình Khởi Chạy Từng Bước (Thực Hiện Theo Đúng Thứ Tự)
+
+#### Bước 1: Khởi động phần mềm Docker Desktop
+Đảm bảo phần mềm **Docker Desktop** trên máy tính đã được mở và Docker Engine đang ở trạng thái chạy (`Engine running`).
+
+---
+
+#### Bước 2: Bật các dịch vụ hạ tầng dữ liệu trên Docker
+Mở Terminal tại thư mục gốc của dự án (`HeThongQuanLyNhaXe`) và chạy lệnh bật duy nhất các container Database phụ trợ (không bật container app để tránh chiếm dụng cổng của localhost):
+
 ```bash
-docker-compose down
+npm run docker:db:up
 ```
 
-### Bước 2: Chỉ bật duy nhất Container Database (MongoDB / Redis)
-Chạy container MongoDB (và Redis/MySQL/RabbitMQ nếu cần) trong background:
+*(Lệnh tương đương nếu dùng Docker CLI trực tiếp: `docker-compose up -d mongodb redis rabbitmq mysql`)*
+
+---
+
+#### Bước 3: Kiểm tra trạng thái các container Docker đang hoạt động
+Chạy lệnh sau trên terminal để xác nhận các dịch vụ Docker đã sẵn sàng:
+
 ```bash
-docker-compose up -d mongodb
-# Hoặc bật tất cả các dịch vụ Database phụ trợ:
-# npm run docker:db:up
+docker ps
 ```
 
-### Bước 3: Nạp dữ liệu mẫu ban đầu vào MongoDB (Seed Data)
-Mở Terminal tại thư mục gốc dự án và chạy:
+Kết quả hiển thị phải thấy 4 container sau đang chạy với trạng thái `Up`:
+* `bus_mongodb` (cổng `0.0.0.0:27018->27017/tcp`)
+* `bus_redis` (cổng `0.0.0.0:6379->6379/tcp`)
+* `bus_rabbitmq` (cổng `0.0.0.0:5672->5672/tcp`, `0.0.0.0:15672->15672/tcp`)
+* `bus_mysql` (cổng `0.0.0.0:3306->3306/tcp`)
+
+---
+
+#### Bước 4: Nạp dữ liệu mẫu ban đầu vào MongoDB (Seed Data)
+*(Chỉ cần thực hiện ở lần đầu tiên cài đặt dự án hoặc khi bạn muốn thiết lập lại toàn bộ dữ liệu sạch)*
+
+Tại thư mục gốc dự án (`HeThongQuanLyNhaXe`), chạy lần lượt:
+
 ```bash
-# Nạp dữ liệu Chuyến xe, Tài xế, Bảng lương, Lịch làm việc
+# 1. Nạp dữ liệu tài khoản, xe khách, tuyến đường, chuyến xe, bảng lương, lịch làm việc
 npm run seed
 
-# Nạp dữ liệu Mã khuyến mãi (Promotions)
+# 2. Nạp dữ liệu mã khuyến mãi và ưu đãi thành viên
 cd backend && node seed_promotions.js && cd ..
 ```
 
-### Bước 4: Chạy đồng thời Backend & Frontend Local
-Mở 3 cửa sổ Terminal riêng biệt tại thư mục gốc của dự án (`HeThongQuanLyNhaXe`):
+---
 
-* **Terminal 1 - Unified Backend Service (Port 8000)**:
+#### Bước 5: Khởi chạy 3 Server ứng dụng trên Localhost
+Mở **3 cửa sổ Terminal (hoặc 3 tab Terminal riêng biệt)** tại thư mục gốc dự án `HeThongQuanLyNhaXe`:
+
+* **Cửa sổ Terminal 1 - Chạy Backend API (Port 8000):**
   ```bash
   npm run backend:dev
   ```
+  *(Hoặc: `cd backend && npm run dev`)*  
+  Server sẽ khởi động bằng nodemon, kết nối đến MongoDB Docker trên cổng `27018` và lắng nghe tại `http://localhost:8000`.
 
-* **Terminal 2 - Admin Dashboard Frontend (Port 3001)**:
+* **Cửa sổ Terminal 2 - Chạy Admin Dashboard Frontend (Port 3001):**
   ```bash
   npm run admin:dev
   ```
+  *(Hoặc: `cd frontend/admin-dashboard && npm start`)*  
+  Ứng dụng quản trị sẽ khởi chạy và mở trên trình duyệt tại `http://localhost:3001`.
 
-* **Terminal 3 - Customer App Frontend (Port 3000)**:
+* **Cửa sổ Terminal 3 - Chạy Customer App Frontend (Port 3000):**
   ```bash
   npm run customer:dev
   ```
+  *(Hoặc: `cd frontend/customer-app && npm start`)*  
+  Ứng dụng khách hàng sẽ khởi chạy và mở trên trình duyệt tại `http://localhost:3000`.
 
-### Bước 5: Truy cập hệ thống trên Trình duyệt
-* **Giao diện Quản lý Admin Dashboard**: [http://localhost:3001](http://localhost:3001)
-* **Giao diện Khách hàng Customer App**: [http://localhost:3000](http://localhost:3000)
-* **Địa chỉ Backend API Gateway**: [http://localhost:8000/api](http://localhost:8000/api)
+---
+
+#### Bước 6: Địa chỉ truy cập các phân hệ trên Trình duyệt
+Sau khi khởi chạy thành công, truy cập hệ thống qua các đường dẫn sau:
+* **Giao diện Quản Trị & Điều Hành (Admin Dashboard)**: [http://localhost:3001](http://localhost:3001)
+* **Giao diện Khách Hàng Đặt Vé (Customer App)**: [http://localhost:3000](http://localhost:3000)
+* **Backend API Gateway**: [http://localhost:8000/api](http://localhost:8000/api)
+* **Bảng điều khiển RabbitMQ Management**: [http://localhost:15672](http://localhost:15672) *(Tài khoản: `guest` / Mật khẩu: `guest`)*
+
+---
+
+### C. Cách Tắt Hệ Thống Sau Khi Hoàn Thành Phiên Làm Việc
+
+1. **Dừng các tiến trình Localhost:**
+   Tại mỗi cửa sổ Terminal (Backend, Admin, Customer), nhấn tổ hợp phím **`Ctrl + C`**, sau đó gõ **`Y`** để kết thúc tiến trình.
+
+2. **Dừng các container Docker:**
+   Mở terminal tại thư mục gốc và chạy:
+   ```bash
+   npm run docker:db:down
+   ```
+   *(Hoặc: `docker-compose down`)*
+
+---
+
+### D. Xử Lý Sự Cố Thường Gặp: Xung Đột Cổng (Port Conflict Resolution)
+
+> [!WARNING]
+> **Hiện tượng:** Khi chạy `npm run backend:dev` hoặc `npm run admin:dev`, gặp lỗi:  
+> `Error: listen EADDRINUSE: address already in use :::8000` hoặc `:::3001`.
+> 
+> **Nguyên nhân:** Trước đó bạn đã vô tình chạy lệnh `docker-compose up -d` (lệnh này chạy cả container backend và frontend bên trong Docker, dẫn đến các cổng 8000, 3001, 3000 bị Docker chiếm dụng).
+> 
+> **Cách khắc phục:**
+> 1. Dừng các container ứng dụng trong Docker (chỉ giữ lại database):
+>    ```bash
+>    docker-compose stop backend customer-app admin-dashboard gateway
+>    ```
+> 2. Hoặc tắt toàn bộ Docker rồi bật lại đúng chế độ Database:
+>    ```bash
+>    docker-compose down
+>    npm run docker:db:up
+>    ```
+> 3. Sau đó quay lại các tab Terminal chạy lại `npm run backend:dev`, `npm run admin:dev`, `npm run customer:dev`.
 
 ---
 
@@ -499,63 +591,7 @@ docker-compose down
 
 ---
 
-## 10. Hướng Dẫn Khởi Chạy Ngrok Thử Nghiệm Trên Điện Thoại Di Động
-
-Hệ thống đã tích hợp sẵn file thực thi `ngrok.exe` tại thư mục gốc của dự án (`HeThongQuanLyNhaXe`). Việc chạy qua ngrok cung cấp đường hầm HTTPS an toàn, cho phép truy cập camera điện thoại để thực hiện chấm công Face ID thực tế và đặt vé trên thiết bị di động.
-
-### A. Cài Đặt Token Lần Đầu (Chỉ Cần Thực Hiện 1 Lần)
-Nếu máy tính của bạn chưa liên kết tài khoản ngrok, mở PowerShell tại thư mục gốc và chạy:
-```powershell
-.\ngrok.exe config add-authtoken <TOKEN_NGROK_CỦA_BẠN>
-```
-
----
-
-### B. Cách 1: Chạy Ngrok Qua Nginx Gateway Cổng 80 (Khuyên Dùng)
-Mô hình Gateway (`nginx.conf`) gom cả 3 phân hệ (Khách hàng 3000, Quản trị 3001, Backend 8000) vào duy nhất cổng `80`.
-
-1. **Khởi động Docker Containers & Gateway:**
-   ```powershell
-   docker-compose up -d
-   ```
-
-2. **Chạy lệnh Ngrok tại thư mục gốc dự án:**
-   ```powershell
-   .\ngrok.exe http 80
-   ```
-   *(Hoặc nếu đã cài ngrok toàn cục vào máy: `ngrok http 80`)*
-
-3. **Truy cập trên điện thoại bằng liên kết HTTPS ngrok cấp (ví dụ: `https://xxxx.ngrok-free.app`):**
-   * **Giao diện Khách hàng (Customer App):**
-     `https://xxxx.ngrok-free.app/`
-   * **Giao diện Quản trị / Tài xế / Phụ xe (Admin Dashboard):**
-     `https://xxxx.ngrok-free.app/admin/`
-   * **Backend API Gateway:**
-     `https://xxxx.ngrok-free.app/api/`
-
----
-
-### C. Cách 2: Chạy Ngrok Trực Tiếp Theo Từng Cổng Khi Phát Triển Local (npm run dev)
-Nếu đang khởi chạy mã nguồn trực tiếp bằng `npm run dev` ở 3 terminal riêng biệt mà không dùng Nginx Gateway:
-
-* **Mở đường hầm cho Admin Dashboard (Quản trị, Tài xế & Phụ xe chấm công Face ID):**
-  ```powershell
-  .\ngrok.exe http 3001
-  ```
-
-* **Mở đường hầm cho Khách hàng (Customer App):**
-  ```powershell
-  .\ngrok.exe http 3000
-  ```
-
-* **Mở đường hầm cho Backend API:**
-  ```powershell
-  .\ngrok.exe http 8000
-  ```
-
----
-
-## 11. Từ Điển Dữ Liệu Chi Tiết MongoDB (Database Data Dictionary)
+## 10. Từ Điển Dữ Liệu Chi Tiết MongoDB (Database Data Dictionary)
 
 Toàn bộ tài liệu chi tiết giải thích cấu trúc dữ liệu, các trường (fields), mục đích thiết kế và ứng dụng thực tế theo từng Actor cho tất cả các bảng (Collections) trong cơ sở dữ liệu `bus_management` được quản lý tại file riêng để đảm bảo tính trực quan và dễ tra cứu:
 

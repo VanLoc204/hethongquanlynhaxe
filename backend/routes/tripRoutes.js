@@ -29,6 +29,9 @@ const {
   createMaintenanceRecord,
   getMaintenanceApprovals,
   reviewMaintenanceApproval,
+  getFleetForecast,
+  getBusStatusLogs,
+  createBusStatusLog,
   getPunctualityReport,
   updateTripPunctuality,
   updateLiveGps
@@ -82,6 +85,9 @@ router.put('/fleet/buses/:id', protect, restrictTo('fleet_manager', 'admin', 'ge
 router.delete('/fleet/buses/:id', protect, restrictTo('fleet_manager', 'admin', 'general_manager'), deleteBus);
 
 // Fleet Maintenance Routes
+router.get('/fleet/forecast', protect, getFleetForecast);
+router.get('/fleet/status-logs', protect, getBusStatusLogs);
+router.post('/fleet/status-logs', protect, createBusStatusLog);
 router.get('/fleet/maintenance-records', protect, getMaintenanceRecords);
 router.post('/fleet/maintenance-records', protect, restrictTo('fleet_manager', 'admin', 'general_manager'), createMaintenanceRecord);
 router.get('/fleet/maintenance-approvals', protect, restrictTo('general_manager', 'admin', 'fleet_manager'), getMaintenanceApprovals);

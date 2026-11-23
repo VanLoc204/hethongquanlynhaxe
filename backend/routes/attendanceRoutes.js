@@ -45,7 +45,7 @@ router.delete(
   resetTodayAttendance
 );
 
-// ─── Route dùng cho Quản lý Vận tải / Quản lý Đội xe / Quản lý Phòng vé / Giám đốc / Admin ───────────────────────
+// ─── Route dùng cho Quản lý Vận tải / Quản lý Xe / Quản lý Phòng vé / Giám đốc / Admin ───────────────────────
 // Xem bảng chấm công hôm nay (query: ?date=YYYY-MM-DD để xem ngày khác)
 router.get(
   '/today',

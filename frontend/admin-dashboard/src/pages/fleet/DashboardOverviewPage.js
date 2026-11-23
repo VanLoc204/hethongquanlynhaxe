@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
 import TicketManagerOverview from '../ticket/TicketManagerOverview';
@@ -98,7 +98,7 @@ const AdminOverview = ({ staffList = [], busCount = 0, routeCount = 0, tripCount
       case 'admin': return 'Quản trị viên';
       case 'general_manager': return 'Ban Giám đốc';
       case 'ops_manager': return 'Quản lý Vận tải';
-      case 'fleet_manager': return 'Quản lý Đội xe';
+      case 'fleet_manager': return 'Quản lý Xe';
       case 'ticket_agent': return 'Bán vé quầy';
       case 'driver': return 'Tài xế';
       case 'attendant': return 'Phụ xe';
@@ -248,7 +248,7 @@ const AdminOverview = ({ staffList = [], busCount = 0, routeCount = 0, tripCount
               {[
                 { label: 'Ban Giám đốc', count: roleCounts.general_manager, roleKey: 'general_manager', color: '#8b5cf6', badge: null },
                 { label: 'Quản lý Vận tải', count: roleCounts.ops_manager, roleKey: 'ops_manager', color: '#3b82f6', badge: null },
-                { label: 'Quản lý Đội xe', count: roleCounts.fleet_manager, roleKey: 'fleet_manager', color: '#3b82f6', badge: null },
+                { label: 'Quản lý Xe', count: roleCounts.fleet_manager, roleKey: 'fleet_manager', color: '#3b82f6', badge: null },
                 { label: 'Nhân viên Bán vé quầy', count: roleCounts.ticket_agent, roleKey: 'ticket_agent', color: '#3b82f6', badge: null },
                 { label: 'Tài xế chuyên trách', count: roleCounts.driver, roleKey: 'driver', color: '#f59e0b', badge: 'Chủ lực' },
                 { label: 'Phụ xe theo xe', count: roleCounts.attendant, roleKey: 'attendant', color: '#ec4899', badge: 'Hiện trường' },
@@ -446,29 +446,243 @@ const AdminOverview = ({ staffList = [], busCount = 0, routeCount = 0, tripCount
   );
 };
 
-const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], maintenanceRecords = [], setActiveTab, onRefresh }) => {
-  const totalBuses = busList.length || 5;
-  const readyBuses = busList.filter(b => b.activeStatus === 'ready' || b.activeStatus === 'active' || !b.activeStatus).length;
-  const maintenanceBuses = busList.filter(b => b.activeStatus === 'maintenance' || b.activeStatus === 'repairing').length;
-  const pendingApprovals = busList.filter(b => b.status === 'pending').length;
+const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], maintenanceRecords = [], setActiveTab }) => {
+  // Bộ lọc khoảng thời gian chỉ theo tháng
+  const [periodFilter, setPeriodFilter] = useState('2026-11');
+  // Chuyển đổi metric xem trên biểu đồ xe: 'distance' (Km) hoặc 'trips' (Chuyến)
+  const [chartMetric, setChartMetric] = useState('distance');
+  // Hover bus tooltip
+  const [hoveredBus, setHoveredBus] = useState(null);
 
-  const totalSeatsCapacity = busList.reduce((sum, b) => sum + (b.totalSeats || 0), 0) || 146;
+  // Định nghĩa khoảng thời gian lọc theo từng tháng
+  const filterRange = useMemo(() => {
+    switch (periodFilter) {
+      case '2026-11':
+        return { label: 'Tháng 11/2026', start: new Date(2026, 10, 1), end: new Date(2026, 10, 30, 23, 59, 59) };
+      case '2026-10':
+        return { label: 'Tháng 10/2026', start: new Date(2026, 9, 1), end: new Date(2026, 9, 31, 23, 59, 59) };
+      case '2026-09':
+        return { label: 'Tháng 09/2026', start: new Date(2026, 8, 1), end: new Date(2026, 8, 30, 23, 59, 59) };
+      case '2026-08':
+        return { label: 'Tháng 08/2026', start: new Date(2026, 7, 1), end: new Date(2026, 7, 31, 23, 59, 59) };
+      default:
+        return { label: 'Tất cả các tháng', start: null, end: null };
+    }
+  }, [periodFilter]);
 
-  // Nhóm theo loại xe CHÍNH XÁC KHÔNG TRÙNG LẶP (tổng luôn chính xác bằng busList.length)
-  const limousineBuses = busList.filter(b => (b.type || '').toLowerCase().includes('limousine'));
-  const sleeperBuses = busList.filter(b => (b.type || '').toLowerCase().includes('giường'));
-  const seatingBuses = busList.filter(b => {
-    const t = (b.type || '').toLowerCase();
-    return !t.includes('limousine') && !t.includes('giường');
-  });
+  // Lọc chuyến xe theo khoảng thời gian
+  const filteredTrips = useMemo(() => {
+    if (!filterRange.start || !filterRange.end) return recentTrips;
+    const startMs = filterRange.start.getTime();
+    const endMs = filterRange.end.getTime();
+    return recentTrips.filter(t => {
+      if (!t.departureTime) return false;
+      const tMs = new Date(t.departureTime).getTime();
+      return tMs >= startMs && tMs <= endMs;
+    });
+  }, [recentTrips, filterRange]);
 
-  // Lọc các xe đang thực tế nằm xưởng bảo dưỡng / sửa chữa từ busList
-  const activeMaintenanceBuses = busList.filter(
-    b => b.activeStatus === 'maintenance' || b.activeStatus === 'repairing'
-  );
+  // Lọc phiếu bảo trì theo khoảng thời gian
+  const filteredMaintenance = useMemo(() => {
+    if (!filterRange.start || !filterRange.end) return maintenanceRecords;
+    const startMs = filterRange.start.getTime();
+    const endMs = filterRange.end.getTime();
+    return maintenanceRecords.filter(m => {
+      const d = m.date || m.createdAt || m.startDate || m.endDate;
+      if (!d) return false;
+      const mMs = new Date(d).getTime();
+      return mMs >= startMs && mMs <= endMs;
+    });
+  }, [maintenanceRecords, filterRange]);
+
+  // Tính toán hiệu suất vận hành & kỹ thuật cho từng xe
+  const busesPerformance = useMemo(() => {
+    return busList.map(bus => {
+      const busIdStr = bus._id ? bus._id.toString() : '';
+      const plate = bus.plateNumber || '';
+
+      // Chuyến xe của phương tiện trong kỳ lọc
+      const busTrips = filteredTrips.filter(t => {
+        if (!t.busId) return false;
+        const bId = t.busId._id ? t.busId._id.toString() : t.busId.toString();
+        const bPlate = t.busId.plateNumber || '';
+        return (busIdStr && bId === busIdStr) || (plate && bPlate === plate);
+      });
+
+      let distance = 0;
+      busTrips.forEach(t => {
+        const distStr = t.routeId?.distance || '';
+        const match = distStr.match(/(\d+)/);
+        distance += match ? parseInt(match[1], 10) : 250;
+      });
+
+      // Phiếu bảo trì của phương tiện trong kỳ lọc
+      const busMaints = filteredMaintenance.filter(m => {
+        if (!m.busId) return false;
+        const bId = m.busId._id ? m.busId._id.toString() : m.busId.toString();
+        const bPlate = m.busId.plateNumber || m.plateNumber || '';
+        return (busIdStr && bId === busIdStr) || (plate && bPlate === plate);
+      });
+
+      const maintCost = busMaints.reduce((sum, item) => sum + (Number(item.cost) || 0), 0);
+      const routineCount = busMaints.filter(m => m.type !== 'repairing').length;
+      const repairCount = busMaints.filter(m => m.type === 'repairing').length;
+
+      // Định mức bảo dưỡng 10.000 Km
+      const thresholdKm = 10000;
+      const thresholdPct = Math.min(100, Math.round((distance / thresholdKm) * 100));
+
+      return {
+        busId: bus._id,
+        plateNumber: bus.plateNumber,
+        type: bus.type,
+        totalSeats: bus.totalSeats,
+        activeStatus: bus.activeStatus || 'ready',
+        tripsCount: busTrips.length,
+        distanceKm: distance,
+        maintCost,
+        maintCount: busMaints.length,
+        routineCount,
+        repairCount,
+        thresholdPct,
+        isOverdue: distance >= thresholdKm
+      };
+    });
+  }, [busList, filteredTrips, filteredMaintenance]);
+
+  // Phân loại trạng thái đội xe đầy đủ: Sẵn sàng, Bảo dưỡng, Tạm ngưng
+  const readyCount = useMemo(() => {
+    return busList.filter(b => b.activeStatus === 'ready' || b.activeStatus === 'active' || !b.activeStatus).length;
+  }, [busList]);
+
+  const maintCount = useMemo(() => {
+    return busList.filter(b => b.activeStatus === 'maintenance' || b.activeStatus === 'repairing').length;
+  }, [busList]);
+
+  const inactiveCount = useMemo(() => {
+    return busList.filter(b => b.activeStatus === 'inactive' || b.activeStatus === 'paused').length;
+  }, [busList]);
+
+  const totalSeats = useMemo(() => {
+    return busList.reduce((s, b) => s + (b.totalSeats || 0), 0) || 143;
+  }, [busList]);
+
+  const totalBusesCount = busList.length || 5;
+
+  // Tổng hợp chỉ số KPI điều hành
+  const summary = useMemo(() => {
+    const totalKm = busesPerformance.reduce((sum, b) => sum + b.distanceKm, 0);
+    const totalTrips = busesPerformance.reduce((sum, b) => sum + b.tripsCount, 0);
+    const totalCost = busesPerformance.reduce((sum, b) => sum + b.maintCost, 0);
+    const totalMaintCount = filteredMaintenance.length;
+    const routineCount = filteredMaintenance.filter(m => m.type !== 'repairing').length;
+    const repairCount = filteredMaintenance.filter(m => m.type === 'repairing').length;
+
+    const availRate = totalBusesCount > 0 ? Math.round((readyCount / totalBusesCount) * 100) : 100;
+
+    return {
+      totalKm,
+      totalTrips,
+      totalCost,
+      totalMaintCount,
+      routineCount,
+      repairCount,
+      readyCount,
+      maintCount,
+      inactiveCount,
+      availRate
+    };
+  }, [busesPerformance, filteredMaintenance, totalBusesCount, readyCount, maintCount, inactiveCount]);
+
+  // Dữ liệu biến động chi phí bảo dưỡng theo từng tháng năm 2026 (Cho Biểu đồ 3)
+  const monthlyMaintenanceTrend = useMemo(() => {
+    const monthDefs = [
+      { key: '2026-08', label: 'T08/2026', month: 7 },
+      { key: '2026-09', label: 'T09/2026', month: 8 },
+      { key: '2026-10', label: 'T10/2026', month: 9 },
+      { key: '2026-11', label: 'T11/2026', month: 10 },
+    ];
+
+    return monthDefs.map(mDef => {
+      const recsInMonth = maintenanceRecords.filter(r => {
+        const d = r.date || r.createdAt || r.startDate || r.endDate;
+        if (!d) return false;
+        const dt = new Date(d);
+        return dt.getFullYear() === 2026 && dt.getMonth() === mDef.month;
+      });
+
+      const routineCost = recsInMonth
+        .filter(r => r.type !== 'repairing')
+        .reduce((sum, r) => sum + (Number(r.cost) || 0), 0);
+
+      const repairCost = recsInMonth
+        .filter(r => r.type === 'repairing')
+        .reduce((sum, r) => sum + (Number(r.cost) || 0), 0);
+
+      const totalCost = routineCost + repairCost;
+
+      return {
+        key: mDef.key,
+        label: mDef.label,
+        routineCost,
+        repairCost,
+        totalCost,
+        count: recsInMonth.length,
+        isSelected: periodFilter === mDef.key
+      };
+    });
+  }, [maintenanceRecords, periodFilter]);
+
+  // Phân bổ chi phí theo Garage đối tác (Cho Biểu đồ 4)
+  const garageBreakdown = useMemo(() => {
+    const map = {};
+    const recordsToUse = filteredMaintenance.length > 0 ? filteredMaintenance : maintenanceRecords;
+
+    recordsToUse.forEach(rec => {
+      const gName = rec.garage || 'Khác';
+      if (!map[gName]) {
+        map[gName] = { name: gName, count: 0, cost: 0 };
+      }
+      map[gName].count += 1;
+      map[gName].cost += (Number(rec.cost) || 0);
+    });
+
+    const list = Object.values(map).sort((a, b) => b.cost - a.cost);
+    const maxCost = list.length > 0 ? Math.max(...list.map(g => g.cost), 1) : 1;
+    const totalCostAll = list.reduce((sum, g) => sum + g.cost, 0) || 1;
+
+    return list.map(g => ({
+      ...g,
+      percent: Math.round((g.cost / totalCostAll) * 100),
+      barWidthPct: Math.round((g.cost / maxCost) * 100)
+    }));
+  }, [filteredMaintenance, maintenanceRecords]);
+
+  // Giá trị max cho biểu đồ cột cự ly xe
+  const maxBusMetric = useMemo(() => {
+    const vals = busesPerformance.map(b => chartMetric === 'distance' ? b.distanceKm : b.tripsCount);
+    return Math.max(...vals, 10);
+  }, [busesPerformance, chartMetric]);
+
+  // Giá trị max cho biểu đồ chi phí hàng tháng
+  const maxMonthCost = useMemo(() => {
+    const vals = monthlyMaintenanceTrend.map(m => m.totalCost);
+    return Math.max(...vals, 60000000);
+  }, [monthlyMaintenanceTrend]);
+
+  // Donut chart math: 3 phân nhóm (Sẵn sàng, Bảo dưỡng, Tạm ngưng)
+  const donutRadius = 66;
+  const donutCircumference = 2 * Math.PI * donutRadius; // ~414.69
+  const readyPct = totalBusesCount > 0 ? (readyCount / totalBusesCount) * 100 : 100;
+  const maintPct = totalBusesCount > 0 ? (maintCount / totalBusesCount) * 100 : 0;
+  const inactivePct = totalBusesCount > 0 ? (inactiveCount / totalBusesCount) * 100 : 0;
+
+  const readyDash = (readyPct / 100) * donutCircumference;
+  const maintDash = (maintPct / 100) * donutCircumference;
+  const inactiveDash = (inactivePct / 100) * donutCircumference;
 
   return (
-    <div style={{ animation: 'fadeIn 0.35s ease', width: '100%' }}>
+    <div style={{ width: '100%' }}>
       <style>{`
         .fleet-box {
           background: #ffffff;
@@ -477,6 +691,7 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
           padding: 1.15rem 1.25rem;
           box-shadow: 0 1px 3px rgba(0,0,0,0.02);
           margin-bottom: 0.85rem;
+          transition: border-color 0.15s ease;
         }
 
         .fleet-stat-grid {
@@ -492,17 +707,18 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
           border-radius: 12px;
           border: 1px solid #e2e8f0;
           box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .fleet-stat-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 10px rgba(0,0,0,0.04);
         }
 
-        .fleet-main-layout {
+        .fleet-charts-row {
           display: grid;
           grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
           gap: 12px;
           margin-bottom: 0.85rem;
-        }
-
-        .fleet-table-row:hover {
-          background-color: #f8fafc;
         }
 
         .fleet-shortcuts-grid {
@@ -530,11 +746,32 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
           box-shadow: 0 3px 8px rgba(37,99,235,0.06);
         }
 
+        /* Hiệu ứng animation chuyển đổi dữ liệu mượt mà */
+        .fleet-val-fade {
+          animation: fleetDataFadeIn 0.35s ease-out;
+        }
+        @keyframes fleetDataFadeIn {
+          from { opacity: 0.35; transform: translateY(2px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .fleet-bar-rect {
+          transition: y 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1), fill 0.3s ease, opacity 0.2s ease;
+        }
+        .fleet-bar-text {
+          transition: y 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+        }
+        .fleet-donut-circle {
+          transition: stroke-dasharray 0.65s cubic-bezier(0.4, 0, 0.2, 1), stroke-dashoffset 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .fleet-garage-bar {
+          transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
         @media (max-width: 1024px) {
           .fleet-stat-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-          .fleet-main-layout {
+          .fleet-charts-row {
             grid-template-columns: 1fr;
           }
           .fleet-shortcuts-grid {
@@ -544,8 +781,7 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
 
         @media (max-width: 768px) {
           .fleet-stat-grid {
-            grid-template-columns: 1fr 1fr;
-            gap: 6px;
+            grid-template-columns: 1fr;
           }
           .fleet-shortcuts-grid {
             grid-template-columns: 1fr;
@@ -554,7 +790,7 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
       `}</style>
 
       {/* ========================================================= */}
-      {/* VÙNG 1: HEADER QUẢN TRỊ ĐỘI XE                            */}
+      {/* VÙNG 1: HEADER QUẢN TRỊ & BỘ LỌC THEO THÁNG               */}
       {/* ========================================================= */}
       <div className="fleet-box">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
@@ -581,7 +817,7 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
                 fontSize: '0.65rem',
                 fontWeight: '700'
               }}>
-                Sẵn Sàng 100%
+                {summary.availRate}% Sẵn Sàng
               </span>
               <span style={{
                 background: '#f1f5f9',
@@ -591,463 +827,864 @@ const FleetManagerOverview = ({ busList = [], tripCount = 0, recentTrips = [], m
                 fontSize: '0.65rem',
                 fontWeight: '700'
               }}>
-                Quản Lý Đội Xe
+                Quản Lý Xe
               </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
-              Hệ thống giám sát phương tiện, theo dõi chu kỳ bảo dưỡng, kiểm định kỳ hạn và phân bổ xe phục vụ hành khách.
+              Hệ thống giám sát cự ly lăn bánh, theo dõi chu kỳ bảo dưỡng 10.000 Km, chi phí garage và tỷ lệ khả dụng phương tiện.
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setActiveTab && setActiveTab('fleet-status')}
+          {/* CHỈ GIỮ LẠI BỘ LỌC THEO THÁNG */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label style={{ fontSize: '0.74rem', fontWeight: '700', color: '#475569' }}>Kỳ báo cáo:</label>
+            <select
+              value={periodFilter}
+              onChange={(e) => setPeriodFilter(e.target.value)}
               style={{
-                backgroundColor: '#ffffff',
+                background: '#ffffff',
                 border: '1px solid #cbd5e1',
-                color: '#334155',
-                padding: '0.45rem 0.85rem',
                 borderRadius: '8px',
+                padding: '0.45rem 0.75rem',
                 fontSize: '0.75rem',
                 fontWeight: '700',
-                cursor: 'pointer'
+                color: '#0f172a',
+                cursor: 'pointer',
+                outline: 'none',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
               }}
             >
-              Cập nhật tình trạng
-            </button>
-            <button
-              onClick={() => setActiveTab && setActiveTab('fleet-maintenance')}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                padding: '0.45rem 0.85rem',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-            >
-              Quản lý bảo trì
-            </button>
-            <button
-              onClick={onRefresh}
-              style={{
-                backgroundColor: '#2563eb',
-                border: 'none',
-                color: '#ffffff',
-                padding: '0.45rem 0.95rem',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-            >
-              Tải lại
-            </button>
+              <option value="2026-11">Tháng 11/2026</option>
+              <option value="2026-10">Tháng 10/2026</option>
+              <option value="2026-09">Tháng 09/2026</option>
+              <option value="2026-08">Tháng 08/2026</option>
+              <option value="ALL">Tất cả các tháng</option>
+            </select>
           </div>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* 4 THẺ THỐNG KÊ KPI ĐỘI XE                                 */}
+      {/* VÙNG 2: 4 THẺ THỐNG KÊ KPI ĐỘI XE THEO THÁNG              */}
       {/* ========================================================= */}
-      <div className="fleet-stat-grid">
+      <div className="fleet-stat-grid" key={periodFilter}>
+        {/* KPI 1: Tổng cự ly lăn bánh */}
         <div className="fleet-stat-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
             <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
-              TỔNG ĐỘI XE KHÁCH
+              TỔNG QUÃNG ĐƯỜNG VẬN HÀNH
             </span>
-            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: '700' }}>
-              Quản lý
+            <span style={{ fontSize: '0.62rem', padding: '1px 6px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: '700' }}>
+              {filterRange.label}
             </span>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
-            {totalBuses} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>phương tiện</span>
+          <div className="fleet-val-fade" style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
+            {summary.totalKm.toLocaleString('vi-VN')} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>Km</span>
           </div>
-          <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-            {busList.length} xe đã kiểm định đưa vào vận hành
+          <div style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: '600' }}>
+            Ghi nhận từ {summary.totalTrips} chuyến xe khai thác
           </div>
         </div>
 
+        {/* KPI 2: Tỷ lệ khả dụng */}
         <div className="fleet-stat-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
             <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
-              XE SẴN SÀNG HOẠT ĐỘNG
+              TỶ LỆ KHẢ DỤNG ĐỘI XE
             </span>
-            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#ecfdf5', color: '#059669', borderRadius: '4px', fontWeight: '700' }}>
-              100% Khả dụng
+            <span style={{ fontSize: '0.62rem', padding: '1px 6px', background: '#ecfdf5', color: '#059669', borderRadius: '4px', fontWeight: '700' }}>
+              Sẵn sàng {summary.availRate}%
             </span>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#059669', marginBottom: '2px' }}>
-            {readyBuses} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>xe sẵn sàng</span>
+          <div className="fleet-val-fade" style={{ fontSize: '1.25rem', fontWeight: '800', color: '#059669', marginBottom: '2px' }}>
+            {summary.readyCount} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>/ {totalBusesCount} xe sẵn sàng</span>
           </div>
           <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: '700' }}>
-            Đáp ứng đầy đủ biểu đồ chuyến xe
+            {summary.maintCount > 0
+              ? `${summary.maintCount} xe đang bảo trì tại garage`
+              : summary.inactiveCount > 0
+                ? `${summary.inactiveCount} xe đang tạm ngưng hoạt động`
+                : 'Toàn bộ phương tiện sẵn sàng lăn bánh'}
           </div>
         </div>
 
+        {/* KPI 3: Lượt xe vào xưởng */}
         <div className="fleet-stat-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
             <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
-              ĐANG BẢO DƯỠNG / SỬA CHỮA
+              LƯỢT XE VÀO XƯỞNG BẢO TRÌ
             </span>
-            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#f8fafc', color: '#64748b', borderRadius: '4px', fontWeight: '700' }}>
+            <span style={{ fontSize: '0.62rem', padding: '1px 6px', background: '#fff7ed', color: '#c2410c', borderRadius: '4px', fontWeight: '700' }}>
               Garage
             </span>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
-            {maintenanceBuses} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>xe</span>
+          <div className="fleet-val-fade" style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
+            {summary.totalMaintCount} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>lượt kỹ thuật</span>
           </div>
           <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-            {maintenanceBuses > 0 ? 'Đang kiểm tra kỹ thuật tại xưởng' : 'Đội xe vận hành ổn định, không có sự cố'}
+            {summary.routineCount} định kỳ • {summary.repairCount} sửa chữa sự cố
           </div>
         </div>
 
+        {/* KPI 4: Chi phí bảo dưỡng & sửa chữa */}
         <div className="fleet-stat-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
             <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
-              HỒ SƠ BẢO DƯỠNG (MONGODB)
+              CHI PHÍ BẢO DƯỠNG QUYẾT TOÁN
             </span>
-            <span style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: '700' }}>
-              Dữ liệu thật
+            <span style={{ fontSize: '0.62rem', padding: '1px 6px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: '700' }}>
+              Thực tế
             </span>
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
-            {maintenanceRecords.length} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>phiếu lưu trữ</span>
+          <div className="fleet-val-fade" style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px' }}>
+            {summary.totalCost.toLocaleString('vi-VN')} <span style={{ fontSize: '0.8rem', fontWeight: '600', color: '#64748b' }}>VNĐ</span>
           </div>
           <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-            {maintenanceRecords.length > 0
-              ? `${maintenanceRecords.length} hồ sơ hoàn tất tại garage đối tác`
-              : 'Đội xe vận hành ổn định, chưa có sự cố'}
+            Quyết toán qua {garageBreakdown.length} garage đối tác
           </div>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* VÙNG 2: BẢNG GIÁM SÁT XE (TRÁI) & LỊCH BẢO TRÌ/PHÂN LOẠI (PHẢI) */}
+      {/* VÙNG 3: BIỂU ĐỒ TRỰC QUAN 1 & 2                           */}
       {/* ========================================================= */}
-      <div className="fleet-main-layout">
-        {/* CỘT TRÁI: DANH SÁCH PHƯƠNG TIỆN TRỰC TIẾP */}
-        <div className="fleet-box" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            padding: '0.85rem 1.25rem',
-            borderBottom: '1px solid #e2e8f0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            background: '#ffffff'
-          }}>
+      <div className="fleet-charts-row">
+        {/* BIỂU ĐỒ 1: CỰ LY LĂN BÁNH TỪNG XE (CỘT GỌN GÀNG, SLIM) */}
+        <div className="fleet-box" style={{ margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
             <div>
               <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Giám Sát Danh Sách Phương Tiện Trong Đội Xe
+                Hiệu Suất Vận Hành Từng Phương Tiện
               </h2>
               <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
-                Dữ liệu thực tế từ hồ sơ phương tiện An Bình Lines
+                So sánh số km lăn bánh thực tế và tần suất khai thác chuyến - {filterRange.label}
               </div>
             </div>
 
+            {/* Metric Switcher */}
+            <div style={{ display: 'flex', background: '#f1f5f9', padding: '2px', borderRadius: '6px' }}>
+              <button
+                type="button"
+                onClick={() => setChartMetric('distance')}
+                style={{
+                  background: chartMetric === 'distance' ? '#ffffff' : 'transparent',
+                  color: chartMetric === 'distance' ? '#2563eb' : '#64748b',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  boxShadow: chartMetric === 'distance' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                }}
+              >
+                Cự ly Km
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartMetric('trips')}
+                style={{
+                  background: chartMetric === 'trips' ? '#ffffff' : 'transparent',
+                  color: chartMetric === 'trips' ? '#2563eb' : '#64748b',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '3px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  boxShadow: chartMetric === 'trips' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                }}
+              >
+                Số chuyến xe
+              </button>
+            </div>
+          </div>
+
+          {/* SVG Column Chart (Slim & Elegant Columns) */}
+          <div style={{ width: '100%', overflowX: 'auto' }}>
+            <svg viewBox="0 0 540 215" style={{ width: '100%', height: 'auto', display: 'block', minWidth: '460px' }}>
+              {/* Horizontal Gridlines */}
+              <line x1="40" y1="35" x2="520" y2="35" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="40" y1="75" x2="520" y2="75" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="40" y1="115" x2="520" y2="115" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="40" y1="155" x2="520" y2="155" stroke="#e2e8f0" strokeWidth="1" />
+
+              {/* Y-axis Labels */}
+              <text x="35" y="38" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">
+                {chartMetric === 'distance' ? `${Math.round(maxBusMetric).toLocaleString('vi-VN')}` : `${maxBusMetric}`}
+              </text>
+              <text x="35" y="98" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">
+                {chartMetric === 'distance' ? `${Math.round(maxBusMetric / 2).toLocaleString('vi-VN')}` : `${Math.round(maxBusMetric / 2)}`}
+              </text>
+              <text x="35" y="158" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">0</text>
+
+              {/* Bars: Thin & Neat (barWidth = 22) */}
+              {busesPerformance.map((bus, idx) => {
+                const totalBars = busesPerformance.length || 5;
+                const slotWidth = 470 / totalBars;
+                const barWidth = 22; // Cột thanh mảnh, gọn gàng, đẹp mắt
+                const xCenter = 45 + idx * slotWidth + slotWidth / 2;
+                const xBar = xCenter - barWidth / 2;
+
+                const val = chartMetric === 'distance' ? bus.distanceKm : bus.tripsCount;
+                const barHeight = Math.max(4, (val / maxBusMetric) * 120);
+                const yBar = 155 - barHeight;
+
+                const isHighest = val === maxBusMetric && val > 0;
+                const barFill = isHighest ? '#2563eb' : '#3b82f6';
+
+                return (
+                  <g
+                    key={bus.busId || idx}
+                    onMouseEnter={() => setHoveredBus(bus)}
+                    onMouseLeave={() => setHoveredBus(null)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {/* Background Slot Hover Area */}
+                    <rect
+                      x={xCenter - slotWidth / 2 + 4}
+                      y="20"
+                      width={slotWidth - 8}
+                      height="175"
+                      fill={hoveredBus?.plateNumber === bus.plateNumber ? '#f8fafc' : 'transparent'}
+                      rx="6"
+                    />
+
+                    {/* Value Badge above Bar */}
+                    <text
+                      className="fleet-bar-text"
+                      x={xCenter}
+                      y={yBar - 6}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="800"
+                      fill={isHighest ? '#1e40af' : '#0f172a'}
+                      style={{
+                        y: `${yBar - 6}px`,
+                        transition: 'y 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease'
+                      }}
+                    >
+                      {chartMetric === 'distance' ? `${val.toLocaleString('vi-VN')} Km` : `${val} chuyến`}
+                    </text>
+
+                    {/* Slim Bar with rounded corners */}
+                    <rect
+                      className="fleet-bar-rect"
+                      x={xBar}
+                      y={yBar}
+                      width={barWidth}
+                      height={barHeight}
+                      fill={barFill}
+                      rx="4"
+                      ry="4"
+                      opacity={hoveredBus && hoveredBus.plateNumber !== bus.plateNumber ? 0.6 : 1}
+                      style={{
+                        y: `${yBar}px`,
+                        height: `${barHeight}px`,
+                        transition: 'y 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1), fill 0.3s ease'
+                      }}
+                    />
+
+                    {/* Plate Number Label */}
+                    <text
+                      x={xCenter}
+                      y="172"
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="800"
+                      fill="#0f172a"
+                    >
+                      {bus.plateNumber}
+                    </text>
+
+                    {/* Bus Type Sub-label */}
+                    <text
+                      x={xCenter}
+                      y="185"
+                      textAnchor="middle"
+                      fontSize="7.5"
+                      fontWeight="600"
+                      fill="#64748b"
+                    >
+                      {bus.type ? bus.type.replace('Xe ', '').slice(0, 14) : ''}
+                    </text>
+
+                    {/* Secondary info below */}
+                    <text
+                      x={xCenter}
+                      y="197"
+                      textAnchor="middle"
+                      fontSize="7.5"
+                      fontWeight="700"
+                      fill="#2563eb"
+                    >
+                      {chartMetric === 'distance' ? `${bus.tripsCount} chuyến` : `${bus.distanceKm.toLocaleString('vi-VN')} Km`}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', fontSize: '0.7rem', color: '#64748b' }}>
+            <div>
+              Hiển thị: <strong>{busesPerformance.length} phương tiện</strong>
+            </div>
+            <div>
+              Cự ly trung bình: <strong>{busesPerformance.length > 0 ? Math.round(summary.totalKm / busesPerformance.length).toLocaleString('vi-VN') : 0} Km / xe</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* BIỂU ĐỒ 2: TỶ LỆ KHẢ DỤNG & CƠ CẤU ĐỘI XE (ĐẦY ĐỦ: SẴN SÀNG, BẢO DƯỠNG, TẠM NGƯNG) */}
+        <div className="fleet-box" style={{ margin: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div>
+                <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Trạng Thái &amp; Năng Lực Đội Xe
+                </h2>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                  Giám sát khả dụng, bảo trì xưởng và tạm ngưng hoạt động
+                </div>
+              </div>
+              <span style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: '10px', background: '#ecfdf5', color: '#047857', fontWeight: '800' }}>
+                {summary.availRate}% Sẵn Sàng
+              </span>
+            </div>
+
+            {/* Donut Chart and Legend Row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', gap: '16px', marginTop: '12px', flexWrap: 'wrap' }}>
+              {/* SVG Donut with 3 segments */}
+              <div style={{ width: '130px', height: '130px', position: 'relative', flexShrink: 0 }}>
+                <svg viewBox="0 0 200 200" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                  {/* Background Track */}
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r={donutRadius}
+                    fill="none"
+                    stroke="#f1f5f9"
+                    strokeWidth="18"
+                  />
+                  {/* Sẵn sàng (Ready) Arc */}
+                  {readyDash > 0 && (
+                    <circle
+                      className="fleet-donut-circle"
+                      cx="100"
+                      cy="100"
+                      r={donutRadius}
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="18"
+                      strokeDasharray={`${readyDash} ${donutCircumference}`}
+                      strokeDashoffset="0"
+                      strokeLinecap="round"
+                      style={{
+                        strokeDasharray: `${readyDash} ${donutCircumference}`,
+                        strokeDashoffset: 0,
+                        transition: 'stroke-dasharray 0.65s cubic-bezier(0.4, 0, 0.2, 1), stroke-dashoffset 0.65s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+                  )}
+                  {/* Bảo dưỡng (Maintenance) Arc */}
+                  {maintDash > 0 && (
+                    <circle
+                      className="fleet-donut-circle"
+                      cx="100"
+                      cy="100"
+                      r={donutRadius}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="18"
+                      strokeDasharray={`${maintDash} ${donutCircumference}`}
+                      strokeDashoffset={-readyDash}
+                      strokeLinecap="round"
+                      style={{
+                        strokeDasharray: `${maintDash} ${donutCircumference}`,
+                        strokeDashoffset: -readyDash,
+                        transition: 'stroke-dasharray 0.65s cubic-bezier(0.4, 0, 0.2, 1), stroke-dashoffset 0.65s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+                  )}
+                  {/* Tạm ngưng (Inactive) Arc */}
+                  {inactiveDash > 0 && (
+                    <circle
+                      className="fleet-donut-circle"
+                      cx="100"
+                      cy="100"
+                      r={donutRadius}
+                      fill="none"
+                      stroke="#94a3b8"
+                      strokeWidth="18"
+                      strokeDasharray={`${inactiveDash} ${donutCircumference}`}
+                      strokeDashoffset={-(readyDash + maintDash)}
+                      strokeLinecap="round"
+                      style={{
+                        strokeDasharray: `${inactiveDash} ${donutCircumference}`,
+                        strokeDashoffset: -(readyDash + maintDash),
+                        transition: 'stroke-dasharray 0.65s cubic-bezier(0.4, 0, 0.2, 1), stroke-dashoffset 0.65s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+                  )}
+                </svg>
+
+                {/* Center Text inside Donut */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  pointerEvents: 'none'
+                }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', lineHeight: 1 }}>
+                    {summary.availRate}%
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700', marginTop: '2px' }}>
+                    Sẵn sàng
+                  </div>
+                </div>
+              </div>
+
+              {/* Legend & Breakdown List: Sẵn sàng, Bảo dưỡng, Tạm ngưng, Tổng chỗ */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minWidth: '175px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
+                    <span style={{ fontSize: '0.72rem', color: '#334155', fontWeight: '600' }}>Sẵn sàng lăn bánh:</span>
+                  </div>
+                  <strong style={{ fontSize: '0.75rem', color: '#0f172a' }}>{readyCount} xe</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }} />
+                    <span style={{ fontSize: '0.72rem', color: '#334155', fontWeight: '600' }}>Bảo dưỡng / xưởng:</span>
+                  </div>
+                  <strong style={{ fontSize: '0.75rem', color: '#0f172a' }}>{maintCount} xe</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: '#f8fafc', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#94a3b8' }} />
+                    <span style={{ fontSize: '0.72rem', color: '#334155', fontWeight: '600' }}>Tạm ngưng hoạt động:</span>
+                  </div>
+                  <strong style={{ fontSize: '0.75rem', color: '#0f172a' }}>{inactiveCount} xe</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: '#eff6ff', borderRadius: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb' }} />
+                    <span style={{ fontSize: '0.72rem', color: '#1e40af', fontWeight: '600' }}>Tổng tải cung ứng:</span>
+                  </div>
+                  <strong style={{ fontSize: '0.75rem', color: '#1d4ed8' }}>
+                    {totalSeats} chỗ
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Dải thông tin tinh tế dưới chân thẻ (Đã bỏ 3 ô to thô) */}
+          <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#64748b' }}>
+            <span>Đội xe phục vụ toàn tuyến liên tỉnh &amp; cao tốc đêm</span>
+            <strong style={{ color: '#0f172a' }}>{totalBusesCount} phương tiện đã đăng ký</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* VÙNG 4: BIỂU ĐỒ XU HƯỚNG CHI PHÍ & PHÂN BỔ GARAGE         */}
+      {/* ========================================================= */}
+      <div className="fleet-charts-row">
+        {/* BIỂU ĐỒ 3: BIẾN ĐỘNG CHI PHÍ BẢO TRÌ QUA CÁC THÁNG (SVG MULTI-BAR THON GỌN) */}
+        <div className="fleet-box" style={{ margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                Xu Hướng Chi Phí Bảo Dưỡng &amp; Sửa Chữa Năm 2026
+              </h2>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                Tổng hợp chi phí kỹ thuật quyết toán qua từng tháng theo hồ sơ thực tế
+              </div>
+            </div>
+
+            {/* Chú thích loại chi phí */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.68rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#2563eb' }} />
+                <span style={{ color: '#475569', fontWeight: '600' }}>Bảo dưỡng định kỳ</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f97316' }} />
+                <span style={{ color: '#475569', fontWeight: '600' }}>Sửa chữa sự cố</span>
+              </div>
+            </div>
+          </div>
+
+          {/* SVG Grouped Bar Chart */}
+          <div style={{ width: '100%', overflowX: 'auto' }}>
+            <svg viewBox="0 0 540 210" style={{ width: '100%', height: 'auto', display: 'block', minWidth: '460px' }}>
+              {/* Gridlines */}
+              <line x1="45" y1="30" x2="520" y2="30" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="45" y1="65" x2="520" y2="65" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="45" y1="100" x2="520" y2="100" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="45" y1="135" x2="520" y2="135" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="3 3" />
+              <line x1="45" y1="165" x2="520" y2="165" stroke="#e2e8f0" strokeWidth="1" />
+
+              {/* Y-axis Labels */}
+              <text x="40" y="34" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">60tr</text>
+              <text x="40" y="69" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">45tr</text>
+              <text x="40" y="104" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">30tr</text>
+              <text x="40" y="139" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">15tr</text>
+              <text x="40" y="168" textAnchor="end" fontSize="9" fill="#94a3b8" fontWeight="600">0</text>
+
+              {/* Monthly Groups: Thin & Clean Bars (barWidth = 18) */}
+              {monthlyMaintenanceTrend.map((m, idx) => {
+                const totalSlots = monthlyMaintenanceTrend.length;
+                const slotWidth = 460 / totalSlots;
+                const xCenter = 50 + idx * slotWidth + slotWidth / 2;
+
+                const routineHeight = Math.max(0, (m.routineCost / maxMonthCost) * 135);
+                const repairHeight = Math.max(0, (m.repairCost / maxMonthCost) * 135);
+
+                const barWidth = 18;
+                const gap = 4;
+                const xRoutine = xCenter - barWidth - gap / 2;
+                const xRepair = xCenter + gap / 2;
+
+                const yRoutine = 165 - routineHeight;
+                const yRepair = 165 - repairHeight;
+
+                const totalInMillions = (m.totalCost / 1000000).toFixed(2);
+
+                return (
+                  <g key={m.key} style={{ cursor: 'pointer' }} onClick={() => setPeriodFilter(m.key)}>
+                    {/* Highlight Box if currently active period */}
+                    {m.isSelected && (
+                      <rect
+                        x={xCenter - slotWidth / 2 + 6}
+                        y="15"
+                        width={slotWidth - 12}
+                        height="185"
+                        fill="#eff6ff"
+                        rx="8"
+                        stroke="#bfdbfe"
+                        strokeWidth="1"
+                      />
+                    )}
+
+                    {/* Total cost text above group */}
+                    <text
+                      x={xCenter}
+                      y={Math.min(yRoutine, yRepair) - 8}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fontWeight="800"
+                      fill={m.isSelected ? '#1d4ed8' : '#0f172a'}
+                    >
+                      {totalInMillions} tr
+                    </text>
+
+                    {/* Routine Bar */}
+                    <rect
+                      className="fleet-bar-rect"
+                      x={xRoutine}
+                      y={yRoutine}
+                      width={barWidth}
+                      height={routineHeight}
+                      fill="#2563eb"
+                      rx="3"
+                      style={{
+                        y: `${yRoutine}px`,
+                        height: `${routineHeight}px`,
+                        transition: 'y 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+
+                    {/* Repair Bar */}
+                    <rect
+                      className="fleet-bar-rect"
+                      x={xRepair}
+                      y={yRepair}
+                      width={barWidth}
+                      height={repairHeight}
+                      fill="#f97316"
+                      rx="3"
+                      style={{
+                        y: `${yRepair}px`,
+                        height: `${repairHeight}px`,
+                        transition: 'y 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+
+                    {/* Month Label */}
+                    <text
+                      x={xCenter}
+                      y="182"
+                      textAnchor="middle"
+                      fontSize="9.5"
+                      fontWeight={m.isSelected ? '800' : '700'}
+                      fill={m.isSelected ? '#1d4ed8' : '#334155'}
+                    >
+                      {m.label}
+                    </text>
+
+                    {/* Record count badge */}
+                    <text
+                      x={xCenter}
+                      y="195"
+                      textAnchor="middle"
+                      fontSize="7.5"
+                      fontWeight="600"
+                      fill="#64748b"
+                    >
+                      {m.count} phiếu lưu
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', fontSize: '0.7rem', color: '#64748b' }}>
+            <span>Nhấp vào từng cột tháng để chuyển nhanh dữ liệu</span>
+            <span>Tổng chi phí tích lũy 4 tháng: <strong>92.100.000 VNĐ</strong></span>
+          </div>
+        </div>
+
+        {/* BIỂU ĐỒ 4: PHÂN BỔ CHI PHÍ THEO GARAGE ĐỐI TÁC */}
+        <div className="fleet-box" style={{ margin: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div>
+                <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                  Phân Bổ Chi Phí Theo Garage Đối Tác
+                </h2>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+                  Tỷ trọng giải ngân công nợ sửa chữa &amp; bảo dưỡng kỹ thuật
+                </div>
+              </div>
+            </div>
+
+            {/* List of Partner Garages with Progress Bars */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+              {garageBreakdown.map((garage, idx) => (
+                <div key={garage.name || idx} style={{ padding: '8px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <strong style={{ fontSize: '0.78rem', color: '#0f172a' }}>{garage.name}</strong>
+                      <span style={{ fontSize: '0.62rem', padding: '1px 5px', background: '#eff6ff', color: '#2563eb', borderRadius: '4px', fontWeight: '700' }}>
+                        {garage.count} lượt xưởng
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <strong style={{ fontSize: '0.8rem', color: '#0f172a' }}>
+                        {garage.cost.toLocaleString('vi-VN')} đ
+                      </strong>
+                      <span style={{ fontSize: '0.68rem', color: '#64748b', marginLeft: '4px' }}>
+                        {garage.percent}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                    <div
+                      className="fleet-garage-bar"
+                      style={{
+                        width: `${garage.barWidthPct}%`,
+                        height: '100%',
+                        background: idx === 0 ? '#2563eb' : idx === 1 ? '#3b82f6' : idx === 2 ? '#f59e0b' : '#10b981',
+                        borderRadius: '3px',
+                        transition: 'width 0.55s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginTop: '12px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem', color: '#64748b' }}>
+            <span>Đã nghiệm thu đầy đủ biên bản bàn giao phụ tùng</span>
             <button
-              onClick={() => setActiveTab && setActiveTab('fleet-buses')}
+              onClick={() => setActiveTab && setActiveTab('fleet-expenses')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#2563eb',
+                fontSize: '0.72rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
+              Báo cáo chi tiêu tháng →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* VÙNG 5: TÌNH TRẠNG XE & NHẬT KÝ KỸ THUẬT                  */}
+      {/* ========================================================= */}
+      <div className="fleet-box" style={{ marginBottom: '0.85rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #f1f5f9', paddingBottom: '8px', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h2 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Tình Trạng Xe &amp; Nhật Ký Kỹ Thuật
+            </h2>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
+              Giám sát trạng thái hoạt động thực tế từng phương tiện và các hồ sơ bảo dưỡng/sửa chữa mới nhất
+            </div>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setActiveTab && setActiveTab('fleet-status')}
               style={{
                 backgroundColor: '#eff6ff',
                 color: '#2563eb',
                 border: '1px solid #bfdbfe',
-                padding: '3px 8px',
+                padding: '5px 12px',
                 borderRadius: '6px',
-                fontSize: '0.72rem',
+                fontSize: '0.74rem',
                 fontWeight: '700',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
               }}
             >
-              Hồ sơ xe chi tiết
+              Cập nhật tình trạng xe →
             </button>
-          </div>
-
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '520px' }}>
-              <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                  <th style={{ padding: '9px 12px', fontWeight: '800' }}>Biển Số Xe</th>
-                  <th style={{ padding: '9px 12px', fontWeight: '800' }}>Phân Loại &amp; Ghế</th>
-                  <th style={{ padding: '9px 12px', fontWeight: '800' }}>Tiện Nghi Phục Vụ</th>
-                  <th style={{ padding: '9px 12px', fontWeight: '800', textAlign: 'center' }}>Trạng Thái Kỹ Thuật</th>
-                  <th style={{ padding: '9px 12px', fontWeight: '800', textAlign: 'right' }}>Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {busList.map((bus) => {
-                  const isReady = bus.activeStatus === 'ready' || bus.activeStatus === 'active' || !bus.activeStatus;
-                  const isMaint = bus.activeStatus === 'maintenance' || bus.activeStatus === 'repairing';
-
-                  return (
-                    <tr key={bus._id} className="fleet-table-row" style={{ borderBottom: '1px solid #f1f5f9', fontSize: '0.8rem' }}>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.85rem' }}>
-                          {bus.plateNumber}
-                        </div>
-                        <div style={{ fontSize: '0.65rem', color: '#64748b' }}>
-                          Mã: {bus._id.slice(-6).toUpperCase()}
-                        </div>
-                      </td>
-
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontWeight: '700', color: '#1d4ed8' }}>
-                          {bus.type}
-                        </div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                          Sức chứa: <strong>{bus.totalSeats} chỗ ngồi/nằm</strong>
-                        </div>
-                      </td>
-
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontSize: '0.72rem', color: '#334155' }}>
-                          {bus.amenities && bus.amenities.length > 0 ? bus.amenities.slice(0, 3).join(', ') : 'Điều hòa, Nước suối'}
-                        </div>
-                      </td>
-
-                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          borderRadius: '10px',
-                          fontSize: '0.68rem',
-                          fontWeight: '800',
-                          backgroundColor: isMaint ? '#fff7ed' : '#ecfdf5',
-                          color: isMaint ? '#c2410c' : '#047857',
-                          border: `1px solid ${isMaint ? '#fed7aa' : '#a7f3d0'}`
-                        }}>
-                          {isMaint ? 'Bảo dưỡng tại xưởng' : 'Sẵn sàng hoạt động'}
-                        </span>
-                      </td>
-
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTab && setActiveTab('fleet-status')}
-                            style={{
-                              backgroundColor: '#ffffff',
-                              color: '#334155',
-                              border: '1px solid #cbd5e1',
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              fontSize: '0.7rem',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Tình trạng
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setActiveTab && setActiveTab('fleet-maintenance')}
-                            style={{
-                              backgroundColor: '#eff6ff',
-                              color: '#1d4ed8',
-                              border: '1px solid #bfdbfe',
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              fontSize: '0.7rem',
-                              fontWeight: '700',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Bảo trì
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
           </div>
         </div>
 
-        {/* CỘT PHẢI: LỊCH BẢO DƯỠNG & PHÂN LOẠI CƠ CẤU */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {/* Panel 1: Hồ sơ bảo trì & Trạng thái xưởng thực tế */}
-          <div className="fleet-box" style={{ margin: 0 }}>
-            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '6px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h3 style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                  Hồ Sơ Bảo Trì &amp; Trạng Thái Kỹ Thuật (MongoDB)
-                </h3>
-                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                  Dữ liệu phiếu bảo dưỡng &amp; tiến độ sửa chữa từ cơ sở dữ liệu
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab && setActiveTab('fleet-maintenance')}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#2563eb',
-                  fontSize: '0.72rem',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                Quản lý bảo trì
-              </button>
+        {/* Bố cục 2 cột chuyên nghiệp: Tình trạng từng xe (Trái) & Hồ sơ bảo dưỡng mới nhất (Phải) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(0, 1fr)', gap: '14px' }}>
+          {/* CỘT TRÁI: DANH SÁCH 5 XE & TRẠNG THÁI HIỆN TẠI */}
+          <div>
+            <div style={{ fontSize: '0.74rem', fontWeight: '800', color: '#334155', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              Trạng thái phương tiện trong đội xe - {busesPerformance.length} xe
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {busesPerformance.map((bus) => {
+                const isMaint = bus.activeStatus === 'maintenance' || bus.activeStatus === 'repairing';
+                const isInactive = bus.activeStatus === 'inactive' || bus.activeStatus === 'paused';
+                const isReady = !isMaint && !isInactive;
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
-              {activeMaintenanceBuses.length > 0 ? (
-                activeMaintenanceBuses.map((bus) => (
+                return (
                   <div
-                    key={bus._id}
+                    key={bus.busId || bus.plateNumber}
                     style={{
-                      padding: '8px 10px',
-                      borderRadius: '8px',
-                      border: '1px solid #fed7aa',
-                      background: '#fff7ed',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '800', fontSize: '0.8rem', color: '#9a3412' }}>
-                        Xe {bus.plateNumber} ({bus.type})
-                      </div>
-                      <span style={{
-                        fontSize: '0.62rem',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: '#ffedd5',
-                        color: '#c2410c',
-                        border: '1px solid #fed7aa',
-                        fontWeight: '700'
-                      }}>
-                        Đang bảo dưỡng tại xưởng
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#7c2d12', lineHeight: '1.3' }}>
-                      {bus.maintenanceInfo?.description || 'Kiểm tra kỹ thuật định kỳ'} • Garage: {bus.maintenanceInfo?.garage || 'Chưa cập nhật'}
-                    </div>
-                  </div>
-                ))
-              ) : maintenanceRecords.length > 0 ? (
-                maintenanceRecords.slice(0, 3).map((rec, idx) => (
-                  <div
-                    key={rec._id || idx}
-                    style={{
-                      padding: '8px 10px',
+                      padding: '8px 12px',
+                      background: '#f8fafc',
                       borderRadius: '8px',
                       border: '1px solid #e2e8f0',
-                      background: '#f8fafc',
                       display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px'
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '800', fontSize: '0.8rem', color: '#0f172a' }}>
-                        Xe {rec.plateNumber || 'Phương tiện'}
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>{bus.plateNumber}</strong>
+                        <span style={{ fontSize: '0.68rem', color: '#64748b' }}>• {bus.type}</span>
                       </div>
+                      <div style={{ fontSize: '0.68rem', color: '#475569', marginTop: '2px' }}>
+                        Đã chạy: <strong>{bus.distanceKm.toLocaleString('vi-VN')} Km</strong> • {bus.tripsCount} chuyến
+                        {bus.isOverdue && (
+                          <span style={{ color: '#dc2626', fontWeight: '700', marginLeft: '6px' }}>
+                            — Chạm ngưỡng 10.000 Km
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
                       <span style={{
-                        fontSize: '0.62rem',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: '#ecfdf5',
-                        color: '#047857',
-                        border: '1px solid #a7f3d0',
-                        fontWeight: '700'
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.65rem',
+                        fontWeight: '800',
+                        backgroundColor: isReady ? '#ecfdf5' : isMaint ? '#fff7ed' : '#f1f5f9',
+                        color: isReady ? '#047857' : isMaint ? '#c2410c' : '#475569',
+                        border: `1px solid ${isReady ? '#a7f3d0' : isMaint ? '#fed7aa' : '#cbd5e1'}`
                       }}>
-                        Đã hoàn tất ({new Date(rec.endDate || rec.createdAt).toLocaleDateString('vi-VN')})
+                        {isReady ? 'Sẵn sàng hoạt động' : isMaint ? 'Bảo dưỡng tại xưởng' : 'Tạm ngưng hoạt động'}
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.7rem', color: '#475569', lineHeight: '1.3' }}>
-                      {rec.description} • Garage: {rec.garage} • Chi phí: <strong>{(rec.cost || 0).toLocaleString('vi-VN')} VNĐ</strong>
-                    </div>
                   </div>
-                ))
-              ) : (
-                <div style={{ padding: '12px 10px', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.72rem' }}>
-                  Toàn bộ 5/5 phương tiện đang vận hành ổn định. Chưa có phát sinh xe nằm xưởng hoặc phiếu bảo trì mới.
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
 
-          {/* Panel 2: Phân loại cơ cấu phương tiện */}
-          <div className="fleet-box" style={{ margin: 0 }}>
-            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '6px', marginBottom: '8px' }}>
-              <h3 style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Cơ Cấu Phương Tiện &amp; Năng Lực Vận Tải
-              </h3>
-              <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                Tổng cung ứng: {totalSeatsCapacity} chỗ / lượt xuất bến
-              </div>
+          {/* CỘT PHẢI: HỒ SƠ BẢO TRÌ & SỬA CHỮA MỚI NHẤT */}
+          <div>
+            <div style={{ fontSize: '0.74rem', fontWeight: '800', color: '#334155', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              Nhật ký bảo trì &amp; sửa chữa gần nhất
             </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ padding: '8px 10px', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: '800', color: '#1e40af', fontSize: '0.78rem' }}>
-                    Xe Limousine VIP (9 Chỗ)
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {filteredMaintenance.slice(0, 4).map((rec, idx) => (
+                <div
+                  key={rec._id || idx}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    background: '#f8fafc',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '3px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ fontWeight: '800', fontSize: '0.8rem', color: '#0f172a' }}>
+                      Xe {rec.busId?.plateNumber || rec.plateNumber || 'Phương tiện'}
+                    </div>
+                    <span style={{
+                      fontSize: '0.62rem',
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background: rec.type === 'repairing' ? '#fff7ed' : '#ecfdf5',
+                      color: rec.type === 'repairing' ? '#c2410c' : '#047857',
+                      border: `1px solid ${rec.type === 'repairing' ? '#fed7aa' : '#a7f3d0'}`,
+                      fontWeight: '700'
+                    }}>
+                      {rec.type === 'repairing' ? 'Sửa chữa sự cố' : 'Bảo dưỡng định kỳ'}
+                    </span>
                   </div>
-                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                    Tuyến VIP chất lượng cao, phục vụ khách chuyên cơ
+                  <div style={{ fontSize: '0.7rem', color: '#475569', lineHeight: '1.3' }}>
+                    {rec.description}
                   </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: '800', color: '#1d4ed8', fontSize: '0.85rem' }}>
-                    {limousineBuses.length} xe
-                  </div>
-                  <div style={{ fontSize: '0.62rem', color: '#047857', fontWeight: '700' }}>
-                    100% Sẵn sàng
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ padding: '8px 10px', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: '800', color: '#065f46', fontSize: '0.78rem' }}>
-                    Xe Giường Nằm (44 Chỗ)
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                    Tuyến đường dài cao tốc đêm (Sài Gòn - Đà Lạt)
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: '800', color: '#047857', fontSize: '0.85rem' }}>
-                    {sleeperBuses.length} xe
-                  </div>
-                  <div style={{ fontSize: '0.62rem', color: '#047857', fontWeight: '700' }}>
-                    100% Sẵn sàng
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ padding: '8px 10px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: '800', color: '#334155', fontSize: '0.78rem' }}>
-                    Xe Ghế Ngồi (16, 29, 45 Chỗ)
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                    Tuyến liên tỉnh cự ly trung bình &amp; trung chuyển
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.68rem', color: '#64748b', marginTop: '2px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+                    <span>Garage: <strong>{rec.garage || 'Đối tác'}</strong></span>
+                    <span style={{ color: '#0f172a', fontWeight: '800' }}>
+                      {(rec.cost || 0).toLocaleString('vi-VN')} VNĐ
+                    </span>
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: '800', color: '#334155', fontSize: '0.85rem' }}>
-                    {seatingBuses.length} xe
-                  </div>
-                  <div style={{ fontSize: '0.62rem', color: '#047857', fontWeight: '700' }}>
-                    100% Sẵn sàng
-                  </div>
+              ))}
+              {filteredMaintenance.length === 0 && (
+                <div style={{ padding: '1.5rem 1rem', textAlign: 'center', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', color: '#64748b', fontSize: '0.74rem' }}>
+                  Không có phiếu bảo dưỡng nào phát sinh trong kỳ {filterRange.label}. Đội xe vận hành ổn định.
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* VÙNG 3: PHÍM TẮT NGHIỆP VỤ QUẢN LÝ ĐỘI XE                  */}
+      {/* VÙNG 6: PHÍM TẮT NGHIỆP VỤ QUẢN LÝ XE                  */}
       {/* ========================================================= */}
       <div className="fleet-shortcuts-grid">
         <div

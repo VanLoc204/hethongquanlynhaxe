@@ -48,7 +48,7 @@ const IconClose = () => (
 );
 
 const ROLE_LABELS = {
-  fleet_manager: 'Quản lý Đội xe',
+  fleet_manager: 'Quản lý Xe',
   ops_manager: 'Quản lý Vận tải',
   general_manager: 'Ban Giám đốc',
   admin: 'Quản trị viên',
@@ -60,7 +60,7 @@ const ROLE_LABELS = {
 };
 
 const ROLE_DEPARTMENTS = {
-  fleet_manager: 'Khối Kỹ thuật - Quản lý Đội xe & Bảo dưỡng',
+  fleet_manager: 'Khối Kỹ thuật - Quản lý Xe & Bảo dưỡng',
   ops_manager: 'Khối Điều hành - Điều độ Tuyến & Lộ trình',
   general_manager: 'Ban Tổng Giám Đốc - Điều hành Toàn hệ thống',
   admin: 'Ban Công Nghệ Thông Tin - Quản trị Hệ thống & Bảo mật',

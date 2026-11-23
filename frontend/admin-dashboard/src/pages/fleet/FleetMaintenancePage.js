@@ -111,7 +111,6 @@ const FleetMaintenancePage = () => {
     try {
       const payload = {
         busId: completingBus._id,
-        plateNumber: completingBus.plateNumber,
         type: completingBus.activeStatus,
         description: finalDescription.trim(),
         garage: finalGarage.trim(),
@@ -168,8 +167,9 @@ const FleetMaintenancePage = () => {
     return historyRecords.filter(item => {
       const matchType = typeFilter === 'all' || item.type === typeFilter;
       const q = searchHistory.trim().toLowerCase();
+      const plate = item.busId?.plateNumber || item.plateNumber || '';
       const matchSearch = !q ||
-        (item.plateNumber && item.plateNumber.toLowerCase().includes(q)) ||
+        (plate && plate.toLowerCase().includes(q)) ||
         (item.garage && item.garage.toLowerCase().includes(q)) ||
         (item.description && item.description.toLowerCase().includes(q));
       return matchType && matchSearch;
@@ -756,7 +756,7 @@ const FleetMaintenancePage = () => {
                     return (
                       <tr key={rec._id}>
                         <td>
-                          <div className="plate-box-mini">{rec.plateNumber}</div>
+                          <div className="plate-box-mini">{rec.busId?.plateNumber || rec.plateNumber || 'N/A'}</div>
                         </td>
                         <td>
                           <span style={{
@@ -783,7 +783,7 @@ const FleetMaintenancePage = () => {
                         </td>
                         <td style={{ textAlign: 'right', fontWeight: '800', color: '#0f172a', fontSize: '0.78rem' }}>
                           <div>{formatCurrency(rec.cost)}</div>
-                          {(rec.isMajor || (Number(rec.cost) >= 10000000)) && (
+                          {rec.approvalStatus === 'approved' && (
                             <span style={{
                               display: 'inline-block',
                               fontSize: '0.64rem',
@@ -796,7 +796,7 @@ const FleetMaintenancePage = () => {
                               marginTop: '2px',
                               whiteSpace: 'nowrap'
                             }}>
-                              Đại tu đã duyệt
+                              {rec.isMajor ? 'Đã duyệt (Chi phí lớn)' : 'Đã duyệt'}
                             </span>
                           )}
                         </td>
