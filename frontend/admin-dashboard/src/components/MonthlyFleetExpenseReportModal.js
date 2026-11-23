@@ -137,24 +137,31 @@ const MonthlyFleetExpenseReportModal = ({
             display: none !important;
           }
         }
+        .fleet-report-table {
+          width: 100% !important;
+          table-layout: fixed !important;
+          border-collapse: collapse !important;
+          box-sizing: border-box !important;
+        }
         .fleet-report-table th, .fleet-report-table td {
-          border: 1px solid #1e293b;
-          padding: 6px 10px;
-          font-size: 0.82rem;
+          border: 1px solid #94a3b8 !important;
+          box-sizing: border-box !important;
+          font-size: 0.78rem !important;
+          padding: 6px 5px !important;
         }
       `}</style>
 
       <div
         className="report-modal-container"
         style={{
-          backgroundColor: '#f1f5f9',
+          backgroundColor: '#334155',
           borderRadius: '8px',
-          width: '950px',
+          width: '1020px',
           maxWidth: '98vw',
           maxHeight: '94vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
           overflow: 'hidden'
         }}
       >
@@ -283,7 +290,7 @@ const MonthlyFleetExpenseReportModal = ({
                 cursor: 'pointer'
               }}
             >
-              In Báo Cáo (A4)
+              In Báo Cáo
             </button>
             <button
               onClick={onClose}
@@ -304,18 +311,22 @@ const MonthlyFleetExpenseReportModal = ({
         </div>
 
         {/* NỘI DUNG VĂN BẢN TRANG A4 BÁO CÁO */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '24px 16px', display: 'flex', justifyContent: 'center', backgroundColor: '#475569' }}>
           <div
             className="report-printable-area"
             style={{
               backgroundColor: '#ffffff',
-              width: '850px',
-              minHeight: '1100px',
-              padding: '24mm 20mm',
+              width: '100%',
+              maxWidth: '920px',
+              minHeight: 'fit-content',
+              padding: '32px 36px',
               color: '#0f172a',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35)',
+              borderRadius: '4px',
               fontFamily: '"Times New Roman", Times, serif',
-              position: 'relative',
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
               fontSize: '0.88rem',
               lineHeight: 1.45
             }}
@@ -334,10 +345,10 @@ const MonthlyFleetExpenseReportModal = ({
                 <div style={{ fontSize: '1.15rem', fontWeight: '900', color: '#1e3a8a', textTransform: 'uppercase' }}>
                   CÔNG TY TNHH VẬN TẢI AN BÌNH
                 </div>
-                <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '2px' }}>
+                <div style={{ fontSize: '0.85rem', color: '#334155', marginTop: '2px', fontWeight: '600' }}>
                   Ban Kỹ thuật &amp; Quản lý Phương tiện
                 </div>
-                <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
                   Trụ sở: 395 Kinh Dương Vương, An Lạc, Bình Tân, TP. Hồ Chí Minh
                 </div>
               </div>
@@ -349,7 +360,7 @@ const MonthlyFleetExpenseReportModal = ({
             </div>
 
             {/* TIÊU ĐỀ VĂN BẢN */}
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
               <div
                 style={{
                   fontSize: '1.35rem',
@@ -362,11 +373,11 @@ const MonthlyFleetExpenseReportModal = ({
               >
                 BÁO CÁO TỔNG HỢP CHI PHÍ VẬN HÀNH &amp; BẢO TRÌ ĐỘI XE
               </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#1e3a8a' }}>
+              <div style={{ fontSize: '1rem', fontWeight: '700', color: '#1e3a8a', marginBottom: '3px' }}>
                 Kỳ Báo Cáo: Tháng {String(month).padStart(2, '0')} Năm {year}
               </div>
-              <div style={{ fontSize: '0.8rem', fontStyle: 'italic', color: '#475569', marginTop: '2px' }}>
-                (Tổng hợp quyết toán công nợ gara bảo dưỡng, tiêu hao nhiên liệu &amp; tỷ lệ sẵn sàng phương tiện)
+              <div style={{ fontSize: '0.82rem', fontStyle: 'italic', color: '#475569' }}>
+                Tổng hợp quyết toán công nợ gara bảo dưỡng, sửa chữa &amp; tỷ lệ sẵn sàng phương tiện
               </div>
             </div>
 
@@ -378,21 +389,21 @@ const MonthlyFleetExpenseReportModal = ({
                 gap: '0.75rem',
                 backgroundColor: '#f8fafc',
                 border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                padding: '0.65rem 1rem',
+                borderRadius: '6px',
+                padding: '0.75rem 1.25rem',
                 fontSize: '0.84rem',
                 marginBottom: '1.25rem'
               }}
             >
               <div>
                 <div>Cán bộ lập báo cáo: <strong>{managerName}</strong></div>
-                <div style={{ marginTop: '2px' }}>Chức vụ: <strong>Quản lý Đội xe</strong></div>
-                <div style={{ marginTop: '2px' }}>Đơn vị: <strong>Ban Kỹ thuật &amp; Phương tiện</strong></div>
+                <div style={{ marginTop: '3px' }}>Chức vụ: <strong>Quản lý Xe</strong></div>
+                <div style={{ marginTop: '3px' }}>Đơn vị: <strong>Ban Kỹ thuật &amp; Phương tiện</strong></div>
               </div>
               <div>
                 <div>Thời gian nộp: <strong>{formatDateTime(submittedAt)}</strong></div>
-                <div style={{ marginTop: '2px' }}>Cấp phê duyệt: <strong>Ban Giám Đốc An Bình Lines</strong></div>
-                <div style={{ marginTop: '2px' }}>
+                <div style={{ marginTop: '3px' }}>Cấp phê duyệt: <strong>Ban Giám Đốc An Bình Lines</strong></div>
+                <div style={{ marginTop: '3px' }}>
                   Trạng thái:{' '}
                   <strong style={{ color: status === 'approved' ? '#15803d' : '#b45309' }}>
                     {status === 'approved' ? 'Đã phê duyệt quyết toán' : 'Đang chờ phê duyệt'}
@@ -404,47 +415,50 @@ const MonthlyFleetExpenseReportModal = ({
             {/* PHẦN 1: BẢNG TỔNG HỢP CHI PHÍ CỐT LÕI */}
             <div style={{ marginBottom: '1.25rem' }}>
               <div style={{ fontWeight: '800', fontSize: '0.92rem', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
-                I. BẢNG TỔNG HỢP CHI PHÍ VẬN HÀNH THÁNG {month}/{year}
+                I. BẢNG TỔNG HỢP CHI PHÍ BẢO TRÌ & SỬA CHỮA THÁNG {month}/{year}
               </div>
-              <table className="fleet-report-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="fleet-report-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
                 <tbody>
                   <tr>
-                    <td style={{ width: '55%', fontWeight: '600' }}>
-                      1. Chi phí Bảo trì &amp; Sửa chữa Phương tiện (Gara):
+                    <td style={{ width: '65%', fontWeight: '600' }}>
+                      1. Chi phí Bảo dưỡng định kỳ:
                     </td>
-                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#b91c1c' }}>
-                      {formatCurrency(summary.totalMaintenanceCost)}
+                    <td style={{ width: '35%', fontWeight: '800', textAlign: 'right', color: '#0369a1' }}>
+                      {formatCurrency(summary.scheduledMaintCost || 0)}
                     </td>
                   </tr>
                   <tr>
                     <td style={{ fontWeight: '600' }}>
-                      2. Chi phí Tiêu hao Nhiên liệu (Dầu Diesel DO):
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', fontWeight: 'normal' }}>
-                        ({(summary.totalFuelLiters || 0).toLocaleString('vi-VN')} lít × {(summary.fuelUnitPrice || 21500).toLocaleString('vi-VN')} đ/lít)
-                      </div>
+                      2. Chi phí Sửa chữa sự cố (Gara ngoài):
                     </td>
-                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#d97706' }}>
-                      {formatCurrency(summary.totalFuelCost)}
+                    <td style={{ fontWeight: '800', textAlign: 'right', color: '#b91c1c' }}>
+                      {formatCurrency(summary.repairCost || (summary.totalMaintenanceCost ? (summary.totalMaintenanceCost - (summary.scheduledMaintCost || 0)) : 0))}
                     </td>
                   </tr>
                   <tr style={{ backgroundColor: '#f0fdf4', borderTop: '2px solid #0f172a' }}>
                     <td style={{ fontWeight: '900', color: '#166534', fontSize: '0.92rem' }}>
-                      TỔNG CHI PHÍ ĐỘI XE THÁNG {month}/{year}:
+                      TỔNG CHI PHÍ BẢO TRÌ & SỬA CHỮA THÁNG {month}/{year}:
                     </td>
                     <td style={{ fontWeight: '900', textAlign: 'right', color: '#15803d', fontSize: '1.05rem' }}>
-                      {formatCurrency(summary.totalExpenses)}
+                      {formatCurrency(summary.totalExpenses || summary.totalMaintenanceCost || 0)}
                     </td>
                   </tr>
                   <tr style={{ fontSize: '0.78rem', color: '#475569' }}>
-                    <td>Tổng quãng đường lăn bánh toàn đội xe:</td>
+                    <td>Tổng lượt xe vào xưởng (bảo dưỡng & sửa chữa):</td>
                     <td style={{ textAlign: 'right', fontWeight: '700' }}>
-                      {(summary.totalDistanceKm || 0).toLocaleString('vi-VN')} km
+                      {(summary.maintenanceCount || maintenanceRecords.length || 0)} lượt ({(summary.scheduledMaintCount || 0)} lượt bảo dưỡng • {(summary.repairCount || 0)} lượt sửa chữa)
+                    </td>
+                  </tr>
+                  <tr style={{ fontSize: '0.78rem', color: '#475569' }}>
+                    <td>Vận hành toàn đội xe (Số chuyến & Quãng đường):</td>
+                    <td style={{ textAlign: 'right', fontWeight: '700' }}>
+                      {(summary.totalTrips || busDetails.reduce((acc, b) => acc + (b.tripsCount || 0), 0)).toLocaleString('vi-VN')} chuyến • {(summary.totalDistanceKm || 0).toLocaleString('vi-VN')} km
                     </td>
                   </tr>
                   <tr style={{ fontSize: '0.78rem', color: '#475569' }}>
                     <td>Tỷ lệ phương tiện sẵn sàng hoạt động (Availability):</td>
                     <td style={{ textAlign: 'right', fontWeight: '700', color: '#059669' }}>
-                      {summary.availabilityRate || 100}% ({summary.readyBusesCount || 0} xe sẵn sàng / {summary.maintenanceBusesCount || 0} xe xưởng)
+                      {summary.availabilityRate || 100}% • {summary.readyBusesCount || 0} xe sẵn sàng / {summary.maintenanceBusesCount || 0} xe xưởng
                     </td>
                   </tr>
                 </tbody>
@@ -454,36 +468,59 @@ const MonthlyFleetExpenseReportModal = ({
             {/* PHẦN 2: CHI TIẾT THEO TỪNG XE */}
             <div style={{ marginBottom: '1.25rem' }}>
               <div style={{ fontWeight: '800', fontSize: '0.92rem', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
-                II. CHI TIẾT CHI PHÍ &amp; QUÃNG ĐƯỜNG LĂN BÁNH THEO TỪNG XE ({busDetails.length} xe)
+                II. CHI TIẾT VẬN HÀNH & CHI PHÍ BẢO TRÌ THEO TỪNG PHƯƠNG TIỆN
               </div>
-              <table className="fleet-report-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table className="fleet-report-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', textAlign: 'center', fontWeight: '800' }}>
-                    <th style={{ width: '35px' }}>#</th>
-                    <th>BIỂN SỐ</th>
-                    <th>LOẠI XE</th>
-                    <th style={{ width: '65px' }}>CHUYẾN</th>
-                    <th>QUÃNG ĐƯỜNG</th>
-                    <th>TIỀN DẦU DO</th>
-                    <th>TIỀN SỬA CHỮA</th>
-                    <th>TỔNG CỘNG</th>
+                    <th style={{ width: '5%', whiteSpace: 'nowrap' }}>#</th>
+                    <th style={{ width: '13%', whiteSpace: 'nowrap' }}>BIỂN SỐ</th>
+                    <th style={{ width: '21%', whiteSpace: 'nowrap' }}>LOẠI XE</th>
+                    <th style={{ width: '9%', whiteSpace: 'nowrap' }}>SỐ CHUYẾN</th>
+                    <th style={{ width: '13%', whiteSpace: 'nowrap' }}>QUÃNG ĐƯỜNG</th>
+                    <th style={{ width: '11%', whiteSpace: 'nowrap' }}>LƯỢT XƯỞNG</th>
+                    <th style={{ width: '15%', whiteSpace: 'nowrap' }}>TIỀN BẢO TRÌ</th>
+                    <th style={{ width: '13%', whiteSpace: 'nowrap' }}>TRẠNG THÁI</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {busDetails.map((bus, idx) => (
-                    <tr key={bus.busId || idx}>
-                      <td style={{ textAlign: 'center', color: '#64748b' }}>{idx + 1}</td>
-                      <td style={{ fontWeight: '800', textAlign: 'center' }}>{bus.plateNumber}</td>
-                      <td>{bus.busType}</td>
-                      <td style={{ textAlign: 'center', fontWeight: '700' }}>{bus.tripsCount || 0}</td>
-                      <td style={{ textAlign: 'right' }}>{(bus.distanceKm || 0).toLocaleString('vi-VN')} km</td>
-                      <td style={{ textAlign: 'right', color: '#d97706' }}>{formatCurrency(bus.fuelCost)}</td>
-                      <td style={{ textAlign: 'right', color: '#dc2626' }}>{formatCurrency(bus.maintenanceCost)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: '800' }}>
-                        {formatCurrency((bus.fuelCost || 0) + (bus.maintenanceCost || 0))}
-                      </td>
-                    </tr>
-                  ))}
+                  {busDetails.map((bus, idx) => {
+                    const statusLabel =
+                      bus.activeStatus === 'ready'
+                        ? 'Sẵn sàng'
+                        : bus.activeStatus === 'maintenance'
+                        ? 'Bảo dưỡng'
+                        : bus.activeStatus === 'repairing'
+                        ? 'Sửa chữa'
+                        : 'Tạm ngưng';
+                    const statusColor =
+                      bus.activeStatus === 'ready'
+                        ? '#16a34a'
+                        : bus.activeStatus === 'maintenance'
+                        ? '#ea580c'
+                        : bus.activeStatus === 'repairing'
+                        ? '#dc2626'
+                        : '#64748b';
+
+                    return (
+                      <tr key={bus.busId || idx}>
+                        <td style={{ textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>{idx + 1}</td>
+                        <td style={{ fontWeight: '800', textAlign: 'center', whiteSpace: 'nowrap' }}>{bus.plateNumber}</td>
+                        <td style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={bus.busType}>{bus.busType}</td>
+                        <td style={{ textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>{bus.tripsCount || 0}</td>
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{(bus.distanceKm || 0).toLocaleString('vi-VN')} km</td>
+                        <td style={{ textAlign: 'center', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                          {bus.maintCount > 0 ? `${bus.maintCount} lượt` : '0'}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: '800', color: bus.maintenanceCost > 0 ? '#b91c1c' : '#475569', whiteSpace: 'nowrap' }}>
+                          {formatCurrency(bus.maintenanceCost)}
+                        </td>
+                        <td style={{ textAlign: 'center', fontWeight: '700', color: statusColor, whiteSpace: 'nowrap' }}>
+                          {statusLabel}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -492,26 +529,26 @@ const MonthlyFleetExpenseReportModal = ({
             {maintenanceRecords.length > 0 && (
               <div style={{ marginBottom: '1.25rem' }}>
                 <div style={{ fontWeight: '800', fontSize: '0.92rem', marginBottom: '0.45rem', textTransform: 'uppercase' }}>
-                  III. BẢNG KÊ QUYẾT TOÁN CÔNG NỢ GARA BẢO TRÌ ({maintenanceRecords.length} phiếu)
+                  III. BẢNG KÊ QUYẾT TOÁN CÔNG NỢ GARA BẢO TRÌ
                 </div>
-                <table className="fleet-report-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <table className="fleet-report-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ backgroundColor: '#f1f5f9', textAlign: 'center', fontWeight: '800' }}>
-                      <th style={{ width: '80px' }}>NGÀY</th>
-                      <th style={{ width: '90px' }}>XE</th>
-                      <th>GARA TIẾP NHẬN</th>
-                      <th>HẠNG MỤC SỬA CHỮA / BẢO DƯỠNG</th>
-                      <th style={{ width: '115px' }}>SỐ TIỀN</th>
+                      <th style={{ width: '12%', whiteSpace: 'nowrap' }}>NGÀY</th>
+                      <th style={{ width: '13%', whiteSpace: 'nowrap' }}>XE</th>
+                      <th style={{ width: '20%', whiteSpace: 'nowrap' }}>GARA TIẾP NHẬN</th>
+                      <th style={{ width: '40%', whiteSpace: 'nowrap' }}>HẠNG MỤC SỬA CHỮA / BẢO DƯỠNG</th>
+                      <th style={{ width: '15%', whiteSpace: 'nowrap' }}>SỐ TIỀN</th>
                     </tr>
                   </thead>
                   <tbody>
                     {maintenanceRecords.map((m, idx) => (
                       <tr key={m.recordId || idx}>
-                        <td style={{ textAlign: 'center', color: '#64748b' }}>{formatDate(m.date)}</td>
-                        <td style={{ fontWeight: '700', textAlign: 'center' }}>{m.plateNumber}</td>
-                        <td>{m.garage}</td>
-                        <td>{m.description}</td>
-                        <td style={{ textAlign: 'right', fontWeight: '700', color: '#b91c1c' }}>
+                        <td style={{ textAlign: 'center', color: '#64748b', whiteSpace: 'nowrap' }}>{formatDate(m.date)}</td>
+                        <td style={{ fontWeight: '700', textAlign: 'center', whiteSpace: 'nowrap' }}>{m.plateNumber}</td>
+                        <td style={{ fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={m.garage}>{m.garage}</td>
+                        <td style={{ lineHeight: '1.4', wordBreak: 'break-word' }}>{m.description}</td>
+                        <td style={{ textAlign: 'right', fontWeight: '800', color: '#b91c1c', whiteSpace: 'nowrap' }}>
                           {formatCurrency(m.cost)}
                         </td>
                       </tr>
@@ -521,19 +558,20 @@ const MonthlyFleetExpenseReportModal = ({
               </div>
             )}
 
-            {/* Ghi chú của Quản lý Đội xe */}
+            {/* Ghi chú của Quản lý Xe */}
             {fleetManagerNotes && (
               <div
                 style={{
-                  border: '1px dashed #cbd5e1',
-                  borderRadius: '4px',
-                  padding: '8px 12px',
-                  fontSize: '0.8rem',
+                  borderLeft: '4px solid #3b82f6',
+                  borderRadius: '0 4px 4px 0',
+                  padding: '10px 14px',
+                  fontSize: '0.84rem',
                   marginBottom: '1rem',
-                  backgroundColor: '#f8fafc'
+                  backgroundColor: '#f8fafc',
+                  lineHeight: '1.5'
                 }}
               >
-                <strong>Giải trình từ Quản lý Đội xe:</strong> {fleetManagerNotes}
+                <strong>Giải trình từ Quản lý Xe:</strong> {fleetManagerNotes}
               </div>
             )}
 
@@ -541,13 +579,14 @@ const MonthlyFleetExpenseReportModal = ({
             {existingDirectorNotes && (
               <div
                 style={{
-                  border: '1px solid #bbf7d0',
-                  borderRadius: '4px',
-                  padding: '8px 12px',
-                  fontSize: '0.8rem',
+                  borderLeft: '4px solid #16a34a',
+                  borderRadius: '0 4px 4px 0',
+                  padding: '10px 14px',
+                  fontSize: '0.84rem',
                   marginBottom: '1.25rem',
                   backgroundColor: '#f0fdf4',
-                  color: '#166534'
+                  color: '#166534',
+                  lineHeight: '1.5'
                 }}
               >
                 <strong>Ý kiến phê duyệt của Ban Giám Đốc:</strong> {existingDirectorNotes}
@@ -560,11 +599,11 @@ const MonthlyFleetExpenseReportModal = ({
                 display: 'grid',
                 gridTemplateColumns: '1fr 1fr',
                 marginTop: '1.5rem',
-                paddingTop: '0.5rem',
+                paddingTop: '1rem',
                 borderTop: '1px dashed #cbd5e1'
               }}
             >
-              {/* CỘT TRÁI: NGƯỜI LẬP BÁO CÁO (QUẢN LÝ ĐỘI XE) */}
+              {/* CỘT TRÁI: NGƯỜI LẬP BÁO CÁO (QUẢN LÝ XE) */}
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontStyle: 'italic', fontSize: '0.78rem', color: '#334155', marginBottom: '2px' }}>
                   TP. Hồ Chí Minh, ngày {formatDateElements(submittedAt).day} tháng{' '}
@@ -607,7 +646,7 @@ const MonthlyFleetExpenseReportModal = ({
                 <div style={{ fontWeight: '800', fontSize: '0.88rem', marginTop: '0.5rem' }}>
                   {managerName}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Quản lý Đội xe</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Quản lý Xe</div>
               </div>
 
               {/* CỘT PHẢI: BAN GIÁM ĐỐC PHÊ DUYỆT (KÈM DẤU MỘC ĐỎ VÀ CHỮ KÝ TAY MỰC XANH) */}
@@ -732,18 +771,15 @@ const MonthlyFleetExpenseReportModal = ({
               </div>
             </div>
 
-            {/* CHÂN TRANG VĂN BẢN */}
+            {/* CHÂN TRANG VĂN BẢN (NẰM Ở CUỐI TRANG TRONG DÒNG VĂN BẢN TỰ NHIÊN, KHÔNG DÙNG ABSOLUTE) */}
             <div
               style={{
-                position: 'absolute',
-                bottom: '15mm',
-                left: '20mm',
-                right: '20mm',
+                marginTop: '32px',
+                paddingTop: '8px',
                 borderTop: '1px solid #cbd5e1',
-                paddingTop: '6px',
                 display: 'flex',
                 justifyContent: 'space-between',
-                fontSize: '0.72rem',
+                fontSize: '0.74rem',
                 color: '#64748b'
               }}
             >
@@ -783,7 +819,7 @@ const MonthlyFleetExpenseReportModal = ({
               </h3>
               <p style={{ fontSize: '0.88rem', color: '#334155', marginBottom: '1rem', lineHeight: 1.4 }}>
                 Bạn đang thực hiện ký duyệt điện tử và đóng mộc chứng thực cho{' '}
-                <strong>Báo cáo chi tiêu Tháng {month}/{year}</strong> của Quản lý Đội xe <strong>{managerName}</strong>. Tổng
+                <strong>Báo cáo chi tiêu Tháng {month}/{year}</strong> của Quản lý Xe <strong>{managerName}</strong>. Tổng
                 chi phí quyết toán: <strong>{formatCurrency(summary.totalExpenses)}</strong>.
               </p>
               <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '4px' }}>
@@ -792,7 +828,7 @@ const MonthlyFleetExpenseReportModal = ({
               <textarea
                 value={directorNotes}
                 onChange={(e) => setDirectorNotes(e.target.value)}
-                placeholder="Đã đối soát đầy đủ hóa đơn gara và định mức dầu. Duyệt quyết toán giải ngân..."
+                placeholder="Đã đối soát đầy đủ hóa đơn gara bảo dưỡng, sửa chữa. Duyệt quyết toán giải ngân..."
                 rows={3}
                 style={{
                   width: '100%',
@@ -866,7 +902,7 @@ const MonthlyFleetExpenseReportModal = ({
                 Từ Chối / Yêu Cầu Giải Trình Lại
               </h3>
               <p style={{ fontSize: '0.88rem', color: '#334155', marginBottom: '1rem', lineHeight: 1.4 }}>
-                Nhập lý do từ chối để Quản lý Đội xe <strong>{managerName}</strong> điều chỉnh lại số liệu hoặc bổ sung giải trình:
+                Nhập lý do từ chối để Quản lý Xe <strong>{managerName}</strong> điều chỉnh lại số liệu hoặc bổ sung giải trình:
               </p>
               <textarea
                 value={rejectionReason}

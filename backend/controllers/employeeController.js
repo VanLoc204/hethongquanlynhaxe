@@ -2026,7 +2026,7 @@ const getRoleLabelHelper = (role) => {
     driver: 'Tài xế',
     attendant: 'Phụ xe',
     ticket_agent: 'Bán vé',
-    fleet_manager: 'QL Đội xe',
+    fleet_manager: 'QL Xe',
     ops_manager: 'QL Vận tải',
     admin: 'Quản trị viên'
   };

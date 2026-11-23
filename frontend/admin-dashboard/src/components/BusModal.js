@@ -1,55 +1,71 @@
 import React, { useState, useEffect } from 'react';
 
-// Clean SVG Icon mapping matching mockup 2 perfectly
+// Clean SVG Icon mapping matching mockup 2 perfectly with standard DB IDs & aliases
 const ALL_AMENITIES = [
   { 
-    id: 'Wifi tốc độ cao', 
+    id: 'Wifi', 
     label: 'Wifi tốc độ cao', 
+    aliases: ['wifi'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg> 
   },
   { 
     id: 'Nước uống', 
     label: 'Nước uống', 
+    aliases: ['nước'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg> 
   },
   { 
-    id: 'Điều hòa 2 chiều', 
+    id: 'Điều hòa', 
     label: 'Điều hòa 2 chiều', 
+    aliases: ['điều hòa', 'máy lạnh'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12h20M12 2v20M20 16l-4-4 4-4M4 8l4 4-4 4M16 4l-4 4-4-4M8 20l4-4 4 4"/></svg> 
   },
   { 
     id: 'Khăn lạnh', 
     label: 'Khăn lạnh', 
+    aliases: ['khăn'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg> 
   },
   { 
-    id: 'Chăn đắp cao cấp', 
+    id: 'Gối nằm', 
+    label: 'Gối nằm êm ái', 
+    aliases: ['gối'],
+    svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="18" height="12" rx="4"/><line x1="9" y1="6" x2="9" y2="18"/></svg> 
+  },
+  { 
+    id: 'Chăn đắp', 
     label: 'Chăn đắp cao cấp', 
+    aliases: ['chăn', 'mền'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9"/></svg> 
   },
   { 
     id: 'Sạc điện thoại', 
     label: 'Sạc điện thoại', 
+    aliases: ['sạc'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> 
   },
   { 
     id: 'Tivi LED giải trí', 
     label: 'Tivi LED giải trí', 
+    aliases: ['tivi', 'tv'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="2" y="7" width="20" height="13" rx="2"/><polyline points="17 2 12 7 7 2"/></svg> 
   },
   { 
     id: 'Nhà vệ sinh (WC)', 
     label: 'Nhà vệ sinh (WC)', 
+    aliases: ['vệ sinh', 'wc'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M18 8l4 4-4 4"/></svg> 
   },
   { 
     id: 'Đèn đọc sách', 
     label: 'Đèn đọc sách', 
+    aliases: ['đèn'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M9 18h6M10 22h4M12 2v1a7 7 0 0 0 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-1.26C6.19 14.47 5 12.38 5 10a7 7 0 0 1 7-7z"/></svg> 
   },
   { 
     id: 'Rèm che riêng tư', 
     label: 'Rèm che riêng tư', 
+    aliases: ['rèm'],
     svg: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg> 
   }
 ];
@@ -230,15 +246,31 @@ const generateDefaultSeatLayout = (totalSeats, busType = '') => {
   return { lowerFloor: fallbackLower, upperFloor: [], columns: 5 };
 };
 
+const normalizeAmenity = (name) => {
+  if (!name) return '';
+  const trimmed = String(name).trim();
+  for (const am of ALL_AMENITIES) {
+    if (trimmed.toLowerCase() === am.id.toLowerCase()) return am.id;
+    if (trimmed.toLowerCase() === am.label.toLowerCase()) return am.id;
+    if (am.aliases && am.aliases.some(alias => trimmed.toLowerCase().includes(alias.toLowerCase()))) {
+      return am.id;
+    }
+  }
+  return trimmed;
+};
+
 const BusModal = ({ bus, token, onClose, onSaved }) => {
   const isEdit = !!bus;
   const [plateNumber, setPlateNumber] = useState(bus?.plateNumber || '');
   const [busType, setBusType] = useState(bus?.type || 'Xe Giường Nằm 44 Chỗ');
   const [totalSeats, setTotalSeats] = useState(bus?.totalSeats || 44);
   const [imageUrl, setImageUrl] = useState(bus?.images?.[0] || '');
-  const [amenities, setAmenities] = useState(bus?.amenities || [
-    'Wifi tốc độ cao', 'Nước uống', 'Điều hòa 2 chiều', 'Khăn lạnh', 'Chăn đắp cao cấp'
-  ]);
+  const [amenities, setAmenities] = useState(() => {
+    if (bus?.amenities && Array.isArray(bus.amenities) && bus.amenities.length > 0) {
+      return Array.from(new Set(bus.amenities.map(normalizeAmenity).filter(Boolean)));
+    }
+    return ['Wifi', 'Nước uống', 'Điều hòa', 'Khăn lạnh', 'Gối nằm', 'Chăn đắp'];
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
@@ -262,8 +294,38 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
     setTotalSeats(calculatedTotalSeats);
   }, [calculatedTotalSeats]);
 
+  const isAmenityActive = (amId) => {
+    if (!Array.isArray(amenities)) return false;
+    return amenities.some(item => {
+      if (!item) return false;
+      const lower = String(item).toLowerCase().trim();
+      if (lower === amId.toLowerCase()) return true;
+      const amObj = ALL_AMENITIES.find(a => a.id === amId);
+      if (amObj) {
+        if (lower === amObj.label.toLowerCase()) return true;
+        if (amObj.aliases && amObj.aliases.some(al => lower.includes(al.toLowerCase()))) return true;
+      }
+      return false;
+    });
+  };
+
   const toggleAmenity = (amId) => {
-    setAmenities(prev => prev.includes(amId) ? prev.filter(a => a !== amId) : [...prev, amId]);
+    const active = isAmenityActive(amId);
+    if (active) {
+      setAmenities(prev => (prev || []).filter(item => {
+        if (!item) return false;
+        const lower = String(item).toLowerCase().trim();
+        if (lower === amId.toLowerCase()) return false;
+        const amObj = ALL_AMENITIES.find(a => a.id === amId);
+        if (amObj) {
+          if (lower === amObj.label.toLowerCase()) return false;
+          if (amObj.aliases && amObj.aliases.some(al => lower.includes(al.toLowerCase()))) return false;
+        }
+        return true;
+      }));
+    } else {
+      setAmenities(prev => [...(prev || []), amId]);
+    }
   };
 
   // Toggle cell (seat vs empty)
@@ -380,19 +442,75 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!plateNumber || !busType || !totalSeats) {
-      setError('Vui lòng nhập đầy đủ Biển số và Loại phương tiện.');
+    setError('');
+
+    // 1. Kiểm tra biển số xe
+    const cleanPlate = (plateNumber || '').trim().toUpperCase().replace(/\s*-\s*/g, '-').replace(/\s*\.\s*/g, '.');
+    if (!cleanPlate) {
+      setError('Vui lòng nhập biển số xe.');
       return;
     }
+    // Định dạng biển số xe Việt Nam: 51B-044.44, 29B-123.45, 60B-12345, v.v.
+    const plateRegex = /^[0-9]{2}[A-Z]{1,2}-[0-9]{3}\.[0-9]{2}$|^[0-9]{2}[A-Z]{1,2}-[0-9]{4,5}$/i;
+    if (!plateRegex.test(cleanPlate)) {
+      setError('Biển số xe không đúng định dạng chuẩn (Ví dụ: 51B-044.44 hoặc 51B-12345).');
+      return;
+    }
+
+    // 2. Kiểm tra loại phương tiện
+    if (!busType || !busType.trim()) {
+      setError('Vui lòng chọn loại phương tiện & cấu hình.');
+      return;
+    }
+
+    // 3. Kiểm tra sơ đồ ghế & tổng số ghế
+    if (!calculatedTotalSeats || calculatedTotalSeats <= 0) {
+      setError('Sơ đồ phương tiện phải có ít nhất 1 chỗ ngồi/giường.');
+      return;
+    }
+
+    // 4. Kiểm tra trùng lặp mã ghế trên sơ đồ
+    const allSeats = [
+      ...lowerFloor.flat(),
+      ...(upperFloor || []).flat()
+    ]
+      .filter(cell => cell !== null && cell !== undefined && String(cell).trim() !== '')
+      .map(cell => String(cell).trim().toUpperCase());
+
+    const seenSeats = new Set();
+    const duplicates = [];
+    for (const seat of allSeats) {
+      if (seenSeats.has(seat)) {
+        if (!duplicates.includes(seat)) duplicates.push(seat);
+      } else {
+        seenSeats.add(seat);
+      }
+    }
+    if (duplicates.length > 0) {
+      setError(`Sơ đồ ghế bị trùng lặp mã vị trí: ${duplicates.join(', ')}. Mỗi vị trí ghế phải có một mã định danh duy nhất.`);
+      return;
+    }
+
+    // 5. Kiểm tra tiện ích
+    if (!amenities || amenities.length === 0) {
+      setError('Vui lòng chọn ít nhất 1 tiện ích phục vụ hành khách.');
+      return;
+    }
+
+    // 6. Kiểm tra URL hình ảnh (nếu có nhập)
+    if (imageUrl && imageUrl.trim() && !/^https?:\/\//i.test(imageUrl.trim())) {
+      setError('URL hình ảnh không hợp lệ (phải bắt đầu bằng http:// hoặc https://).');
+      return;
+    }
+
     setLoading(true);
-    setError('');
     try {
       const payload = {
-        plateNumber: plateNumber.trim(),
+        plateNumber: cleanPlate,
         type: busType,
-        totalSeats: Number(totalSeats),
+        totalSeats: Number(calculatedTotalSeats),
         amenities,
-        images: imageUrl.trim() ? [imageUrl.trim()] : [DEFAULT_IMAGE],
+        images: imageUrl && imageUrl.trim() ? [imageUrl.trim()] : [DEFAULT_IMAGE],
         seatLayout: {
           columns: Number(columns),
           lowerFloor,
@@ -417,7 +535,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
         setError(data.message || 'Lỗi khi lưu phương tiện.');
       }
     } catch (err) {
-      setError('Lỗi kết nối máy chủ.');
+      setError('Lỗi kết nối máy chủ. Vui lòng kiểm tra đường truyền.');
     } finally {
       setLoading(false);
     }
@@ -488,7 +606,29 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
         </div>
 
         {/* Modal Form Content */}
-        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+        <form noValidate onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+          {error && (
+            <div style={{
+              margin: '0.85rem 1.5rem 0 1.5rem',
+              padding: '0.65rem 1rem',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '10px',
+              color: '#b91c1c',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.2" style={{ flexShrink: 0 }}>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
           <div style={{
             display: 'grid', gridTemplateColumns: '360px 1fr', gap: '1.25rem',
             padding: '1.25rem 1.5rem', overflowY: 'auto', flex: 1
@@ -512,15 +652,26 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
                     <input
                       type="text"
                       value={plateNumber}
-                      onChange={(e) => setPlateNumber(e.target.value)}
-                      placeholder="51B-044.44"
-                      required
+                      onChange={(e) => {
+                        setPlateNumber(e.target.value);
+                        if (error) setError('');
+                      }}
+                      placeholder="Ví dụ: 51B-044.44"
                       style={{
                         width: '100%', padding: '0.5rem 0.75rem 0.5rem 2.2rem', fontSize: '0.85rem',
-                        fontWeight: '700', fontFamily: 'monospace', borderRadius: '8px', border: '1px solid #cbd5e1', outline: 'none'
+                        fontWeight: '700', fontFamily: 'monospace', borderRadius: '8px',
+                        border: (error && !plateNumber.trim()) ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        outline: 'none',
+                        background: (error && !plateNumber.trim()) ? '#fff5f5' : '#ffffff',
+                        color: '#0f172a'
                       }}
                     />
                   </div>
+                  {error && !plateNumber.trim() && (
+                    <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: '600' }}>
+                      * Vui lòng nhập biển số xe (Ví dụ: 51B-044.44)
+                    </span>
+                  )}
                 </div>
 
                 {/* Field 2: Loại phương tiện */}
@@ -622,7 +773,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
                 {/* Checkbox Grid matching mockup 2 with strict 50-50 bounds */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem', width: '100%', boxSizing: 'border-box' }}>
                   {ALL_AMENITIES.map((am) => {
-                    const isChecked = amenities.includes(am.id);
+                    const isChecked = isAmenityActive(am.id);
                     return (
                       <div
                         key={am.id}

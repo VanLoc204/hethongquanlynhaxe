@@ -432,7 +432,7 @@ exports.checkIn = async (req, res) => {
 
     const roleGreeting = 
       user.role === 'ops_manager' ? 'Quản lý Vận tải' :
-      user.role === 'fleet_manager' ? 'Quản lý Đội xe' :
+      user.role === 'fleet_manager' ? 'Quản lý Xe' :
       user.role === 'ticket_manager' ? 'Quản lý Phòng vé' :
       user.role === 'driver' ? 'Tài xế' :
       user.role === 'attendant' ? 'Phụ xe' :
@@ -1578,13 +1578,13 @@ exports.getTodayAttendance = async (req, res) => {
 
       const roleRouteName = 
         staff.role === 'ops_manager' ? 'Điều hành & Giám sát Vận tải' :
-        staff.role === 'fleet_manager' ? 'Quản lý & Bảo dưỡng Đội xe' :
+        staff.role === 'fleet_manager' ? 'Quản lý & Bảo dưỡng Xe' :
         staff.role === 'ticket_manager' ? 'Quản lý & Giám sát Phòng vé' :
         'Trực ca quầy vé & CSKH';
 
       const roleLocation = 
         staff.role === 'ops_manager' ? 'Trung tâm Điều hành Vận tải TP.HCM' :
-        staff.role === 'fleet_manager' ? 'Trạm Quản lý Đội xe' :
+        staff.role === 'fleet_manager' ? 'Trạm Quản lý Xe' :
         staff.role === 'ticket_manager' ? 'Văn phòng Quản lý Phòng vé' :
         'Quầy vé bến xe';
 

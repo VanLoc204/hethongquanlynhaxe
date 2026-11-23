@@ -400,31 +400,54 @@ class TripService {
       bus.seatLayout = seatLayout;
       bus.markModified('seatLayout');
     }
-    if (activeStatus) bus.activeStatus = activeStatus;
-    if (maintenanceInfo) {
-      const costNum = Number(maintenanceInfo.estimatedCost) || 0;
-      const isMajor = costNum >= 10000000;
-      let approvalStatus = 'auto_approved';
-      if (isMajor) {
-        if (maintenanceInfo.approvalStatus) {
-          approvalStatus = maintenanceInfo.approvalStatus;
-        } else if (bus.maintenanceInfo?.isMajor && bus.maintenanceInfo?.approvalStatus === 'approved' && bus.maintenanceInfo?.estimatedCost === costNum) {
-          approvalStatus = 'approved';
-        } else {
-          approvalStatus = 'pending_approval';
-        }
-      }
+    // Xử lý chuyển đổi trạng thái vận hành & ghi nhận vào Maintenance
+    if (activeStatus && activeStatus !== bus.activeStatus) {
+      bus.activeStatus = activeStatus;
 
-      bus.maintenanceInfo = {
-        ...maintenanceInfo,
-        estimatedCost: costNum,
-        isMajor,
-        approvalStatus,
-        proposedBy: busData.proposedBy || bus.maintenanceInfo?.proposedBy,
-        approvalNote: bus.maintenanceInfo?.approvalNote || '',
-        rejectionReason: bus.maintenanceInfo?.rejectionReason || ''
-      };
-      bus.markModified('maintenanceInfo');
+      if (activeStatus === 'maintenance' || activeStatus === 'repairing') {
+        const costNum = Number(maintenanceInfo?.estimatedCost) || 0;
+        const isMajor = costNum >= 10000000;
+        const approvalStatus = isMajor ? 'pending_approval' : 'approved';
+
+        const maintRecord = await maintenanceRepository.create({
+          busId: bus._id,
+          type: activeStatus,
+          description: maintenanceInfo?.description || (activeStatus === 'maintenance' ? 'Đưa xe vào bảo dưỡng định kỳ' : 'Đưa xe vào sửa chữa sự cố'),
+          garage: maintenanceInfo?.garage || 'Xưởng đối tác',
+          estimatedCost: costNum,
+          cost: costNum,
+          isMajor,
+          approvalStatus,
+          proposedBy: busData.proposedBy,
+          startDate: new Date(),
+          endDate: maintenanceInfo?.estimatedCompletion || new Date()
+        });
+        bus.currentMaintenance = maintRecord._id;
+      } else if (activeStatus === 'inactive') {
+        await maintenanceRepository.create({
+          busId: bus._id,
+          type: 'inactive',
+          description: 'Chuyển trạng thái sang: Tạm ngưng hoạt động.',
+          garage: '-',
+          cost: 0,
+          approvalStatus: 'approved',
+          startDate: new Date(),
+          endDate: new Date()
+        });
+        bus.currentMaintenance = null;
+      } else if (activeStatus === 'ready') {
+        await maintenanceRepository.create({
+          busId: bus._id,
+          type: 'ready',
+          description: 'Chuyển trạng thái sang: Sẵn sàng hoạt động.',
+          garage: '-',
+          cost: 0,
+          approvalStatus: 'approved',
+          startDate: new Date(),
+          endDate: new Date()
+        });
+        bus.currentMaintenance = null;
+      }
     }
 
     await busRepository.save(bus);
@@ -914,43 +937,47 @@ class TripService {
   }
 
   async getMaintenanceRecords() {
-    return await maintenanceRepository.find({});
+    return await maintenanceRepository.find({
+      type: { $in: ['maintenance', 'repairing'] }
+    });
   }
 
   async createMaintenanceRecord(recordData) {
-    const { busId, plateNumber, type, description, garage, cost, startDate, endDate } = recordData;
+    const { busId, type, description, garage, cost, startDate, endDate } = recordData;
 
     const bus = await busRepository.findById(busId);
-    if (bus && bus.maintenanceInfo) {
-      if (bus.maintenanceInfo.isMajor && bus.maintenanceInfo.approvalStatus !== 'approved') {
-        const err = new Error('Khoản chi phí bảo dưỡng này vượt hạn mức (≥ 10.000.000 ₫) và chưa được Giám đốc nhà xe phê duyệt.');
-        err.statusCode = 403;
-        throw err;
-      }
+    const costNum = Number(cost) || 0;
+    const isMajor = costNum >= 10000000;
+
+    let record;
+    if (bus && bus.currentMaintenance) {
+      record = await maintenanceRepository.findByIdAndUpdate(bus.currentMaintenance, {
+        cost: costNum,
+        description: description || 'Nghiệm thu hoàn tất xuất xưởng',
+        garage: garage || 'Xưởng nội bộ',
+        endDate: endDate || new Date(),
+        approvalStatus: 'approved'
+      });
     }
 
-    const record = await maintenanceRepository.create({
-      busId,
-      plateNumber,
-      type,
-      description,
-      garage,
-      cost: Number(cost),
-      estimatedCost: bus?.maintenanceInfo?.estimatedCost || Number(cost),
-      isMajor: bus?.maintenanceInfo?.isMajor || Number(cost) >= 10000000,
-      approvalStatus: bus?.maintenanceInfo?.approvalStatus || (Number(cost) >= 10000000 ? 'pending_approval' : 'auto_approved'),
-      proposedBy: bus?.maintenanceInfo?.proposedBy,
-      approvedBy: bus?.maintenanceInfo?.approvedBy,
-      approvedAt: bus?.maintenanceInfo?.approvedAt,
-      approvalNote: bus?.maintenanceInfo?.approvalNote || '',
-      rejectionReason: bus?.maintenanceInfo?.rejectionReason || '',
-      startDate: startDate || new Date(),
-      endDate: endDate || new Date()
-    });
+    if (!record) {
+      record = await maintenanceRepository.create({
+        busId,
+        type: type || 'maintenance',
+        description,
+        garage: garage || 'Xưởng nội bộ',
+        cost: costNum,
+        estimatedCost: costNum,
+        isMajor,
+        approvalStatus: 'approved',
+        startDate: startDate || new Date(),
+        endDate: endDate || new Date()
+      });
+    }
 
     if (bus) {
       bus.activeStatus = 'ready';
-      bus.maintenanceInfo = undefined;
+      bus.currentMaintenance = null;
       await busRepository.save(bus);
     }
 
@@ -958,42 +985,292 @@ class TripService {
   }
 
   async getMaintenanceApprovals() {
-    const Bus = require('../models/Bus');
-    return await Bus.find({
-      activeStatus: { $in: ['maintenance', 'repairing'] },
+    const Maintenance = require('../models/Maintenance');
+    return await Maintenance.find({
       $or: [
-        { 'maintenanceInfo.isMajor': true },
-        { 'maintenanceInfo.approvalStatus': 'pending_approval' }
+        { isMajor: true },
+        { cost: { $gte: 10000000 } }
       ]
     })
-    .populate('maintenanceInfo.proposedBy', 'name role phone email')
-    .populate('maintenanceInfo.approvedBy', 'name role email')
-    .sort({ updatedAt: -1 });
+      .populate('busId', 'plateNumber type totalSeats activeStatus')
+      .populate('proposedBy', 'name role phone email')
+      .populate('approvedBy', 'name role email')
+      .sort({ updatedAt: -1 });
   }
 
-  async reviewMaintenanceApproval(busId, { status, approvalNote, rejectionReason, reviewerId }) {
-    const bus = await busRepository.findById(busId);
-    if (!bus) {
-      const err = new Error('Không tìm thấy phương tiện.');
+  async reviewMaintenanceApproval(targetId, { status, approvalNote, rejectionReason, reviewerId }) {
+    const Maintenance = require('../models/Maintenance');
+    let maint = await Maintenance.findById(targetId);
+    if (!maint) {
+      // Hỗ trợ trường hợp frontend gửi lên busId thay vì maintenanceId
+      maint = await Maintenance.findOne({
+        busId: targetId,
+        isMajor: true,
+        approvalStatus: 'pending_approval'
+      });
+    }
+
+    if (!maint) {
+      const err = new Error('Không tìm thấy hồ sơ bảo dưỡng cần duyệt.');
       err.statusCode = 404;
       throw err;
     }
 
-    if (!bus.maintenanceInfo) {
-      const err = new Error('Phương tiện này hiện không có hồ sơ bảo dưỡng cần duyệt.');
-      err.statusCode = 400;
-      throw err;
-    }
+    maint.approvalStatus = status === 'approved' ? 'approved' : 'rejected';
+    maint.approvedBy = reviewerId;
+    maint.approvedAt = new Date();
+    if (approvalNote) maint.approvalNote = approvalNote;
+    if (rejectionReason) maint.rejectionReason = rejectionReason;
 
-    bus.maintenanceInfo.approvalStatus = status === 'approved' ? 'approved' : 'rejected';
-    bus.maintenanceInfo.approvedBy = reviewerId;
-    bus.maintenanceInfo.approvedAt = new Date();
-    if (approvalNote) bus.maintenanceInfo.approvalNote = approvalNote;
-    if (rejectionReason) bus.maintenanceInfo.rejectionReason = rejectionReason;
+    await maint.save();
+    return maint;
+  }
 
-    bus.markModified('maintenanceInfo');
-    await busRepository.save(bus);
-    return bus;
+  async getFleetForecast() {
+    const buses = await busRepository.find({ status: 'approved' });
+    const trips = await tripRepository.findWithPopulate({});
+    const maintenanceRecords = await maintenanceRepository.find({});
+
+    const COMPONENT_THRESHOLDS = {
+      oil: { name: 'Dầu nhớt & Lọc động cơ', cycleKm: 10000, baseCost: 950000 },
+      brakes: { name: 'Hệ thống phanh & Má phanh', cycleKm: 25000, baseCost: 1800000 },
+      tires: { name: 'Lốp xe & Rãnh gai chịu tải', cycleKm: 50000, baseCost: 5500000 },
+      cooling: { name: 'Hệ thống làm mát & Điều hòa', cycleKm: 20000, baseCost: 1200000 },
+      battery: { name: 'Ắc quy & Hệ thống điện/Lọc gió', cycleKm: 30000, baseCost: 850000 }
+    };
+
+    const now = Date.now();
+
+    const fleetAnalytics = buses.map(bus => {
+      const busIdStr = bus._id.toString();
+
+      // Lọc các chuyến xe của phương tiện
+      const busTrips = trips.filter(t => {
+        if (!t.busId) return false;
+        const tBusId = t.busId._id ? t.busId._id.toString() : t.busId.toString();
+        return tBusId === busIdStr;
+      });
+
+      // Lọc các đợt bảo trì của phương tiện
+      const busMaint = maintenanceRecords.filter(m => {
+        if (!m.busId) return false;
+        const mBusId = m.busId._id ? m.busId._id.toString() : m.busId.toString();
+        return mBusId === busIdStr;
+      });
+
+      // 1. Tính tổng thời gian nằm xưởng bảo dưỡng / sửa chữa (mili-giây)
+      let totalWorkshopMs = 0;
+      busMaint.forEach(m => {
+        const start = new Date(m.startDate || m.createdAt).getTime();
+        const end = new Date(m.endDate || m.updatedAt || m.startDate || m.createdAt).getTime();
+        if (end > start) {
+          totalWorkshopMs += (end - start);
+        }
+      });
+      const workshopDays = Math.round(totalWorkshopMs / (24 * 3600 * 1000));
+
+      // 2. Sắp xếp chuyến xe theo thời gian xuất bến
+      const sortedTrips = [...busTrips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+
+      // 3. Bóc tách cự ly và đối soát Timestamp nghiệm thu xuất xưởng thực tế
+      let totalKm = 0;
+      let actualTripsRun = 0;
+      let overlappedTripCount = 0;
+
+      sortedTrips.forEach(t => {
+        const depTimestamp = new Date(t.departureTime).getTime();
+
+        // Kiểm tra xem giờ khởi hành có rơi đúng vào khoảng thời gian xe đang nằm xưởng chưa nghiệm thu hay không
+        const isStillInWorkshop = busMaint.some(m => {
+          const start = new Date(m.startDate || m.createdAt).getTime();
+          const end = new Date(m.endDate || m.updatedAt || m.startDate || m.createdAt).getTime();
+          return depTimestamp >= start && depTimestamp <= end;
+        });
+
+        if (isStillInWorkshop) {
+          overlappedTripCount++;
+          return;
+        }
+
+        const distStr = t.routeId?.distance || '';
+        const match = distStr.match(/(\d+)/);
+        const km = match ? parseInt(match[1], 10) : 250;
+        totalKm += km;
+        actualTripsRun++;
+      });
+
+      if (totalKm === 0) {
+        totalKm = 32000;
+      }
+
+      // 4. Xác định khoảng thời gian khai thác & cường độ vận hành thực tế
+      const firstTripTime = sortedTrips.length > 0
+        ? new Date(sortedTrips[0].departureTime).getTime()
+        : (new Date(bus.createdAt || now).getTime() - 90 * 24 * 3600 * 1000);
+
+      const totalCalendarDays = Math.max(1, Math.round((now - firstTripTime) / (24 * 3600 * 1000)));
+      const activeOperatingDays = Math.max(1, totalCalendarDays - workshopDays);
+
+      let avgDailyKm = Math.round(totalKm / activeOperatingDays);
+      if (!avgDailyKm || avgDailyKm < 150) avgDailyKm = 220;
+      if (avgDailyKm > 600) avgDailyKm = 380;
+
+      // 5. Tính mức độ hao mòn cho 5 cụm chi tiết kỹ thuật dựa trên chu kỳ định mức & lịch sử nghiệm thu bảo dưỡng
+      const COMPONENT_KEYWORDS = {
+        oil: /dầu|nhớt|bôi trơn|nhot|dau|lọc động cơ|dong co/i,
+        brakes: /phanh|thắng|má phanh|thang|áp suất phanh|khí nén/i,
+        tires: /lốp|vỏ|lop|vo|rãnh gai|bánh xe/i,
+        cooling: /làm mát|điều hòa|dieu hoa|lam mat|lốc|loc|nước làm mát|ga|r134a/i,
+        battery: /ắc quy|ac quy|bình|điện|dien|lọc gió|loc gio|nhiên liệu/i
+      };
+
+      const components = Object.keys(COMPONENT_THRESHOLDS).map(key => {
+        const comp = COMPONENT_THRESHOLDS[key];
+
+        // Tìm các biên bản bảo dưỡng / sửa chữa đã hoàn tất của xe này
+        const matchingMaint = busMaint.filter(m => {
+          if (!m.endDate) return false;
+          const desc = (m.description || '').toLowerCase();
+          const isGeneral = /đại tu|toàn bộ|tổng thể|tổng quát|toàn diện|định kỳ|bảo dưỡng xe/i.test(desc);
+          return isGeneral || COMPONENT_KEYWORDS[key].test(desc);
+        });
+
+        let kmSince = 0;
+        if (matchingMaint.length > 0) {
+          // Lấy lần bảo dưỡng gần nhất cho hạng mục này
+          matchingMaint.sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
+          const latestMaint = matchingMaint[0];
+          const lastMaintTime = new Date(latestMaint.endDate).getTime();
+
+          // Chỉ tích lũy số km của các chuyến xe thực tế khởi hành SAU khi bảo dưỡng hoàn tất xuất xưởng đến hiện tại
+          sortedTrips.forEach(t => {
+            const depTime = new Date(t.departureTime).getTime();
+            if (depTime > lastMaintTime && depTime <= now) {
+              const distStr = t.routeId?.distance || '';
+              const match = distStr.match(/(\d+)/);
+              kmSince += match ? parseInt(match[1], 10) : 250;
+            }
+          });
+        } else {
+          // Nếu chưa từng bảo dưỡng hạng mục này, tính hao mòn theo chu kỳ định mức từ tổng km
+          kmSince = totalKm % comp.cycleKm;
+        }
+
+        const wear = Math.min(100, Math.round((kmSince / comp.cycleKm) * 100));
+        const remainKm = Math.max(0, comp.cycleKm - kmSince);
+
+        return {
+          key,
+          ...comp,
+          wear,
+          kmSince,
+          remainKm
+        };
+      });
+
+      const highestWear = [...components].sort((a, b) => b.wear - a.wear)[0];
+      const avgWear = Math.round(components.reduce((sum, c) => sum + c.wear, 0) / components.length);
+      // Điểm sức khỏe toàn xe dựa trên độ bền tổng thể của 5 cụm chi tiết kỹ thuật
+      const healthScore = Math.max(30, Math.min(100, 100 - avgWear));
+
+      let riskLevel = 'good';
+      let riskLabel = 'Vận hành tối ưu';
+      if (highestWear.wear >= 85 || healthScore < 50) {
+        riskLevel = 'high';
+        riskLabel = 'Ưu tiên bảo dưỡng';
+      } else if (highestWear.wear >= 70 || healthScore < 70) {
+        riskLevel = 'medium';
+        riskLabel = 'Cần theo dõi';
+      }
+
+      const daysUntil = Math.max(1, Math.round(highestWear.remainKm / avgDailyKm));
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + daysUntil);
+
+      const dueComponents = components.filter(c => c.wear >= 70);
+      const predictedCost = dueComponents.length > 0
+        ? dueComponents.reduce((sum, c) => sum + c.baseCost, 0)
+        : highestWear.baseCost;
+
+      let recommendation = 'Phương tiện đạt chuẩn kỹ thuật, tiếp tục vận hành theo lịch trình.';
+      if (highestWear.wear >= 85) {
+        recommendation = `Cần lập lịch thay thế ${highestWear.name.toLowerCase()} trước hành trình tiếp theo để bảo đảm an toàn.`;
+      } else if (highestWear.wear >= 70) {
+        recommendation = `Theo dõi sát ${highestWear.name.toLowerCase()} trong các đợt kiểm tra cuối ngày, còn khoảng ${highestWear.remainKm.toLocaleString('vi-VN')} km.`;
+      }
+
+      return {
+        bus,
+        tripCount: actualTripsRun,
+        rawTripCount: busTrips.length,
+        overlappedTripCount,
+        workshopDays,
+        activeOperatingDays,
+        avgDailyKm,
+        totalKm,
+        components,
+        highestWear,
+        healthScore,
+        riskLevel,
+        riskLabel,
+        daysUntil,
+        nextDate,
+        predictedCost,
+        recommendation
+      };
+    });
+
+    return fleetAnalytics;
+  }
+
+  async getBusStatusLogs(query = {}) {
+    const maints = await maintenanceRepository.find(query);
+    return maints.map(m => {
+      const isRepair = m.type === 'repairing';
+      const isMaint = m.type === 'maintenance';
+      const isInactive = m.type === 'inactive';
+      const isReady = m.type === 'ready';
+
+      let fromStatus = 'ready';
+      if (isReady) {
+        fromStatus = (m.cost > 0 || (m.garage && m.garage !== '-')) ? 'maintenance' : 'inactive';
+      } else if (isInactive) {
+        fromStatus = 'ready';
+      } else if (isMaint || isRepair) {
+        fromStatus = 'ready';
+      }
+
+      return {
+        _id: m._id,
+        id: m._id,
+        busId: m.busId?._id || m.busId,
+        plateNumber: m.busId?.plateNumber || m.plateNumber || 'Phương tiện',
+        busType: m.busId?.type || '',
+        type: m.type,
+        fromStatus,
+        toStatus: m.type,
+        time: m.endDate || m.startDate || m.createdAt,
+        startDate: m.startDate,
+        endDate: m.endDate,
+        details: m.description,
+        garage: m.garage || '-',
+        cost: m.cost || 0,
+        approvalStatus: m.approvalStatus || 'approved'
+      };
+    });
+  }
+
+  async createBusStatusLog(logData) {
+    return await maintenanceRepository.create({
+      busId: logData.busId,
+      type: logData.toStatus || 'ready',
+      description: logData.details || 'Cập nhật trạng thái phương tiện',
+      garage: logData.garage || '-',
+      cost: logData.cost || 0,
+      approvalStatus: 'approved',
+      startDate: logData.time || new Date(),
+      endDate: logData.time || new Date()
+    });
   }
 }
 

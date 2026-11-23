@@ -1,5 +1,11 @@
 const mongoose = require('mongoose');
 
+/**
+ * Model MonthlyFleetExpenseReport (Chuẩn hóa cơ sở dữ liệu - Normalized 3NF)
+ * 
+ * Bảng này CHỈ lưu trữ các trường dữ liệu thực thể riêng biệt của báo cáo,
+ * tham chiếu ID của các bảng liên quan (User, Maintenance).
+ */
 const monthlyFleetExpenseReportSchema = new mongoose.Schema(
   {
     reportCode: {
@@ -30,43 +36,14 @@ const monthlyFleetExpenseReportSchema = new mongoose.Schema(
       type: Number,
       required: true
     },
-    summary: {
-      totalExpenses: { type: Number, default: 0 },
-      totalMaintenanceCost: { type: Number, default: 0 },
-      maintenanceCount: { type: Number, default: 0 },
-      totalDistanceKm: { type: Number, default: 0 },
-      totalFuelLiters: { type: Number, default: 0 },
-      fuelUnitPrice: { type: Number, default: 21500 },
-      totalFuelCost: { type: Number, default: 0 },
-      readyBusesCount: { type: Number, default: 0 },
-      maintenanceBusesCount: { type: Number, default: 0 },
-      availabilityRate: { type: Number, default: 100 }
-    },
-    busDetails: [
-      {
-        busId: { type: mongoose.Schema.Types.ObjectId, ref: 'Bus' },
-        plateNumber: { type: String, required: true },
-        busType: { type: String, default: '' },
-        tripsCount: { type: Number, default: 0 },
-        distanceKm: { type: Number, default: 0 },
-        fuelLiters: { type: Number, default: 0 },
-        fuelCost: { type: Number, default: 0 },
-        maintenanceCost: { type: Number, default: 0 },
-        maintCount: { type: Number, default: 0 },
-        activeStatus: { type: String, default: 'ready' }
-      }
-    ],
+    // Chỉ lưu danh sách ID các phiếu bảo trì/sửa chữa nghiệm thu trong kỳ báo cáo
     maintenanceRecords: [
       {
-        recordId: { type: mongoose.Schema.Types.ObjectId, ref: 'MaintenanceRecord' },
-        plateNumber: { type: String, required: true },
-        garage: { type: String, default: 'Garage Đối tác' },
-        description: { type: String, default: '' },
-        type: { type: String, default: 'maintenance' },
-        cost: { type: Number, default: 0 },
-        date: { type: Date, default: Date.now }
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Maintenance'
       }
     ],
+    // Ghi chú, giải trình của Quản lý Xe (Dữ liệu do người dùng nhập)
     fleetManagerNotes: {
       type: String,
       default: ''
@@ -82,6 +59,7 @@ const monthlyFleetExpenseReportSchema = new mongoose.Schema(
       ref: 'User',
       default: null
     },
+    // Ý kiến chỉ đạo, nhận xét của Ban Giám Đốc (Dữ liệu do người dùng nhập)
     directorNotes: {
       type: String,
       default: ''
@@ -94,12 +72,13 @@ const monthlyFleetExpenseReportSchema = new mongoose.Schema(
       type: Date,
       default: null
     },
+    // Khối chữ ký số chứng thực điện tử
     digitalSignature: {
       isSigned: { type: Boolean, default: false },
       signerName: { type: String, default: '' },
       signedAt: { type: Date, default: null },
-      certCode: { type: String, default: '' },
-      hash: { type: String, default: '' }
+      certificateSerial: { type: String, default: '' },
+      signatureHash: { type: String, default: '' }
     }
   },
   {
@@ -110,4 +89,3 @@ const monthlyFleetExpenseReportSchema = new mongoose.Schema(
 monthlyFleetExpenseReportSchema.index({ month: 1, year: 1, branchId: 1 });
 
 module.exports = mongoose.model('MonthlyFleetExpenseReport', monthlyFleetExpenseReportSchema);
-

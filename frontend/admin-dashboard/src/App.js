@@ -8,7 +8,6 @@ import DashboardOverviewPage from './pages/fleet/DashboardOverviewPage';
 import FleetBusesPage from './pages/fleet/FleetBusesPage';
 import FleetMaintenancePage from './pages/fleet/FleetMaintenancePage';
 import FleetStatusPage from './pages/fleet/FleetStatusPage';
-import FleetReportsPage from './pages/fleet/FleetReportsPage';
 import FleetForecastPage from './pages/fleet/FleetForecastPage';
 import FleetMonthlyExpenseReportPage from './pages/fleet/FleetMonthlyExpenseReportPage';
 
@@ -139,11 +138,9 @@ function DashboardLayout() {
       case 'fleet-buses':
         return <FleetBusesPage />;
       case 'fleet-maintenance':
-        return <FleetMaintenancePage />;
+        return <FleetStatusPage />;
       case 'fleet-status':
         return <FleetStatusPage />;
-      case 'fleet-reports':
-        return <FleetReportsPage />;
       case 'fleet-monthly-expenses':
         return <FleetMonthlyExpenseReportPage />;
       case 'fleet-forecast':
@@ -303,8 +300,6 @@ function DashboardLayout() {
         return 'Quản lý bảo trì';
       case 'fleet-status':
         return 'Cập nhật tình trạng xe';
-      case 'fleet-reports':
-        return 'Tạo báo cáo đội xe';
       case 'fleet-monthly-expenses':
         return 'Báo cáo chi tiêu & chi phí đội xe';
       case 'fleet-forecast':
@@ -428,7 +423,7 @@ function DashboardLayout() {
   };
 
   const ROLE_LABEL = {
-    fleet_manager: 'Quản lý Đội xe',
+    fleet_manager: 'Quản lý Xe',
     ops_manager: 'Quản lý Vận tải',
     general_manager: 'Ban Giám đốc',
     admin: 'Quản trị viên',

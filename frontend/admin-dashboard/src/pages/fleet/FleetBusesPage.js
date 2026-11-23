@@ -202,36 +202,6 @@ const FleetBusesPage = () => {
               <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
                 Hồ Sơ &amp; Quản Lý Phương Tiện
               </h1>
-              <span style={{
-                background: '#eff6ff',
-                color: '#2563eb',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                An Bình Fleet 2.0
-              </span>
-              <span style={{
-                background: '#ecfdf5',
-                color: '#059669',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Đã Duyệt {totalCount} Xe
-              </span>
-              <span style={{
-                background: '#f1f5f9',
-                color: '#475569',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                {user?.name || 'Quản Lý Đội Xe'}
-              </span>
             </div>
             <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
               Giám sát hồ sơ xe, thông số kỹ thuật, cấu hình sơ đồ ghế và danh mục tiện nghi phục vụ hành khách.
@@ -503,9 +473,6 @@ const FleetBusesPage = () => {
                 Hiển thị {filteredBuses.length} phương tiện đã kiểm định và phân bổ lịch trình
               </div>
             </div>
-            <span style={{ fontSize: '0.68rem', background: '#ecfdf5', color: '#047857', padding: '2px 8px', borderRadius: '6px', fontWeight: '700', border: '1px solid #a7f3d0' }}>
-              GPS Trực tuyến
-            </span>
           </div>
 
           <div style={{ overflowX: 'auto', width: '100%' }}>
@@ -668,13 +635,6 @@ const FleetBusesPage = () => {
                     onError={(e) => { e.target.src = defaultImg; }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
-                  <div style={{
-                    position: 'absolute', top: '8px', left: '8px',
-                    background: 'rgba(15, 23, 42, 0.85)', color: '#ffffff',
-                    fontSize: '0.65rem', fontWeight: '700', padding: '2px 8px', borderRadius: '4px'
-                  }}>
-                    GPS Trực tuyến
-                  </div>
                   <div style={{
                     position: 'absolute', top: '8px', right: '8px',
                     background: isMaint ? '#c2410c' : '#059669', color: '#ffffff',

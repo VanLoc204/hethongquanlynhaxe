@@ -33,7 +33,7 @@ const ROLE_LABELS = {
   attendant: 'Phụ xe',
   ticket_agent: 'Nhân viên bán vé',
   ticket_manager: 'Quản lý phòng vé',
-  fleet_manager: 'Quản lý Đội xe',
+  fleet_manager: 'Quản lý Xe',
   ops_manager: 'Quản lý Vận tải',
   general_manager: 'Ban Giám đốc',
   admin: 'Quản trị viên'
@@ -568,7 +568,7 @@ const GmStaffPage = () => {
               <option value="admin">Quản trị viên (Admin)</option>
               <option value="general_manager">Ban Giám đốc (GM)</option>
               <option value="ops_manager">Quản lý Vận tải</option>
-              <option value="fleet_manager">Quản lý Đội xe</option>
+              <option value="fleet_manager">Quản lý Xe</option>
               <option value="ticket_manager">Quản lý phòng vé</option>
               <option value="ticket_agent">Nhân viên bán vé</option>
               <option value="driver">Tài xế</option>
@@ -905,7 +905,7 @@ const GmStaffPage = () => {
                     <option value="admin">Quản trị viên (Admin)</option>
                     <option value="general_manager">Ban Giám đốc (GM)</option>
                     <option value="ops_manager">Quản lý Vận tải</option>
-                    <option value="fleet_manager">Quản lý Đội xe</option>
+                    <option value="fleet_manager">Quản lý Xe</option>
                     <option value="ticket_manager">Quản lý phòng vé</option>
                     <option value="ticket_agent">Nhân viên bán vé</option>
                     <option value="driver">Tài xế</option>

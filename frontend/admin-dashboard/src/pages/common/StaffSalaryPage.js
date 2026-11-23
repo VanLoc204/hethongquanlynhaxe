@@ -84,7 +84,7 @@ const StaffSalaryPage = () => {
       attendant: 'Phụ xe điều hành',
       ticket_agent: 'Nhân viên bán vé',
       ticket_manager: 'Quản lý phòng vé',
-      fleet_manager: 'Quản lý Đội xe',
+      fleet_manager: 'Quản lý Xe',
       ops_manager: 'Quản lý Vận tải',
       general_manager: 'Ban Giám đốc',
       admin: 'Quản trị viên'

@@ -28,8 +28,8 @@ const getRoleDetails = (role) => {
       };
     case 'fleet_manager':
       return {
-        title: 'Quản lý Đội xe',
-        defaultLocation: 'Trạm Kỹ thuật & Quản lý Đội xe',
+        title: 'Quản lý Xe',
+        defaultLocation: 'Trạm Kỹ thuật & Quản lý Xe',
         badgeBg: '#fefce8',
         badgeColor: '#a16207',
         badgeBorder: '#fef08a'
