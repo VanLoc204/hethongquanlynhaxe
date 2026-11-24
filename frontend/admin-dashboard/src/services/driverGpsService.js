@@ -1,24 +1,32 @@
 const API_BASE = 'http://localhost:8000/api';
 
-// Singleton Driver GPS Background Service (chạy ngầm bền bỉ xuyên suốt các tab)
+// Tính khoảng cách giữa 2 tọa độ GPS (theo mét) bằng công thức Haversine
+function getDistanceMeters(lat1, lon1, lat2, lon2) {
+  if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+  const R = 6371e3;
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) *
+    Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Singleton Driver GPS Background Service
+ * - Hỗ trợ phát GPS độc lập cho từng chuyến xe / từng thiết bị (Multi-device & Multi-trip Isolation)
+ * - Tự động kiểm tra tính tương thích giữa lộ trình và trạm khởi hành, không bao giờ lấy nhầm tuyến khác
+ * - Chạy ngầm bền bỉ xuyên suốt các tab
+ */
 class DriverGpsService {
   constructor() {
-    this.isTracking = false;
-    this.trackingMode = 'simulation';
-    this.trip = null;
-    this.token = '';
-    this.currentCoord = null;
-    this.currentSpeed = 0;
-    this.currentHeading = 0;
-    this.simIndex = 0;
-    this.routeCoordinates = [];
-    this.isOffRoute = false;
-    this.offRouteDistance = 0;
-    this.rerouteCoords = [];
-    this.lastPingTime = null;
-    this.pingStatus = 'Sẵn sàng';
-    this.simTimer = null;
-    this.geoWatchId = null;
+    // Map lưu trạng thái tracking của từng chuyến xe: tripId -> TrackerObject
+    this.trackers = new Map();
+    this.activeTripId = null;
     this.listeners = new Set();
   }
 
@@ -28,57 +36,74 @@ class DriverGpsService {
     return () => this.listeners.delete(callback);
   }
 
-  notify() {
-    const state = this.getState();
+  notify(targetTripId = null) {
+    const tripId = targetTripId || this.activeTripId;
+    const state = this.getState(tripId);
     this.listeners.forEach(fn => {
       try {
-        fn(state);
+        fn(state, tripId);
       } catch (err) {
         console.warn('Listener error in driverGpsService:', err);
       }
     });
   }
 
-  getState() {
+  getTracker(tripId) {
+    const id = tripId ? String(tripId) : (this.activeTripId ? String(this.activeTripId) : null);
+    if (!id) return null;
+    return this.trackers.get(id) || null;
+  }
+
+  getState(tripId = null) {
+    const tracker = this.getTracker(tripId);
+    if (tracker) {
+      return {
+        isTracking: tracker.isTracking,
+        trackingMode: tracker.trackingMode,
+        trip: tracker.trip,
+        currentCoord: tracker.currentCoord,
+        currentSpeed: tracker.currentSpeed,
+        currentHeading: tracker.currentHeading,
+        simIndex: tracker.simIndex,
+        lastPingTime: tracker.lastPingTime,
+        pingStatus: tracker.pingStatus,
+        routeCoordinates: tracker.routeCoordinates,
+        isOffRoute: tracker.isOffRoute,
+        offRouteDistance: tracker.offRouteDistance,
+        rerouteCoords: tracker.rerouteCoords
+      };
+    }
     return {
-      isTracking: this.isTracking,
-      trackingMode: this.trackingMode,
-      trip: this.trip,
-      currentCoord: this.currentCoord,
-      currentSpeed: this.currentSpeed,
-      currentHeading: this.currentHeading,
-      simIndex: this.simIndex,
-      lastPingTime: this.lastPingTime,
-      pingStatus: this.pingStatus,
-      routeCoordinates: this.routeCoordinates,
-      isOffRoute: this.isOffRoute,
-      offRouteDistance: this.offRouteDistance,
-      rerouteCoords: this.rerouteCoords
+      isTracking: false,
+      trackingMode: 'simulation',
+      trip: null,
+      currentCoord: null,
+      currentSpeed: 0,
+      currentHeading: 0,
+      simIndex: 0,
+      lastPingTime: null,
+      pingStatus: 'Sẵn sàng',
+      routeCoordinates: [],
+      isOffRoute: false,
+      offRouteDistance: 0,
+      rerouteCoords: []
     };
   }
 
-  setTrackingMode(mode) {
-    if (this.trackingMode === mode) return;
-    const wasTracking = this.isTracking;
-    const savedTrip = this.trip;
-    const savedRoute = this.routeCoordinates;
-    const savedToken = this.token;
-
-    if (wasTracking) {
-      this.stopTracking();
-    }
-    this.trackingMode = mode;
-    this.notify();
-
-    if (wasTracking && savedTrip) {
-      this.startTracking({
-        trip: savedTrip,
-        trackingMode: mode,
-        routeCoordinates: savedRoute,
-        token: savedToken
-      });
-    }
-  }
+  // Getters tương thích ngược
+  get isTracking() { return this.getState().isTracking; }
+  get trackingMode() { return this.getState().trackingMode; }
+  get trip() { return this.getState().trip; }
+  get currentCoord() { return this.getState().currentCoord; }
+  get currentSpeed() { return this.getState().currentSpeed; }
+  get currentHeading() { return this.getState().currentHeading; }
+  get simIndex() { return this.getState().simIndex; }
+  get lastPingTime() { return this.getState().lastPingTime; }
+  get pingStatus() { return this.getState().pingStatus; }
+  get routeCoordinates() { return this.getState().routeCoordinates; }
+  get isOffRoute() { return this.getState().isOffRoute; }
+  get offRouteDistance() { return this.getState().offRouteDistance; }
+  get rerouteCoords() { return this.getState().rerouteCoords; }
 
   calculateBearing(lat1, lon1, lat2, lon2) {
     const toRad = deg => (deg * Math.PI) / 180;
@@ -92,23 +117,52 @@ class DriverGpsService {
     return isNaN(brng) ? 0 : brng;
   }
 
-  async sendGpsToBackend(lat, lng, speed, heading, isOffRoute = false, offRouteDistance = 0, rerouteCoords = []) {
-    if (!this.trip?._id) return;
-    this.isOffRoute = Boolean(isOffRoute);
-    this.offRouteDistance = Math.round(offRouteDistance || 0);
-    if (Array.isArray(rerouteCoords) && rerouteCoords.length > 0) {
-      this.rerouteCoords = rerouteCoords;
-    } else if (!isOffRoute) {
-      this.rerouteCoords = [];
+  async sendGpsToBackend(tripIdOrLat, latOrLng, lngOrSpeed, speedOrHeading, headingOrOffRoute = 0, isOffRoute = false, offRouteDistance = 0, rerouteCoords = []) {
+    let tripId;
+    let lat, lng, speed, heading;
+    let offRoute = false;
+    let offDist = 0;
+    let reroute = [];
+
+    if (typeof tripIdOrLat === 'string' && (typeof latOrLng === 'number' || (typeof latOrLng === 'string' && !isNaN(latOrLng)))) {
+      tripId = tripIdOrLat;
+      lat = Number(latOrLng);
+      lng = Number(lngOrSpeed);
+      speed = Number(speedOrHeading);
+      heading = Number(headingOrOffRoute);
+      offRoute = Boolean(isOffRoute);
+      offDist = Number(offRouteDistance) || 0;
+      reroute = Array.isArray(rerouteCoords) ? rerouteCoords : [];
+    } else {
+      tripId = this.activeTripId || (this.trackers.size > 0 ? Array.from(this.trackers.keys())[0] : null);
+      lat = Number(tripIdOrLat);
+      lng = Number(latOrLng);
+      speed = Number(lngOrSpeed) || 0;
+      heading = Number(speedOrHeading) || 0;
+      offRoute = Boolean(headingOrOffRoute);
+      offDist = Number(isOffRoute) || 0;
+      reroute = Array.isArray(offRouteDistance) ? offRouteDistance : [];
+    }
+
+    const tracker = this.getTracker(tripId);
+    if (!tracker || !tripId) return;
+
+    tracker.isOffRoute = offRoute;
+    tracker.offRouteDistance = Math.round(offDist || 0);
+    if (Array.isArray(reroute) && reroute.length > 0) {
+      tracker.rerouteCoords = reroute;
+    } else if (!offRoute) {
+      tracker.rerouteCoords = [];
     }
 
     try {
-      this.pingStatus = this.isOffRoute ? `Lệch lộ trình (+${this.offRouteDistance}m)` : 'Đang gửi vị trí...';
-      const res = await fetch(`${API_BASE}/trips/${this.trip._id}/live-gps`, {
+      tracker.pingStatus = tracker.isOffRoute ? `Lệch lộ trình (+${tracker.offRouteDistance}m)` : 'Đang gửi vị trí...';
+      const authToken = tracker.token || (typeof localStorage !== 'undefined' ? localStorage.getItem('token') || localStorage.getItem('admin_token') : '');
+      const res = await fetch(`${API_BASE}/trips/${tripId}/live-gps`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {})
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
         },
         body: JSON.stringify({
           lat,
@@ -116,88 +170,171 @@ class DriverGpsService {
           speed: Math.round(speed),
           heading: Math.round(heading),
           status: speed > 5 ? 'moving' : 'stopped',
-          isOffRoute: this.isOffRoute,
-          offRouteDistance: this.offRouteDistance,
-          rerouteCoords: this.rerouteCoords
+          isOffRoute: tracker.isOffRoute,
+          offRouteDistance: tracker.offRouteDistance,
+          rerouteCoords: tracker.rerouteCoords
         })
       });
       const data = await res.json();
       if (data.success) {
-        this.lastPingTime = new Date().toLocaleTimeString('vi-VN');
-        this.pingStatus = this.isOffRoute 
-          ? `Cảnh báo lệch tuyến (+${this.offRouteDistance}m) - Đã đồng bộ`
+        tracker.lastPingTime = new Date().toLocaleTimeString('vi-VN');
+        tracker.pingStatus = tracker.isOffRoute
+          ? `Cảnh báo lệch tuyến (+${tracker.offRouteDistance}m) - Đã đồng bộ`
           : 'Đã kết nối máy chủ';
       } else {
-        this.pingStatus = data.message || 'Máy chủ cảnh báo';
+        tracker.pingStatus = data.message || 'Máy chủ cảnh báo';
         if (res.status === 403) {
           console.warn('[DriverGpsService] Dừng phát GPS do chưa chấm công:', data.message);
-          this.stopTracking();
+          this.stopTracking(tripId);
         }
       }
     } catch (err) {
-      this.pingStatus = 'Mất kết nối mạng';
+      tracker.pingStatus = 'Mất kết nối mạng';
       console.warn('Lỗi gửi GPS lên backend:', err);
     }
-    this.notify();
+    this.notify(tripId);
+  }
+
+  // Cập nhật lộ trình chuẩn OSRM mới khi vừa tải xong
+  updateRouteCoordinates(tripId, newCoords) {
+    const tracker = this.getTracker(tripId);
+    if (!tracker || !Array.isArray(newCoords) || newCoords.length < 2) return;
+
+    // Kiểm tra điểm đầu của newCoords có gần trạm đón đầu tiên của chuyến không
+    const firstStop = tracker.allStops && tracker.allStops[0];
+    if (firstStop) {
+      const dist = getDistanceMeters(firstStop.lat, firstStop.lng, newCoords[0][0], newCoords[0][1]);
+      if (dist > 40000) {
+        console.warn(`[DriverGpsService] Bỏ qua lộ trình không khớp hướng: cách trạm đầu ${Math.round(dist/1000)}km`);
+        return;
+      }
+    }
+
+    tracker.routeCoordinates = newCoords;
+    // Nếu chưa có vị trí hoặc đang ở trạm đầu, gán vị trí đầu
+    if (!tracker.currentCoord && newCoords.length > 0) {
+      tracker.currentCoord = { lat: newCoords[0][0], lng: newCoords[0][1] };
+      tracker.simIndex = 0;
+    }
+    this.notify(tripId);
   }
 
   startTracking({ trip, trackingMode, routeCoordinates, allStops, token }) {
-    if (this.isTracking) return;
-    this.isTracking = true;
-    this.trip = trip;
-    this.trackingMode = trackingMode || 'simulation';
-    this.token = token || '';
-    if (routeCoordinates && routeCoordinates.length > 0) {
-      this.routeCoordinates = routeCoordinates;
-    }
-    this.pingStatus = 'Đang kích hoạt GPS...';
-    this.notify();
+    if (!trip || !trip._id) return;
+    const tripId = String(trip._id);
+    this.activeTripId = tripId;
 
-    if (this.trackingMode === 'real') {
+    // Nếu tracker cho chuyến này đang chạy, dừng timer cũ trước khi khởi động lại
+    let tracker = this.trackers.get(tripId);
+    if (tracker && tracker.simTimer) {
+      clearInterval(tracker.simTimer);
+      tracker.simTimer = null;
+    }
+    if (tracker && tracker.geoWatchId !== null) {
+      navigator.geolocation.clearWatch(tracker.geoWatchId);
+      tracker.geoWatchId = null;
+    }
+
+    // Xác thực lộ trình khớp với chiều chạy của chuyến xe
+    const firstStop = allStops && allStops[0];
+    let validRoute = [];
+    if (Array.isArray(routeCoordinates) && routeCoordinates.length > 1) {
+      if (firstStop) {
+        const dist = getDistanceMeters(firstStop.lat, firstStop.lng, routeCoordinates[0][0], routeCoordinates[0][1]);
+        if (dist <= 40000) {
+          validRoute = routeCoordinates;
+        } else {
+          console.warn(`[DriverGpsService] Lộ trình không khớp điểm khởi hành (${Math.round(dist/1000)}km). Sử dụng trạm dừng của chuyến xe.`);
+          validRoute = (allStops || []).map(s => [s.lat, s.lng]);
+        }
+      } else {
+        validRoute = routeCoordinates;
+      }
+    } else if (allStops && allStops.length > 0) {
+      validRoute = allStops.map(s => [s.lat, s.lng]);
+    }
+
+    tracker = {
+      tripId,
+      trip,
+      trackingMode: trackingMode || 'simulation',
+      token: token || '',
+      routeCoordinates: validRoute,
+      allStops: allStops || [],
+      simIndex: 0,
+      currentCoord: validRoute.length > 0 ? { lat: validRoute[0][0], lng: validRoute[0][1] } : null,
+      currentSpeed: 0,
+      currentHeading: 0,
+      isTracking: true,
+      isOffRoute: false,
+      offRouteDistance: 0,
+      rerouteCoords: [],
+      isForcedDetour: false,
+      lastPingTime: null,
+      pingStatus: 'Đang kích hoạt GPS...',
+      simTimer: null,
+      geoWatchId: null
+    };
+
+    this.trackers.set(tripId, tracker);
+    this.notify(tripId);
+
+    // Bắt đầu phát GPS
+    if (tracker.trackingMode === 'real') {
       if ('geolocation' in navigator) {
-        this.geoWatchId = navigator.geolocation.watchPosition(
+        tracker.geoWatchId = navigator.geolocation.watchPosition(
           pos => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             const spd = pos.coords.speed ? pos.coords.speed * 3.6 : 55;
             let hdg = pos.coords.heading;
             if (hdg === null || isNaN(hdg) || hdg === undefined) {
-              if (this.currentCoord) {
-                hdg = this.calculateBearing(this.currentCoord.lat, this.currentCoord.lng, lat, lng);
+              if (tracker.currentCoord) {
+                hdg = this.calculateBearing(tracker.currentCoord.lat, tracker.currentCoord.lng, lat, lng);
               } else {
                 hdg = 0;
               }
             }
-            this.currentCoord = { lat, lng };
-            this.currentSpeed = spd;
-            this.currentHeading = hdg;
-            this.sendGpsToBackend(lat, lng, spd, hdg);
+            tracker.currentCoord = { lat, lng };
+            tracker.currentSpeed = spd;
+            tracker.currentHeading = hdg;
+            this.sendGpsToBackend(tripId, lat, lng, spd, hdg);
           },
           err => {
             console.warn('Lỗi định vị Geolocation:', err.message);
-            this.pingStatus = `Lỗi GPS: ${err.message}`;
-            this.notify();
+            tracker.pingStatus = `Lỗi GPS: ${err.message}`;
+            this.notify(tripId);
           },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
       }
     } else {
-      // Simulation mode dọc tuyến
-      const coords = this.routeCoordinates.length > 0
-        ? this.routeCoordinates
-        : (allStops || []).map(s => [s.lat, s.lng]);
+      // Simulation mode dọc theo lộ trình riêng biệt của chuyến này
+      const coords = tracker.routeCoordinates.length > 0
+        ? tracker.routeCoordinates
+        : (tracker.allStops || []).map(s => [s.lat, s.lng]);
 
       if (coords.length === 0) {
-        this.isTracking = false;
-        this.notify();
+        tracker.isTracking = false;
+        this.notify(tripId);
         return;
       }
 
-      let currIdx = this.simIndex >= coords.length - 1 ? 0 : this.simIndex;
+      let currIdx = 0;
+      tracker.simIndex = 0;
 
-      this.simTimer = setInterval(() => {
+      // Gửi tọa độ mốc đầu tiên tức thì
+      const firstTarget = coords[0];
+      const secondTarget = coords[1] || firstTarget;
+      const initialHeading = this.calculateBearing(firstTarget[0], firstTarget[1], secondTarget[0], secondTarget[1]);
+      tracker.currentCoord = { lat: firstTarget[0], lng: firstTarget[1] };
+      tracker.currentHeading = initialHeading;
+      this.sendGpsToBackend(tripId, firstTarget[0], firstTarget[1], 0, initialHeading);
+
+      // Chạy vòng lặp mô phỏng mỗi 3 giây riêng cho chuyến xe này
+      tracker.simTimer = setInterval(() => {
         currIdx = (currIdx + 1) % coords.length;
-        this.simIndex = currIdx;
+        tracker.simIndex = currIdx;
 
         const target = coords[currIdx];
         const nextTarget = coords[(currIdx + 1) % coords.length];
@@ -208,130 +345,183 @@ class DriverGpsService {
 
         let isOff = false;
         let offDist = 0;
-        if (this.isForcedDetour) {
-          // Tính độ lệch vuông góc với hướng di chuyển (~350 mét ra đường song song)
+        if (tracker.isForcedDetour) {
           const perpAngle = (heading + 90) * (Math.PI / 180);
           lat = Number((lat + Math.sin(perpAngle) * 0.0035).toFixed(6));
           lng = Number((lng + Math.cos(perpAngle) * 0.0035).toFixed(6));
           isOff = true;
           offDist = 380;
 
-          // Tạo các điểm dẫn đường mới từ vị trí rẽ về lại các mốc tiếp theo trên tuyến
           const aheadPoints = [];
           for (let step = 1; step <= 8; step++) {
             const nextIdx = (currIdx + step * 3) % coords.length;
             aheadPoints.push(coords[nextIdx]);
           }
-          this.rerouteCoords = [[lat, lng], ...aheadPoints];
+          tracker.rerouteCoords = [[lat, lng], ...aheadPoints];
         } else {
-          this.rerouteCoords = [];
+          tracker.rerouteCoords = [];
         }
 
-        this.currentCoord = { lat, lng };
-        this.currentSpeed = simulatedSpeed;
-        this.currentHeading = heading;
-        this.isOffRoute = isOff;
-        this.offRouteDistance = offDist;
+        tracker.currentCoord = { lat, lng };
+        tracker.currentSpeed = simulatedSpeed;
+        tracker.currentHeading = heading;
+        tracker.isOffRoute = isOff;
+        tracker.offRouteDistance = offDist;
 
-        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading, isOff, offDist, this.rerouteCoords);
+        this.sendGpsToBackend(tripId, lat, lng, simulatedSpeed, heading, isOff, offDist, tracker.rerouteCoords);
       }, 3000);
     }
   }
 
-  simulateDetour(isDetour = true) {
-    this.isForcedDetour = Boolean(isDetour);
-    if (this.currentCoord) {
-      if (this.isForcedDetour) {
-        // Dịch chuyển xe lệch khỏi trục lộ trình ~350m
-        const heading = this.currentHeading || 45;
-        const perpAngle = (heading + 90) * (Math.PI / 180);
-        this.currentCoord = {
-          lat: Number((this.currentCoord.lat + Math.sin(perpAngle) * 0.0035).toFixed(6)),
-          lng: Number((this.currentCoord.lng + Math.cos(perpAngle) * 0.0035).toFixed(6))
-        };
-        this.isOffRoute = true;
-        this.offRouteDistance = 380;
+  setTrackingMode(mode, targetTripId = null) {
+    const tripId = targetTripId || this.activeTripId;
+    const tracker = this.getTracker(tripId);
+    if (!tracker) return;
 
-        const coords = this.routeCoordinates || [];
-        const aheadPoints = [];
-        if (coords.length > 0) {
-          for (let step = 1; step <= 8; step++) {
-            const nextIdx = (this.simIndex + step * 3) % coords.length;
-            aheadPoints.push(coords[nextIdx]);
-          }
-        }
-        this.rerouteCoords = [[this.currentCoord.lat, this.currentCoord.lng], ...aheadPoints];
-      } else {
-        this.isOffRoute = false;
-        this.offRouteDistance = 0;
-        this.rerouteCoords = [];
-        if (this.routeCoordinates && this.routeCoordinates.length > 0) {
-          const original = this.routeCoordinates[this.simIndex % this.routeCoordinates.length];
-          if (original) {
-            this.currentCoord = { lat: original[0], lng: original[1] };
-          }
+    if (tracker.trackingMode === mode) return;
+    const savedTrip = tracker.trip;
+    const savedRoute = tracker.routeCoordinates;
+    const savedStops = tracker.allStops;
+    const savedToken = tracker.token;
+
+    this.stopTracking(tripId);
+    this.startTracking({
+      trip: savedTrip,
+      trackingMode: mode,
+      routeCoordinates: savedRoute,
+      allStops: savedStops,
+      token: savedToken
+    });
+  }
+
+  simulateDetour(isDetour = true, targetTripId = null) {
+    const tripId = targetTripId || this.activeTripId;
+    const tracker = this.getTracker(tripId);
+    if (!tracker || !tracker.currentCoord) return;
+
+    tracker.isForcedDetour = Boolean(isDetour);
+    if (tracker.isForcedDetour) {
+      const heading = tracker.currentHeading || 45;
+      const perpAngle = (heading + 90) * (Math.PI / 180);
+      tracker.currentCoord = {
+        lat: Number((tracker.currentCoord.lat + Math.sin(perpAngle) * 0.0035).toFixed(6)),
+        lng: Number((tracker.currentCoord.lng + Math.cos(perpAngle) * 0.0035).toFixed(6))
+      };
+      tracker.isOffRoute = true;
+      tracker.offRouteDistance = 380;
+
+      const coords = tracker.routeCoordinates || [];
+      const aheadPoints = [];
+      if (coords.length > 0) {
+        for (let step = 1; step <= 8; step++) {
+          const nextIdx = (tracker.simIndex + step * 3) % coords.length;
+          aheadPoints.push(coords[nextIdx]);
         }
       }
-      this.sendGpsToBackend(
-        this.currentCoord.lat,
-        this.currentCoord.lng,
-        this.currentSpeed || 55,
-        this.currentHeading || 45,
-        this.isOffRoute,
-        this.offRouteDistance,
-        this.rerouteCoords
-      );
+      tracker.rerouteCoords = [[tracker.currentCoord.lat, tracker.currentCoord.lng], ...aheadPoints];
+    } else {
+      tracker.isOffRoute = false;
+      tracker.offRouteDistance = 0;
+      tracker.rerouteCoords = [];
+      if (tracker.routeCoordinates && tracker.routeCoordinates.length > 0) {
+        const original = tracker.routeCoordinates[tracker.simIndex % tracker.routeCoordinates.length];
+        if (original) {
+          tracker.currentCoord = { lat: original[0], lng: original[1] };
+        }
+      }
     }
-    this.notify();
+
+    this.sendGpsToBackend(
+      tripId,
+      tracker.currentCoord.lat,
+      tracker.currentCoord.lng,
+      tracker.currentSpeed || 55,
+      tracker.currentHeading || 45,
+      tracker.isOffRoute,
+      tracker.offRouteDistance,
+      tracker.rerouteCoords
+    );
+    this.notify(tripId);
   }
 
-  stopTracking() {
-    this.isTracking = false;
-    this.currentSpeed = 0;
-    this.pingStatus = 'Đã tạm dừng phát';
+  stopTracking(targetTripId = null) {
+    if (targetTripId) {
+      const id = String(targetTripId);
+      const tracker = this.trackers.get(id);
+      if (tracker) {
+        tracker.isTracking = false;
+        tracker.currentSpeed = 0;
+        tracker.pingStatus = 'Đã tạm dừng phát';
+        if (tracker.geoWatchId !== null) {
+          navigator.geolocation.clearWatch(tracker.geoWatchId);
+          tracker.geoWatchId = null;
+        }
+        if (tracker.simTimer) {
+          clearInterval(tracker.simTimer);
+          tracker.simTimer = null;
+        }
+        this.notify(id);
+      }
+      return;
+    }
 
-    if (this.geoWatchId !== null) {
-      navigator.geolocation.clearWatch(this.geoWatchId);
-      this.geoWatchId = null;
-    }
-    if (this.simTimer) {
-      clearInterval(this.simTimer);
-      this.simTimer = null;
-    }
-    this.notify();
+    // Dừng tất cả trackers nếu không truyền targetTripId
+    this.trackers.forEach((tracker, id) => {
+      tracker.isTracking = false;
+      tracker.currentSpeed = 0;
+      tracker.pingStatus = 'Đã tạm dừng phát';
+      if (tracker.geoWatchId !== null) {
+        navigator.geolocation.clearWatch(tracker.geoWatchId);
+        tracker.geoWatchId = null;
+      }
+      if (tracker.simTimer) {
+        clearInterval(tracker.simTimer);
+        tracker.simTimer = null;
+      }
+      this.notify(id);
+    });
   }
 
-  restartSimulation(routeCoords) {
-    const coords = (routeCoords && routeCoords.length > 0)
-      ? routeCoords
-      : this.routeCoordinates;
+  restartSimulation(routeCoords, targetTripId = null) {
+    let tripId = targetTripId;
+    let coords = routeCoords;
+    if (typeof routeCoords === 'string' && !targetTripId) {
+      tripId = routeCoords;
+      coords = null;
+    }
+    tripId = tripId || this.activeTripId || (this.trackers.size > 0 ? Array.from(this.trackers.keys())[0] : null);
+    const tracker = this.getTracker(tripId);
+    if (!tracker) return;
 
-    this.simIndex = 0;
-    this.currentSpeed = 0;
+    const finalCoords = (Array.isArray(coords) && coords.length > 0)
+      ? coords
+      : tracker.routeCoordinates;
 
-    if (coords && coords.length > 0) {
-      this.routeCoordinates = coords;
-      const first = coords[0];
-      const second = coords[1] || first;
+    tracker.simIndex = 0;
+    tracker.currentSpeed = 0;
+
+    if (finalCoords && finalCoords.length > 0) {
+      tracker.routeCoordinates = finalCoords;
+      const first = finalCoords[0];
+      const second = finalCoords[1] || first;
       const heading = this.calculateBearing(first[0], first[1], second[0], second[1]);
-      this.currentCoord = { lat: first[0], lng: first[1] };
-      this.currentHeading = heading;
-      this.sendGpsToBackend(first[0], first[1], 0, heading);
+      tracker.currentCoord = { lat: first[0], lng: first[1] };
+      tracker.currentHeading = heading;
+      this.sendGpsToBackend(tripId, first[0], first[1], 0, heading);
     }
 
-    // Nếu đang bật phát mô phỏng, khởi động lại timer từ index 0
-    if (this.isTracking && this.trackingMode === 'simulation' && coords && coords.length > 0) {
-      if (this.simTimer) {
-        clearInterval(this.simTimer);
-        this.simTimer = null;
+    if (tracker.isTracking && tracker.trackingMode === 'simulation' && finalCoords && finalCoords.length > 0) {
+      if (tracker.simTimer) {
+        clearInterval(tracker.simTimer);
+        tracker.simTimer = null;
       }
       let currIdx = 0;
-      this.simTimer = setInterval(() => {
-        currIdx = (currIdx + 1) % coords.length;
-        this.simIndex = currIdx;
+      tracker.simTimer = setInterval(() => {
+        currIdx = (currIdx + 1) % finalCoords.length;
+        tracker.simIndex = currIdx;
 
-        const target = coords[currIdx];
-        const nextTarget = coords[(currIdx + 1) % coords.length];
+        const target = finalCoords[currIdx];
+        const nextTarget = finalCoords[(currIdx + 1) % finalCoords.length];
         let lat = target[0];
         let lng = target[1];
         const simulatedSpeed = 58 + Math.floor(Math.random() * 12);
@@ -339,48 +529,42 @@ class DriverGpsService {
 
         let isOff = false;
         let offDist = 0;
-        if (this.isForcedDetour) {
-          // Tính độ lệch vuông góc với hướng di chuyển (~350 mét ra đường song song)
+        if (tracker.isForcedDetour) {
           const perpAngle = (heading + 90) * (Math.PI / 180);
           lat = Number((lat + Math.sin(perpAngle) * 0.0035).toFixed(6));
           lng = Number((lng + Math.cos(perpAngle) * 0.0035).toFixed(6));
           isOff = true;
           offDist = 380;
 
-          // Tạo các điểm dẫn đường mới từ vị trí rẽ về lại các mốc tiếp theo trên tuyến
           const aheadPoints = [];
           for (let step = 1; step <= 8; step++) {
             const nextIdx = (currIdx + step * 3) % coords.length;
             aheadPoints.push(coords[nextIdx]);
           }
-          this.rerouteCoords = [[lat, lng], ...aheadPoints];
+          tracker.rerouteCoords = [[lat, lng], ...aheadPoints];
         } else {
-          this.rerouteCoords = [];
+          tracker.rerouteCoords = [];
         }
 
-        this.currentCoord = { lat, lng };
-        this.currentSpeed = simulatedSpeed;
-        this.currentHeading = heading;
-        this.isOffRoute = isOff;
-        this.offRouteDistance = offDist;
+        tracker.currentCoord = { lat, lng };
+        tracker.currentSpeed = simulatedSpeed;
+        tracker.currentHeading = heading;
+        tracker.isOffRoute = isOff;
+        tracker.offRouteDistance = offDist;
 
-        this.sendGpsToBackend(lat, lng, simulatedSpeed, heading, isOff, offDist, this.rerouteCoords);
+        this.sendGpsToBackend(tripId, lat, lng, simulatedSpeed, heading, isOff, offDist, tracker.rerouteCoords);
       }, 3000);
     }
 
-    this.pingStatus = 'Đã đặt lại về điểm xuất phát';
-    this.notify();
+    tracker.pingStatus = 'Đã đặt lại về điểm xuất phát';
+    this.notify(tripId);
   }
 }
 
 if (!window.__driverGpsServiceInstance) {
   window.__driverGpsServiceInstance = new DriverGpsService();
 } else {
-  // Cập nhật lại prototype và phương thức mới khi Webpack Hot Module Replacement (HMR) reload
   Object.setPrototypeOf(window.__driverGpsServiceInstance, DriverGpsService.prototype);
-  window.__driverGpsServiceInstance.restartSimulation = DriverGpsService.prototype.restartSimulation.bind(window.__driverGpsServiceInstance);
-  window.__driverGpsServiceInstance.simulateDetour = DriverGpsService.prototype.simulateDetour.bind(window.__driverGpsServiceInstance);
 }
 
 export const driverGpsService = window.__driverGpsServiceInstance;
-

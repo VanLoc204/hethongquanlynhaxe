@@ -80,6 +80,26 @@ const protect = async (req, res, next) => {
   }
 };
 
+const optionalProtect = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+    if (!token) {
+      return next();
+    }
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026');
+      const userId = decoded.id || decoded._id;
+      req.user = { ...decoded, id: userId, _id: userId };
+    } catch (e) {}
+    next();
+  } catch (err) {
+    next();
+  }
+};
+
 const restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -92,4 +112,4 @@ const restrictTo = (...roles) => {
   };
 };
 
-module.exports = { protect, restrictTo };
+module.exports = { protect, optionalProtect, restrictTo };

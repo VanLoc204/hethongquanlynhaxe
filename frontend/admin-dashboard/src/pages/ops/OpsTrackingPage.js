@@ -16,6 +16,74 @@ const OpsTrackingPage = () => {
 
   // Selected Trip for focused tracking
   const [selectedTripId, setSelectedTripId] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const handleCancelOverdueTrip = async (trip) => {
+    const plate = trip.busId?.plateNumber || 'phương tiện';
+    const route = trip.routeId ? `${trip.routeId.startPoint} - ${trip.routeId.endPoint}` : 'chuyến xe';
+    const confirmMsg = `Bạn có chắc chắn muốn xác nhận HỦY chuyến xe "${route}" (Xe ${plate}) do đã quá giờ đến nơi mà chưa xuất bến?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/trips/${trip._id}/update-journey`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          action: 'cancel',
+          reason: 'Quản lý vận tải xác nhận hủy chuyến do quá giờ đến nơi mà chưa xuất bến.'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã hủy chuyến xe thành công.');
+        fetchRealTrips(false);
+      } else {
+        alert(data.message || 'Không thể hủy chuyến xe.');
+      }
+    } catch {
+      alert('Lỗi kết nối khi cập nhật chuyến xe.');
+    }
+  };
+
+  const handleCompleteOverdueTrip = async (trip) => {
+    const plate = trip.busId?.plateNumber || 'phương tiện';
+    const route = trip.routeId ? `${trip.routeId.startPoint} - ${trip.routeId.endPoint}` : 'chuyến xe';
+    const confirmMsg = `Bạn có chắc chắn muốn xác nhận chuyến xe "${route}" (Xe ${plate}) ĐÃ HOÀN THÀNH ngoài thực tế?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/trips/${trip._id}/update-journey`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          action: 'complete',
+          bypassTime: true,
+          overrideByManager: true,
+          desc: 'Quản lý vận tải xác nhận xe đã hoàn thành hành trình ngoài thực tế.'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã xác nhận chuyến xe hoàn thành.');
+        fetchRealTrips(false);
+      } else {
+        alert(data.message || 'Không thể hoàn thành chuyến xe.');
+      }
+    } catch {
+      alert('Lỗi kết nối khi cập nhật chuyến xe.');
+    }
+  };
 
   // Map and OSRM state
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -341,7 +409,12 @@ const OpsTrackingPage = () => {
     const L = window.L;
     const map = mapInstanceRef.current;
 
-    // 1. Ưu tiên tọa độ GPS phát trực tiếp từ tài xế (MongoDB backend hoặc local service)
+    // 1. Xác định trạng thái chuyến xe & Điểm đầu/cuối
+    const isCompleted = activeTrip.journeyStatus === 'completed';
+    const isScheduled = activeTrip.journeyStatus === 'scheduled';
+    const lastStop = activeStops && activeStops.length > 0 ? activeStops[activeStops.length - 1] : null;
+    const firstStop = activeStops && activeStops.length > 0 ? activeStops[0] : null;
+
     let busLat = activeTrip.liveGps?.lat;
     let busLng = activeTrip.liveGps?.lng;
     let busSpeed = activeTrip.liveGps?.speed || 0;
@@ -349,23 +422,31 @@ const OpsTrackingPage = () => {
     let lastUpdated = activeTrip.liveGps?.lastUpdated;
     let isLiveDevice = false;
 
-    // Kiểm tra đồng bộ từ driverGpsService chạy nền
-    if (localGpsState.isTracking && localGpsState.trip?._id === activeTrip._id && localGpsState.currentCoord) {
+    if (isCompleted && lastStop) {
+      // 1. Chuyến xe đã hoàn thành: biểu tượng xe BẮT BUỘC định vị tại điểm đích (Trạm trả cuối cùng)
+      busLat = lastStop.lat;
+      busLng = lastStop.lng;
+      busSpeed = 0;
+      busHeading = 0;
+      isLiveDevice = false;
+    } else if (typeof busLat === 'number' && typeof busLng === 'number') {
+      // 2. Tọa độ thực tế từ CSDL Server (MongoDB & Redis) do từng thiết bị tài xế phát lên
+      const diffMs = lastUpdated ? Date.now() - new Date(lastUpdated).getTime() : 999999;
+      isLiveDevice = diffMs < 60000; // Tín hiệu trong vòng 60s xem như đang trực tiếp
+    } else if (localGpsState.isTracking && localGpsState.trip?._id === activeTrip._id && localGpsState.currentCoord) {
+      // 3. Dự phòng nếu vừa kích hoạt mô phỏng nội bộ trên chính trình duyệt này
       busLat = localGpsState.currentCoord.lat;
       busLng = localGpsState.currentCoord.lng;
       busSpeed = localGpsState.currentSpeed || 0;
       busHeading = localGpsState.currentHeading || 0;
       lastUpdated = new Date();
       isLiveDevice = true;
-    } else if (typeof busLat === 'number' && typeof busLng === 'number') {
-      // Tọa độ từ MongoDB do thiết bị tài xế gửi lên qua PUT /api/trips/:id/live-gps
-      const diffMs = lastUpdated ? Date.now() - new Date(lastUpdated).getTime() : 999999;
-      isLiveDevice = diffMs < 45000; // Tín hiệu trong vòng 45s xem như đang trực tiếp
     } else {
-      // Chưa có GPS từ tài xế: định vị xe tại điểm xuất phát (Trạm đón đầu tiên)
-      busLat = activeStops[0]?.lat;
-      busLng = activeStops[0]?.lng;
+      // 4. Chuyến xe chờ xuất phát: định vị tại điểm xuất phát (Trạm đón đầu tiên)
+      busLat = firstStop?.lat;
+      busLng = firstStop?.lng;
       busSpeed = 0;
+      isLiveDevice = false;
     }
 
     if (typeof busLat !== 'number' || typeof busLng !== 'number') return;
@@ -375,8 +456,8 @@ const OpsTrackingPage = () => {
       <div style="font-family: system-ui; padding: 4px; min-width: 190px;">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:4px; margin-bottom:4px;">
           <strong style="color: #1e40af; font-size: 0.9rem;">Xe ${busPlate}</strong>
-          <span style="background:${isLiveDevice ? '#ecfdf5' : '#f1f5f9'}; color:${isLiveDevice ? '#059669' : '#64748b'}; font-size:0.62rem; font-weight:700; padding:1px 6px; borderRadius:6px;">
-            ${isLiveDevice ? '• GPS Trực tiếp' : '• Tại bến chờ'}
+          <span style="background:${isCompleted ? '#ecfdf5' : isLiveDevice ? '#ecfdf5' : '#f1f5f9'}; color:${isCompleted ? '#059669' : isLiveDevice ? '#059669' : '#64748b'}; font-size:0.62rem; font-weight:700; padding:1px 6px; border-radius:6px;">
+            ${isCompleted ? '• Đã về bến đích' : isLiveDevice ? '• GPS Trực tiếp' : '• Tại bến chờ'}
           </span>
         </div>
         <div style="font-size: 0.74rem; color: #475569;">
@@ -386,7 +467,7 @@ const OpsTrackingPage = () => {
           Tài xế: <strong style="color:#0f172a;">${activeTrip.driver?.name || 'Trần Minh Tâm'}</strong>
         </div>
         <div style="font-size: 0.74rem; color: #2563eb; font-weight: 700; margin-top: 4px;">
-          Vận tốc: <span style="font-size:0.85rem;">${Math.round(busSpeed)}</span> km/h ${busHeading ? `(${Math.round(busHeading)}°)` : ''}
+          Vận tốc: ${isCompleted ? '<span style="color:#059669; font-size:0.8rem;">0 km/h (Đã hoàn thành)</span>' : `<span style="font-size:0.85rem;">${Math.round(busSpeed)}</span> km/h ${busHeading ? `(${Math.round(busHeading)}°)` : ''}`}
         </div>
         <div style="font-size: 0.68rem; color: #64748b; margin-top: 4px;">
           Tọa độ: ${busLat.toFixed(5)}, ${busLng.toFixed(5)}
@@ -394,19 +475,6 @@ const OpsTrackingPage = () => {
         ${lastUpdated ? `<div style="font-size: 0.65rem; color: #94a3b8; margin-top: 2px;">Cập nhật: ${new Date(lastUpdated).toLocaleTimeString('vi-VN')}</div>` : ''}
       </div>
     `;
-
-    // CẬP NHẬT MARKER XE: Di chuyển mượt mà, KHÔNG tạo lại, KHÔNG reset Zoom / Pan của người dùng
-    if (busMarkerRef.current) {
-      if (busMarkerRef.current._tripId === activeTrip._id) {
-        busMarkerRef.current.setLatLng([busLat, busLng]);
-        const popup = busMarkerRef.current.getPopup();
-        if (popup) popup.setContent(popupHtml);
-        return;
-      } else {
-        map.removeLayer(busMarkerRef.current);
-        busMarkerRef.current = null;
-      }
-    }
 
     // Tạo Marker Xe với hiệu ứng Radar Pulse khi đang trực tiếp
     const busIcon = L.divIcon({
@@ -452,10 +520,25 @@ const OpsTrackingPage = () => {
       iconAnchor: [55, 15]
     });
 
-    const newBusMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(map);
-    newBusMarker._tripId = activeTrip._id;
-    newBusMarker.bindPopup(popupHtml);
-    busMarkerRef.current = newBusMarker;
+    // CẬP NHẬT MARKER XE: Di chuyển mượt mà, KHÔNG tạo lại, KHÔNG reset Zoom / Pan của người dùng
+    if (busMarkerRef.current) {
+      if (busMarkerRef.current._tripId === activeTrip._id) {
+        busMarkerRef.current.setLatLng([busLat, busLng]);
+        busMarkerRef.current.setIcon(busIcon);
+        const popup = busMarkerRef.current.getPopup();
+        if (popup) popup.setContent(popupHtml);
+      } else {
+        map.removeLayer(busMarkerRef.current);
+        busMarkerRef.current = null;
+      }
+    }
+
+    if (!busMarkerRef.current) {
+      const newBusMarker = L.marker([busLat, busLng], { icon: busIcon }).addTo(map);
+      newBusMarker._tripId = activeTrip._id;
+      newBusMarker.bindPopup(popupHtml);
+      busMarkerRef.current = newBusMarker;
+    }
 
     // 2. KIỂM TRA LỆCH TUYẾN & TỰ ĐỘNG ĐỊNH TUYẾN LẠI (DYNAMIC RE-ROUTING REALTIME)
     const tripPath = osrmPaths[activeTrip._id] || activeStops.map(s => [s.lat, s.lng]);
@@ -569,7 +652,8 @@ const OpsTrackingPage = () => {
   // Kiểm tra trạng thái GPS trực tiếp của xe
   const isVehicleLive = Boolean(
     (localGpsState.isTracking && localGpsState.trip?._id === activeTrip?._id) ||
-    (activeTrip?.liveGps?.lastUpdated && (Date.now() - new Date(activeTrip.liveGps.lastUpdated).getTime() < 45000))
+    (activeTrip?.liveGps?.lastUpdated && (Date.now() - new Date(activeTrip.liveGps.lastUpdated).getTime() < 60000)) ||
+    (activeTrip?.liveGps && typeof activeTrip.liveGps.lat === 'number' && activeTrip.journeyStatus === 'in_transit')
   );
 
   return (
@@ -1031,6 +1115,7 @@ const OpsTrackingPage = () => {
                 const arrTime = arr.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                 const stopsCount = (trip.pickupPoints?.length || 0) + (trip.dropoffPoints?.length || 0);
                 const statusBadge = getStatusBadge(trip.journeyStatus);
+                const isOverdueScheduled = trip.journeyStatus === 'scheduled' && new Date(trip.arrivalTime) < new Date();
 
                 return (
                   <div
@@ -1076,6 +1161,56 @@ const OpsTrackingPage = () => {
                     <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>
                       Tài xế: <strong style={{ color: '#334155' }}>{trip.driver?.name || 'Trần Minh Tâm'}</strong>
                     </div>
+
+                    {isOverdueScheduled && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          display: 'flex',
+                          gap: '6px',
+                          marginTop: '6px',
+                          paddingTop: '6px',
+                          borderTop: '1px dashed #e2e8f0'
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleCancelOverdueTrip(trip)}
+                          style={{
+                            flex: 1,
+                            padding: '3px 0',
+                            borderRadius: '5px',
+                            border: '1px solid #fca5a5',
+                            backgroundColor: '#fef2f2',
+                            color: '#dc2626',
+                            fontSize: '0.68rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            textAlign: 'center'
+                          }}
+                        >
+                          Hủy chuyến
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCompleteOverdueTrip(trip)}
+                          style={{
+                            flex: 1,
+                            padding: '3px 0',
+                            borderRadius: '5px',
+                            border: '1px solid #86efac',
+                            backgroundColor: '#f0fdf4',
+                            color: '#15803d',
+                            fontSize: '0.68rem',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            textAlign: 'center'
+                          }}
+                        >
+                          Hoàn thành
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -1084,6 +1219,24 @@ const OpsTrackingPage = () => {
         </div>
 
       </div>
+
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          zIndex: 9999,
+          padding: '10px 16px',
+          borderRadius: '8px',
+          backgroundColor: toast.type === 'error' ? '#ef4444' : '#10b981',
+          color: '#ffffff',
+          fontWeight: '700',
+          fontSize: '0.82rem',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+        }}>
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 };

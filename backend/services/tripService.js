@@ -7,6 +7,7 @@ const shipmentRepository = require('../repositories/shipmentRepository');
 const reviewRepository = require('../repositories/reviewRepository');
 const maintenanceRepository = require('../repositories/maintenanceRepository');
 const { sendShipmentInvoiceEmail } = require('./emailService');
+const redisGpsService = require('./redisGpsService');
 
 class TripService {
   async applyPricingRules(tripObj) {
@@ -546,6 +547,10 @@ class TripService {
       }, 0);
 
       let tripObj = t.toObject();
+      const liveGpsCache = await redisGpsService.getLiveGps(t._id.toString());
+      if (liveGpsCache) {
+        tripObj.liveGps = liveGpsCache;
+      }
       tripObj.bookedSeats = seatsList;
       tripObj.actualRevenue = actualRevenue; // Doanh thu thực tế từ bookings
       tripObj = await this.applyPricingRules(tripObj); // Cập nhật trip.price cho hiển thị giá hiện tại (KHÔNG dùng để tính doanh thu)

@@ -8,6 +8,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [trip, setTrip] = useState(null);
+  const [driverTrips, setDriverTrips] = useState([]);
   const [stops, setStops] = useState([]);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -62,13 +63,16 @@ const DriverStatusPage = ({ setActiveTab }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        const allTrips = data.trips || [];
+        setDriverTrips(allTrips);
+
         const todayStr = new Date().toDateString();
-        const todayTrips = (data.trips || []).filter(t => new Date(t.departureTime).toDateString() === todayStr);
+        const todayTrips = allTrips.filter(t => new Date(t.departureTime).toDateString() === todayStr);
 
         let activeTrip = todayTrips.find(t => t.journeyStatus === 'in_transit') ||
                          todayTrips.find(t => t.journeyStatus === 'scheduled') ||
                          todayTrips[0] ||
-                         (data.trips && data.trips[0]) || null;
+                         allTrips[0] || null;
 
         if (activeTrip) {
           setTrip(activeTrip);
@@ -215,12 +219,6 @@ const DriverStatusPage = ({ setActiveTab }) => {
   const handleJourneyUpdate = async (action) => {
     if (!trip) return;
 
-    // RÀNG BUỘC: Chưa Chấm công (Face ID) thì không được bắt đầu hoặc cập nhật hành trình
-    if (attendanceStatus !== 'active' && action !== 'reset') {
-      setError('Từ chối: Bạn chưa hoàn tất Chấm công số (Face ID) cho ca trực này. Vui lòng điểm danh vào ca trước khi bắt đầu hành trình!');
-      return;
-    }
-
     setIsUpdating(true);
     setError('');
     try {
@@ -295,13 +293,8 @@ const DriverStatusPage = ({ setActiveTab }) => {
   const isDistanceValid = isGpsActive && distanceToTarget !== null && distanceToTarget <= 500;
   const isWithinRadius = isGpsActive && (isDistanceValid || (isDemoGps && isNotStarted));
 
-  const isAttendanceActive = attendanceStatus === 'active';
-
-  // Khóa nút hoàn toàn nếu:
-  // 1. Đang gửi request (isUpdating)
-  // 2. Chưa bật GPS hoặc xe chưa vào bán kính hợp lệ (!isWithinRadius)
-  // 3. Chưa Chấm công Face ID vào ca (!isAttendanceActive)
-  const isButtonDisabled = isUpdating || !isWithinRadius || !isAttendanceActive;
+  // Khóa nút nếu đang gửi request hoặc xe chưa vào bán kính trạm
+  const isButtonDisabled = isUpdating || !isWithinRadius;
 
   if (loading) {
     return (
@@ -634,40 +627,59 @@ const DriverStatusPage = ({ setActiveTab }) => {
           </div>
         </div>
 
-        {/* THÔNG BÁO YÊU CẦU ĐIỂM DANH */}
-        {attendanceStatus !== 'active' && !loadingAttendance && (
+        {/* Bộ chọn chuyến xe cho Tài xế */}
+        {driverTrips && driverTrips.length > 0 && (
           <div style={{
-            background: '#f8fafc',
-            border: '1px solid #cbd5e1',
-            borderRadius: '8px',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
             padding: '10px 16px',
             marginBottom: '1rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px'
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
           }}>
-            <div style={{ fontSize: '0.82rem', color: '#334155', fontWeight: '600' }}>
-              Tài xế chưa điểm danh ca trực hôm nay. Vui lòng chấm công trước khi bắt đầu hành trình.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#1e293b' }}>
+                Lộ trình phụ trách:
+              </span>
             </div>
-            {setActiveTab && (
-              <button
-                onClick={() => setActiveTab('driver-attendance')}
-                style={{
-                  backgroundColor: '#2563eb',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '6px 14px',
-                  borderRadius: '6px',
-                  fontWeight: '700',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer'
-                }}
-              >
-                Chấm công ngay
-              </button>
-            )}
+            <select
+              value={trip?._id || ''}
+              onChange={(e) => {
+                const selected = driverTrips.find(t => String(t._id) === e.target.value);
+                if (selected) {
+                  setTrip(selected);
+                  buildStops(selected);
+                }
+              }}
+              style={{
+                flex: 1,
+                maxWidth: '550px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.82rem',
+                fontWeight: '600',
+                color: '#0f172a',
+                background: '#f8fafc',
+                outline: 'none'
+              }}
+            >
+              {driverTrips.map(t => {
+                const depStr = new Date(t.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                const dateStr = new Date(t.departureTime).toLocaleDateString('vi-VN');
+                const routeName = t.routeId ? `${t.routeId.startPoint} → ${t.routeId.endPoint}` : 'Chuyến xe';
+                const statusLabel = t.journeyStatus === 'in_transit' ? 'Đang chạy' : t.journeyStatus === 'completed' ? 'Đã hoàn thành' : 'Chờ xuất bến';
+                return (
+                  <option key={t._id} value={t._id}>
+                    {routeName} ({depStr} - {dateStr}) • [{statusLabel}]
+                  </option>
+                );
+              })}
+            </select>
           </div>
         )}
 
@@ -1002,32 +1014,13 @@ const DriverStatusPage = ({ setActiveTab }) => {
                     </svg>
                     {isUpdating
                       ? 'Đang kích hoạt...'
-                      : !isAttendanceActive
-                        ? 'Chưa chấm công (Vui lòng chấm công trước)'
-                        : !isGpsActive
-                          ? 'Chưa Bật GPS (Vui Lòng Bật Tại Trang Bản Đồ)'
-                          : isWithinRadius
-                            ? (isDemoGps ? 'Bắt Đầu Khởi Hành (Chế Độ Demo)' : 'Bắt Đầu Khởi Hành Rời Bến')
-                            : `Chưa đến bến xuất phát (Cách ${formatDistance(distanceToTarget)})`}
+                      : !isGpsActive
+                        ? 'Chưa Bật GPS (Vui Lòng Bật Tại Trang Bản Đồ)'
+                        : isWithinRadius
+                          ? (isDemoGps ? 'Bắt Đầu Khởi Hành (Chế Độ Demo)' : 'Bắt Đầu Khởi Hành Rời Bến')
+                          : `Chưa đến bến xuất phát (Cách ${formatDistance(distanceToTarget)})`}
                   </button>
-                  {!isAttendanceActive && setActiveTab ? (
-                    <div style={{ textAlign: 'center', marginTop: '6px' }}>
-                      <button
-                        onClick={() => setActiveTab('driver-attendance')}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#2563eb',
-                          fontSize: '0.75rem',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          textDecoration: 'underline'
-                        }}
-                      >
-                        Chuyển sang Chấm công số
-                      </button>
-                    </div>
-                  ) : !isGpsActive && setActiveTab ? (
+                  {!isGpsActive && setActiveTab ? (
                     <div style={{ textAlign: 'center', marginTop: '6px' }}>
                       <button
                         onClick={() => setActiveTab('driver-map')}

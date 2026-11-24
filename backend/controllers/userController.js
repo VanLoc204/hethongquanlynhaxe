@@ -60,6 +60,16 @@ exports.createStaff = async (req, res) => {
       shiftName
     } = req.body;
 
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập họ và tên nhân viên.' });
+    }
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập số điện thoại làm tài khoản đăng nhập.' });
+    }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập địa chỉ email liên hệ.' });
+    }
+
     // Phân quyền: Quản lý vận tải / đội xe chỉ được tạo tài khoản tài xế hoặc phụ xe
     if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {
       if (!['driver', 'attendant'].includes(role)) {
@@ -137,6 +147,16 @@ exports.updateStaff = async (req, res) => {
       shiftType,
       shiftName
     } = req.body;
+
+    if (name !== undefined && (!name || !name.trim())) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập họ và tên nhân viên.' });
+    }
+    if (phone !== undefined && (!phone || !phone.trim())) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập số điện thoại làm tài khoản đăng nhập.' });
+    }
+    if (email !== undefined && (!email || !email.trim())) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập địa chỉ email liên hệ.' });
+    }
 
     // Phân quyền: Quản lý vận tải / đội xe chỉ được sửa tài xế hoặc phụ xe
     if (['ops_manager', 'fleet_manager'].includes(req.user.role)) {

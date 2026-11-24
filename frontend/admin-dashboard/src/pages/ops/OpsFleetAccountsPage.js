@@ -105,6 +105,7 @@ const OpsFleetAccountsPage = () => {
   const [formStatus, setFormStatus] = useState('active');
   const [modalSubmitting, setModalSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [formErrors, setFormErrors] = useState({});
 
   // Modal Đổi Mật Khẩu Nhanh
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -204,16 +205,19 @@ const OpsFleetAccountsPage = () => {
   const faceCount = fleetStaff.filter((s) => s.faceRegistered).length;
   const facePercent = totalCount > 0 ? Math.round((faceCount / totalCount) * 100) : 0;
 
+  const [resettingPw, setResettingPw] = useState(false);
+
   // ─── Modal Thêm / Chỉnh Sửa ────────────────────────────────────────────────
   const handleOpenCreateModal = () => {
     setEditingAccount(null);
     setFormName('');
     setFormPhone('');
     setFormEmail('');
-    setFormPassword('');
+    setFormPassword('Anbinh@2026');
     setFormRole('driver');
     setFormStatus('active');
     setModalError('');
+    setFormErrors({});
     setShowAccountModal(true);
   };
 
@@ -226,47 +230,93 @@ const OpsFleetAccountsPage = () => {
     setFormRole(staff.role || 'driver');
     setFormStatus(staff.status || 'active');
     setModalError('');
+    setFormErrors({});
     setShowAccountModal(true);
+  };
+
+  const handleResetToDefaultPassword = async () => {
+    if (!editingAccount) return;
+    const confirmMsg = `Bạn có chắc chắn muốn đặt lại mật khẩu của nhân viên "${editingAccount.name}" về mật khẩu mặc định "Anbinh@2026"?\nNhân viên sẽ dùng mật khẩu này để đăng nhập lại hệ thống.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setResettingPw(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/staff/${editingAccount._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: 'Anbinh@2026' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã đặt lại mật khẩu thành công về "Anbinh@2026"!');
+        setFormPassword('');
+      } else {
+        showToast(data.message || 'Không thể đặt lại mật khẩu.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ khi đặt lại mật khẩu.', 'error');
+    } finally {
+      setResettingPw(false);
+    }
   };
 
   const handleSaveAccount = async (e) => {
     e.preventDefault();
     setModalError('');
 
-    if (!formName.trim()) {
-      setModalError('Vui lòng nhập họ và tên nhân viên.');
-      return;
+    const errs = {};
+
+    // 1. Kiểm tra Họ và tên
+    const cleanName = formName.trim();
+    if (!cleanName) {
+      errs.name = 'Vui lòng nhập họ và tên nhân viên.';
+    } else if (cleanName.length < 2) {
+      errs.name = 'Họ và tên nhân viên phải có ít nhất 2 ký tự.';
     }
 
+    // 2. Kiểm tra Số điện thoại
     const cleanPhone = formPhone.trim();
     if (!cleanPhone) {
-      setModalError('Vui lòng nhập số điện thoại (tên đăng nhập).');
-      return;
+      errs.phone = 'Vui lòng nhập số điện thoại làm tài khoản đăng nhập.';
+    } else if (!/^(0[35789])[0-9]{8}$/.test(cleanPhone)) {
+      errs.phone = 'Số điện thoại không hợp lệ (phải gồm đúng 10 số, bắt đầu bằng 03, 05, 07, 08, 09).';
     }
 
-    // Validate phone VN cơ bản: 10 chữ số
-    const phoneRegex = /^[0-9]{10}$/;
-    if (!phoneRegex.test(cleanPhone)) {
-      setModalError('Số điện thoại không hợp lệ (phải gồm đúng 10 chữ số).');
-      return;
+    // 3. Kiểm tra Email (BẮT BUỘC)
+    const cleanEmail = formEmail.trim();
+    if (!cleanEmail) {
+      errs.email = 'Vui lòng nhập địa chỉ email liên hệ.';
+    } else if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) {
+      errs.email = 'Định dạng email không hợp lệ (ví dụ: taixe.anbinh@gmail.com).';
     }
 
-    if (!editingAccount && !formPassword.trim()) {
-      setModalError('Vui lòng nhập mật khẩu khởi tạo cho tài khoản mới.');
-      return;
+    // 4. Kiểm tra Mật khẩu khởi tạo
+    if (!editingAccount) {
+      const cleanPw = formPassword.trim();
+      if (!cleanPw) {
+        errs.password = 'Vui lòng nhập mật khẩu khởi tạo (mặc định: Anbinh@2026).';
+      } else if (cleanPw.length < 6) {
+        errs.password = 'Mật khẩu khởi tạo phải có ít nhất 6 ký tự.';
+      }
+    } else if (formPassword.trim() && formPassword.trim().length < 6) {
+      errs.password = 'Mật khẩu mới phải có ít nhất 6 ký tự.';
     }
 
-    if (formPassword.trim() && formPassword.trim().length < 6) {
-      setModalError('Mật khẩu phải có ít nhất 6 ký tự.');
+    if (Object.keys(errs).length > 0) {
+      setFormErrors(errs);
       return;
     }
+    setFormErrors({});
 
     setModalSubmitting(true);
     try {
       const payload = {
-        name: formName.trim(),
+        name: cleanName,
         phone: cleanPhone,
-        email: formEmail.trim() || undefined,
+        email: cleanEmail,
         role: formRole,
         status: formStatus
       };
@@ -301,7 +351,13 @@ const OpsFleetAccountsPage = () => {
         setShowAccountModal(false);
         fetchFleetStaff();
       } else {
-        setModalError(data.message || 'Không thể lưu thông tin tài khoản.');
+        const errMsg = data.message || 'Không thể lưu thông tin tài khoản.';
+        setModalError(errMsg);
+        if (errMsg.toLowerCase().includes('số điện thoại')) {
+          setFormErrors(prev => ({ ...prev, phone: errMsg }));
+        } else if (errMsg.toLowerCase().includes('email')) {
+          setFormErrors(prev => ({ ...prev, email: errMsg }));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -639,34 +695,11 @@ const OpsFleetAccountsPage = () => {
             </span>
           </div>
           <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '4px', margin: 0 }}>
-            Phân quyền Quản lý Vận tải: Thêm mới, quản lý thông tin đăng nhập, phân vai trò tổ lái và đăng ký sinh trắc Face ID cho tài xế &amp; phụ xe.
+            Phân quyền Quản lý Vận tải: Thêm mới, quản lý thông tin đăng nhập và phân vai trò tổ lái cho tài xế &amp; phụ xe.
           </p>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => exportFleetAccountsToCsv(filteredStaff)}
-            style={{
-              backgroundColor: '#ffffff',
-              border: '1px solid #cbd5e1',
-              color: '#334155',
-              fontWeight: '600',
-              padding: '0.55rem 0.95rem',
-              borderRadius: '8px',
-              fontSize: '0.8rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-            </svg>
-            Xuất Excel/CSV
-          </button>
-
           <button
             onClick={fetchFleetStaff}
             style={{
@@ -716,11 +749,11 @@ const OpsFleetAccountsPage = () => {
         </div>
       </div>
 
-      {/* ─── 5 KPI Summary Cards ────────────────────────────────────────────── */}
+      {/* ─── 4 KPI Summary Cards ────────────────────────────────────────────── */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
           gap: '0.85rem',
           marginBottom: '1.25rem'
         }}
@@ -828,32 +861,6 @@ const OpsFleetAccountsPage = () => {
             {totalCount - activeCount > 0 ? `${totalCount - activeCount} tài khoản tạm khóa/ngưng` : '100% tài khoản thông suốt'}
           </div>
         </div>
-
-        {/* Card 5: Sinh trắc Face ID */}
-        <div
-          style={{
-            background: '#ffffff',
-            padding: '0.9rem 1.1rem',
-            borderRadius: '12px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
-              ĐĂNG KÝ FACE ID
-            </span>
-            <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#fdf4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/><circle cx="12" cy="12" r="3"/></svg>
-            </div>
-          </div>
-          <div style={{ fontSize: '1.45rem', fontWeight: '800', color: '#7e22ce' }}>
-            {faceCount} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>({facePercent}%)</span>
-          </div>
-          <div style={{ fontSize: '0.72rem', color: facePercent >= 80 ? '#16a34a' : '#d97706', fontWeight: '600', marginTop: '2px' }}>
-            {facePercent >= 80 ? 'Đạt chuẩn xác thực sinh trắc học' : 'Cần bổ sung mẫu mặt'}
-          </div>
-        </div>
       </div>
 
       {/* ─── Filter & Search Box ────────────────────────────────────────────── */}
@@ -945,35 +952,13 @@ const OpsFleetAccountsPage = () => {
           </select>
         </div>
 
-        {/* Lọc theo Face ID */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '600' }}>Face ID:</span>
-          <select
-            value={filterFace}
-            onChange={(e) => setFilterFace(e.target.value)}
-            style={{
-              padding: '0.55rem 0.75rem',
-              borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              fontSize: '0.82rem',
-              background: '#ffffff',
-              cursor: 'pointer'
-            }}
-          >
-            <option value="all">Tất cả Face ID</option>
-            <option value="registered">Đã đăng ký Face ID</option>
-            <option value="unregistered">Chưa có Face ID</option>
-          </select>
-        </div>
-
         {/* Nút Xóa lọc nếu có giá trị */}
-        {(searchTerm || filterRole !== 'all' || filterStatus !== 'all' || filterFace !== 'all') && (
+        {(searchTerm || filterRole !== 'all' || filterStatus !== 'all') && (
           <button
             onClick={() => {
               setSearchTerm('');
               setFilterRole('all');
               setFilterStatus('all');
-              setFilterFace('all');
             }}
             style={{
               background: 'transparent',
@@ -1059,7 +1044,6 @@ const OpsFleetAccountsPage = () => {
                   <th style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>Nhân sự</th>
                   <th style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>SĐT (Đăng nhập)</th>
                   <th style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>Vai trò</th>
-                  <th style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>Sinh trắc Face ID</th>
                   <th style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>Trạng thái</th>
                   <th style={{ padding: '0.75rem 1rem', fontWeight: '700' }}>Ngày tạo</th>
                   <th style={{ padding: '0.75rem 1rem', fontWeight: '700', textAlign: 'right' }}>Hành động</th>
@@ -1154,136 +1138,6 @@ const OpsFleetAccountsPage = () => {
                         </div>
                       </td>
 
-                      {/* Sinh trắc Face ID */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
-                        {staff.faceRegistered ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {staff.facePhoto ? (
-                              <div
-                                onClick={() => setPreviewPhotoStaff(staff)}
-                                style={{
-                                  cursor: 'pointer',
-                                  flexShrink: 0,
-                                  position: 'relative'
-                                }}
-                                title="Bấm để xem ảnh mẫu Face ID phóng to"
-                              >
-                                <img
-                                  src={staff.facePhoto}
-                                  alt={staff.name}
-                                  style={{
-                                    width: '34px',
-                                    height: '34px',
-                                    borderRadius: '8px',
-                                    objectFit: 'cover',
-                                    border: '1.5px solid #10b981',
-                                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                                    display: 'block',
-                                    transition: 'transform 0.15s ease'
-                                  }}
-                                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.12)')}
-                                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                                />
-                              </div>
-                            ) : (
-                              <div
-                                onClick={() => setPreviewPhotoStaff(staff)}
-                                style={{
-                                  width: '34px',
-                                  height: '34px',
-                                  borderRadius: '8px',
-                                  background: '#f1f5f9',
-                                  border: '1.5px dashed #cbd5e1',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  color: '#64748b',
-                                  cursor: 'pointer',
-                                  flexShrink: 0
-                                }}
-                                title="Chưa có ảnh lưu trữ - Bấm xem chi tiết"
-                              >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                              </div>
-                            )}
-
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span
-                                  style={{
-                                    background: '#ecfdf5',
-                                    color: '#047857',
-                                    border: '1px solid #a7f3d0',
-                                    padding: '2px 7px',
-                                    borderRadius: '8px',
-                                    fontSize: '0.68rem',
-                                    fontWeight: '700'
-                                  }}
-                                >
-                                  Đã có Face ID
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-                                <button
-                                  onClick={() => setPreviewPhotoStaff(staff)}
-                                  style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: staff.facePhoto ? '#2563eb' : '#d97706',
-                                    fontSize: '0.68rem',
-                                    fontWeight: '700',
-                                    cursor: 'pointer',
-                                    padding: 0,
-                                    textDecoration: 'underline'
-                                  }}
-                                >
-                                  {staff.facePhoto ? 'Xem ảnh' : 'Chưa có ảnh'}
-                                </button>
-                                <span style={{ color: '#cbd5e1', fontSize: '0.65rem' }}>•</span>
-                                <button
-                                  onClick={() => openFaceModal(staff)}
-                                  style={{
-                                    background: 'transparent',
-                                    border: 'none',
-                                    color: '#64748b',
-                                    fontSize: '0.68rem',
-                                    fontWeight: '600',
-                                    cursor: 'pointer',
-                                    padding: 0
-                                  }}
-                                  title="Quét lại mẫu khuôn mặt mới"
-                                >
-                                  Cập nhật
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => openFaceModal(staff)}
-                            style={{
-                              background: '#eff6ff',
-                              color: '#2563eb',
-                              border: '1px solid #bfdbfe',
-                              padding: '3px 8px',
-                              borderRadius: '8px',
-                              fontSize: '0.7rem',
-                              fontWeight: '700',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                              <line x1="12" y1="5" x2="12" y2="19" />
-                              <line x1="5" y1="12" x2="19" y2="12" />
-                            </svg>
-                            Đăng ký Face ID
-                          </button>
-                        )}
-                      </td>
-
                       {/* Trạng thái */}
                       <td style={{ padding: '0.85rem 1rem' }}>
                         <span
@@ -1336,24 +1190,6 @@ const OpsFleetAccountsPage = () => {
                             title="Chỉnh sửa thông tin"
                           >
                             Sửa
-                          </button>
-
-                          {/* Nút Đổi mật khẩu */}
-                          <button
-                            onClick={() => handleOpenPasswordModal(staff)}
-                            style={{
-                              backgroundColor: '#ffffff',
-                              border: '1px solid #cbd5e1',
-                              color: '#475569',
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              fontSize: '0.72rem',
-                              fontWeight: '600',
-                              cursor: 'pointer'
-                            }}
-                            title="Cấp đổi mật khẩu mới"
-                          >
-                            Đổi MK
                           </button>
 
                           {/* Nút Khóa / Kích hoạt */}
@@ -1466,7 +1302,7 @@ const OpsFleetAccountsPage = () => {
             </div>
 
             {/* Modal Body Form */}
-            <form onSubmit={handleSaveAccount} style={{ padding: '1.5rem' }}>
+            <form onSubmit={handleSaveAccount} noValidate style={{ padding: '1.5rem' }}>
               {modalError && (
                 <div
                   style={{
@@ -1575,18 +1411,28 @@ const OpsFleetAccountsPage = () => {
                 <input
                   type="text"
                   value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
+                  onChange={(e) => {
+                    setFormName(e.target.value);
+                    if (formErrors.name) setFormErrors(prev => ({ ...prev, name: '' }));
+                  }}
                   placeholder="Ví dụ: Nguyễn Văn An"
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.75rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.name ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.name ? '#fff5f5' : '#ffffff',
                     fontSize: '0.85rem',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    transition: 'border-color 0.15s ease'
                   }}
-                  required
                 />
+                {formErrors.name && (
+                  <div style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: '600', marginTop: '4px' }}>
+                    {formErrors.name}
+                  </div>
+                )}
               </div>
 
               {/* Số điện thoại (Tên đăng nhập) */}
@@ -1600,68 +1446,134 @@ const OpsFleetAccountsPage = () => {
                 <input
                   type="tel"
                   value={formPhone}
-                  onChange={(e) => setFormPhone(e.target.value)}
+                  onChange={(e) => {
+                    setFormPhone(e.target.value);
+                    if (formErrors.phone) setFormErrors(prev => ({ ...prev, phone: '' }));
+                  }}
                   placeholder="Ví dụ: 0912345678"
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.75rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.phone ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.phone ? '#fff5f5' : '#ffffff',
                     fontSize: '0.85rem',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    transition: 'border-color 0.15s ease'
                   }}
-                  required
                 />
+                {formErrors.phone && (
+                  <div style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: '600', marginTop: '4px' }}>
+                    {formErrors.phone}
+                  </div>
+                )}
               </div>
 
               {/* Email */}
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ display: 'block', fontWeight: '700', fontSize: '0.8rem', color: '#1e293b', marginBottom: '4px' }}>
-                  Email liên hệ <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 'normal' }}>(Không bắt buộc)</span>
+                  Email liên hệ <span style={{ color: '#ef4444' }}>*</span>
                 </label>
                 <input
                   type="email"
                   value={formEmail}
-                  onChange={(e) => setFormEmail(e.target.value)}
+                  onChange={(e) => {
+                    setFormEmail(e.target.value);
+                    if (formErrors.email) setFormErrors(prev => ({ ...prev, email: '' }));
+                  }}
                   placeholder="Ví dụ: taixe.anbinh@gmail.com"
                   style={{
                     width: '100%',
                     padding: '0.55rem 0.75rem',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
+                    border: formErrors.email ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.email ? '#fff5f5' : '#ffffff',
                     fontSize: '0.85rem',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    transition: 'border-color 0.15s ease'
                   }}
                 />
+                {formErrors.email && (
+                  <div style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: '600', marginTop: '4px' }}>
+                    {formErrors.email}
+                  </div>
+                )}
               </div>
 
               {/* Mật khẩu */}
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontWeight: '700', fontSize: '0.8rem', color: '#1e293b', marginBottom: '4px' }}>
-                  {editingAccount ? 'Đổi mật khẩu mới' : 'Mật khẩu khởi tạo'}{' '}
-                  {!editingAccount ? (
-                    <span style={{ color: '#ef4444' }}>*</span>
-                  ) : (
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 'normal' }}>
-                      (Để trống nếu giữ nguyên mật khẩu cũ)
-                    </span>
-                  )}
+                <label style={{ display: 'block', fontWeight: '700', fontSize: '0.8rem', color: '#1e293b', marginBottom: '6px' }}>
+                  Mật khẩu tài khoản {!editingAccount && <span style={{ color: '#ef4444' }}>*</span>}
                 </label>
-                <input
-                  type="password"
-                  value={formPassword}
-                  onChange={(e) => setFormPassword(e.target.value)}
-                  placeholder={editingAccount ? 'Nhập mật khẩu mới nếu muốn thay đổi' : 'Tối thiểu 6 ký tự (ví dụ: 123456)'}
-                  style={{
-                    width: '100%',
-                    padding: '0.55rem 0.75rem',
+                {editingAccount ? (
+                  <div style={{
+                    padding: '12px 14px',
                     borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '0.85rem',
-                    boxSizing: 'border-box'
-                  }}
-                  required={!editingAccount}
-                />
+                    backgroundColor: '#f8fafc',
+                    border: '1px dashed #cbd5e1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: '600', color: '#334155' }}>
+                        Mật khẩu mặc định hệ thống
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                        Cấp lại mật khẩu chuẩn: <strong style={{ color: '#2563eb' }}>Anbinh@2026</strong>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetToDefaultPassword}
+                      disabled={resettingPw}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        backgroundColor: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontWeight: '700',
+                        fontSize: '0.78rem',
+                        cursor: resettingPw ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {resettingPw ? 'Đang đặt lại...' : 'Reset về Anbinh@2026'}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="password"
+                      value={formPassword}
+                      onChange={(e) => {
+                        setFormPassword(e.target.value);
+                        if (formErrors.password) setFormErrors(prev => ({ ...prev, password: '' }));
+                      }}
+                      placeholder="Mật khẩu khởi tạo (mặc định: Anbinh@2026)"
+                      style={{
+                        width: '100%',
+                        padding: '0.55rem 0.75rem',
+                        borderRadius: '8px',
+                        border: formErrors.password ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.password ? '#fff5f5' : '#ffffff',
+                        fontSize: '0.85rem',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        transition: 'border-color 0.15s ease'
+                      }}
+                    />
+                    {formErrors.password && (
+                      <div style={{ color: '#ef4444', fontSize: '0.72rem', fontWeight: '600', marginTop: '4px' }}>
+                        {formErrors.password}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               {/* Trạng thái tài khoản */}

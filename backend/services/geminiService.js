@@ -647,7 +647,18 @@ Nhiệm vụ:
 }
 `;
 
-      const response = await semanticModel.generateContent(prompt);
+      let response;
+      try {
+        response = await semanticModel.generateContent(prompt);
+      } catch (firstErr) {
+        if (firstErr.message && (firstErr.message.includes('503') || firstErr.message.includes('high demand') || firstErr.message.includes('RESOURCE_EXHAUSTED'))) {
+          // Chờ 800ms rồi thử lại 1 lần nếu gặp quá tải tức thời
+          await new Promise(r => setTimeout(r, 800));
+          response = await semanticModel.generateContent(prompt);
+        } else {
+          throw firstErr;
+        }
+      }
       const rawText = response.response.text();
       let parsed = null;
       try {

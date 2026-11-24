@@ -3,6 +3,8 @@ const router = express.Router();
 const {
   searchTrips,
   resolveSemanticLocation,
+  geocodeLocation,
+  getLocationSuggestions,
   getUpcomingTrips,
   getTripById,
   payosWebhook,
@@ -45,7 +47,7 @@ const {
   approveFleetExpenseReport,
   rejectFleetExpenseReport
 } = require('../controllers/fleetExpenseReportController');
-const { protect, restrictTo } = require('../middlewares/authMiddleware');
+const { protect, optionalProtect, restrictTo } = require('../middlewares/authMiddleware');
 
 // ==========================================
 // Intercepted booking routes from Gateway
@@ -65,6 +67,8 @@ router.get('/my-bookings/:userId', getMyBookings);
 router.get('/search', searchTrips);
 router.get('/resolve-location', resolveSemanticLocation);
 router.post('/resolve-location', resolveSemanticLocation);
+router.get('/geocode', geocodeLocation);
+router.get('/location-suggestions', getLocationSuggestions);
 router.get('/upcoming', getUpcomingTrips);
 
 // Get all routes (public view for search suggestions)
@@ -122,7 +126,7 @@ router.get('/ops/reports/punctuality', protect, restrictTo('ops_manager', 'gener
 router.patch('/ops/trips/:id/punctuality', protect, restrictTo('ops_manager', 'general_manager', 'admin'), updateTripPunctuality);
 
 // Driver Live GPS Tracking & Telemetry
-router.put('/:id/live-gps', protect, updateLiveGps);
+router.put('/:id/live-gps', optionalProtect, updateLiveGps);
 
 const {
   streamSeatLocks,

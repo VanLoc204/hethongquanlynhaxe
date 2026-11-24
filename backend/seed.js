@@ -429,60 +429,77 @@ async function seedDB() {
 
     console.log('Successfully seeded system users, drivers, assistants, and customers.');
 
-    // 2.1 Seed Routes
+    // 2.1 Seed Routes with full GPS stops & real-time offsets
     const r1 = await Route.create({
       startPoint: 'Hồ Chí Minh',
       endPoint: 'Đà Lạt',
-      distance: '310km',
-      duration: '7 giờ 50 phút',
+      distance: '310 km',
+      duration: '7 giờ 30 phút',
       stops: [
-        { name: 'VP Tân Bình', address: '266 Đồng Đen, P.10, Tân Bình, TP.HCM', type: 'start' },
-        { name: 'Bến Xe Miền Đông', address: '292 Đinh Bộ Lĩnh, Bình Thạnh, TP.HCM', type: 'waypoint' },
-        { name: 'Trạm dừng chân Lê Hoàng (Đồng Nai)', address: 'QL20, Thống Nhất, Đồng Nai', type: 'waypoint' },
-        { name: 'Bảo Lộc', address: 'Trạm dừng Chân Tâm Châu, Bảo Lộc, Lâm Đồng', type: 'waypoint' },
-        { name: 'Đức Trọng', address: 'QL20, Thị trấn Liên Nghĩa, Đức Trọng', type: 'waypoint' },
-        { name: 'VP Đà Lạt (Đích)', address: '01 Tô Hiến Thành, Phường 3, Đà Lạt', type: 'end' }
+        { name: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM', type: 'start', lat: 10.741055, lng: 106.618526, arrivalTimeOffset: 0 },
+        { name: 'Văn phòng Lê Hồng Phong', address: '233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM', type: 'pickup', lat: 10.760154, lng: 106.674945, arrivalTimeOffset: 25 },
+        { name: 'Văn phòng Hàng Xanh', address: '486H Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM', type: 'pickup', lat: 10.799752, lng: 106.711837, arrivalTimeOffset: 45 },
+        { name: 'Bến Xe Miền Đông Mới', address: '501 Hoàng Hữu Nam, Phường Long Bình, TP. Thủ Đức, TP.HCM', type: 'pickup', lat: 10.877864, lng: 106.825642, arrivalTimeOffset: 75 },
+        { name: 'Trạm Trung chuyển Dầu Giây', address: 'Ngã 3 Dầu Giây, Quốc Lộ 1A - QL20, Huyện Thống Nhất, Đồng Nai', type: 'pickup', lat: 10.932971, lng: 107.135248, arrivalTimeOffset: 130 },
+        { name: 'Văn phòng Định Quán', address: '108 Quốc Lộ 20, Thị trấn Định Quán, Huyện Định Quán, Đồng Nai', type: 'dropoff', lat: 11.206584, lng: 107.362142, arrivalTimeOffset: 190 },
+        { name: 'Bến Xe Bảo Lộc', address: '280 Trần Phú, Phường 1, TP. Bảo Lộc, Tỉnh Lâm Đồng', type: 'dropoff', lat: 11.545821, lng: 107.809312, arrivalTimeOffset: 280 },
+        { name: 'Văn phòng Di Linh', address: '721 Hùng Vương, Thị trấn Di Linh, Huyện Di Linh, Tỉnh Lâm Đồng', type: 'dropoff', lat: 11.662453, lng: 108.067425, arrivalTimeOffset: 340 },
+        { name: 'Văn phòng Đức Trọng', address: '735 Quốc Lộ 20, Thị trấn Liên Nghĩa, Huyện Đức Trọng, Tỉnh Lâm Đồng', type: 'dropoff', lat: 11.733512, lng: 108.373245, arrivalTimeOffset: 400 },
+        { name: 'Bến Xe Liên Tỉnh Đà Lạt', address: '01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Tỉnh Lâm Đồng', type: 'end', lat: 11.926123, lng: 108.444856, arrivalTimeOffset: 450 }
       ]
     });
 
     const r2 = await Route.create({
       startPoint: 'Hồ Chí Minh',
       endPoint: 'Cần Thơ',
-      distance: '172km',
-      duration: '3 giờ',
+      distance: '172 km',
+      duration: '3 giờ 15 phút',
       stops: [
-        { name: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, An Lạc, Bình Tân, TP.HCM', type: 'start' },
-        { name: 'Trạm dừng chân Minh Phát (Tỉnh Long An)', address: 'Cao tốc TP.HCM - Trung Lương', type: 'waypoint' },
-        { name: 'Trạm dừng chân Cai Lậy (Tiền Giang)', address: 'QL1A, Cai Lậy, Tiền Giang', type: 'waypoint' },
-        { name: 'Cầu Mỹ Thuận (Vĩnh Long)', address: 'Thành phố Vĩnh Long', type: 'waypoint' },
-        { name: 'Bến Xe Trung Tâm Cần Thơ (Đích)', address: 'Đường dẫn cầu Cần Thơ, Hưng Thạnh, Cái Răng, Cần Thơ', type: 'end' }
+        { name: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM', type: 'start', lat: 10.741055, lng: 106.618526, arrivalTimeOffset: 0 },
+        { name: 'Văn phòng Lê Hồng Phong', address: '233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM', type: 'pickup', lat: 10.760154, lng: 106.674945, arrivalTimeOffset: 25 },
+        { name: 'Trạm Tân An (Long An)', address: 'Tuyến tránh Quốc Lộ 1A, Phường 5, TP. Tân An, Tỉnh Long An', type: 'pickup', lat: 10.536214, lng: 106.413245, arrivalTimeOffset: 55 },
+        { name: 'Văn phòng Cai Lậy (Tiền Giang)', address: 'Quốc Lộ 1A, Khu phố 1, Phường 1, Thị xã Cai Lậy, Tỉnh Tiền Giang', type: 'dropoff', lat: 10.412453, lng: 106.024512, arrivalTimeOffset: 85 },
+        { name: 'Trạm Cái Bè (Tiền Giang)', address: 'Km 2011, Quốc Lộ 1A, Xã Hòa Khánh, Huyện Cái Bè, Tỉnh Tiền Giang', type: 'dropoff', lat: 10.339164, lng: 106.039058, arrivalTimeOffset: 110 },
+        { name: 'Văn phòng Vĩnh Long (Cầu Mỹ Thuận)', address: 'Phường Tân Hòa, TP. Vĩnh Long, Tỉnh Vĩnh Long', type: 'dropoff', lat: 10.264125, lng: 105.914523, arrivalTimeOffset: 140 },
+        { name: 'Trạm dừng chân Bình Minh', address: 'Quốc Lộ 1A, Thị xã Bình Minh, Tỉnh Vĩnh Long', type: 'dropoff', lat: 10.075412, lng: 105.845621, arrivalTimeOffset: 165 },
+        { name: 'Trạm Thu Phí Cầu Cần Thơ', address: 'Quốc Lộ 1A, Phường Hưng Phú, Quận Cái Răng, TP. Cần Thơ', type: 'dropoff', lat: 10.048215, lng: 105.812456, arrivalTimeOffset: 180 },
+        { name: 'Bến Xe Trung Tâm Cần Thơ', address: 'Đường dẫn cầu Cần Thơ, Phường Hưng Thạnh, Quận Cái Răng, TP. Cần Thơ', type: 'end', lat: 10.015243, lng: 105.764512, arrivalTimeOffset: 195 }
       ]
     });
 
     const r3 = await Route.create({
       startPoint: 'Đà Lạt',
       endPoint: 'Hồ Chí Minh',
-      distance: '305km',
-      duration: '7 giờ',
+      distance: '310 km',
+      duration: '7 giờ 30 phút',
       stops: [
-        { name: 'VP Đà Lạt', address: '01 Tô Hiến Thành, Phường 3, Đà Lạt', type: 'start' },
-        { name: 'Đức Trọng', address: 'QL20, Thị trấn Liên Nghĩa, Đức Trọng', type: 'waypoint' },
-        { name: 'Bảo Lộc', address: 'Trạm dừng Chân Tâm Châu, Bảo Lộc', type: 'waypoint' },
-        { name: 'Nút giao Dầu Giây', address: 'Cao tốc Dầu Giây - TP.HCM', type: 'waypoint' },
-        { name: 'VP Tân Bình (Đích)', address: '266 Đồng Đen, P.10, Tân Bình, TP.HCM', type: 'end' }
+        { name: 'Bến Xe Liên Tỉnh Đà Lạt', address: '01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Tỉnh Lâm Đồng', type: 'start', lat: 11.926123, lng: 108.444856, arrivalTimeOffset: 0 },
+        { name: 'Văn phòng Đức Trọng', address: '735 Quốc Lộ 20, Thị trấn Liên Nghĩa, Huyện Đức Trọng, Tỉnh Lâm Đồng', type: 'pickup', lat: 11.733512, lng: 108.373245, arrivalTimeOffset: 50 },
+        { name: 'Văn phòng Di Linh', address: '721 Hùng Vương, Thị trấn Di Linh, Huyện Di Linh, Tỉnh Lâm Đồng', type: 'pickup', lat: 11.662453, lng: 108.067425, arrivalTimeOffset: 110 },
+        { name: 'Bến Xe Bảo Lộc', address: '280 Trần Phú, Phường 1, TP. Bảo Lộc, Tỉnh Lâm Đồng', type: 'pickup', lat: 11.545821, lng: 107.809312, arrivalTimeOffset: 170 },
+        { name: 'Trạm Trung chuyển Dầu Giây', address: 'Ngã 3 Dầu Giây, Quốc Lộ 1A - QL20, Huyện Thống Nhất, Đồng Nai', type: 'dropoff', lat: 10.932971, lng: 107.135248, arrivalTimeOffset: 320 },
+        { name: 'Bến Xe Miền Đông Mới', address: '501 Hoàng Hữu Nam, Phường Long Bình, TP. Thủ Đức, TP.HCM', type: 'dropoff', lat: 10.877864, lng: 106.825642, arrivalTimeOffset: 375 },
+        { name: 'Văn phòng Hàng Xanh', address: '486H Điện Biên Phủ, Phường 21, Quận Bình Thạnh, TP.HCM', type: 'dropoff', lat: 10.799752, lng: 106.711837, arrivalTimeOffset: 405 },
+        { name: 'Văn phòng Lê Hồng Phong', address: '233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM', type: 'dropoff', lat: 10.760154, lng: 106.674945, arrivalTimeOffset: 425 },
+        { name: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM', type: 'end', lat: 10.741055, lng: 106.618526, arrivalTimeOffset: 450 }
       ]
     });
 
     const r4 = await Route.create({
       startPoint: 'Cần Thơ',
       endPoint: 'Hồ Chí Minh',
-      distance: '172km',
-      duration: '3 giờ',
+      distance: '172 km',
+      duration: '3 giờ 15 phút',
       stops: [
-        { name: 'Bến Xe Trung Tâm Cần Thơ', address: 'Đường dẫn cầu Cần Thơ, Cái Răng, Cần Thơ', type: 'start' },
-        { name: 'Cầu Mỹ Thuận', address: 'Vĩnh Long', type: 'waypoint' },
-        { name: 'Trạm dừng chân Minh Phát', address: 'Tiền Giang', type: 'waypoint' },
-        { name: 'Bến Xe Miền Tây (Đích)', address: '395 Kinh Dương Vương, Bình Tân, TP.HCM', type: 'end' }
+        { name: 'Bến Xe Trung Tâm Cần Thơ', address: 'Đường dẫn cầu Cần Thơ, Phường Hưng Thạnh, Quận Cái Răng, TP. Cần Thơ', type: 'start', lat: 10.015243, lng: 105.764512, arrivalTimeOffset: 0 },
+        { name: 'Trạm Thu Phí Cầu Cần Thơ', address: 'Quốc Lộ 1A, Phường Hưng Phú, Quận Cái Răng, TP. Cần Thơ', type: 'pickup', lat: 10.048215, lng: 105.812456, arrivalTimeOffset: 15 },
+        { name: 'Trạm dừng chân Bình Minh', address: 'Quốc Lộ 1A, Thị xã Bình Minh, Tỉnh Vĩnh Long', type: 'pickup', lat: 10.075412, lng: 105.845621, arrivalTimeOffset: 30 },
+        { name: 'Văn phòng Vĩnh Long (Cầu Mỹ Thuận)', address: 'Phường Tân Hòa, TP. Vĩnh Long, Tỉnh Vĩnh Long', type: 'pickup', lat: 10.264125, lng: 105.914523, arrivalTimeOffset: 55 },
+        { name: 'Trạm Cái Bè (Tiền Giang)', address: 'Km 2011, Quốc Lộ 1A, Xã Hòa Khánh, Huyện Cái Bè, Tỉnh Tiền Giang', type: 'pickup', lat: 10.339164, lng: 106.039058, arrivalTimeOffset: 85 },
+        { name: 'Văn phòng Cai Lậy (Tiền Giang)', address: 'Quốc Lộ 1A, Khu phố 1, Phường 1, Thị xã Cai Lậy, Tỉnh Tiền Giang', type: 'dropoff', lat: 10.412453, lng: 106.024512, arrivalTimeOffset: 110 },
+        { name: 'Trạm Tân An (Long An)', address: 'Tuyến tránh Quốc Lộ 1A, Phường 5, TP. Tân An, Tỉnh Long An', type: 'dropoff', lat: 10.536214, lng: 106.413245, arrivalTimeOffset: 140 },
+        { name: 'Văn phòng Lê Hồng Phong', address: '233 Lê Hồng Phong, Phường 4, Quận 5, TP.HCM', type: 'dropoff', lat: 10.760154, lng: 106.674945, arrivalTimeOffset: 170 },
+        { name: 'Bến Xe Miền Tây', address: '395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP.HCM', type: 'end', lat: 10.741055, lng: 106.618526, arrivalTimeOffset: 195 }
       ]
     });
 

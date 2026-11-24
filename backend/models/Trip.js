@@ -47,17 +47,19 @@ const tripSchema = new mongoose.Schema(
         type: String // List of seat codes booked, e.g. ["A1", "A3"]
       }
     ],
-    ratings: {
-      average: { type: Number, default: 5.0 },
-      count: { type: Number, default: 0 }
-    },
-    policy: {
-      cancellation: { type: String, default: 'Yêu cầu hủy vé trước 24 giờ so với giờ khởi hành để được hoàn 100% tiền vé. Hủy vé trong vòng 24 giờ không được hoàn tiền.' },
-      luggage: { type: String, default: 'Hành khách được mang theo tối đa 20kg hành lý ký gửi miễn phí. Không mang động vật nuôi hoặc các chất cấm lên xe.' }
+    driverId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
     },
     driver: {
       name: { type: String, default: '' },
       phone: { type: String, default: '' }
+    },
+    assistantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
     },
     assistant: {
       name: { type: String, default: '' },
@@ -67,26 +69,25 @@ const tripSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
-    replacementReason: {
-      type: String,
-      default: ''
-    },
     isReliever: {
       type: Boolean,
       default: false
-    },
-    originalDriver: {
-      name: { type: String, default: '' },
-      phone: { type: String, default: '' }
-    },
-    originalAssistant: {
-      name: { type: String, default: '' },
-      phone: { type: String, default: '' }
     },
     journeyStatus: {
       type: String,
       enum: ['scheduled', 'in_transit', 'completed', 'cancelled'],
       default: 'scheduled'
+    },
+    liveGps: {
+      lat: { type: Number },
+      lng: { type: Number },
+      speed: { type: Number, default: 0 },
+      heading: { type: Number, default: 0 },
+      status: { type: String, default: 'moving' },
+      isOffRoute: { type: Boolean, default: false },
+      offRouteDistance: { type: Number, default: 0 },
+      rerouteCoords: { type: Array, default: [] },
+      lastUpdated: { type: Date }
     },
     currentStopIndex: {
       type: Number,
@@ -99,25 +100,23 @@ const tripSchema = new mongoose.Schema(
         address: { type: String },
         desc: { type: String }
       }
-    ],
-    liveGps: {
-      lat: { type: Number },
-      lng: { type: Number },
-      speed: { type: Number, default: 0 },
-      heading: { type: Number, default: 0 },
-      status: { type: String, default: 'moving' }, // 'moving', 'stopped', 'arrived'
-      isOffRoute: { type: Boolean, default: false },
-      offRouteDistance: { type: Number, default: 0 },
-      rerouteCoords: { type: Array, default: [] },
-      lastUpdated: { type: Date }
-    }
+    ]
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
   }
 );
 
+// Virtual for dynamic ratings calculation
+tripSchema.virtual('ratings').get(function () {
+  return { average: 5.0, count: 0 };
+});
+
 tripSchema.index({ routeId: 1 });
+tripSchema.index({ driverId: 1 });
+tripSchema.index({ assistantId: 1 });
 tripSchema.index({ departureTime: 1 });
 tripSchema.index({ 'pickupPoints.location': 1 });
 tripSchema.index({ 'dropoffPoints.location': 1 });

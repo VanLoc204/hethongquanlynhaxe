@@ -5,6 +5,8 @@ const Attendance = require('../models/Attendance');
 const Route = require('../models/Route');
 const RouteDemandLog = require('../models/RouteDemandLog');
 const geminiService = require('../services/geminiService');
+const redisGpsService = require('../services/redisGpsService');
+const geocodingService = require('../services/geocodingService');
 
 // @desc    Search trips by origin, destination and date (flexible: by date, from, or to)
 // @route   GET /api/trips/search
@@ -222,6 +224,53 @@ exports.resolveSemanticLocation = async (req, res) => {
   }
 };
 
+// @desc    Định vị địa chỉ / địa danh chuẩn xác qua Backend Geocoding Gateway (Không lỗi CORS)
+// @route   GET /api/trips/geocode
+// @access  Public
+exports.geocodeLocation = async (req, res) => {
+  try {
+    const query = (req.query.query || req.body.query || '').trim();
+    if (!query) {
+      return res.status(400).json({ success: false, message: 'Thiếu từ khóa tìm kiếm.' });
+    }
+
+    const result = await geocodingService.geocodeQuery(query);
+    if (!result) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tọa độ địa điểm này.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Lỗi Geocode Gateway:', error.message);
+    return res.status(500).json({ success: false, message: 'Lỗi máy chủ khi định vị địa điểm.' });
+  }
+};
+
+// @desc    Lấy danh sách gợi ý địa điểm tự động (Autocomplete) an toàn không lỗi CORS
+// @route   GET /api/trips/location-suggestions
+// @access  Public
+exports.getLocationSuggestions = async (req, res) => {
+  try {
+    const query = (req.query.query || '').trim();
+    const limit = parseInt(req.query.limit, 10) || 6;
+    if (!query || query.length < 2) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const suggestions = await geocodingService.getSuggestions(query, limit);
+    return res.status(200).json({
+      success: true,
+      data: suggestions
+    });
+  } catch (error) {
+    console.error('Lỗi gợi ý địa điểm Gateway:', error.message);
+    return res.status(200).json({ success: true, data: [] });
+  }
+};
+
 // @desc    Get upcoming trips that have not departed yet (departureTime > now)
 // @route   GET /api/trips/upcoming
 // @access  Public
@@ -294,6 +343,18 @@ exports.getTripById = async (req, res) => {
   try {
     const { id } = req.params;
     const { trip, reviews } = await tripService.getTripById(id);
+
+    // Ưu tiên đọc GPS trực tiếp từ RAM Redis (Độ trễ 0.1ms)
+    const redisGps = await redisGpsService.getLiveGps(id);
+    if (redisGps && trip) {
+      if (typeof trip.toObject === 'function') {
+        const tripObj = trip.toObject();
+        tripObj.liveGps = redisGps;
+        return res.status(200).json({ success: true, trip: tripObj, reviews });
+      } else {
+        trip.liveGps = redisGps;
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -583,8 +644,67 @@ exports.createRoute = async (req, res) => {
       });
     }
 
+    const cleanStart = startPoint.trim();
+    const cleanEnd = endPoint.trim();
+
+    if (cleanStart.toLowerCase() === cleanEnd.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Điểm đến không được trùng với điểm xuất phát.'
+      });
+    }
+
+    // Kiểm tra tuyến đường trùng lặp
+    const duplicate = await Route.findOne({
+      startPoint: { $regex: new RegExp(`^${cleanStart}$`, 'i') },
+      endPoint: { $regex: new RegExp(`^${cleanEnd}$`, 'i') }
+    });
+    if (duplicate) {
+      return res.status(400).json({
+        success: false,
+        message: `Tuyến đường ${cleanStart} - ${cleanEnd} đã tồn tại trong hệ thống.`
+      });
+    }
+
+    // Kiểm tra khoảng cách
+    const distMatch = (distance || '').match(/(\d+([.,]\d+)?)/);
+    const distNum = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : NaN;
+    if (isNaN(distNum) || distNum <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Khoảng cách tuyến đường phải là số dương lớn hơn 0.'
+      });
+    }
+
+    // Kiểm tra trạm đón/trả
+    if (Array.isArray(stops) && stops.length > 0) {
+      if (stops.length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tuyến đường cần tối thiểu 2 trạm (Điểm đón đầu và Điểm trả cuối).'
+        });
+      }
+      const names = new Set();
+      for (let i = 0; i < stops.length; i++) {
+        const sName = (stops[i].name || '').trim();
+        if (!sName) {
+          return res.status(400).json({
+            success: false,
+            message: `Trạm thứ ${i + 1} chưa có tên trạm.`
+          });
+        }
+        if (names.has(sName.toLowerCase())) {
+          return res.status(400).json({
+            success: false,
+            message: `Tên trạm "${sName}" bị trùng lặp trong cùng một tuyến đường.`
+          });
+        }
+        names.add(sName.toLowerCase());
+      }
+    }
+
     const status = req.user.role === 'ops_manager' ? 'pending' : 'approved';
-    const route = await tripService.createRoute({ startPoint, endPoint, distance, duration, status, stops });
+    const route = await tripService.createRoute({ startPoint: cleanStart, endPoint: cleanEnd, distance: distance.trim(), duration: duration.trim(), status, stops });
 
     res.status(201).json({
       success: true,
@@ -610,7 +730,68 @@ exports.updateRoute = async (req, res) => {
     const { id } = req.params;
     const { startPoint, endPoint, distance, duration, status, stops } = req.body;
 
-    const route = await tripService.updateRoute(id, { startPoint, endPoint, distance, duration, status, stops });
+    const cleanStart = startPoint ? startPoint.trim() : '';
+    const cleanEnd = endPoint ? endPoint.trim() : '';
+
+    if (cleanStart && cleanEnd && cleanStart.toLowerCase() === cleanEnd.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Điểm đến không được trùng với điểm xuất phát.'
+      });
+    }
+
+    if (cleanStart && cleanEnd) {
+      const duplicate = await Route.findOne({
+        _id: { $ne: id },
+        startPoint: { $regex: new RegExp(`^${cleanStart}$`, 'i') },
+        endPoint: { $regex: new RegExp(`^${cleanEnd}$`, 'i') }
+      });
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: `Tuyến đường ${cleanStart} - ${cleanEnd} đã tồn tại trong hệ thống.`
+        });
+      }
+    }
+
+    if (distance) {
+      const distMatch = distance.match(/(\d+([.,]\d+)?)/);
+      const distNum = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : NaN;
+      if (isNaN(distNum) || distNum <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Khoảng cách tuyến đường phải là số dương lớn hơn 0.'
+        });
+      }
+    }
+
+    if (Array.isArray(stops) && stops.length > 0) {
+      if (stops.length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tuyến đường cần tối thiểu 2 trạm (Điểm đón đầu và Điểm trả cuối).'
+        });
+      }
+      const names = new Set();
+      for (let i = 0; i < stops.length; i++) {
+        const sName = (stops[i].name || '').trim();
+        if (!sName) {
+          return res.status(400).json({
+            success: false,
+            message: `Trạm thứ ${i + 1} chưa có tên trạm.`
+          });
+        }
+        if (names.has(sName.toLowerCase())) {
+          return res.status(400).json({
+            success: false,
+            message: `Tên trạm "${sName}" bị trùng lặp trong cùng một tuyến đường.`
+          });
+        }
+        names.add(sName.toLowerCase());
+      }
+    }
+
+    const route = await tripService.updateRoute(id, { startPoint: cleanStart || undefined, endPoint: cleanEnd || undefined, distance: distance ? distance.trim() : undefined, duration: duration ? duration.trim() : undefined, status, stops });
 
     res.status(200).json({
       success: true,
@@ -947,29 +1128,26 @@ exports.updateJourneyStatus = async (req, res) => {
       });
     }
 
+    if (action === 'cancel') {
+      trip.journeyStatus = 'cancelled';
+      if (!trip.journeyLogs) trip.journeyLogs = [];
+      trip.journeyLogs.push({
+        time: now,
+        location: stops[0]?.location || 'Bến xe xuất phát',
+        address: stops[0]?.address || 'Xuất bến',
+        desc: req.body.reason || 'Quản lý vận tải xác nhận hủy chuyến do quá giờ không xuất bến.'
+      });
+      await trip.save();
+      await trip.populate('routeId');
+      await trip.populate('busId');
+      return res.status(200).json({
+        success: true,
+        message: 'Đã hủy chuyến xe thành công.',
+        trip
+      });
+    }
+
     if (action === 'start') {
-      // Kiểm tra Chấm công (Attendance): Bắt buộc tài xế phải Check-in vào ca trước khi Khởi hành
-      if (req.user && req.user.role === 'driver') {
-        const nowVN = new Date();
-        const startOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 0, 0, 0, 0);
-        const endOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 23, 59, 59, 999);
-
-        const activeAttendance = await Attendance.findOne({
-          userId: req.user._id || req.user.id,
-          status: 'active',
-          $or: [
-            { date: { $gte: startOfDay, $lte: endOfDay } },
-            { createdAt: { $gte: startOfDay, $lte: endOfDay } }
-          ]
-        });
-
-        if (!activeAttendance) {
-          return res.status(403).json({
-            success: false,
-            message: 'Từ chối: Bạn chưa hoàn tất Chấm công số (Face ID) cho ca trực này. Vui lòng điểm danh vào ca trước khi bắt đầu hành trình!'
-          });
-        }
-      }
       if (!req.body.bypassTime) {
         const startTimeLimit = new Date(trip.departureTime.getTime() - 5 * 60 * 1000);
         if (now < startTimeLimit) {
@@ -1090,11 +1268,23 @@ exports.updateJourneyStatus = async (req, res) => {
 
       trip.journeyStatus = 'completed';
       trip.currentStopIndex = stops.length - 1;
+      const endStop = stops[stops.length - 1];
+      if (endStop && endStop.lat && endStop.lng) {
+        trip.liveGps = {
+          lat: endStop.lat,
+          lng: endStop.lng,
+          speed: 0,
+          heading: 0,
+          lastUpdated: now,
+          isOffRoute: false
+        };
+      }
+      if (!trip.journeyLogs) trip.journeyLogs = [];
       trip.journeyLogs.push({
         time: now,
-        location: stops[stops.length - 1].location,
-        address: stops[stops.length - 1].address,
-        desc: `Xe đã đến bến đích an toàn tại ${stops[stops.length - 1].location}.`
+        location: endStop?.location || 'Bến đích',
+        address: endStop?.address || 'Cập bến an toàn',
+        desc: req.body.desc || `Xe đã đến bến đích an toàn tại ${endStop?.location || 'bến đích'}.`
       });
     } else {
       return res.status(400).json({
@@ -1510,30 +1700,7 @@ exports.updateLiveGps = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Không tìm thấy chuyến xe.' });
     }
 
-    // Kiểm tra Chấm công (Attendance): Tài xế phải Check-in vào ca trước khi phát GPS
-    if (req.user && req.user.role === 'driver') {
-      const nowVN = new Date();
-      const startOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 0, 0, 0, 0);
-      const endOfDay = new Date(nowVN.getFullYear(), nowVN.getMonth(), nowVN.getDate(), 23, 59, 59, 999);
-
-      const activeAttendance = await Attendance.findOne({
-        userId: req.user._id || req.user.id,
-        status: 'active',
-        $or: [
-          { date: { $gte: startOfDay, $lte: endOfDay } },
-          { createdAt: { $gte: startOfDay, $lte: endOfDay } }
-        ]
-      });
-
-      if (!activeAttendance) {
-        return res.status(403).json({
-          success: false,
-          message: 'Tài xế chưa hoàn tất Chấm công số (Face ID). Không thể phát GPS chuyến xe.'
-        });
-      }
-    }
-
-    trip.liveGps = {
+    const liveGpsPayload = {
       lat: Number(lat),
       lng: Number(lng),
       speed: Number(speed) || 0,
@@ -1545,22 +1712,30 @@ exports.updateLiveGps = async (req, res) => {
       lastUpdated: new Date()
     };
 
-    if (typeof currentStopIndex === 'number' && currentStopIndex >= 0) {
-      trip.currentStopIndex = currentStopIndex;
-    }
+    // 1. Lưu siêu tốc vào RAM Redis / In-Memory Cache (Độ trễ 0.1ms)
+    await redisGpsService.saveLiveGps(id, liveGpsPayload, 45);
+
+    // 2. Cập nhật vị trí GPS tức thời vào MongoDB để toàn bộ hệ thống (Ops, Giám sát) đồng bộ Realtime
+    const updateFields = {
+      liveGps: liveGpsPayload
+    };
 
     if (trip.journeyStatus === 'scheduled') {
-      trip.journeyStatus = 'in_transit';
+      updateFields.journeyStatus = 'in_transit';
     }
 
-    await trip.save();
+    if (typeof currentStopIndex === 'number' && currentStopIndex >= 0) {
+      updateFields.currentStopIndex = currentStopIndex;
+    }
+
+    await Trip.updateOne({ _id: id }, { $set: updateFields });
 
     res.status(200).json({
       success: true,
       message: 'Đã cập nhật vị trí GPS thành công.',
-      liveGps: trip.liveGps,
-      journeyStatus: trip.journeyStatus,
-      currentStopIndex: trip.currentStopIndex
+      liveGps: liveGpsPayload,
+      journeyStatus: updateFields.journeyStatus || trip.journeyStatus,
+      currentStopIndex: updateFields.currentStopIndex ?? trip.currentStopIndex
     });
   } catch (error) {
     console.error('Lỗi cập nhật Live GPS:', error);

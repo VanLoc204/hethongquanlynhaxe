@@ -74,7 +74,15 @@ export async function startWebcam(videoElement) {
     videoElement.srcObject = stream;
     await new Promise((resolve) => {
       videoElement.onloadedmetadata = () => {
-        videoElement.play();
+        const playPromise = videoElement.play();
+        if (playPromise !== undefined && typeof playPromise.catch === 'function') {
+          playPromise.catch((err) => {
+            // Nuốt lỗi AbortError an toàn khi modal camera đóng hoặc unmount trước khi video kịp phát
+            if (err.name !== 'AbortError') {
+              console.warn('[FaceAPI] Video play warning:', err.message);
+            }
+          });
+        }
         resolve(videoElement);
       };
     });
