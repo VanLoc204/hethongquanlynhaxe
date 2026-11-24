@@ -25,10 +25,9 @@ const OpsStaffPage = () => {
 
   // Modal state
   const [editingTrip, setEditingTrip] = useState(null);
-  const [selectedDriver, setSelectedDriver] = useState('');
-  const [selectedAssistant, setSelectedAssistant] = useState('');
+  const [selectedDriverPhone, setSelectedDriverPhone] = useState('');
+  const [selectedAssistantPhone, setSelectedAssistantPhone] = useState('');
   const [applyScope, setApplyScope] = useState('single');
-  const [algoRunning, setAlgoRunning] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -254,31 +253,34 @@ const OpsStaffPage = () => {
     }
 
     // Trường hợp B: Điều động cố định (đồng bộ tất cả các tuần)
-    if (fixedTeam && fixedTeam.driver?.phone) {
-      const matchedDriver = availableDrivers.find(d => d.phone === fixedTeam.driver.phone) || fixedTeam.driver;
-      const matchedAssistant = fixedTeam.assistant?.phone
-        ? (availableAssistants.find(a => a.phone === fixedTeam.assistant.phone) || fixedTeam.assistant)
-        : null;
+    const fixedDriver = fixedTeam?.driver?.phone
+      ? (availableDrivers.find(d => d.phone === fixedTeam.driver.phone) || fixedTeam.driver)
+      : null;
+    const otherFreeDrivers = availableDrivers.filter(
+      d => (!assignedDriverPhones.has(d.phone) || (fixedDriver && d.phone === fixedDriver.phone))
+    );
+    // Danh sách tài xế: ưu tiên tài xế cố định lên đầu, sau đó là các tài xế tự do
+    const driverList = fixedDriver 
+      ? [fixedDriver, ...otherFreeDrivers.filter(d => d.phone !== fixedDriver.phone)]
+      : otherFreeDrivers;
 
-      return {
-        filteredDrivers: matchedDriver ? [matchedDriver] : [],
-        filteredAssistants: matchedAssistant ? [matchedAssistant] : [],
-        isFixedTeamBus: true,
-        fixedTeamInfo: fixedTeam,
-        isRelieverMode: false
-      };
-    } else {
-      const unassignedDrivers = availableDrivers.filter(d => !assignedDriverPhones.has(d.phone));
-      const unassignedAssistants = availableAssistants.filter(a => !assignedAssistantPhones.has(a.phone));
+    const fixedAssistant = fixedTeam?.assistant?.phone
+      ? (availableAssistants.find(a => a.phone === fixedTeam.assistant.phone) || fixedTeam.assistant)
+      : null;
+    const otherFreeAssistants = availableAssistants.filter(
+      a => (!assignedAssistantPhones.has(a.phone) || (fixedAssistant && a.phone === fixedAssistant.phone))
+    );
+    const assistantList = fixedAssistant
+      ? [fixedAssistant, ...otherFreeAssistants.filter(a => a.phone !== fixedAssistant.phone)]
+      : otherFreeAssistants;
 
-      return {
-        filteredDrivers: unassignedDrivers,
-        filteredAssistants: unassignedAssistants,
-        isFixedTeamBus: false,
-        fixedTeamInfo: null,
-        isRelieverMode: false
-      };
-    }
+    return {
+      filteredDrivers: driverList.length > 0 ? driverList : availableDrivers,
+      filteredAssistants: assistantList.length > 0 ? assistantList : availableAssistants,
+      isFixedTeamBus: Boolean(fixedTeam && fixedTeam.driver?.phone),
+      fixedTeamInfo: fixedTeam,
+      isRelieverMode: false
+    };
   }, [editingTrip, availableDrivers, availableAssistants, busStaffMap, assignedDriverPhones, assignedAssistantPhones, applyScope, trips]);
 
   const handleOpenEdit = (trip) => {
@@ -293,24 +295,125 @@ const OpsStaffPage = () => {
     const bPlate = trip.busId?.plateNumber;
     const fixedTeam = (bId && busStaffMap[bId]) || (bPlate && busStaffMap[bPlate]);
 
-    let targetDriver = trip.driver?.phone
-      ? availableDrivers.find(d => d.phone === trip.driver.phone || d.name === trip.driver.name)
-      : (fixedTeam ? fixedTeam.driver : null);
+    const initialDriverPhone = trip.driver?.phone || (fixedTeam?.driver?.phone || '');
+    const initialAssistantPhone = trip.assistant?.phone || (fixedTeam?.assistant?.phone || '');
 
-    let targetAssistant = trip.assistant?.phone
-      ? availableAssistants.find(a => a.phone === trip.assistant.phone || a.name === trip.assistant.name)
-      : (fixedTeam ? fixedTeam.assistant : null);
-
-    setSelectedDriver(targetDriver ? JSON.stringify(targetDriver) : '');
-    setSelectedAssistant(targetAssistant ? JSON.stringify(targetAssistant) : '');
+    setSelectedDriverPhone(initialDriverPhone);
+    setSelectedAssistantPhone(initialAssistantPhone);
   };
 
   const handleSaveAssignment = async (e) => {
     e.preventDefault();
     if (!editingTrip) return;
 
-    const driverObj = selectedDriver ? JSON.parse(selectedDriver) : { name: '', phone: '' };
-    const assistantObj = selectedAssistant ? JSON.parse(selectedAssistant) : { name: '', phone: '' };
+    // 1. Bắt lỗi: Bắt buộc phải chọn Tài xế chính
+    if (!selectedDriverPhone) {
+      showToast('Vui lòng chọn Tài xế chính trước khi xác nhận điều động.', 'error');
+      return;
+    }
+
+    const bId = editingTrip.busId?._id ? String(editingTrip.busId._id) : (editingTrip.busId ? String(editingTrip.busId) : null);
+    const bPlate = editingTrip.busId?.plateNumber;
+    const fixedTeam = (bId && busStaffMap[bId]) || (bPlate && busStaffMap[bPlate]);
+
+    const foundDriver = availableDrivers.find(d => d.phone === selectedDriverPhone) 
+      || (fixedTeam?.driver?.phone === selectedDriverPhone ? fixedTeam.driver : null)
+      || { name: 'Tài xế', phone: selectedDriverPhone };
+
+    const driverObj = { name: foundDriver.name, phone: foundDriver.phone };
+
+    // 2. Lấy thông tin Phụ xe (nếu có)
+    let assistantObj = { name: '', phone: '' };
+    if (selectedAssistantPhone) {
+      const foundAssistant = availableAssistants.find(a => a.phone === selectedAssistantPhone)
+        || (fixedTeam?.assistant?.phone === selectedAssistantPhone ? fixedTeam.assistant : null)
+        || { name: 'Phụ xe', phone: selectedAssistantPhone };
+      assistantObj = { name: foundAssistant.name, phone: foundAssistant.phone };
+    }
+
+    // 3. Bắt lỗi: Tài xế chính và Phụ xe không thể là cùng một người
+    if (assistantObj.phone && assistantObj.phone === driverObj.phone) {
+      showToast(`Tài xế chính và Phụ xe không thể là cùng một người (${driverObj.name}). Vui lòng chọn người phụ xe khác.`, 'error');
+      return;
+    }
+
+    // 4. Bắt lỗi: Chuyến xe đã khởi hành trong quá khứ
+    const now = new Date();
+    const tripStart = new Date(editingTrip.departureTime);
+    const tripEnd = new Date(editingTrip.arrivalTime);
+
+    if (tripEnd < now) {
+      showToast('Chuyến xe này đã hoàn thành lộ trình trong quá khứ. Không thể điều động nhân sự.', 'error');
+      return;
+    }
+
+    // 5. Bắt lỗi: Kiểm tra xung đột thời gian thực trên giao diện
+    if (applyScope === 'single') {
+      // Chế độ chạy thay: Kiểm tra xem tài xế/phụ xe có bị trùng lịch với chuyến nào khác không
+      const conflictDriverTrip = trips.find(t => {
+        if (String(t._id) === String(editingTrip._id)) return false;
+        if (t.driver?.phone !== driverObj.phone) return false;
+        const tStart = new Date(t.departureTime);
+        const tEnd = new Date(t.arrivalTime);
+        return tripStart < tEnd && tripEnd > tStart;
+      });
+
+      if (conflictDriverTrip) {
+        const routeName = conflictDriverTrip.routeId 
+          ? `${conflictDriverTrip.routeId.startPoint} → ${conflictDriverTrip.routeId.endPoint}` 
+          : 'chuyến khác';
+        const conflictTime = new Date(conflictDriverTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        showToast(`Tài xế ${driverObj.name} đang bận điều khiển tuyến ${routeName} (khởi hành ${conflictTime}) trong khung giờ này.`, 'error');
+        return;
+      }
+
+      if (assistantObj.phone) {
+        const conflictAssistantTrip = trips.find(t => {
+          if (String(t._id) === String(editingTrip._id)) return false;
+          if (t.assistant?.phone !== assistantObj.phone) return false;
+          const tStart = new Date(t.departureTime);
+          const tEnd = new Date(t.arrivalTime);
+          return tripStart < tEnd && tripEnd > tStart;
+        });
+
+        if (conflictAssistantTrip) {
+          const routeName = conflictAssistantTrip.routeId 
+            ? `${conflictAssistantTrip.routeId.startPoint} → ${conflictAssistantTrip.routeId.endPoint}` 
+            : 'chuyến khác';
+          showToast(`Phụ xe ${assistantObj.name} đang bận theo tuyến ${routeName} trong khung giờ này.`, 'error');
+          return;
+        }
+      }
+    } else {
+      // Chế độ cố định: Kiểm tra tài xế hoặc phụ xe đã gắn với xe chuyên trách khác chưa
+      const curBusId = editingTrip.busId?._id ? String(editingTrip.busId._id) : (editingTrip.busId ? String(editingTrip.busId) : null);
+      
+      const conflictDriverBus = trips.find(t => {
+        if (String(t._id) === String(editingTrip._id)) return false;
+        const otherBusId = t.busId?._id ? String(t.busId._id) : (t.busId ? String(t.busId) : null);
+        return otherBusId && curBusId && otherBusId !== curBusId && t.driver?.phone === driverObj.phone;
+      });
+
+      if (conflictDriverBus) {
+        const otherPlate = conflictDriverBus.busId?.plateNumber || 'khác';
+        showToast(`Tài xế ${driverObj.name} đã được phân công cố định cho xe ${otherPlate}. Mỗi tài xế chỉ được phụ trách một xe chuyên trách.`, 'error');
+        return;
+      }
+
+      if (assistantObj.phone) {
+        const conflictAssistantBus = trips.find(t => {
+          if (String(t._id) === String(editingTrip._id)) return false;
+          const otherBusId = t.busId?._id ? String(t.busId._id) : (t.busId ? String(t.busId) : null);
+          return otherBusId && curBusId && otherBusId !== curBusId && t.assistant?.phone === assistantObj.phone;
+        });
+
+        if (conflictAssistantBus) {
+          const otherPlate = conflictAssistantBus.busId?.plateNumber || 'khác';
+          showToast(`Phụ xe ${assistantObj.name} đã được phân công cố định cho xe ${otherPlate}. Mỗi phụ xe chỉ được phụ trách một xe chuyên trách.`, 'error');
+          return;
+        }
+      }
+    }
 
     try {
       const busIdVal = editingTrip.busId?._id || editingTrip.busId;
@@ -342,102 +445,6 @@ const OpsStaffPage = () => {
       }
     } catch {
       showToast('Lỗi kết nối máy chủ.', 'error');
-    }
-  };
-
-  const runGreedyAlgorithm = async () => {
-    if (availableDrivers.length === 0) {
-      showToast('Không có tài xế nào khả dụng trong hệ thống để phân công.', 'error');
-      return;
-    }
-
-    setAlgoRunning(true);
-    showToast('Bắt đầu tính toán phân công tự động...', 'info');
-
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    const sortedTrips = [...trips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
-    const busyDrivers = {};
-    const busyAssistants = {};
-    const updatedAssignments = [];
-
-    for (const trip of sortedTrips) {
-      const tripStart = new Date(trip.departureTime);
-      const tripEnd = new Date(trip.arrivalTime);
-
-      const bId = trip.busId?._id ? String(trip.busId._id) : (trip.busId ? String(trip.busId) : null);
-      const bPlate = trip.busId?.plateNumber;
-      const fixedTeam = (bId && busStaffMap[bId]) || (bPlate && busStaffMap[bPlate]);
-
-      let chosenDriver = null;
-      let chosenAssistant = null;
-
-      if (fixedTeam && fixedTeam.driver?.phone) {
-        // Xe đã có tổ lái cố định -> luôn gán đúng tổ lái đó
-        chosenDriver = availableDrivers.find(d => d.phone === fixedTeam.driver.phone) || fixedTeam.driver;
-        chosenAssistant = fixedTeam.assistant?.phone
-          ? (availableAssistants.find(a => a.phone === fixedTeam.assistant.phone) || fixedTeam.assistant)
-          : null;
-      } else {
-        // Xe chưa có tổ lái cố định -> chỉ lấy từ các tài xế / phụ xe tự do (chưa gán xe cố định)
-        const freeDrivers = availableDrivers.filter(d => !assignedDriverPhones.has(d.phone));
-        for (const driver of freeDrivers) {
-          const intervals = busyDrivers[driver.phone] || [];
-          const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
-          if (!isOverlap) {
-            chosenDriver = driver;
-            if (!busyDrivers[driver.phone]) busyDrivers[driver.phone] = [];
-            busyDrivers[driver.phone].push({ start: tripStart, end: tripEnd });
-            break;
-          }
-        }
-
-        const freeAssistants = availableAssistants.filter(a => !assignedAssistantPhones.has(a.phone));
-        for (const assistant of freeAssistants) {
-          const intervals = busyAssistants[assistant.phone] || [];
-          const isOverlap = intervals.some(interval => (tripStart < interval.end && tripEnd > interval.start));
-          if (!isOverlap) {
-            chosenAssistant = assistant;
-            if (!busyAssistants[assistant.phone]) busyAssistants[assistant.phone] = [];
-            busyAssistants[assistant.phone].push({ start: tripStart, end: tripEnd });
-            break;
-          }
-        }
-      }
-
-      if (chosenDriver || chosenAssistant) {
-        updatedAssignments.push({
-          tripId: trip._id,
-          driver: chosenDriver || { name: '', phone: '' },
-          assistant: chosenAssistant || { name: '', phone: '' }
-        });
-      }
-    }
-
-    try {
-      let successCount = 0;
-      for (const update of updatedAssignments) {
-        const res = await fetch(`${API_BASE}/trips/ops/trips/${update.tripId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            driver: update.driver,
-            assistant: update.assistant
-          })
-        });
-        const data = await res.json();
-        if (data.success) successCount++;
-      }
-
-      showToast(`Đã tự động phân công thành công ${successCount}/${sortedTrips.length} chuyến xe!`);
-      fetchTrips();
-    } catch {
-      showToast('Lỗi lưu kết quả phân công vào cơ sở dữ liệu.', 'error');
-    } finally {
-      setAlgoRunning(false);
     }
   };
 
@@ -1060,7 +1067,7 @@ const OpsStaffPage = () => {
               Xe khách: <strong>{editingTrip.busId?.plateNumber || 'N/A'}</strong>
             </p>
 
-            <form onSubmit={handleSaveAssignment}>
+            <form onSubmit={handleSaveAssignment} noValidate>
               {/* Banner trạng thái phân công */}
               {editingTrip.needsReplacement ? (
                 <div style={{
@@ -1133,21 +1140,21 @@ const OpsStaffPage = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: '16px' }}>
-                <label className="form-label">Chọn tài xế chính</label>
+                <label className="form-label">Chọn tài xế chính *</label>
                 {filteredDrivers.length === 0 ? (
-                  <p style={{ color: '#ef4444', fontSize: '0.85rem', fontStyle: 'italic' }}>
+                  <p style={{ color: '#ef4444', fontSize: '0.85rem', fontStyle: 'italic', margin: '4px 0 0 0' }}>
                     Không có tài xế dự bị khả dụng trong khung giờ này.
                   </p>
                 ) : (
                   <select 
                     className="form-control" 
-                    value={selectedDriver}
-                    onChange={(e) => setSelectedDriver(e.target.value)}
+                    value={selectedDriverPhone}
+                    onChange={(e) => setSelectedDriverPhone(e.target.value)}
                   >
-                    <option value="">-- Bỏ trống / Chưa phân công --</option>
+                    <option value="">-- Vui lòng chọn tài xế chính * --</option>
                     {filteredDrivers.map((driver, idx) => (
-                      <option key={idx} value={JSON.stringify(driver)}>
-                        {driver.name} ({driver.phone}) {isRelieverMode ? '[Dự bị khả dụng]' : isFixedTeamBus ? `[Tổ lái xe ${editingTrip.busId?.plateNumber}]` : '[Tự do]'}
+                      <option key={idx} value={driver.phone}>
+                        {driver.name} ({driver.phone}) {fixedTeamInfo?.driver?.phone === driver.phone ? `[Tổ lái xe ${editingTrip.busId?.plateNumber}]` : isRelieverMode ? '[Dự bị khả dụng]' : '[Sẵn sàng]'}
                       </option>
                     ))}
                   </select>
@@ -1155,21 +1162,21 @@ const OpsStaffPage = () => {
               </div>
 
               <div className="form-group" style={{ marginBottom: '24px' }}>
-                <label className="form-label">Chọn phụ xe</label>
+                <label className="form-label">Chọn phụ xe (tùy chọn)</label>
                 {filteredAssistants.length === 0 ? (
-                  <p style={{ color: '#ef4444', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                    Không có phụ xe dự bị khả dụng trong khung giờ này.
+                  <p style={{ color: '#64748b', fontSize: '0.85rem', fontStyle: 'italic', margin: '4px 0 0 0' }}>
+                    Không có phụ xe khả dụng trong khung giờ này.
                   </p>
                 ) : (
                   <select 
                     className="form-control" 
-                    value={selectedAssistant}
-                    onChange={(e) => setSelectedAssistant(e.target.value)}
+                    value={selectedAssistantPhone}
+                    onChange={(e) => setSelectedAssistantPhone(e.target.value)}
                   >
-                    <option value="">-- Bỏ trống / Chưa phân công --</option>
+                    <option value="">-- Không phân công phụ xe --</option>
                     {filteredAssistants.map((assistant, idx) => (
-                      <option key={idx} value={JSON.stringify(assistant)}>
-                        {assistant.name} ({assistant.phone}) {isRelieverMode ? '[Dự bị khả dụng]' : isFixedTeamBus ? `[Tổ lái xe ${editingTrip.busId?.plateNumber}]` : '[Tự do]'}
+                      <option key={idx} value={assistant.phone}>
+                        {assistant.name} ({assistant.phone}) {fixedTeamInfo?.assistant?.phone === assistant.phone ? `[Tổ lái xe ${editingTrip.busId?.plateNumber}]` : isRelieverMode ? '[Dự bị khả dụng]' : '[Sẵn sàng]'}
                       </option>
                     ))}
                   </select>

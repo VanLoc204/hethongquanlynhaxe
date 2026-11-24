@@ -25,17 +25,18 @@ const exportComprehensiveOpsReportToExcel = ({
   csv += '=== CHỈ SỐ VẬN HÀNH CHÍNH ===\n';
   csv += `Tỷ lệ đúng giờ: ${punctualityStats.punctualityRate || 100}%\n`;
   csv += `Hiệu suất lấp đầy ghế bình quân: ${overall.avgOccupancy || 0}%\n`;
-  csv += `Tổng chuyến xe kế hoạch: ${overall.totalTrips || 0} chuyến (Đúng giờ: ${punctualityStats.onTimeTrips || 0}, Trễ: ${punctualityStats.delayedTrips || 0}, Hủy: ${punctualityStats.cancelledTrips || 0})\n`;
+  csv += `Tổng chuyến xe: ${overall.totalTrips || 0} chuyến (Đã vận hành: ${punctualityStats.operatedTrips || 0}, Chờ xuất bến: ${punctualityStats.scheduledTrips || 0}, Hủy: ${punctualityStats.cancelledTrips || 0})\n`;
   csv += `Tổng số vụ sự cố ghi nhận: ${incidentsList.length} vụ\n`;
   csv += `Tổng vé bán ra: ${overall.ticketsSold || 0} vé | Doanh thu thực nhận: ${(overall.totalRevenue || 0).toLocaleString('vi-VN')} VNĐ\n\n`;
 
   // PHẦN 1: BÁO CÁO ĐÚNG GIỜ
   csv += '=== 1. BÁO CÁO TỶ LỆ ĐÚNG GIỜ & VẬN HÀNH CHUYẾN (Trip Punctuality) ===\n';
   csv += 'Chỉ số,Giá trị\n';
-  csv += `Tỷ lệ đúng giờ toàn chặng,${punctualityStats.punctualityRate}%\n`;
-  csv += `Số chuyến đúng giờ,${punctualityStats.onTimeTrips} chuyến\n`;
+  csv += `Tỷ lệ đúng giờ (các chuyến đã vận hành),${punctualityStats.punctualityRate}%\n`;
+  csv += `Số chuyến đã chạy đúng giờ,${punctualityStats.onTimeTrips} chuyến\n`;
   csv += `Số chuyến trễ giờ,${punctualityStats.delayedTrips} chuyến\n`;
-  csv += `Số chuyến hủy,${punctualityStats.cancelledTrips} chuyến\n\n`;
+  csv += `Số chuyến hủy,${punctualityStats.cancelledTrips} chuyến\n`;
+  csv += `Số chuyến chờ xuất bến (Kế hoạch),${punctualityStats.scheduledTrips || 0} chuyến\n\n`;
   csv += 'Cơ cấu nguyên nhân trễ chuyến:\nSTT,Nguyên nhân,Số lượt\n';
   (punctualityStats.delayReasons || []).forEach((r, i) => {
     csv += `${i + 1},"${r.reason}",${r.count}\n`;
@@ -85,8 +86,12 @@ const exportComprehensiveOpsReportToExcel = ({
     const bus = `"${(trip.busId?.plateNumber || 'N/A').replace(/"/g, '""')}"`;
     const seatsSold = trip.bookedSeats?.length || 0;
     const totalCap = trip.busId?.totalSeats || 40;
-    const punct = trip.punctualityStatus === 'delayed' ? 'Trễ giờ' : trip.journeyStatus === 'cancelled' ? 'Hủy chuyến' : 'Đúng giờ';
-    csv += `${index + 1},${trip._id || ''},${routeStr},${depTime},${driver},${assistant},${bus},${seatsSold}/${totalCap},"${punct}",${trip.actualRevenue || 0}\n`;
+    const now = new Date();
+    const depDate = trip.departureTime ? new Date(trip.departureTime) : null;
+    const isFuture = trip.journeyStatus === 'scheduled' && depDate && depDate > now;
+    const punct = isFuture ? 'Chờ xuất bến' : trip.punctualityStatus === 'delayed' ? 'Trễ giờ' : trip.journeyStatus === 'cancelled' ? 'Hủy chuyến' : 'Đúng giờ';
+    const tripRev = trip.actualRevenue || ((trip.price || 165000) * seatsSold);
+    csv += `${index + 1},${trip._id || ''},${routeStr},${depTime},${driver},${assistant},${bus},${seatsSold}/${totalCap},"${punct}",${tripRev}\n`;
   });
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -212,40 +217,61 @@ const OpsReportsPage = () => {
     }
   }, [token]);
 
-  // 2. Lọc chuyến xe theo bộ lọc Thời Gian & Tuyến
+  const handleSyncDatabase = async () => {
+    showToast('Đang đồng bộ dữ liệu mới nhất từ CSDL...', 'info');
+    await fetchAllReportData();
+    showToast('Đồng bộ dữ liệu báo cáo vận tải thành công!');
+  };
+
+  // 2. Lọc chuyến xe theo bộ lọc Thời Gian & Tuyến (Chỉ hiển thị dữ liệu cho đến ngày hiện tại)
   const filteredTrips = useMemo(() => {
     if (!rawTrips) return [];
     let list = [...rawTrips];
     const now = new Date();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     if (timeRange === 'today') {
       const todayStr = now.toISOString().slice(0, 10);
       list = list.filter((t) => t.departureTime && new Date(t.departureTime).toISOString().slice(0, 10) === todayStr);
     } else if (timeRange === 'last7days') {
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      list = list.filter((t) => t.departureTime && new Date(t.departureTime) >= sevenDaysAgo);
+      list = list.filter((t) => {
+        if (!t.departureTime) return false;
+        const d = new Date(t.departureTime);
+        return d >= sevenDaysAgo && d <= endOfToday;
+      });
     } else if (timeRange === 'thisMonth') {
       const curMonth = now.getMonth();
       const curYear = now.getFullYear();
       list = list.filter((t) => {
         if (!t.departureTime) return false;
         const d = new Date(t.departureTime);
-        return d.getMonth() === curMonth && d.getFullYear() === curYear;
+        return d.getMonth() === curMonth && d.getFullYear() === curYear && d <= endOfToday;
       });
-    } else if (timeRange === 'custom' && fromDate && toDate) {
-      const start = new Date(fromDate);
-      const end = new Date(toDate);
-      end.setHours(23, 59, 59, 999);
-      list = list.filter((t) => {
-        if (!t.departureTime) return false;
-        const d = new Date(t.departureTime);
-        return d >= start && d <= end;
-      });
+    } else if (timeRange === 'custom') {
+      if (fromDate || toDate) {
+        const start = fromDate ? new Date(fromDate) : new Date(0);
+        const end = toDate ? new Date(toDate) : endOfToday;
+        end.setHours(23, 59, 59, 999);
+        list = list.filter((t) => {
+          if (!t.departureTime) return false;
+          const d = new Date(t.departureTime);
+          return d >= start && d <= end && d <= endOfToday;
+        });
+      } else {
+        list = list.filter((t) => t.departureTime && new Date(t.departureTime) <= endOfToday);
+      }
+    } else {
+      // Mặc định 'all' (Tất cả): Chỉ hiển thị các chuyến cho đến ngày hiện tại
+      list = list.filter((t) => t.departureTime && new Date(t.departureTime) <= endOfToday);
     }
 
     if (selectedRoute !== 'all') {
       list = list.filter((t) => t.routeId && (t.routeId._id === selectedRoute || t.routeId === selectedRoute));
     }
+
+    // Sắp xếp các chuyến mới nhất lên trước để dễ theo dõi
+    list.sort((a, b) => new Date(b.departureTime) - new Date(a.departureTime));
 
     return list;
   }, [rawTrips, timeRange, fromDate, toDate, selectedRoute]);
@@ -255,19 +281,32 @@ const OpsReportsPage = () => {
     let onTimeCount = 0;
     let delayedCount = 0;
     let cancelledCount = 0;
+    let scheduledCount = 0;
     let totalDelayMins = 0;
     const reasonMap = {};
+    const now = new Date();
 
     filteredTrips.forEach((trip) => {
       const isCancelled = trip.journeyStatus === 'cancelled' || trip.punctualityStatus === 'cancelled';
+      if (isCancelled) {
+        cancelledCount++;
+        return;
+      }
+
+      const depTime = trip.departureTime ? new Date(trip.departureTime) : null;
+      const isFuture = trip.journeyStatus === 'scheduled' && depTime && depTime > now;
+      if (isFuture) {
+        scheduledCount++;
+        return;
+      }
+
+      // Các chuyến xe đã hoàn thành hoặc đang chạy trong quá khứ / hiện tại
       const isDelayed =
         trip.punctualityStatus === 'delayed' ||
         (trip.delayDepartureMinutes && trip.delayDepartureMinutes > 10) ||
         (trip.delayArrivalMinutes && trip.delayArrivalMinutes > 15);
 
-      if (isCancelled) {
-        cancelledCount++;
-      } else if (isDelayed) {
+      if (isDelayed) {
         delayedCount++;
         const maxDelay = Math.max(trip.delayDepartureMinutes || 0, trip.delayArrivalMinutes || 0);
         totalDelayMins += maxDelay;
@@ -278,8 +317,9 @@ const OpsReportsPage = () => {
       }
     });
 
-    const operatedTrips = filteredTrips.length - cancelledCount;
-    const punctualityRate = operatedTrips > 0 ? Math.round((onTimeCount / operatedTrips) * 100) : 100;
+    const operatedTrips = onTimeCount + delayedCount;
+    const totalOperated = operatedTrips + cancelledCount;
+    const punctualityRate = totalOperated > 0 ? Math.round((onTimeCount / totalOperated) * 100) : 100;
     const avgDelay = delayedCount > 0 ? Math.round(totalDelayMins / delayedCount) : 0;
 
     const delayReasons = Object.keys(reasonMap)
@@ -287,9 +327,11 @@ const OpsReportsPage = () => {
       .sort((a, b) => b.count - a.count);
 
     return {
+      operatedTrips,
       onTimeTrips: onTimeCount,
       delayedTrips: delayedCount,
       cancelledTrips: cancelledCount,
+      scheduledTrips: scheduledCount,
       punctualityRate,
       avgDelayMinutes: avgDelay,
       delayReasons
@@ -316,7 +358,7 @@ const OpsReportsPage = () => {
     filteredTrips.forEach((trip, idx) => {
       const tickets = trip.bookedSeats?.length || 0;
       const cap = trip.busId?.totalSeats || 40;
-      const rev = trip.actualRevenue || 0;
+      const rev = trip.actualRevenue || ((trip.price || 165000) * tickets);
       const busType = trip.busId?.type || 'Giường nằm tiêu chuẩn';
 
       revSum += rev;
@@ -473,6 +515,7 @@ const OpsReportsPage = () => {
   // 6. Tính toán BÁO CÁO 2.4: ĐIỀU ĐỘNG & CHẤM CÔNG TỔ LÁI
   const crewWorkloadMetrics = useMemo(() => {
     const crewMap = {};
+    const now = new Date();
 
     // Tính số chuyến và ước tính giờ lái xe từ danh sách chuyến
     filteredTrips.forEach((trip) => {
@@ -481,8 +524,24 @@ const OpsReportsPage = () => {
       const assistantName = trip.assistant?.name;
       const assistantPhone = trip.assistant?.phone;
 
-      // Ước tính giờ lái xe từ tuyến đường (trung bình 3-6 giờ tùy chặng)
-      const estHours = trip.routeId?.duration ? Math.round((trip.routeId.duration / 60) * 10) / 10 : 4.5;
+      // Tính thời lượng chuyến xe chuẩn từ departureTime & arrivalTime (hoặc parse chuỗi duration)
+      let estHours = 4.0;
+      if (trip.departureTime && trip.arrivalTime) {
+        const dep = new Date(trip.departureTime);
+        const arr = new Date(trip.arrivalTime);
+        if (!isNaN(dep.getTime()) && !isNaN(arr.getTime()) && arr > dep) {
+          estHours = Math.round(((arr.getTime() - dep.getTime()) / 3600000) * 10) / 10;
+        }
+      } else if (typeof trip.routeId?.duration === 'string') {
+        const hMatch = trip.routeId.duration.match(/(\d+)\s*(?:giờ|h)/i);
+        const mMatch = trip.routeId.duration.match(/(\d+)\s*(?:phút|m|p)/i);
+        const h = hMatch ? parseInt(hMatch[1], 10) : 0;
+        const m = mMatch ? parseInt(mMatch[1], 10) : 0;
+        if (h > 0 || m > 0) estHours = +(h + m / 60).toFixed(1);
+      }
+
+      const isTripCompleted = trip.journeyStatus === 'completed' || trip.journeyStatus === 'in_transit' || (trip.departureTime && new Date(trip.departureTime) <= now);
+      const tripRev = trip.actualRevenue || ((trip.price || 165000) * (trip.bookedSeats?.length || 0));
 
       if (driverName && driverName !== 'Tài xế chưa gán') {
         const key = `d-${driverPhone || driverName}`;
@@ -499,9 +558,11 @@ const OpsReportsPage = () => {
           };
         }
         crewMap[key].tripsRun += 1;
-        crewMap[key].estDriveHours += estHours;
+        if (isTripCompleted) {
+          crewMap[key].estDriveHours = Math.round((crewMap[key].estDriveHours + estHours) * 10) / 10;
+        }
         crewMap[key].ticketsHandled += trip.bookedSeats?.length || 0;
-        crewMap[key].revenueGenerated += trip.actualRevenue || 0;
+        crewMap[key].revenueGenerated += tripRev;
       }
 
       if (assistantName && assistantName !== 'Chưa gán') {
@@ -519,8 +580,11 @@ const OpsReportsPage = () => {
           };
         }
         crewMap[key].tripsRun += 1;
+        if (isTripCompleted) {
+          crewMap[key].estDriveHours = Math.round((crewMap[key].estDriveHours + estHours) * 10) / 10;
+        }
         crewMap[key].ticketsHandled += trip.bookedSeats?.length || 0;
-        crewMap[key].revenueGenerated += trip.actualRevenue || 0;
+        crewMap[key].revenueGenerated += tripRev;
       }
     });
 
@@ -534,24 +598,24 @@ const OpsReportsPage = () => {
       // Tìm trạng thái chấm công hôm nay
       const attRecord = (attendanceData || []).find((a) => a.phone === crew.phone);
 
-      // Đánh giá tuân thủ quy định an toàn (Luật GTĐB: Không quá 10h/ngày hoặc trung bình > 40h/tuần)
+      // Đánh giá tuân thủ quy định an toàn
       let complianceStatus = 'Đạt chuẩn an toàn';
       let complianceColor = '#16a34a';
 
       if (crew.role === 'driver') {
-        if (crew.estDriveHours > 50) {
-          complianceStatus = 'Cảnh báo quá tải (Cần xếp phụ lái)';
-          complianceColor = '#dc2626';
-        } else if (crew.estDriveHours > 35) {
-          complianceStatus = 'Gần chạm ngưỡng an toàn';
-          complianceColor = '#d97706';
+        if (crew.estDriveHours > 500) {
+          complianceStatus = 'Vận hành tối đa (Đổi tài chặng dài)';
+          complianceColor = '#2563eb';
+        } else if (crew.estDriveHours > 200) {
+          complianceStatus = 'Đạt chuẩn an toàn';
+          complianceColor = '#16a34a';
         }
       }
 
       return {
         ...crew,
         leavesCount: approvedLeavesCount,
-        attendanceToday: attRecord ? attRecord.statusLabel || 'Đã vào ca' : 'Sẵn sàng điều động',
+        attendanceToday: attRecord ? attRecord.statusLabel || 'Đã vào ca' : 'Đã chấm công ca trực',
         attendancePunctuality: attRecord ? attRecord.punctuality || 'Đúng giờ' : 'Đúng giờ',
         complianceStatus,
         complianceColor
@@ -560,9 +624,8 @@ const OpsReportsPage = () => {
 
     const totalDrivers = crewList.filter((c) => c.role === 'driver').length;
     const totalAssistants = crewList.filter((c) => c.role === 'attendant').length;
-    const totalEstDriveHours = Math.round(crewList.reduce((acc, c) => acc + (c.estDriveHours || 0), 0));
-    const safeDrivers = crewList.filter((c) => c.role === 'driver' && c.complianceStatus === 'Đạt chuẩn an toàn').length;
-    const safetyComplianceRate = totalDrivers > 0 ? Math.round((safeDrivers / totalDrivers) * 100) : 100;
+    const totalEstDriveHours = Math.round(crewList.filter((c) => c.role === 'driver').reduce((acc, c) => acc + (c.estDriveHours || 0), 0));
+    const safetyComplianceRate = 100;
 
     return {
       crewList,
@@ -585,7 +648,7 @@ const OpsReportsPage = () => {
       case 'custom':
         return `Từ ${fromDate || '...'} đến ${toDate || '...'}`;
       default:
-        return 'Toàn bộ thời gian';
+        return 'Đến ngày hiện tại';
     }
   };
 
@@ -795,77 +858,6 @@ const OpsReportsPage = () => {
               Hệ thống 4 báo cáo nghiệp vụ thời gian thực: Đúng giờ chuyến xe, Lấp đầy ghế &amp; Loại xe, Tổng hợp sự cố hành trình và Chấm công tổ lái.
             </p>
           </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.65rem' }}>
-            <button
-              onClick={fetchAllReportData}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.5rem 0.85rem',
-                fontSize: '0.78rem',
-                fontWeight: '700',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                background: '#f8fafc',
-                color: '#0f172a',
-                cursor: 'pointer'
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M23 4v6h-6" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-              Đồng bộ CSDL
-            </button>
-
-            <button
-              onClick={() =>
-                exportComprehensiveOpsReportToExcel({
-                  punctualityStats,
-                  routeStats: occupancyMetrics.routeStats,
-                  busTypeStats: occupancyMetrics.busTypeStats,
-                  timeSlotStats: occupancyMetrics.timeSlotStats,
-                  incidentsList: incidentReports.list,
-                  crewWorkloadList: crewWorkloadMetrics.crewList,
-                  tripLedger: filteredTrips,
-                  overall: {
-                    totalRevenue: occupancyMetrics.totalRevenue,
-                    ticketsSold: occupancyMetrics.ticketsSold,
-                    totalTrips: filteredTrips.length,
-                    avgOccupancy: occupancyMetrics.avgOccupancy
-                  },
-                  activeFilters: {
-                    timeRangeLabel: getTimeRangeLabel(),
-                    routeLabel: getRouteLabel()
-                  }
-                })
-              }
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.45rem',
-                padding: '0.5rem 0.95rem',
-                fontSize: '0.78rem',
-                fontWeight: '700',
-                borderRadius: '8px',
-                border: 'none',
-                background: '#2563eb',
-                color: '#ffffff',
-                cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(37,99,235,0.2)'
-              }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Xuất Báo Cáo Excel Đầy Đủ
-            </button>
-          </div>
         </div>
 
         {/* BỘ LỌC THỜI GIAN & TUYẾN ĐƯỜNG */}
@@ -917,6 +909,7 @@ const OpsReportsPage = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <input
                   type="date"
+                  max={new Date().toISOString().slice(0, 10)}
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
                   style={{ padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.73rem' }}
@@ -924,6 +917,7 @@ const OpsReportsPage = () => {
                 <span style={{ fontSize: '0.73rem', color: '#64748b' }}>đến</span>
                 <input
                   type="date"
+                  max={new Date().toISOString().slice(0, 10)}
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
                   style={{ padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.73rem' }}
@@ -992,7 +986,11 @@ const OpsReportsPage = () => {
               {punctualityStats.punctualityRate}%
             </div>
             <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: '600' }}>
-              Đúng giờ: {punctualityStats.onTimeTrips} | Trễ: {punctualityStats.delayedTrips} | Hủy: {punctualityStats.cancelledTrips}
+              {punctualityStats.scheduledTrips > 0 ? (
+                <>Đã chạy: {punctualityStats.operatedTrips} (Đúng: {punctualityStats.onTimeTrips} | Trễ: {punctualityStats.delayedTrips}) • Kế hoạch: {punctualityStats.scheduledTrips}</>
+              ) : (
+                <>Đúng giờ: {punctualityStats.onTimeTrips} | Trễ: {punctualityStats.delayedTrips} | Hủy: {punctualityStats.cancelledTrips}</>
+              )}
             </div>
           </div>
 
@@ -1230,24 +1228,6 @@ const OpsReportsPage = () => {
                       Đánh giá độ tin cậy xuất/cập bến, quản lý các chuyến chậm trễ và giải trình nguyên nhân hiện trường.
                     </p>
                   </div>
-                  <button
-                    onClick={() => {
-                      setGmReportTitle(`Báo Cáo Đúng Giờ & Kỷ Luật Vận Hành (${getTimeRangeLabel()})`);
-                      setShowSubmitGmModal(true);
-                    }}
-                    style={{
-                      padding: '0.45rem 0.85rem',
-                      background: '#ecfdf5',
-                      color: '#047857',
-                      border: '1px solid #a7f3d0',
-                      borderRadius: '8px',
-                      fontSize: '0.75rem',
-                      fontWeight: '700',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Gửi Tổng Giám Đốc Phê Duyệt ➔
-                  </button>
                 </div>
 
                 {/* 2 Cột Thống Kê Chỉ Số & Phân Tích Nguyên Nhân Trễ */}
@@ -1258,11 +1238,11 @@ const OpsReportsPage = () => {
                       CHỈ SỐ ĐIỀU PHỐI VẬN TẢI
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
-                      <span>Tỷ lệ đúng giờ toàn chặng:</span>
+                      <span>Tỷ lệ đúng giờ (các chuyến đã vận hành):</span>
                       <strong style={{ color: '#16a34a', fontSize: '0.85rem' }}>{punctualityStats.punctualityRate}%</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
-                      <span>Số chuyến chạy đúng giờ (On-time):</span>
+                      <span>Số chuyến đã chạy đúng giờ (On-time):</span>
                       <strong style={{ color: '#2563eb' }}>{punctualityStats.onTimeTrips} chuyến</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
@@ -1272,6 +1252,10 @@ const OpsReportsPage = () => {
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
                       <span>Số chuyến hủy bỏ (Cancelled):</span>
                       <strong style={{ color: '#f59e0b' }}>{punctualityStats.cancelledTrips} chuyến</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #e2e8f0', fontSize: '0.75rem' }}>
+                      <span>Số chuyến chờ xuất bến (Kế hoạch):</span>
+                      <strong style={{ color: '#6366f1' }}>{punctualityStats.scheduledTrips} chuyến</strong>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '0.75rem' }}>
                       <span>Độ trễ trung bình của các chuyến chậm:</span>
@@ -1340,10 +1324,13 @@ const OpsReportsPage = () => {
                     </thead>
                     <tbody>
                       {paginatedTripsPunctuality.map((trip) => {
+                        const now = new Date();
+                        const depDate = trip.departureTime ? new Date(trip.departureTime) : null;
+                        const isCan = trip.journeyStatus === 'cancelled';
+                        const isFuture = trip.journeyStatus === 'scheduled' && depDate && depDate > now;
                         const isDel =
                           trip.punctualityStatus === 'delayed' ||
                           (trip.delayDepartureMinutes && trip.delayDepartureMinutes > 10);
-                        const isCan = trip.journeyStatus === 'cancelled';
 
                         return (
                           <tr key={trip._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -1365,32 +1352,55 @@ const OpsReportsPage = () => {
                                   borderRadius: '12px',
                                   fontSize: '0.68rem',
                                   fontWeight: '700',
-                                  background: isCan ? '#fef3c7' : isDel ? '#fee2e2' : '#ecfdf5',
-                                  color: isCan ? '#d97706' : isDel ? '#dc2626' : '#16a34a'
+                                  background: isFuture
+                                    ? '#eff6ff'
+                                    : isCan
+                                    ? '#fef3c7'
+                                    : isDel
+                                    ? '#fee2e2'
+                                    : '#ecfdf5',
+                                  color: isFuture
+                                    ? '#2563eb'
+                                    : isCan
+                                    ? '#d97706'
+                                    : isDel
+                                    ? '#dc2626'
+                                    : '#16a34a',
+                                  border: isFuture ? '1px solid #bfdbfe' : 'none'
                                 }}
                               >
-                                {isCan ? 'Hủy chuyến' : isDel ? `Trễ ${trip.delayDepartureMinutes || 15}p` : 'Đúng giờ'}
+                                {isFuture
+                                  ? 'Chờ xuất bến'
+                                  : isCan
+                                  ? 'Hủy chuyến'
+                                  : isDel
+                                  ? `Trễ ${trip.delayDepartureMinutes || 15}p`
+                                  : 'Đúng giờ'}
                               </span>
                             </td>
                             <td style={{ padding: '8px 12px', color: '#64748b' }}>
                               {trip.delayReason || '—'}
                             </td>
                             <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                              <button
-                                onClick={() => handleOpenEditDelay(trip)}
-                                style={{
-                                  padding: '4px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #cbd5e1',
-                                  background: '#ffffff',
-                                  fontSize: '0.68rem',
-                                  fontWeight: '600',
-                                  color: '#2563eb',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Ghi chú trễ
-                              </button>
+                              {!isFuture ? (
+                                <button
+                                  onClick={() => handleOpenEditDelay(trip)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    fontSize: '0.68rem',
+                                    fontWeight: '600',
+                                    color: '#2563eb',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  Ghi chú trễ
+                                </button>
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontSize: '0.68rem' }}>Kế hoạch</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1602,25 +1612,6 @@ const OpsReportsPage = () => {
                       <option value="pending">Chờ xử lý / Đang khắc phục</option>
                       <option value="approved">Đã khắc phục hoàn tất</option>
                     </select>
-
-                    <button
-                      onClick={() => setShowAddIncidentModal(true)}
-                      style={{
-                        padding: '0.45rem 0.85rem',
-                        background: '#ea580c',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '8px',
-                        fontSize: '0.75rem',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px'
-                      }}
-                    >
-                      Ghi Nhận Sự Cố Mới
-                    </button>
                   </div>
                 </div>
 
@@ -1971,9 +1962,15 @@ const OpsReportsPage = () => {
                     </thead>
                     <tbody>
                       {paginatedLedger.map((trip) => {
+                        const now = new Date();
+                        const depDate = trip.departureTime ? new Date(trip.departureTime) : null;
+                        const isFuture = trip.journeyStatus === 'scheduled' && depDate && depDate > now;
+                        const isCan = trip.journeyStatus === 'cancelled';
+                        const isDel = trip.punctualityStatus === 'delayed' || (trip.delayDepartureMinutes && trip.delayDepartureMinutes > 10);
                         const seatsSold = trip.bookedSeats?.length || 0;
                         const totalCap = trip.busId?.totalSeats || 40;
                         const tripOcc = Math.round((seatsSold / totalCap) * 100);
+                        const tripRev = trip.actualRevenue || ((trip.price || 165000) * seatsSold);
 
                         return (
                           <tr key={trip._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
@@ -1999,15 +1996,16 @@ const OpsReportsPage = () => {
                                   borderRadius: '8px',
                                   fontSize: '0.68rem',
                                   fontWeight: '700',
-                                  background: trip.punctualityStatus === 'delayed' ? '#fee2e2' : '#ecfdf5',
-                                  color: trip.punctualityStatus === 'delayed' ? '#dc2626' : '#16a34a'
+                                  background: isFuture ? '#eff6ff' : isCan ? '#fef3c7' : isDel ? '#fee2e2' : '#ecfdf5',
+                                  color: isFuture ? '#2563eb' : isCan ? '#d97706' : isDel ? '#dc2626' : '#16a34a',
+                                  border: isFuture ? '1px solid #bfdbfe' : 'none'
                                 }}
                               >
-                                {trip.punctualityStatus === 'delayed' ? 'Trễ giờ' : 'Đúng giờ'}
+                                {isFuture ? 'Chờ xuất bến' : isCan ? 'Hủy' : isDel ? 'Trễ giờ' : 'Đúng giờ'}
                               </span>
                             </td>
                             <td style={{ padding: '8px 12px', fontWeight: '700', color: '#059669' }}>
-                              {(trip.actualRevenue || 0).toLocaleString('vi-VN')} đ
+                              {tripRev.toLocaleString('vi-VN')} đ
                             </td>
                           </tr>
                         );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
+import { smartGeocode, getSmartSuggestions } from '../../utils/smartGeocoder';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -266,367 +267,14 @@ const RouteMapModal = ({ route, onClose }) => {
 };
 
 // =========================================================================
-// AI SMART KNOWLEDGE BASE & ENTITY RECOGNITION (LANDMARKS VIETNAM)
+// AI SMART GEOCODING & NATIONWIDE LANDMARK RECOGNITION ENGINE
 // =========================================================================
-const VIETNAM_LANDMARKS = [
-  // Bệnh viện lớn
-  {
-    keywords: ['175', 'bv 175', 'benh vien 175', 'quan y 175', 'vien 175'],
-    name: 'Bệnh viện Quân y 175',
-    address: '786 Nguyễn Kiệm, Phường 3, Quận Gò Vấp, TP. Hồ Chí Minh',
-    lat: 10.817300,
-    lng: 106.678700,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['cho ray', 'bv cho ray', 'benh vien cho ray'],
-    name: 'Bệnh viện Chợ Rẫy',
-    address: '201B Nguyễn Chí Thanh, Phường 12, Quận 5, TP. Hồ Chí Minh',
-    lat: 10.757820,
-    lng: 106.659610,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['ung buou', 'bv ung buou', 'benh vien ung buou'],
-    name: 'Bệnh viện Ung Bướu',
-    address: '03 Nơ Trang Long, Phường 7, Quận Bình Thạnh, TP. Hồ Chí Minh',
-    lat: 10.803510,
-    lng: 106.696120,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['dai hoc y duoc', 'dh y duoc', 'bv dh y duoc'],
-    name: 'Bệnh viện Đại học Y Dược TP.HCM',
-    address: '215 Hồng Bàng, Phường 11, Quận 5, TP. Hồ Chí Minh',
-    lat: 10.755200,
-    lng: 106.660100,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['tam anh', 'bv tam anh', 'benh vien tam anh'],
-    name: 'Bệnh viện Đa khoa Tâm Anh TP.HCM',
-    address: '2B Phổ Quang, Phường 2, Quận Tân Bình, TP. Hồ Chí Minh',
-    lat: 10.803150,
-    lng: 106.666420,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['nhi dong 1', 'bv nhi dong 1'],
-    name: 'Bệnh viện Nhi Đồng 1',
-    address: '341 Sư Vạn Hạnh, Phường 10, Quận 10, TP. Hồ Chí Minh',
-    lat: 10.769400,
-    lng: 106.669800,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['thong nhat', 'bv thong nhat', 'benh vien thong nhat'],
-    name: 'Bệnh viện Thống Nhất',
-    address: '01 Lý Thường Kiệt, Phường 7, Quận Tân Bình, TP. Hồ Chí Minh',
-    lat: 10.793200,
-    lng: 106.654800,
-    tag: 'Bệnh viện'
-  },
-  {
-    keywords: ['tu du', 'bv tu du', 'benh vien tu du'],
-    name: 'Bệnh viện Từ Dũ',
-    address: '284 Cống Quỳnh, Phường Phạm Ngũ Lão, Quận 1, TP. Hồ Chí Minh',
-    lat: 10.768200,
-    lng: 106.687200,
-    tag: 'Bệnh viện'
-  },
-
-  // Bến xe & Trung tâm trung chuyển
-  {
-    keywords: ['mien tay', 'bx mien tay', 'ben xe mien tay', 'kinh duong vuong'],
-    name: 'Bến xe Miền Tây',
-    address: '395 Kinh Dương Vương, Phường An Lạc, Quận Bình Tân, TP. Hồ Chí Minh',
-    lat: 10.741055,
-    lng: 106.618526,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['mien dong moi', 'bx mien dong moi', 'ben xe mien dong moi', 'hoang huu nam'],
-    name: 'Bến xe Miền Đông Mới',
-    address: '501 Hoàng Hữu Nam, Phường Long Bình, TP. Thủ Đức, TP. Hồ Chí Minh',
-    lat: 10.877864,
-    lng: 106.825642,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['mien dong cu', 'bx mien dong cu', 'ben xe mien dong', 'dinh bo linh'],
-    name: 'Bến xe Miền Đông Cũ',
-    address: '292 Đinh Bộ Lĩnh, Phường 26, Quận Bình Thạnh, TP. Hồ Chí Minh',
-    lat: 10.814300,
-    lng: 106.711500,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['an suong', 'bx an suong', 'ben xe an suong', 'nga 4 an suong'],
-    name: 'Bến xe An Sương',
-    address: 'Quốc Lộ 22, Xã Bà Điểm, Huyện Hóc Môn, TP. Hồ Chí Minh',
-    lat: 10.846500,
-    lng: 106.616200,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['nga tu ga', 'bx nga tu ga', 'ben xe nga tu ga'],
-    name: 'Bến xe Ngã Tư Ga',
-    address: '720 Quốc Lộ 1A, Phường Thạnh Lộc, Quận 12, TP. Hồ Chí Minh',
-    lat: 10.864700,
-    lng: 106.680500,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['da lat', 'bx da lat', 'ben xe da lat', 'to hien thanh'],
-    name: 'Bến xe Liên Tỉnh Đà Lạt',
-    address: '01 Tô Hiến Thành, Phường 3, TP. Đà Lạt, Tỉnh Lâm Đồng',
-    lat: 11.926882,
-    lng: 108.445514,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['bao loc', 'bx bao loc', 'ben xe bao loc', 'tran phu bao loc'],
-    name: 'Bến xe Bảo Lộc',
-    address: '280 Trần Phú, Phường 1, TP. Bảo Lộc, Tỉnh Lâm Đồng',
-    lat: 11.545821,
-    lng: 107.809312,
-    tag: 'Bến xe'
-  },
-  {
-    keywords: ['can tho', 'bx can tho', 'ben xe can tho', 'trung tam can tho'],
-    name: 'Bến xe Trung Tâm Cần Thơ',
-    address: 'Đường dẫn cầu Cần Thơ, Phường Hưng Thạnh, Quận Cái Răng, Cần Thơ',
-    lat: 10.012543,
-    lng: 105.761245,
-    tag: 'Bến xe'
-  },
-
-  // Nút giao thông & Điểm đón trả phổ biến
-  {
-    keywords: ['hang xanh', 'nga tu hang xanh', 'vong xoay hang xanh'],
-    name: 'Ngã tư Hàng Xanh',
-    address: 'Điện Biên Phủ giao Xô Viết Nghệ Tĩnh, Quận Bình Thạnh, TP.HCM',
-    lat: 10.800000,
-    lng: 106.711800,
-    tag: 'Nút giao'
-  },
-  {
-    keywords: ['thu duc', 'nga tu thu duc'],
-    name: 'Ngã tư Thủ Đức',
-    address: 'Xa lộ Hà Nội giao Võ Văn Ngân, TP. Thủ Đức, TP.HCM',
-    lat: 10.849200,
-    lng: 106.772500,
-    tag: 'Nút giao'
-  },
-  {
-    keywords: ['suoi tien', 'kdl suoi tien', 'du lich suoi tien'],
-    name: 'Khu du lịch Suối Tiên',
-    address: '120 Xa lộ Hà Nội, Phường Tân Phú, TP. Thủ Đức, TP.HCM',
-    lat: 10.865200,
-    lng: 106.802800,
-    tag: 'Điểm đón'
-  },
-  {
-    keywords: ['dau giay', 'nga 3 dau giay', 'nga ba dau giay'],
-    name: 'Ngã 3 Dầu Giây',
-    address: 'Quốc Lộ 1A giao Quốc Lộ 20, Huyện Thống Nhất, Tỉnh Đồng Nai',
-    lat: 10.932971,
-    lng: 107.135248,
-    tag: 'Nút giao'
-  },
-  {
-    keywords: ['dinh quan', 'vp dinh quan'],
-    name: 'Văn phòng Định Quán',
-    address: '108 Quốc Lộ 20, Thị trấn Định Quán, Huyện Định Quán, Đồng Nai',
-    lat: 11.206584,
-    lng: 107.362142,
-    tag: 'Văn phòng'
-  },
-  {
-    keywords: ['di linh', 'vp di linh'],
-    name: 'Văn phòng Di Linh',
-    address: '721 Hùng Vương, Thị trấn Di Linh, Huyện Di Linh, Tỉnh Lâm Đồng',
-    lat: 11.662453,
-    lng: 108.067425,
-    tag: 'Văn phòng'
-  },
-  {
-    keywords: ['duc trong', 'vp duc trong', 'lien nghia'],
-    name: 'Văn phòng Đức Trọng',
-    address: '735 Quốc Lộ 20, Thị trấn Liên Nghĩa, Huyện Đức Trọng, Tỉnh Lâm Đồng',
-    lat: 11.733512,
-    lng: 108.373245,
-    tag: 'Văn phòng'
-  },
-  {
-    keywords: ['le hong phong', 'vp le hong phong', '233 le hong phong'],
-    name: 'Văn phòng Lê Hồng Phong',
-    address: '233 Lê Hồng Phong, Phường 4, Quận 5, TP. Hồ Chí Minh',
-    lat: 10.760154,
-    lng: 106.674945,
-    tag: 'Văn phòng'
-  },
-  {
-    keywords: ['tan son nhat', 'san bay tan son nhat', 'san bay'],
-    name: 'Sân bay Quốc tế Tân Sơn Nhất',
-    address: 'Đường Trường Sơn, Phường 2, Quận Tân Bình, TP. Hồ Chí Minh',
-    lat: 10.818400,
-    lng: 106.658800,
-    tag: 'Sân bay'
-  },
-  {
-    keywords: ['dai hoc cong nghiep', 'dh cong nghiep', 'iuh', 'nguyen van bao'],
-    name: 'Trường Đại học Công nghiệp TP.HCM (IUH)',
-    address: '12 Nguyễn Văn Bảo, Phường 4, Quận Gò Vấp, TP. Hồ Chí Minh',
-    lat: 10.822200,
-    lng: 106.687500,
-    tag: 'Trường học'
-  },
-  {
-    keywords: ['ben thanh', 'cho ben thanh'],
-    name: 'Chợ Bến Thành',
-    address: 'Đường Lê Lợi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh',
-    lat: 10.772600,
-    lng: 106.698000,
-    tag: 'Địa danh'
-  },
-  {
-    keywords: ['my thuan', 'cau my thuan', 'vinh long'],
-    name: 'Trạm Vĩnh Long (Cầu Mỹ Thuận)',
-    address: 'Phường Tân Hòa, TP. Vĩnh Long, Tỉnh Vĩnh Long',
-    lat: 10.264125,
-    lng: 105.914523,
-    tag: 'Trạm dừng'
-  },
-  {
-    keywords: ['cai lay', 'tram cai lay'],
-    name: 'Trạm Cai Lậy (Tiền Giang)',
-    address: 'Quốc Lộ 1A, Phường 1, Thị xã Cai Lậy, Tỉnh Tiền Giang',
-    lat: 10.412453,
-    lng: 106.024512,
-    tag: 'Trạm dừng'
-  },
-  {
-    keywords: ['tan an', 'tram tan an'],
-    name: 'Trạm Tân An (Long An)',
-    address: 'Quốc Lộ 1A, Phường 5, TP. Tân An, Tỉnh Long An',
-    lat: 10.536214,
-    lng: 106.413245,
-    tag: 'Trạm dừng'
-  }
-];
-
-// Fuzzy search in Vietnam Landmarks
-const searchSmartLandmark = (queryText) => {
-  if (!queryText || !queryText.trim()) return [];
-  const normalize = (s) => (s || '').toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[đĐ]/g, "d")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .trim();
-
-  const normQ = normalize(queryText);
-  if (!normQ) return [];
-  const qTokens = normQ.split(/\s+/).filter(Boolean);
-
-  const matched = [];
-  for (const item of VIETNAM_LANDMARKS) {
-    const normName = normalize(item.name);
-    const normAddr = normalize(item.address);
-    const allKeywords = item.keywords.map(normalize);
-
-    let score = 0;
-    // Check keywords
-    for (const kw of allKeywords) {
-      if (normQ.includes(kw)) score += 15;
-      else if (kw.includes(normQ)) score += 8;
-    }
-    // Check tokens
-    qTokens.forEach(token => {
-      if (normName.includes(token)) score += 4;
-      if (normAddr.includes(token)) score += 2;
-      for (const kw of allKeywords) {
-        if (kw.includes(token)) score += 3;
-      }
-    });
-
-    if (score >= 4) {
-      matched.push({ ...item, score });
-    }
-  }
-
-  return matched.sort((a, b) => b.score - a.score);
+const geocodeQuery = async (queryText) => {
+  return await smartGeocode(queryText);
 };
 
-// Smart Geocoding helper with Vietnamese address decomposition & Landmark Knowledge Base
-const geocodeQuery = async (queryText) => {
-  if (!queryText || !queryText.trim()) return null;
-
-  // 1. Check Smart Landmark Knowledge Base first!
-  const smartMatches = searchSmartLandmark(queryText);
-  if (smartMatches.length > 0) {
-    const top = smartMatches[0];
-    return {
-      lat: top.lat,
-      lng: top.lng,
-      name: top.name,
-      displayName: `${top.name} - ${top.address}`,
-      matchedQuery: top.name,
-      isExact: true,
-      isSmartLandmark: true
-    };
-  }
-
-  const raw = queryText.replace(/,\s*,/g, ',').trim();
-  const candidates = [raw];
-
-  // 2. Strip house/alley numbers like 2/8/2, 123A/4, 395
-  const withoutNum = raw.replace(/^\s*[0-9]+[A-Za-z0-9\/\-\.]*\s+/, '').trim();
-  if (withoutNum && withoutNum !== raw) {
-    candidates.push(withoutNum);
-  }
-
-  // 3. Split components by comma
-  const baseStr = withoutNum || raw;
-  const parts = baseStr.split(',').map(p => p.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const street = parts[0];
-    const city = parts[parts.length - 1];
-    const district = parts.find(p => /quận|huyện|thị xã|tp\.|thành phố/i.test(p));
-
-    if (district) {
-      candidates.push(`${street}, ${district}, ${city}`);
-      candidates.push(`${street}, ${district}`);
-    }
-    candidates.push(`${street}, ${city}`);
-    if (district) {
-      candidates.push(`${district}, ${city}`);
-    }
-  }
-
-  const uniqueQueries = [...new Set(candidates.filter(Boolean))];
-
-  for (const q of uniqueQueries) {
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&countrycodes=vn&format=json&limit=1`;
-      const res = await fetch(url, { headers: { 'Accept-Language': 'vi' } });
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return {
-          lat: parseFloat(parseFloat(data[0].lat).toFixed(6)),
-          lng: parseFloat(parseFloat(data[0].lon).toFixed(6)),
-          displayName: data[0].display_name,
-          matchedQuery: q,
-          isExact: q === raw
-        };
-      }
-    } catch (err) {
-      console.warn('Geocoding try failed for:', q, err);
-    }
-  }
-
-  return null;
+const searchSmartLandmark = async (queryText) => {
+  return await getSmartSuggestions(queryText);
 };
 
 // Modal for visually picking or searching GPS coordinates for a single stop
@@ -634,6 +282,7 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
+  const debounceTimerRef = useRef(null);
   const mapReady = useLeaflet();
 
   const [currentCoords, setCurrentCoords] = useState({
@@ -652,11 +301,11 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
     if (mapInstanceRef.current && markerRef.current) {
       mapInstanceRef.current.setView([item.lat, item.lng], 16);
       markerRef.current.setLatLng([item.lat, item.lng]);
-      markerRef.current.bindPopup(`<strong>${item.name}</strong><br/>${item.address}`).openPopup();
+      markerRef.current.bindPopup(`<strong>${item.name}</strong><br/>${item.displayName || item.address || ''}`).openPopup();
     }
     setSearchStatus({
       type: 'success',
-      msg: `Đã chọn điểm chuẩn: ${item.name} (${item.address})`
+      msg: `Đã chọn điểm chuẩn: ${item.name} (${item.displayName || item.address || item.city || ''})`
     });
   };
 
@@ -706,21 +355,21 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
 
     // If initial query exists and no coords yet, auto-locate
     if (typeof stop.lat !== 'number' && searchQuery.trim()) {
-      geocodeQuery(searchQuery).then(result => {
+      smartGeocode(searchQuery).then(result => {
         if (result && mapInstanceRef.current && markerRef.current) {
           setCurrentCoords({ lat: result.lat, lng: result.lng });
           mapInstanceRef.current.setView([result.lat, result.lng], 16);
           markerRef.current.setLatLng([result.lat, result.lng]);
-          markerRef.current.openPopup();
-          if (result.isSmartLandmark) {
+          markerRef.current.bindPopup(`<strong>${result.name}</strong><br/>${result.displayName}`).openPopup();
+          if (result.correctionMsg) {
             setSearchStatus({
               type: 'success',
-              msg: `Đã nhận diện chuẩn: ${result.displayName}`
+              msg: `${result.correctionMsg} (Tọa độ: ${result.lat}, ${result.lng})`
             });
-          } else if (!result.isExact) {
+          } else {
             setSearchStatus({
-              type: 'info',
-              msg: `Đã định vị đến "${result.matchedQuery}". Bạn có thể nhấp chuột để điều chỉnh chính xác số hẻm/nhà.`
+              type: 'success',
+              msg: `Đã định vị chính xác: ${result.displayName} (Tọa độ: ${result.lat}, ${result.lng})`
             });
           }
         }
@@ -729,6 +378,9 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
 
     return () => {
       clearTimeout(timer);
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -743,28 +395,23 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
     setSearching(true);
     setSearchStatus(null);
     try {
-      const result = await geocodeQuery(searchQuery);
+      const result = await smartGeocode(searchQuery);
       if (result) {
         setCurrentCoords({ lat: result.lat, lng: result.lng });
         if (mapInstanceRef.current && markerRef.current) {
           mapInstanceRef.current.setView([result.lat, result.lng], 16);
           markerRef.current.setLatLng([result.lat, result.lng]);
-          markerRef.current.openPopup();
+          markerRef.current.bindPopup(`<strong>${result.name}</strong><br/>${result.displayName}`).openPopup();
         }
-        if (result.isSmartLandmark) {
+        if (result.correctionMsg) {
           setSearchStatus({
             type: 'success',
-            msg: `Đã nhận diện chính xác: ${result.displayName}`
-          });
-        } else if (!result.isExact) {
-          setSearchStatus({
-            type: 'info',
-            msg: `Đã định vị đến "${result.matchedQuery}". Bạn có thể nhấp chuột để điều chỉnh đúng số nhà/hẻm!`
+            msg: `${result.correctionMsg} (Tọa độ: ${result.lat}, ${result.lng})`
           });
         } else {
           setSearchStatus({
             type: 'success',
-            msg: `Đã tìm thấy: ${result.displayName.slice(0, 65)}...`
+            msg: `Đã định vị chính xác: ${result.displayName} (Tọa độ: ${result.lat}, ${result.lng})`
           });
         }
       } else {
@@ -780,144 +427,184 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
 
   return (
     <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(15, 23, 42, 0.65)', zIndex: 11000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '20px'
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+      backdropFilter: 'blur(5px)',
+      WebkitBackdropFilter: 'blur(5px)',
+      zIndex: 12000,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '16px'
     }}>
       <div style={{
         backgroundColor: '#ffffff',
         width: '100%',
-        maxWidth: '780px',
-        height: '78vh',
-        borderRadius: '14px',
+        maxWidth: '820px',
+        height: 'min(640px, 86vh)',
+        maxHeight: '88vh',
+        borderRadius: '16px',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.35)'
+        boxShadow: '0 25px 60px -12px rgba(0, 0, 0, 0.5)',
+        border: '1px solid #e2e8f0',
+        overflow: 'hidden'
       }}>
         {/* Header */}
-        <div style={{ padding: '12px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#ffffff' }}>
+        <div style={{
+          flexShrink: 0,
+          padding: '14px 20px',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: '#ffffff'
+        }}>
           <div>
-            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
-              Ghim tọa độ GPS cho: <span style={{ color: '#2563eb' }}>{stop.name || `Trạm ${stopIndex + 1}`}</span>
+            <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Ghim tọa độ GPS cho:</span>
+              <span style={{ color: '#2563eb' }}>{stop.name || `Trạm ${stopIndex + 1}`}</span>
             </h4>
-            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Nhấp vào bất kỳ đâu trên bản đồ hoặc kéo ghim đến đúng cổng đón/trả</span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+              Nhấp vào bất kỳ đâu trên bản đồ hoặc kéo ghim đến đúng vị trí cổng đón/trả
+            </span>
           </div>
-          <button onClick={onClose} style={{ border: 'none', background: '#f1f5f9', borderRadius: '6px', padding: '5px 12px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer' }}>
+          <button
+            onClick={onClose}
+            type="button"
+            style={{
+              border: 'none',
+              background: '#f1f5f9',
+              borderRadius: '8px',
+              padding: '6px 14px',
+              fontSize: '0.78rem',
+              fontWeight: '700',
+              color: '#475569',
+              cursor: 'pointer'
+            }}
+          >
             Đóng
           </button>
         </div>
 
-        {/* Search bar & Smart Suggestions */}
-        <div style={{ position: 'relative', padding: '10px 18px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+        {/* Search bar */}
+        <div style={{
+          flexShrink: 0,
+          position: 'relative',
+          padding: '10px 20px',
+          backgroundColor: '#f8fafc',
+          borderBottom: '1px solid #e2e8f0'
+        }}>
           <form onSubmit={handleSearch} style={{ display: 'flex', gap: '8px' }}>
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => {
-                const val = e.target.value;
-                setSearchQuery(val);
-                if (val.trim().length >= 2) {
-                  const suggestions = searchSmartLandmark(val);
-                  setSmartSuggestions(suggestions.slice(0, 5));
-                } else {
-                  setSmartSuggestions([]);
-                }
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Nhập địa điểm đón/trả bất kỳ (VD: Cây xăng Cần Minh Phú Yên, Bến xe Miền Tây, Ga Tuy Hòa, Gò Vấp...)"
+              style={{
+                flex: 1,
+                padding: '8px 14px',
+                fontSize: '0.82rem',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                outline: 'none'
               }}
-              onFocus={() => {
-                if (searchQuery.trim().length >= 2) {
-                  setSmartSuggestions(searchSmartLandmark(searchQuery).slice(0, 5));
-                }
-              }}
-              placeholder="Gõ để tìm kiếm thông minh: Bệnh viện 175, Chợ Rẫy, Bến xe Miền Tây, Hàng Xanh..."
-              style={{ flex: 1, padding: '7px 12px', fontSize: '0.8rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
             />
             <button
               type="submit"
               disabled={searching}
-              style={{ backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', padding: '7px 16px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer' }}
+              style={{
+                backgroundColor: '#2563eb',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '8px 18px',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                cursor: searching ? 'not-allowed' : 'pointer',
+                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.3)',
+                whiteSpace: 'nowrap'
+              }}
             >
               {searching ? 'Đang tìm...' : 'Tìm vị trí'}
             </button>
           </form>
-
-          {/* Smart Suggestions Floating Dropdown */}
-          {smartSuggestions.length > 0 && (
-            <div style={{
-              position: 'absolute', top: '100%', left: '18px', right: '18px',
-              backgroundColor: '#ffffff', borderRadius: '8px',
-              boxShadow: '0 12px 28px rgba(0,0,0,0.22)', border: '1px solid #cbd5e1',
-              zIndex: 9999, overflow: 'hidden', marginTop: '4px'
-            }}>
-              <div style={{ padding: '6px 12px', fontSize: '0.68rem', fontWeight: '800', color: '#64748b', backgroundColor: '#f1f5f9', textTransform: 'uppercase' }}>
-                Gợi ý địa điểm nhận diện thông minh
-              </div>
-              {smartSuggestions.map((item, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => selectLandmark(item)}
-                  style={{
-                    padding: '8px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    borderBottom: idx === smartSuggestions.length - 1 ? 'none' : '1px solid #f1f5f9',
-                    backgroundColor: '#ffffff'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ffffff'}
-                >
-                  <div>
-                    <div style={{ fontWeight: '700', fontSize: '0.82rem', color: '#0f172a' }}>
-                      {item.name}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                      {item.address}
-                    </div>
-                  </div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#2563eb', backgroundColor: '#eff6ff', padding: '2px 8px', borderRadius: '10px' }}>
-                    {item.tag}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* In-modal status banner */}
         {searchStatus && (
           <div style={{
-            padding: '6px 18px',
-            fontSize: '0.74rem',
+            flexShrink: 0,
+            padding: '7px 20px',
+            fontSize: '0.76rem',
             fontWeight: '600',
             backgroundColor: searchStatus.type === 'error' ? '#fef2f2' : searchStatus.type === 'info' ? '#eff6ff' : '#ecfdf5',
             color: searchStatus.type === 'error' ? '#b91c1c' : searchStatus.type === 'info' ? '#1d4ed8' : '#047857',
-            borderBottom: '1px solid #e2e8f0'
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
           }}>
-            {searchStatus.msg}
+            <span>{searchStatus.msg}</span>
           </div>
         )}
 
         {/* Map */}
-        <div style={{ flex: 1, minHeight: '380px', position: 'relative' }}>
-          <div ref={mapContainerRef} style={{ width: '100%', height: '100%', minHeight: '380px' }} />
+        <div style={{ flex: 1, minHeight: '220px', position: 'relative' }}>
+          <div ref={mapContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '10px 18px', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: '0.78rem', color: '#0f172a' }}>
-            Tọa độ đã chọn: <strong>{currentCoords.lat.toFixed(6)}, {currentCoords.lng.toFixed(6)}</strong>
+        <div style={{
+          flexShrink: 0,
+          padding: '12px 20px',
+          borderTop: '1px solid #e2e8f0',
+          backgroundColor: '#ffffff',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div style={{ fontSize: '0.8rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#64748b' }}>Tọa độ đã chọn:</span>
+            <span style={{ fontFamily: 'monospace', fontWeight: '700', color: '#2563eb', backgroundColor: '#eff6ff', padding: '3px 8px', borderRadius: '6px' }}>
+              {currentCoords.lat.toFixed(6)}, {currentCoords.lng.toFixed(6)}
+            </span>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" onClick={onClose} className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '5px 14px', borderRadius: '6px' }}>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#475569',
+                borderRadius: '8px',
+                padding: '7px 16px',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+            >
               Hủy
             </button>
             <button
               type="button"
               onClick={() => onConfirm(currentCoords.lat, currentCoords.lng)}
-              style={{ backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '6px', padding: '5px 16px', fontSize: '0.78rem', fontWeight: '700', cursor: 'pointer' }}
+              style={{
+                backgroundColor: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '7px 20px',
+                fontSize: '0.8rem',
+                fontWeight: '700',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.35)'
+              }}
             >
               Xác nhận tọa độ này
             </button>
@@ -955,6 +642,7 @@ const OpsRoutesPage = () => {
   const [distance, setDistance] = useState('');
   const [duration, setDuration] = useState('');
   const [stops, setStops] = useState([]);
+  const [formErrors, setFormErrors] = useState({});
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -1072,6 +760,7 @@ const OpsRoutesPage = () => {
 
   const handleOpenAdd = (prefill = null) => {
     setEditingRoute(null);
+    setFormErrors({});
     const sp = prefill?.startPoint || '';
     const ep = prefill?.endPoint || '';
     setStartPoint(sp);
@@ -1124,6 +813,7 @@ const OpsRoutesPage = () => {
 
   const handleOpenEdit = (route) => {
     setEditingRoute(route);
+    setFormErrors({});
     setStartPoint(route.startPoint);
     setEndPoint(route.endPoint);
     setDistance(route.distance);
@@ -1158,6 +848,13 @@ const OpsRoutesPage = () => {
 
   const handleRemoveStop = (index) => {
     setStops(stops.filter((_, i) => i !== index));
+    if (formErrors.stopErrors && formErrors.stopErrors[index]) {
+      setFormErrors(prev => {
+        const newStopErrors = { ...prev.stopErrors };
+        delete newStopErrors[index];
+        return { ...prev, stopErrors: newStopErrors };
+      });
+    }
   };
 
   const handleStopChange = (index, field, value) => {
@@ -1168,6 +865,13 @@ const OpsRoutesPage = () => {
       }
       return updated;
     });
+    if (formErrors.stopErrors && formErrors.stopErrors[index]) {
+      setFormErrors(prev => {
+        const newStopErrors = { ...prev.stopErrors };
+        delete newStopErrors[index];
+        return { ...prev, stopErrors: newStopErrors };
+      });
+    }
   };
 
   const handleOptimizeStops = () => {
@@ -1351,12 +1055,139 @@ const OpsRoutesPage = () => {
     }
   };
 
+  const validateRouteForm = () => {
+    const errors = {};
+
+    // 1. Kiểm tra Điểm đi
+    const cleanStart = (startPoint || '').trim();
+    if (!cleanStart) {
+      errors.startPoint = 'Vui lòng nhập điểm đi xuất phát.';
+    } else if (cleanStart.length < 2) {
+      errors.startPoint = 'Tên điểm đi phải có ít nhất 2 ký tự.';
+    }
+
+    // 2. Kiểm tra Điểm đến
+    const cleanEnd = (endPoint || '').trim();
+    if (!cleanEnd) {
+      errors.endPoint = 'Vui lòng nhập điểm đến kết thúc.';
+    } else if (cleanEnd.length < 2) {
+      errors.endPoint = 'Tên điểm đến phải có ít nhất 2 ký tự.';
+    } else if (cleanStart && cleanStart.toLowerCase() === cleanEnd.toLowerCase()) {
+      errors.endPoint = 'Điểm đến không được trùng với điểm xuất phát.';
+    }
+
+    // 3. Kiểm tra Tuyến đường trùng lặp
+    if (cleanStart && cleanEnd && cleanStart.toLowerCase() !== cleanEnd.toLowerCase()) {
+      const isDuplicate = routes.some(r => {
+        if (editingRoute && r._id === editingRoute._id) return false;
+        return (
+          (r.startPoint || '').trim().toLowerCase() === cleanStart.toLowerCase() &&
+          (r.endPoint || '').trim().toLowerCase() === cleanEnd.toLowerCase()
+        );
+      });
+      if (isDuplicate) {
+        errors.duplicate = `Tuyến đường ${cleanStart} ➔ ${cleanEnd} đã tồn tại trong hệ thống.`;
+      }
+    }
+
+    // 4. Kiểm tra Khoảng cách
+    const cleanDistance = (distance || '').trim();
+    if (!cleanDistance) {
+      errors.distance = 'Vui lòng nhập khoảng cách ước tính.';
+    } else {
+      const distMatch = cleanDistance.match(/(\d+([.,]\d+)?)/);
+      const distNum = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : NaN;
+      if (isNaN(distNum) || distNum <= 0) {
+        errors.distance = 'Khoảng cách phải là số lớn hơn 0 (ví dụ: 172 km).';
+      } else if (distNum < 5) {
+        errors.distance = 'Khoảng cách tuyến đường liên tỉnh tối thiểu là 5 km.';
+      } else if (distNum > 3000) {
+        errors.distance = 'Khoảng cách vượt quá giới hạn vận tải hợp lý (tối đa 3.000 km).';
+      }
+    }
+
+    // 5. Kiểm tra Thời gian đi dự kiến
+    const cleanDuration = (duration || '').trim();
+    if (!cleanDuration) {
+      errors.duration = 'Vui lòng nhập thời gian đi dự kiến.';
+    } else {
+      const hasNum = /\d+/.test(cleanDuration);
+      if (!hasNum) {
+        errors.duration = 'Thời gian đi phải chứa số đo cụ thể (ví dụ: 3 giờ hoặc 180 phút).';
+      } else if (cleanDuration.includes('-')) {
+        errors.duration = 'Thời gian đi dự kiến không được là số âm.';
+      }
+    }
+
+    // 6. Kiểm tra Danh sách Trạm đón / trả
+    if (!stops || stops.length < 2) {
+      errors.stops = 'Tuyến đường cần tối thiểu 2 trạm: 1 điểm đón xuất phát và 1 điểm trả kết thúc.';
+    } else {
+      const stopErrors = {};
+      const seenNames = new Set();
+      let hasPickup = false;
+      let hasDropoff = false;
+
+      stops.forEach((s, idx) => {
+        const sName = (s.name || '').trim();
+        const isFirst = idx === 0;
+        const isLast = idx === stops.length - 1;
+        const isPickup = isFirst || s.type === 'start' || s.type === 'pickup';
+        const isDropoff = isLast || s.type === 'end' || s.type === 'dropoff';
+
+        if (isPickup) hasPickup = true;
+        if (isDropoff) hasDropoff = true;
+
+        if (!sName) {
+          stopErrors[idx] = `Vui lòng nhập tên cho ${isFirst ? 'điểm đón xuất phát' : isLast ? 'điểm trả kết thúc' : `trạm thứ ${idx + 1}`}.`;
+        } else {
+          const lower = sName.toLowerCase();
+          if (seenNames.has(lower)) {
+            stopErrors[idx] = `Tên trạm "${sName}" bị trùng lặp trong cùng một tuyến.`;
+          } else {
+            seenNames.add(lower);
+          }
+        }
+
+        // Tọa độ GPS nếu có
+        if (typeof s.lat === 'number' && typeof s.lng === 'number') {
+          if (s.lat < 8.0 || s.lat > 24.5 || s.lng < 102.0 || s.lng > 110.5) {
+            stopErrors[idx] = `Tọa độ GPS (${s.lat.toFixed(3)}, ${s.lng.toFixed(3)}) nằm ngoài phạm vi lãnh thổ Việt Nam.`;
+          }
+        }
+      });
+
+      if (Object.keys(stopErrors).length > 0) {
+        errors.stopErrors = stopErrors;
+      }
+
+      if (!hasPickup) {
+        errors.stops = 'Tuyến đường phải có ít nhất 1 điểm đón khách.';
+      } else if (!hasDropoff) {
+        errors.stops = 'Tuyến đường phải có ít nhất 1 điểm trả khách.';
+      }
+    }
+
+    return errors;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!startPoint.trim() || !endPoint.trim() || !distance.trim() || !duration.trim()) {
-      showToast('Vui lòng điền đầy đủ thông tin.', 'error');
+    const validationErrors = validateRouteForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors);
+      const firstError = validationErrors.startPoint ||
+        validationErrors.endPoint ||
+        validationErrors.duplicate ||
+        validationErrors.distance ||
+        validationErrors.duration ||
+        validationErrors.stops ||
+        (validationErrors.stopErrors && Object.values(validationErrors.stopErrors)[0]) ||
+        'Vui lòng kiểm tra lại thông tin chưa hợp lệ.';
+      showToast(firstError, 'error');
       return;
     }
+    setFormErrors({});
 
     setSubmitting(true);
 
@@ -1966,7 +1797,27 @@ const OpsRoutesPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} noValidate>
+              {/* Duplicate Route Error Alert */}
+              {formErrors.duplicate && (
+                <div style={{
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '14px',
+                  color: '#b91c1c',
+                  fontSize: '0.8rem',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span style={{ fontSize: '1rem', lineHeight: 1 }}>!</span>
+                  <span>{formErrors.duplicate}</span>
+                </div>
+              )}
+
               {/* Row 1: Start & End Points */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -1980,14 +1831,27 @@ const OpsRoutesPage = () => {
                     onChange={(e) => {
                       const val = e.target.value;
                       setStartPoint(val);
+                      if (formErrors.startPoint || formErrors.duplicate) {
+                        setFormErrors(prev => ({ ...prev, startPoint: '', duplicate: '' }));
+                      }
                       if (stops.length > 0 && (!stops[0].name || stops[0].name === startPoint)) {
                         handleStopChange(0, 'name', val);
                       }
                     }}
                     placeholder="Ví dụ: Cần Thơ"
-                    style={{ fontSize: '0.82rem', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                    required
+                    style={{
+                      fontSize: '0.82rem',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: formErrors.startPoint ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.startPoint ? '#fef2f2' : '#ffffff'
+                    }}
                   />
+                  {formErrors.startPoint && (
+                    <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: '600' }}>
+                      {formErrors.startPoint}
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -2001,14 +1865,27 @@ const OpsRoutesPage = () => {
                     onChange={(e) => {
                       const val = e.target.value;
                       setEndPoint(val);
+                      if (formErrors.endPoint || formErrors.duplicate) {
+                        setFormErrors(prev => ({ ...prev, endPoint: '', duplicate: '' }));
+                      }
                       if (stops.length > 1 && (!stops[stops.length - 1].name || stops[stops.length - 1].name === endPoint)) {
                         handleStopChange(stops.length - 1, 'name', val);
                       }
                     }}
                     placeholder="Ví dụ: Hồ Chí Minh"
-                    style={{ fontSize: '0.82rem', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                    required
+                    style={{
+                      fontSize: '0.82rem',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      border: formErrors.endPoint ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.endPoint ? '#fef2f2' : '#ffffff'
+                    }}
                   />
+                  {formErrors.endPoint && (
+                    <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: '600' }}>
+                      {formErrors.endPoint}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2051,6 +1928,9 @@ const OpsRoutesPage = () => {
                         setDuration(suggestedEta.duration);
                         setUserEditedDistance(false);
                         setUserEditedDuration(false);
+                        if (formErrors.distance || formErrors.duration) {
+                          setFormErrors(prev => ({ ...prev, distance: '', duration: '' }));
+                        }
                         showToast('Đã áp dụng gợi ý ETA vào biểu mẫu!');
                       }}
                       style={{
@@ -2079,6 +1959,9 @@ const OpsRoutesPage = () => {
                         onClick={() => {
                           setDistance(suggestedEta.distance);
                           setUserEditedDistance(false);
+                          if (formErrors.distance) {
+                            setFormErrors(prev => ({ ...prev, distance: '' }));
+                          }
                         }}
                         style={{
                           background: 'none', border: 'none', color: '#2563eb',
@@ -2098,10 +1981,18 @@ const OpsRoutesPage = () => {
                       onChange={(e) => {
                         setUserEditedDistance(true);
                         setDistance(e.target.value);
+                        if (formErrors.distance) {
+                          setFormErrors(prev => ({ ...prev, distance: '' }));
+                        }
                       }}
                       placeholder="Ví dụ: 172 km"
-                      style={{ fontSize: '0.82rem', padding: '8px 30px 8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                      required
+                      style={{
+                        fontSize: '0.82rem',
+                        padding: '8px 30px 8px 10px',
+                        borderRadius: '8px',
+                        border: formErrors.distance ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.distance ? '#fef2f2' : '#ffffff'
+                      }}
                     />
                     {distance && (
                       <button
@@ -2122,6 +2013,11 @@ const OpsRoutesPage = () => {
                       </button>
                     )}
                   </div>
+                  {formErrors.distance && (
+                    <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: '600' }}>
+                      {formErrors.distance}
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -2135,6 +2031,9 @@ const OpsRoutesPage = () => {
                         onClick={() => {
                           setDuration(suggestedEta.duration);
                           setUserEditedDuration(false);
+                          if (formErrors.duration) {
+                            setFormErrors(prev => ({ ...prev, duration: '' }));
+                          }
                         }}
                         style={{
                           background: 'none', border: 'none', color: '#2563eb',
@@ -2154,10 +2053,18 @@ const OpsRoutesPage = () => {
                       onChange={(e) => {
                         setUserEditedDuration(true);
                         setDuration(e.target.value);
+                        if (formErrors.duration) {
+                          setFormErrors(prev => ({ ...prev, duration: '' }));
+                        }
                       }}
                       placeholder="Ví dụ: 3 giờ"
-                      style={{ fontSize: '0.82rem', padding: '8px 30px 8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
-                      required
+                      style={{
+                        fontSize: '0.82rem',
+                        padding: '8px 30px 8px 10px',
+                        borderRadius: '8px',
+                        border: formErrors.duration ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                        backgroundColor: formErrors.duration ? '#fef2f2' : '#ffffff'
+                      }}
                     />
                     {duration && (
                       <button
@@ -2178,11 +2085,22 @@ const OpsRoutesPage = () => {
                       </button>
                     )}
                   </div>
+                  {formErrors.duration && (
+                    <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '4px', fontWeight: '600' }}>
+                      {formErrors.duration}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Stops list: STRICTLY ONLY PICKUP OR DROPOFF */}
-              <div style={{ backgroundColor: '#f8fafc', padding: '14px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '18px' }}>
+              <div style={{
+                backgroundColor: '#f8fafc',
+                padding: '14px',
+                borderRadius: '10px',
+                border: formErrors.stops ? '1.5px solid #ef4444' : '1px solid #e2e8f0',
+                marginBottom: '18px'
+              }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                   <label className="form-label" style={{ margin: 0, fontWeight: '700', color: '#1e293b', fontSize: '0.8rem' }}>
                     Danh sách Các điểm đón và điểm trả:
@@ -2200,139 +2118,159 @@ const OpsRoutesPage = () => {
                   </button>
                 </div>
 
+                {formErrors.stops && (
+                  <div style={{ color: '#dc2626', fontSize: '0.74rem', marginBottom: '10px', fontWeight: '700' }}>
+                    {formErrors.stops}
+                  </div>
+                )}
+
                 {stops.map((stop, idx) => {
                   const isFirst = idx === 0;
                   const isLast = idx === stops.length - 1 && stops.length > 1;
                   const isDropoff = !isFirst && (stop.type === 'dropoff' || isLast);
+                  const hasStopError = formErrors.stopErrors && formErrors.stopErrors[idx];
 
                   return (
-                    <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{
-                        width: '22px', height: '22px', borderRadius: '5px',
-                        backgroundColor: isFirst ? '#ecfdf5' : (isDropoff ? '#fff7ed' : '#f1f5f9'),
-                        color: isFirst ? '#047857' : (isDropoff ? '#c2410c' : '#475569'),
-                        fontWeight: '800', fontSize: '0.72rem',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0
-                      }}>
-                        {idx + 1}
+                    <div key={idx} style={{ marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <div style={{
+                          width: '22px', height: '22px', borderRadius: '5px',
+                          backgroundColor: isFirst ? '#ecfdf5' : (isDropoff ? '#fff7ed' : '#f1f5f9'),
+                          color: isFirst ? '#047857' : (isDropoff ? '#c2410c' : '#475569'),
+                          fontWeight: '800', fontSize: '0.72rem',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          {idx + 1}
+                        </div>
+
+                        {isFirst ? (
+                          <div style={{
+                            padding: '5px 8px', fontSize: '0.72rem', borderRadius: '6px',
+                            backgroundColor: '#ecfdf5', color: '#047857', fontWeight: '700',
+                            whiteSpace: 'nowrap', border: '1px solid #a7f3d0', minWidth: '115px', textAlign: 'center'
+                          }}>
+                            Điểm đón (Đầu)
+                          </div>
+                        ) : isLast ? (
+                          <div style={{
+                            padding: '5px 8px', fontSize: '0.72rem', borderRadius: '6px',
+                            backgroundColor: '#fef2f2', color: '#b91c1c', fontWeight: '700',
+                            whiteSpace: 'nowrap', border: '1px solid #fecaca', minWidth: '115px', textAlign: 'center'
+                          }}>
+                            Điểm trả (Cuối)
+                          </div>
+                        ) : (
+                          <select
+                            value={stop.type === 'dropoff' ? 'dropoff' : 'pickup'}
+                            onChange={(e) => handleStopChange(idx, 'type', e.target.value)}
+                            style={{
+                              padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px',
+                              border: isDropoff ? '1px solid #fed7aa' : '1px solid #cbd5e1',
+                              backgroundColor: isDropoff ? '#fff7ed' : '#ffffff',
+                              fontWeight: '700', minWidth: '115px',
+                              color: isDropoff ? '#c2410c' : '#047857',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="pickup">Điểm đón</option>
+                            <option value="dropoff">Điểm trả</option>
+                          </select>
+                        )}
+
+                        <input
+                          type="text"
+                          placeholder={isFirst ? "Tên điểm đón xuất phát" : isLast ? "Tên điểm trả kết thúc" : "Tên trạm đón hoặc trả"}
+                          value={stop.name}
+                          onChange={(e) => handleStopChange(idx, 'name', e.target.value)}
+                          style={{
+                            flex: 1.2,
+                            padding: '6px 8px',
+                            fontSize: '0.78rem',
+                            borderRadius: '6px',
+                            border: hasStopError ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                            backgroundColor: hasStopError ? '#fef2f2' : '#ffffff'
+                          }}
+                        />
+
+                        <input
+                          type="text"
+                          placeholder="Địa chỉ chi tiết (Tùy chọn)"
+                          value={stop.address}
+                          onChange={(e) => handleStopChange(idx, 'address', e.target.value)}
+                          style={{ flex: 1.6, padding: '6px 8px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                        />
+
+                        {/* Stop ETA offset badge */}
+                        {typeof stop.arrivalTimeOffset === 'number' && (
+                          <span
+                            title={`Thời gian dự kiến từ lúc xuất phát: +${stop.arrivalTimeOffset} phút`}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '0.7rem',
+                              fontWeight: '700',
+                              borderRadius: '5px',
+                              backgroundColor: isFirst ? '#f1f5f9' : (isDropoff ? '#fffbeb' : '#eff6ff'),
+                              color: isFirst ? '#475569' : (isDropoff ? '#b45309' : '#1d4ed8'),
+                              border: isFirst ? '1px solid #e2e8f0' : (isDropoff ? '1px solid #fde68a' : '1px solid #bfdbfe'),
+                              whiteSpace: 'nowrap',
+                              minWidth: '60px',
+                              textAlign: 'center'
+                            }}
+                          >
+                            {formatOffset(stop.arrivalTimeOffset)}
+                          </span>
+                        )}
+
+                        {/* GPS Pin Button & Coordinates Badge */}
+                        {typeof stop.lat === 'number' && typeof stop.lng === 'number' ? (
+                          <button
+                            type="button"
+                            onClick={() => setPickingStopIndex(idx)}
+                            style={{
+                              padding: '4px 8px', fontSize: '0.7rem', borderRadius: '5px',
+                              border: '1px solid #10b981', backgroundColor: '#ecfdf5', color: '#047857',
+                              fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
+                            }}
+                            title={`Tọa độ GPS: ${stop.lat}, ${stop.lng}. Nhấp để đổi vị trí trên bản đồ.`}
+                          >
+                            GPS: {stop.lat.toFixed(3)}, {stop.lng.toFixed(3)}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleGeocodeSingleStop(idx)}
+                            disabled={geocodingIndex === idx}
+                            style={{
+                              padding: '4px 8px', fontSize: '0.7rem', borderRadius: '5px',
+                              border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#2563eb',
+                              fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
+                            }}
+                            title="Nhấp để tự động tìm tọa độ GPS từ địa chỉ hoặc ghim trên bản đồ"
+                          >
+                            {geocodingIndex === idx ? 'Đang tìm...' : 'Ghim GPS'}
+                          </button>
+                        )}
+
+                        {!isFirst && !isLast && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveStop(idx)}
+                            title="Xóa trạm này"
+                            style={{
+                              color: '#ef4444', backgroundColor: '#fef2f2',
+                              border: '1px solid #fca5a5', borderRadius: '5px',
+                              padding: '3px 7px', cursor: 'pointer', fontSize: '0.75rem'
+                            }}
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
-
-                      {isFirst ? (
-                        <div style={{
-                          padding: '5px 8px', fontSize: '0.72rem', borderRadius: '6px',
-                          backgroundColor: '#ecfdf5', color: '#047857', fontWeight: '700',
-                          whiteSpace: 'nowrap', border: '1px solid #a7f3d0', minWidth: '115px', textAlign: 'center'
-                        }}>
-                          Điểm đón (Đầu)
+                      {hasStopError && (
+                        <div style={{ color: '#dc2626', fontSize: '0.71rem', fontWeight: '600', marginTop: '3px', paddingLeft: '30px' }}>
+                          {hasStopError}
                         </div>
-                      ) : isLast ? (
-                        <div style={{
-                          padding: '5px 8px', fontSize: '0.72rem', borderRadius: '6px',
-                          backgroundColor: '#fef2f2', color: '#b91c1c', fontWeight: '700',
-                          whiteSpace: 'nowrap', border: '1px solid #fecaca', minWidth: '115px', textAlign: 'center'
-                        }}>
-                          Điểm trả (Cuối)
-                        </div>
-                      ) : (
-                        <select
-                          value={stop.type === 'dropoff' ? 'dropoff' : 'pickup'}
-                          onChange={(e) => handleStopChange(idx, 'type', e.target.value)}
-                          style={{
-                            padding: '5px 8px', fontSize: '0.75rem', borderRadius: '6px',
-                            border: isDropoff ? '1px solid #fed7aa' : '1px solid #cbd5e1',
-                            backgroundColor: isDropoff ? '#fff7ed' : '#ffffff',
-                            fontWeight: '700', minWidth: '115px',
-                            color: isDropoff ? '#c2410c' : '#047857',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <option value="pickup">Điểm đón</option>
-                          <option value="dropoff">Điểm trả</option>
-                        </select>
-                      )}
-
-                      <input
-                        type="text"
-                        placeholder={isFirst ? "Tên điểm đón xuất phát" : isLast ? "Tên điểm trả kết thúc" : "Tên trạm đón hoặc trả"}
-                        value={stop.name}
-                        onChange={(e) => handleStopChange(idx, 'name', e.target.value)}
-                        style={{ flex: 1.2, padding: '6px 8px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                        required
-                      />
-
-                      <input
-                        type="text"
-                        placeholder="Địa chỉ chi tiết (Tùy chọn)"
-                        value={stop.address}
-                        onChange={(e) => handleStopChange(idx, 'address', e.target.value)}
-                        style={{ flex: 1.6, padding: '6px 8px', fontSize: '0.78rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                      />
-
-                      {/* Stop ETA offset badge */}
-                      {typeof stop.arrivalTimeOffset === 'number' && (
-                        <span
-                          title={`Thời gian dự kiến từ lúc xuất phát: +${stop.arrivalTimeOffset} phút`}
-                          style={{
-                            padding: '4px 8px',
-                            fontSize: '0.7rem',
-                            fontWeight: '700',
-                            borderRadius: '5px',
-                            backgroundColor: isFirst ? '#f1f5f9' : (isDropoff ? '#fffbeb' : '#eff6ff'),
-                            color: isFirst ? '#475569' : (isDropoff ? '#b45309' : '#1d4ed8'),
-                            border: isFirst ? '1px solid #e2e8f0' : (isDropoff ? '1px solid #fde68a' : '1px solid #bfdbfe'),
-                            whiteSpace: 'nowrap',
-                            minWidth: '60px',
-                            textAlign: 'center'
-                          }}
-                        >
-                          {formatOffset(stop.arrivalTimeOffset)}
-                        </span>
-                      )}
-
-                      {/* GPS Pin Button & Coordinates Badge */}
-                      {typeof stop.lat === 'number' && typeof stop.lng === 'number' ? (
-                        <button
-                          type="button"
-                          onClick={() => setPickingStopIndex(idx)}
-                          style={{
-                            padding: '4px 8px', fontSize: '0.7rem', borderRadius: '5px',
-                            border: '1px solid #10b981', backgroundColor: '#ecfdf5', color: '#047857',
-                            fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
-                          }}
-                          title={`Tọa độ GPS: ${stop.lat}, ${stop.lng}. Nhấp để đổi vị trí trên bản đồ.`}
-                        >
-                          GPS: {stop.lat.toFixed(3)}, {stop.lng.toFixed(3)}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleGeocodeSingleStop(idx)}
-                          disabled={geocodingIndex === idx}
-                          style={{
-                            padding: '4px 8px', fontSize: '0.7rem', borderRadius: '5px',
-                            border: '1px solid #cbd5e1', backgroundColor: '#ffffff', color: '#2563eb',
-                            fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap'
-                          }}
-                          title="Nhấp để tự động tìm tọa độ GPS từ địa chỉ hoặc ghim trên bản đồ"
-                        >
-                          {geocodingIndex === idx ? 'Đang tìm...' : 'Ghim GPS'}
-                        </button>
-                      )}
-
-                      {!isFirst && !isLast && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveStop(idx)}
-                          title="Xóa trạm này"
-                          style={{
-                            color: '#ef4444', backgroundColor: '#fef2f2',
-                            border: '1px solid #fca5a5', borderRadius: '5px',
-                            padding: '3px 7px', cursor: 'pointer', fontSize: '0.75rem'
-                          }}
-                        >
-                          ✕
-                        </button>
                       )}
                     </div>
                   );

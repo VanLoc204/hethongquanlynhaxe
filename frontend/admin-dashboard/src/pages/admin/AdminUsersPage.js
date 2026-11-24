@@ -93,6 +93,7 @@ const AdminUsersPage = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
+  const [resettingPw, setResettingPw] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
   const [selectedIds, setSelectedIds] = useState([]);
@@ -160,13 +161,42 @@ const AdminUsersPage = () => {
     setName('');
     setEmail('');
     setPhone('');
-    setPassword('');
+    setPassword('Anbinh@2026');
     setRole('ticket_agent');
     setBranchId('sg');
     setAssignedOffice('Văn phòng Bến xe Miền Đông');
     setShiftType('morning');
     setStatus('active');
     setShowModal(true);
+  };
+
+  const handleResetToDefaultPassword = async () => {
+    if (!editingStaff) return;
+    const confirmMsg = `Bạn có chắc chắn muốn đặt lại mật khẩu của người dùng "${editingStaff.name}" về mật khẩu mặc định "Anbinh@2026"?\nNgười dùng sẽ sử dụng mật khẩu này để đăng nhập lại hệ thống.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setResettingPw(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/staff/${editingStaff._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: 'Anbinh@2026' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã đặt lại mật khẩu thành công về "Anbinh@2026"!');
+        setPassword('');
+      } else {
+        showToast(data.message || 'Không thể đặt lại mật khẩu.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ khi đặt lại mật khẩu.', 'error');
+    } finally {
+      setResettingPw(false);
+    }
   };
 
   const handleOpenEdit = (staff) => {
@@ -1073,42 +1103,83 @@ const AdminUsersPage = () => {
                   </div>
                 </div>
 
-                {/* Field 4: MẬT KHẨU KHỞI TẠO */}
+                {/* Field 4: MẬT KHẨU */}
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'block', fontWeight: '700', fontSize: '0.72rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
-                    {editingStaff ? 'MẬT KHẨU MỚI (ĐỂ TRỐNG NẾU GIỮ NGUYÊN)' : 'MẬT KHẨU KHỞI TẠO'} <span style={{ color: '#ef4444' }}>*</span>
+                    Mật khẩu tài khoản
                   </label>
-                  <div style={{ position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                  {editingStaff ? (
+                    <div style={{
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      backgroundColor: '#f8fafc',
+                      border: '1px dashed #cbd5e1',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: '600', color: '#334155' }}>
+                          Mật khẩu mặc định hệ thống
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                          Cấp lại mật khẩu chuẩn: <strong style={{ color: '#2563eb' }}>Anbinh@2026</strong>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleResetToDefaultPassword}
+                        disabled={resettingPw}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '6px',
+                          border: '1px solid #bfdbfe',
+                          backgroundColor: '#eff6ff',
+                          color: '#1d4ed8',
+                          fontWeight: '700',
+                          fontSize: '0.75rem',
+                          cursor: resettingPw ? 'not-allowed' : 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {resettingPw ? 'Đang đặt lại...' : 'Reset về Anbinh@2026'}
+                      </button>
                     </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      style={{
-                        width: '100%', padding: '0.6rem 38px 0.6rem 38px', borderRadius: '10px',
-                        border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.85rem', color: '#0f172a',
-                        outline: 'none'
-                      }}
-                      required={!editingStaff}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{
-                        position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-                        background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center'
-                      }}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                    </button>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-                    <span>Mật khẩu tối thiểu 6 ký tự, gồm chữ và số. Nhân viên có thể đổi sau lần đầu đăng nhập.</span>
-                  </div>
+                  ) : (
+                    <>
+                      <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center', pointerEvents: 'none' }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                        </div>
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Mật khẩu khởi tạo (mặc định: Anbinh@2026)"
+                          style={{
+                            width: '100%', padding: '0.6rem 38px 0.6rem 38px', borderRadius: '10px',
+                            border: '1px solid #e2e8f0', background: '#ffffff', fontSize: '0.85rem', color: '#0f172a',
+                            outline: 'none'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          style={{
+                            position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                            background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center'
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px', marginTop: '6px' }}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+                        <span>Mật khẩu mặc định hệ thống: Anbinh@2026. Nhân viên có thể đổi sau khi đăng nhập.</span>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Field 5 & 6: VAI TRÒ & TRẠNG THÁI */}

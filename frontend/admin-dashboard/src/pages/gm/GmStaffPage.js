@@ -94,6 +94,7 @@ const GmStaffPage = () => {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
+  const [resettingPw, setResettingPw] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmModal, setConfirmModal] = useState({ show: false, title: '', message: '', onConfirm: null });
   const [selectedIds, setSelectedIds] = useState([]);
@@ -160,13 +161,42 @@ const GmStaffPage = () => {
     setName('');
     setEmail('');
     setPhone('');
-    setPassword('');
+    setPassword('Anbinh@2026');
     setRole('ticket_agent');
     setBranchId('sg');
     setAssignedOffice('Văn phòng Bến xe Miền Đông');
     setShiftType('morning');
     setStatus('active');
     setShowModal(true);
+  };
+
+  const handleResetToDefaultPassword = async () => {
+    if (!editingStaff) return;
+    const confirmMsg = `Bạn có chắc chắn muốn đặt lại mật khẩu của nhân viên "${editingStaff.name}" về mật khẩu mặc định "Anbinh@2026"?\nNhân viên sẽ dùng mật khẩu này để đăng nhập lại hệ thống.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setResettingPw(true);
+    try {
+      const res = await fetch(`${API_BASE}/users/staff/${editingStaff._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: 'Anbinh@2026' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã đặt lại mật khẩu thành công về "Anbinh@2026"!');
+        setPassword('');
+      } else {
+        showToast(data.message || 'Không thể đặt lại mật khẩu.', 'error');
+      }
+    } catch {
+      showToast('Lỗi kết nối máy chủ khi đặt lại mật khẩu.', 'error');
+    } finally {
+      setResettingPw(false);
+    }
   };
 
   const handleOpenEdit = (staff) => {
@@ -244,15 +274,36 @@ const GmStaffPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name || !phone || (!editingStaff && !password)) {
-      showToast('Vui lòng nhập đầy đủ các trường bắt buộc.', 'error');
+    if (!name.trim()) {
+      showToast('Vui lòng nhập họ và tên nhân viên.', 'error');
+      return;
+    }
+
+    const cleanPhone = phone.trim();
+    if (!cleanPhone || !/^(0[35789])[0-9]{8}$/.test(cleanPhone)) {
+      showToast('Số điện thoại không hợp lệ (phải gồm 10 chữ số, bắt đầu bằng 03, 05, 07, 08, 09).', 'error');
+      return;
+    }
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      showToast('Vui lòng nhập địa chỉ email liên hệ.', 'error');
+      return;
+    }
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) {
+      showToast('Định dạng email không hợp lệ (ví dụ: taixe.anbinh@gmail.com).', 'error');
+      return;
+    }
+
+    if (!editingStaff && (!password.trim() || password.trim().length < 6)) {
+      showToast('Mật khẩu khởi tạo phải có ít nhất 6 ký tự.', 'error');
       return;
     }
 
     const payload = {
-      name,
-      email: email || undefined,
-      phone,
+      name: name.trim(),
+      email: cleanEmail,
+      phone: cleanPhone,
       role,
       status
     };
@@ -860,7 +911,9 @@ const GmStaffPage = () => {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>Email</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>
+                    Email liên hệ <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
                   <input
                     type="email"
                     value={email}
@@ -876,19 +929,58 @@ const GmStaffPage = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#334155' }}>
-                  {editingStaff ? 'Mật khẩu mới (để trống nếu không đổi)' : 'Mật khẩu đăng nhập *'}
+                  Mật khẩu tài khoản
                 </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu truy cập"
-                  required={!editingStaff}
-                  style={{
-                    padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1',
-                    fontSize: '0.8rem', outline: 'none'
-                  }}
-                />
+                {editingStaff ? (
+                  <div style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px dashed #cbd5e1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: '600', color: '#334155' }}>
+                        Mật khẩu mặc định hệ thống
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                        Cấp lại mật khẩu chuẩn: <strong style={{ color: '#2563eb' }}>Anbinh@2026</strong>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetToDefaultPassword}
+                      disabled={resettingPw}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        backgroundColor: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontWeight: '700',
+                        fontSize: '0.75rem',
+                        cursor: resettingPw ? 'not-allowed' : 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {resettingPw ? 'Đang đặt lại...' : 'Reset về Anbinh@2026'}
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mật khẩu khởi tạo (mặc định: Anbinh@2026)"
+                    style={{
+                      padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      fontSize: '0.8rem', outline: 'none'
+                    }}
+                  />
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem' }}>

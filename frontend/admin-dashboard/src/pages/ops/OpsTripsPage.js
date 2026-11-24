@@ -47,22 +47,6 @@ const OpsTripsPage = () => {
   const [hoveredTrip, setHoveredTrip] = useState(null);
   const [tripTooltipPos, setTripTooltipPos] = useState({ x: 0, y: 0 });
 
-  // Auto scheduling modal states
-  const [showAutoModal, setShowAutoModal] = useState(false);
-  const [autoStartDate, setAutoStartDate] = useState('2026-07-24');
-  const [autoEndDate, setAutoEndDate] = useState('2026-07-30');
-  const [autoRouteId, setAutoRouteId] = useState('');
-  const [autoBusId, setAutoBusId] = useState('');
-  const [autoSlots, setAutoSlots] = useState([
-    { departureTime: '08:00', arrivalTime: '15:00' }
-  ]);
-
-  // Sync auto scheduling dropdown default values when routes/buses load
-  useEffect(() => {
-    if (routes.length > 0 && !autoRouteId) setAutoRouteId(routes[0]._id);
-    if (buses.length > 0 && !autoBusId) setAutoBusId(buses[0]._id);
-  }, [routes, buses]);
-
   // Jump to specific week when filterDate is selected
   useEffect(() => {
     if (filterDate) {
@@ -123,75 +107,6 @@ const OpsTripsPage = () => {
     }
 
     return { pickup, dropoff };
-  };
-
-  const handleOpenAutoModal = () => {
-    setAutoStartDate('2026-07-24');
-    setAutoEndDate('2026-07-30');
-    setAutoRouteId(routes[0]?._id || '');
-    setAutoBusId(buses[0]?._id || '');
-    setAutoSlots([{ departureTime: '08:00', arrivalTime: '15:00' }]);
-    setShowAutoModal(true);
-  };
-
-  const handleAddSlot = () => {
-    setAutoSlots([...autoSlots, { departureTime: '08:00', arrivalTime: '15:00' }]);
-  };
-
-  const handleRemoveSlot = (idx) => {
-    setAutoSlots(autoSlots.filter((_, i) => i !== idx));
-  };
-
-  const handleSlotChange = (idx, field, val) => {
-    const updated = [...autoSlots];
-    updated[idx][field] = val;
-    setAutoSlots(updated);
-  };
-
-  const handleAutoScheduleSubmit = async (e) => {
-    e.preventDefault();
-    if (!autoRouteId || !autoBusId || !autoStartDate || !autoEndDate || autoSlots.length === 0) {
-      showToast('Vui lòng cung cấp đầy đủ thông tin để xếp lịch tự động.', 'error');
-      return;
-    }
-
-    // Build configurations with smart station lookup
-    const configs = autoSlots.map(slot => {
-      const { pickup, dropoff } = getPointsFromRoute(autoRouteId, slot.departureTime, slot.arrivalTime);
-      return {
-        routeId: autoRouteId,
-        busId: autoBusId,
-        departureTime: slot.departureTime,
-        arrivalTime: slot.arrivalTime,
-        pickupPoints: pickup,
-        dropoffPoints: dropoff
-      };
-    });
-
-    try {
-      const res = await fetch(`${API_BASE}/trips/ops/trips/auto-schedule`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          startDate: autoStartDate,
-          endDate: autoEndDate,
-          configs
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message || 'Xếp lịch tự động thành công!');
-        setShowAutoModal(false);
-        fetchTrips();
-      } else {
-        showToast(data.message || 'Lỗi xếp lịch tự động.', 'error');
-      }
-    } catch {
-      showToast('Lỗi kết nối máy chủ.', 'error');
-    }
   };
 
   const getDaysOfWeek = (refDate) => {
@@ -534,10 +449,82 @@ const OpsTripsPage = () => {
     setDropoffPoints(updated);
   };
 
+  const validateTripTimes = (depStr, arrStr, pickups, dropoffs) => {
+    const depDate = new Date(depStr);
+    const arrDate = new Date(arrStr);
+    if (isNaN(depDate.getTime()) || isNaN(arrDate.getTime())) {
+      return 'Vui lòng chọn thời gian khởi hành và thời gian đến hợp lệ.';
+    }
+    if (arrDate.getTime() - depDate.getTime() < 15 * 60 * 1000) {
+      return 'Thời gian đến dự kiến phải sau thời gian khởi hành ít nhất 15 phút.';
+    }
+
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+    for (let i = 0; i < pickups.length; i++) {
+      const pt = pickups[i];
+      if (!pt.time || !timeRegex.test(pt.time.trim())) {
+        return `Vui lòng nhập giờ đón hợp lệ (định dạng HH:mm) cho trạm: ${pt.location || `Trạm đón ${i + 1}`}`;
+      }
+    }
+
+    for (let j = 0; j < dropoffs.length; j++) {
+      const pt = dropoffs[j];
+      if (!pt.time || !timeRegex.test(pt.time.trim())) {
+        return `Vui lòng nhập giờ trả hợp lệ (định dạng HH:mm) cho trạm: ${pt.location || `Trạm trả ${j + 1}`}`;
+      }
+    }
+
+    const toMinutes = (timeStr) => {
+      const [h, m] = timeStr.trim().split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    let prevMinutes = toMinutes(pickups[0].time);
+    let accumulatedDayMinutes = 0;
+
+    for (let i = 1; i < pickups.length; i++) {
+      let curMinutes = toMinutes(pickups[i].time) + accumulatedDayMinutes;
+      if (curMinutes < prevMinutes) {
+        if (curMinutes + 1440 >= prevMinutes && (curMinutes + 1440 - prevMinutes) <= 720) {
+          accumulatedDayMinutes += 1440;
+          curMinutes += 1440;
+        } else {
+          return `Giờ đón tại trạm "${pickups[i].location}" (${pickups[i].time}) không thể trước trạm "${pickups[i - 1].location}" (${pickups[i - 1].time}).`;
+        }
+      }
+      prevMinutes = curMinutes;
+    }
+
+    for (let j = 0; j < dropoffs.length; j++) {
+      let curMinutes = toMinutes(dropoffs[j].time) + accumulatedDayMinutes;
+      if (curMinutes < prevMinutes) {
+        if (curMinutes + 1440 >= prevMinutes && (curMinutes + 1440 - prevMinutes) <= 720) {
+          accumulatedDayMinutes += 1440;
+          curMinutes += 1440;
+        } else {
+          const prevLabel = j === 0
+            ? `trạm đón cuối "${pickups[pickups.length - 1].location}" (${pickups[pickups.length - 1].time})`
+            : `trạm trả "${dropoffs[j - 1].location}" (${dropoffs[j - 1].time})`;
+          return `Giờ trả tại trạm "${dropoffs[j].location}" (${dropoffs[j].time}) không thể trước ${prevLabel}.`;
+        }
+      }
+      prevMinutes = curMinutes;
+    }
+
+    return null;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!routeId || !busId || !departureTime || !arrivalTime || !price) {
       showToast('Vui lòng điền đầy đủ các thông tin bắt buộc.', 'error');
+      return;
+    }
+
+    const timeValidationError = validateTripTimes(departureTime, arrivalTime, pickupPoints, dropoffPoints);
+    if (timeValidationError) {
+      showToast(timeValidationError, 'error');
       return;
     }
 
@@ -661,13 +648,6 @@ const OpsTripsPage = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button 
-              onClick={handleOpenAutoModal} 
-              className="btn btn-secondary" 
-              style={{ padding: '0.5rem 1rem', fontSize: '0.82rem', fontWeight: '700', borderRadius: '10px', borderColor: '#c084fc', color: '#7e22ce', backgroundColor: '#faf5ff' }}
-            >
-              Xếp lịch tự động
-            </button>
             <button 
               onClick={handleOpenAdd} 
               className="btn btn-primary"
@@ -1548,7 +1528,7 @@ const OpsTripsPage = () => {
                 marginBottom: '16px', 
                 backgroundColor: '#f0fdf4', 
                 border: '1.5px solid #bbf7d0', 
-                padding: '12px 16px', 
+                padding: '10px 16px', 
                 borderRadius: '10px' 
               }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: '600', color: '#166534', margin: 0, fontSize: '0.9rem' }}>
@@ -1558,11 +1538,8 @@ const OpsTripsPage = () => {
                     onChange={(e) => setRepeatWeekly(e.target.checked)} 
                     style={{ width: '18px', height: '18px', accentColor: '#16a34a', cursor: 'pointer' }}
                   />
-                  <span>Lặp lại hàng tuần (Tự động tạo lịch chạy cố định vào thứ này mỗi tuần đến cuối năm)</span>
+                  <span>Lặp lại lịch chạy hàng tuần</span>
                 </label>
-                <small style={{ color: '#15803d', display: 'block', marginTop: '4px', marginLeft: '28px', fontSize: '0.8rem' }}>
-                  Chuyến xe sẽ tự động được nhân bản cố định vào cùng khung giờ của các tuần tiếp theo để không phải cài đặt lại ngày tháng.
-                </small>
               </div>
 
               <div className="form-group" style={{ marginBottom: '20px' }}>
@@ -1587,18 +1564,12 @@ const OpsTripsPage = () => {
               {/* Pickup points builder */}
               <div style={{ marginBottom: '20px', border: '1px solid #cbd5e1', padding: '16px', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h4 style={{ margin: 0, color: '#166534', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>Danh sách Điểm đón khách</span>
-                    <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#15803d', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
-                      Cố định theo tuyến ({pickupPoints.length} điểm)
-                    </span>
+                  <h4 style={{ margin: 0, color: '#166534', fontSize: '0.95rem' }}>
+                    Danh sách Điểm đón khách
                   </h4>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div>
                     <button type="button" onClick={handleSyncStopsWithRoute} className="btn btn-secondary" style={{ padding: '3px 10px', fontSize: '0.75rem', color: '#2563eb', borderColor: '#bfdbfe' }}>
                       Đồng bộ theo tuyến
-                    </button>
-                    <button type="button" onClick={handleAddPickupPoint} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: '0.75rem' }}>
-                      + Thêm điểm ngoài tuyến
                     </button>
                   </div>
                 </div>
@@ -1628,11 +1599,6 @@ const OpsTripsPage = () => {
                         {pt.address || 'Địa chỉ đang cập nhật'}
                       </div>
                     </div>
-                    {pickupPoints.length > 1 && (
-                      <button type="button" onClick={() => handleRemovePickupPoint(idx)} title="Xóa điểm này" style={{ color: '#94a3b8', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}>
-                        &times;
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
@@ -1640,18 +1606,12 @@ const OpsTripsPage = () => {
               {/* Dropoff points builder */}
               <div style={{ marginBottom: '24px', border: '1px solid #cbd5e1', padding: '16px', borderRadius: '12px', backgroundColor: '#f8fafc' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                  <h4 style={{ margin: 0, color: '#991b1b', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>Danh sách Điểm trả khách</span>
-                    <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#b91c1c', backgroundColor: '#fee2e2', padding: '2px 8px', borderRadius: '12px', border: '1px solid #fecaca' }}>
-                      Cố định theo tuyến ({dropoffPoints.length} điểm)
-                    </span>
+                  <h4 style={{ margin: 0, color: '#991b1b', fontSize: '0.95rem' }}>
+                    Danh sách Điểm trả khách
                   </h4>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div>
                     <button type="button" onClick={handleSyncStopsWithRoute} className="btn btn-secondary" style={{ padding: '3px 10px', fontSize: '0.75rem', color: '#b91c1c', borderColor: '#fecaca' }}>
                       Đồng bộ theo tuyến
-                    </button>
-                    <button type="button" onClick={handleAddDropoffPoint} className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: '0.75rem' }}>
-                      + Thêm điểm ngoài tuyến
                     </button>
                   </div>
                 </div>
@@ -1681,11 +1641,6 @@ const OpsTripsPage = () => {
                         {pt.address || 'Địa chỉ đang cập nhật'}
                       </div>
                     </div>
-                    {dropoffPoints.length > 1 && (
-                      <button type="button" onClick={() => handleRemoveDropoffPoint(idx)} title="Xóa điểm này" style={{ color: '#94a3b8', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '0 4px' }}>
-                        &times;
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
@@ -1696,134 +1651,6 @@ const OpsTripsPage = () => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   {editingTrip ? 'Lưu thay đổi' : 'Tạo mới'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Auto Scheduling Modal */}
-      {showAutoModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          overflowY: 'auto'
-        }}>
-          <div 
-            className="panel" 
-            style={{ 
-              width: '100%', maxWidth: '600px', padding: '24px', margin: '40px auto', 
-              maxHeight: '90vh', overflowY: 'auto', position: 'relative' 
-            }}
-          >
-            <h3 style={{ marginBottom: '20px' }}>Xếp lịch chuyến xe tự động</h3>
-            
-            <form onSubmit={handleAutoScheduleSubmit}>
-              {/* Date range */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div className="form-group">
-                  <label className="form-label">Từ ngày chạy *</label>
-                  <input 
-                    type="date" 
-                    value={autoStartDate}
-                    onChange={(e) => setAutoStartDate(e.target.value)}
-                    className="form-control"
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Đến ngày chạy *</label>
-                  <input 
-                    type="date" 
-                    value={autoEndDate}
-                    onChange={(e) => setAutoEndDate(e.target.value)}
-                    className="form-control"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Route & Bus */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
-                <div className="form-group">
-                  <label className="form-label">Tuyến đường áp dụng *</label>
-                  <select 
-                    value={autoRouteId} 
-                    onChange={(e) => setAutoRouteId(e.target.value)}
-                    className="form-control"
-                    required
-                  >
-                    {routes.map(r => (
-                      <option key={r._id} value={r._id}>{r.startPoint} → {r.endPoint}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Phương tiện (Xe) *</label>
-                  <select 
-                    value={autoBusId} 
-                    onChange={(e) => setAutoBusId(e.target.value)}
-                    className="form-control"
-                    required
-                  >
-                    {buses.map(b => (
-                      <option key={b._id} value={b._id}>{b.plateNumber} ({b.type})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Slots builder */}
-              <div style={{ marginBottom: '24px', border: '1px solid var(--border-color)', padding: '16px', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ margin: 0 }}>Khung giờ chạy trong ngày</h4>
-                  <button type="button" onClick={handleAddSlot} className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
-                    + Thêm khung giờ
-                  </button>
-                </div>
-                {autoSlots.map((slot, idx) => (
-                  <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Giờ xuất phát:</span>
-                      <input 
-                        type="time" 
-                        value={slot.departureTime}
-                        onChange={(e) => handleSlotChange(idx, 'departureTime', e.target.value)}
-                        className="form-control"
-                        required
-                      />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Giờ đến dự kiến:</span>
-                      <input 
-                        type="time" 
-                        value={slot.arrivalTime}
-                        onChange={(e) => handleSlotChange(idx, 'arrivalTime', e.target.value)}
-                        className="form-control"
-                        required
-                      />
-                    </div>
-                    {autoSlots.length > 1 && (
-                      <button 
-                        type="button" 
-                        onClick={() => handleRemoveSlot(idx)} 
-                        style={{ color: '#ef4444', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.4rem', marginTop: '16px' }}
-                      >
-                        &times;
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                <button type="button" onClick={() => setShowAutoModal(false)} className="btn btn-secondary">
-                  Hủy
-                </button>
-                <button type="submit" className="btn btn-primary" style={{ background: 'var(--accent)', borderColor: 'var(--accent)' }}>
-                  Bắt đầu xếp lịch
                 </button>
               </div>
             </form>

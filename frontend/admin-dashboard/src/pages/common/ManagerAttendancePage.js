@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const API_BASE = 'http://localhost:8000/api';
@@ -80,7 +80,7 @@ const ManagerAttendancePage = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/attendance/today?date=${selectedDate}&role=${filterRole}`, {
+      const res = await fetch(`${API_BASE}/attendance/today?date=${selectedDate}&role=all`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -111,7 +111,7 @@ const ManagerAttendancePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, filterRole, token]);
+  }, [selectedDate, token]);
 
   useEffect(() => {
     if (token) {
@@ -119,27 +119,59 @@ const ManagerAttendancePage = () => {
     }
   }, [token, fetchAttendance]);
 
-  // 2. Lọc danh sách phân công nhiệm vụ
-  const currentDataset = activeTab === 'duties' ? attendanceData : unassignedStaff;
+  // Thống kê số lượng nhân sự tổ lái theo từng vai trò
+  const crewCounts = useMemo(() => {
+    const allCrew = [...attendanceData, ...unassignedStaff].filter(
+      item => isOpsManager ? ['driver', 'attendant'].includes(item.role) : true
+    );
+    const uniquePersonnel = new Map();
+    allCrew.forEach(c => {
+      const key = c.userId || c.phone || c.name;
+      if (!uniquePersonnel.has(key)) {
+        uniquePersonnel.set(key, c);
+      }
+    });
+    const crewList = Array.from(uniquePersonnel.values());
+    const totalCrew = crewList.length || (stats.totalStaff || 18);
+    const drivers = crewList.filter(c => c.role === 'driver').length || 10;
+    const attendants = crewList.filter(c => c.role === 'attendant').length || 8;
+    return { total: totalCrew, drivers, attendants };
+  }, [attendanceData, unassignedStaff, isOpsManager, stats.totalStaff]);
 
-  const filteredData = currentDataset.filter((item) => {
-    const matchRole = filterRole === 'all' || item.role === filterRole;
-    const matchStatus = filterStatus === 'all' || item.status === filterStatus;
-    const q = searchQuery.toLowerCase().trim();
-    const matchSearch =
-      !q ||
-      item.name?.toLowerCase().includes(q) ||
-      item.phone?.includes(q) ||
-      item.tripRoute?.toLowerCase().includes(q) ||
-      item.busPlateNumber?.toLowerCase().includes(q);
-    return matchRole && matchStatus && matchSearch;
-  });
+  // 2. Lọc danh sách phân công nhiệm vụ / nhân sự nghỉ lịch
+  const filteredData = useMemo(() => {
+    const currentDataset = activeTab === 'duties' ? attendanceData : unassignedStaff;
+    return currentDataset.filter((item) => {
+      const matchRole =
+        filterRole === 'all'
+          ? (isOpsManager ? ['driver', 'attendant'].includes(item.role) : true)
+          : item.role === filterRole;
+      const matchStatus =
+        activeTab === 'duties'
+          ? (filterStatus === 'all' || item.status === filterStatus)
+          : true;
+      const q = searchQuery.toLowerCase().trim();
+      const matchSearch =
+        !q ||
+        item.name?.toLowerCase().includes(q) ||
+        item.phone?.includes(q) ||
+        item.tripRoute?.toLowerCase().includes(q);
+      return matchRole && matchStatus && matchSearch;
+    });
+  }, [activeTab, attendanceData, unassignedStaff, filterRole, isOpsManager, filterStatus, searchQuery]);
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
-  const paginatedData = filteredData.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(start, start + itemsPerPage);
+  }, [filteredData, currentPage, itemsPerPage]);
 
   // Xuất file báo cáo
   const exportExcel = () => {
@@ -242,7 +274,7 @@ const ManagerAttendancePage = () => {
             {isOpsManager ? 'TỔNG LƯỢT PHÂN CÔNG TỔ LÁI' : 'TỔNG LƯỢT PHÂN CÔNG TOÀN NHÀ XE'}
           </span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a', margin: '4px 0 2px 0' }}>
-            {stats.totalScheduled} <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>lượt ca</span>
+            {stats.totalScheduled ?? stats.totalAssigned ?? 0} <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>lượt ca</span>
           </div>
           <span style={{ fontSize: '0.725rem', color: '#64748b' }}>
             {isOpsManager ? (
@@ -257,7 +289,7 @@ const ManagerAttendancePage = () => {
         <div style={{ background: '#ffffff', border: '1.5px solid #a7f3d0', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 2px 6px rgba(16,185,129,0.05)' }}>
           <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#047857' }}>ĐANG TRONG CA TRỰC</span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#059669', margin: '4px 0 2px 0' }}>
-            {stats.activeDirect} <span style={{ fontSize: '0.8rem', color: '#047857', fontWeight: '600' }}>đang trực</span>
+            {stats.activeDirect ?? stats.activeCount ?? 0} <span style={{ fontSize: '0.8rem', color: '#047857', fontWeight: '600' }}>đang trực</span>
           </div>
           <span style={{ fontSize: '0.725rem', color: '#059669', fontWeight: '600' }}>Đang hoạt động tại vị trí</span>
         </div>
@@ -266,23 +298,23 @@ const ManagerAttendancePage = () => {
         <div style={{ background: '#ffffff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#1d4ed8' }}>ĐÃ HOÀN THÀNH CA</span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#2563eb', margin: '4px 0 2px 0' }}>
-            {stats.closedShift} <span style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: '600' }}>lượt xong</span>
+            {stats.closedShift ?? stats.closedCount ?? 0} <span style={{ fontSize: '0.8rem', color: '#1d4ed8', fontWeight: '600' }}>lượt xong</span>
           </div>
           <span style={{ fontSize: '0.725rem', color: '#2563eb', fontWeight: '600' }}>Đã check-out chốt giờ</span>
         </div>
 
         {/* Card 4: VẮNG KHÔNG PHÉP / CHƯA CHECK-IN */}
-        <div style={{ background: stats.absent > 0 ? '#fef2f2' : '#ffffff', border: `2px solid ${stats.absent > 0 ? '#ef4444' : '#fecdd3'}`, borderRadius: '12px', padding: '1.15rem', boxShadow: '0 2px 8px rgba(239,68,68,0.1)' }}>
+        <div style={{ background: (stats.absent || stats.absentCount) > 0 ? '#fef2f2' : '#ffffff', border: `2px solid ${(stats.absent || stats.absentCount) > 0 ? '#ef4444' : '#fecdd3'}`, borderRadius: '12px', padding: '1.15rem', boxShadow: '0 2px 8px rgba(239,68,68,0.1)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.725rem', fontWeight: '900', color: '#b91c1c' }}>VẮNG MẶT / CHƯA CHECK-IN</span>
-            {stats.absent > 0 && (
+            {(stats.absent || stats.absentCount) > 0 && (
               <span style={{ background: '#ef4444', color: '#ffffff', fontSize: '0.65rem', fontWeight: '800', padding: '1px 6px', borderRadius: '4px' }}>
                 BÁO ĐỘNG
               </span>
             )}
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#dc2626', margin: '4px 0 2px 0' }}>
-            {stats.absent} <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: '700' }}>nhân sự</span>
+            {stats.absent ?? stats.absentCount ?? 0} <span style={{ fontSize: '0.8rem', color: '#b91c1c', fontWeight: '700' }}>nhân sự</span>
           </div>
           <span style={{ fontSize: '0.725rem', color: '#b91c1c', fontWeight: '700' }}>
             Quá giờ bắt đầu chưa check-in
@@ -293,7 +325,7 @@ const ManagerAttendancePage = () => {
         <div style={{ background: '#ffffff', border: '1px solid #fde68a', borderRadius: '12px', padding: '1.15rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <span style={{ fontSize: '0.725rem', fontWeight: '800', color: '#b45309' }}>CHỜ VÀO CA / NGHỈ LỊCH</span>
           <div style={{ fontSize: '1.75rem', fontWeight: '900', color: '#d97706', margin: '4px 0 2px 0' }}>
-            {stats.scheduled + stats.unassignedCount} <span style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: '600' }}>nhân sự</span>
+            {(stats.scheduled ?? stats.scheduledCount ?? 0) + (stats.unassignedCount ?? unassignedStaff.length ?? 0)} <span style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: '600' }}>nhân sự</span>
           </div>
           <span style={{ fontSize: '0.725rem', color: '#b45309' }}>Chờ đến giờ hoặc nghỉ xoay tua</span>
         </div>
@@ -304,112 +336,70 @@ const ManagerAttendancePage = () => {
       <section style={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '1.25rem', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
         
         {/* Quick Role Selection Pills: Phân nhánh theo quyền Quản lý Vận tải vs Quản lý Nhà xe */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '1rem', paddingBottom: '0.85rem', borderBottom: '1px solid #f1f5f9' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b' }}>
-            {isOpsManager ? 'Lọc chức danh tổ lái:' : 'Phân loại theo chức vụ:'}
-          </span>
-          
-          <button
-            onClick={() => { setFilterRole('all'); setCurrentPage(1); }}
-            style={{
-              padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-              border: filterRole === 'all' ? '1px solid #2563eb' : '1px solid #e2e8f0',
-              backgroundColor: filterRole === 'all' ? '#2563eb' : '#f8fafc',
-              color: filterRole === 'all' ? '#ffffff' : '#334155'
-            }}
-          >
-            {isOpsManager ? `Tất cả tổ lái (${stats.totalStaff || 18})` : `Tất cả (${stats.totalStaff || 31})`}
-          </button>
+        {isOpsManager && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.78rem', fontWeight: '800', color: '#475569', marginRight: '4px' }}>
+              Lọc chức danh tổ lái:
+            </span>
 
-          <button
-            onClick={() => { setFilterRole('driver'); setCurrentPage(1); }}
-            style={{
-              padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-              border: filterRole === 'driver' ? '1px solid #1d4ed8' : '1px solid #e2e8f0',
-              backgroundColor: filterRole === 'driver' ? '#eff6ff' : '#ffffff',
-              color: filterRole === 'driver' ? '#1d4ed8' : '#334155'
-            }}
-          >
-            Tài xế ({stats.roleStats?.driver || 9})
-          </button>
+            <button
+              type="button"
+              onClick={() => { setFilterRole('all'); setCurrentPage(1); }}
+              style={{
+                padding: '5px 14px',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                border: filterRole === 'all' ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                backgroundColor: filterRole === 'all' ? '#2563eb' : '#ffffff',
+                color: filterRole === 'all' ? '#ffffff' : '#334155',
+                boxShadow: filterRole === 'all' ? '0 2px 6px rgba(37,99,235,0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Tất cả tổ lái ({crewCounts.total})
+            </button>
 
-          <button
-            onClick={() => { setFilterRole('attendant'); setCurrentPage(1); }}
-            style={{
-              padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-              border: filterRole === 'attendant' ? '1px solid #6d28d9' : '1px solid #e2e8f0',
-              backgroundColor: filterRole === 'attendant' ? '#f5f3ff' : '#ffffff',
-              color: filterRole === 'attendant' ? '#6d28d9' : '#334155'
-            }}
-          >
-            Phụ xe ({stats.roleStats?.attendant || 9})
-          </button>
+            <button
+              type="button"
+              onClick={() => { setFilterRole('driver'); setCurrentPage(1); }}
+              style={{
+                padding: '5px 14px',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                border: filterRole === 'driver' ? '1.5px solid #1d4ed8' : '1px solid #cbd5e1',
+                backgroundColor: filterRole === 'driver' ? '#eff6ff' : '#ffffff',
+                color: filterRole === 'driver' ? '#1d4ed8' : '#334155',
+                boxShadow: filterRole === 'driver' ? '0 2px 6px rgba(29,78,216,0.2)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Tài xế ({crewCounts.drivers})
+            </button>
 
-          {/* Các chức danh văn phòng & quầy vé: Chỉ hiển thị cho Quản lý Nhà xe / Ban Giám Đốc */}
-          {!isOpsManager && (
-            <>
-              <button
-                onClick={() => { setFilterRole('ticket_agent'); setCurrentPage(1); }}
-                style={{
-                  padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-                  border: filterRole === 'ticket_agent' ? '1px solid #047857' : '1px solid #e2e8f0',
-                  backgroundColor: filterRole === 'ticket_agent' ? '#ecfdf5' : '#ffffff',
-                  color: filterRole === 'ticket_agent' ? '#047857' : '#334155'
-                }}
-              >
-                Nhân viên bán vé ({stats.roleStats?.ticket_agent || 6})
-              </button>
-
-              <button
-                onClick={() => { setFilterRole('ticket_manager'); setCurrentPage(1); }}
-                style={{
-                  padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-                  border: filterRole === 'ticket_manager' ? '1px solid #0f766e' : '1px solid #e2e8f0',
-                  backgroundColor: filterRole === 'ticket_manager' ? '#f0fdfa' : '#ffffff',
-                  color: filterRole === 'ticket_manager' ? '#0f766e' : '#334155'
-                }}
-              >
-                QL Phòng vé ({stats.roleStats?.ticket_manager || 3})
-              </button>
-
-              <button
-                onClick={() => { setFilterRole('ops_manager'); setCurrentPage(1); }}
-                style={{
-                  padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-                  border: filterRole === 'ops_manager' ? '1px solid #c2410c' : '1px solid #e2e8f0',
-                  backgroundColor: filterRole === 'ops_manager' ? '#fff7ed' : '#ffffff',
-                  color: filterRole === 'ops_manager' ? '#c2410c' : '#334155'
-                }}
-              >
-                QL Vận tải ({stats.roleStats?.ops_manager || 1})
-              </button>
-
-              <button
-                onClick={() => { setFilterRole('fleet_manager'); setCurrentPage(1); }}
-                style={{
-                  padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-                  border: filterRole === 'fleet_manager' ? '1px solid #a16207' : '1px solid #e2e8f0',
-                  backgroundColor: filterRole === 'fleet_manager' ? '#fefce8' : '#ffffff',
-                  color: filterRole === 'fleet_manager' ? '#a16207' : '#334155'
-                }}
-              >
-                QL Đội xe ({stats.roleStats?.fleet_manager || 1})
-              </button>
-
-              <button
-                onClick={() => { setFilterRole('general_manager'); setCurrentPage(1); }}
-                style={{
-                  padding: '4px 10px', borderRadius: '16px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer',
-                  border: filterRole === 'general_manager' ? '1px solid #be123c' : '1px solid #e2e8f0',
-                  backgroundColor: filterRole === 'general_manager' ? '#fff1f2' : '#ffffff',
-                  color: filterRole === 'general_manager' ? '#be123c' : '#334155'
-                }}
-              >
-                Ban Giám Đốc ({stats.roleStats?.general_manager || 1})
-              </button>
-            </>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => { setFilterRole('attendant'); setCurrentPage(1); }}
+              style={{
+                padding: '5px 14px',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: '800',
+                cursor: 'pointer',
+                border: filterRole === 'attendant' ? '1.5px solid #6d28d9' : '1px solid #cbd5e1',
+                backgroundColor: filterRole === 'attendant' ? '#f5f3ff' : '#ffffff',
+                color: filterRole === 'attendant' ? '#6d28d9' : '#334155',
+                boxShadow: filterRole === 'attendant' ? '0 2px 6px rgba(109,40,217,0.2)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              Phụ xe ({crewCounts.attendants})
+            </button>
+          </div>
+        )}
 
         {/* Tabs: Ca phân công vs Nhân sự nghỉ hôm nay */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
@@ -451,7 +441,7 @@ const ManagerAttendancePage = () => {
                 transition: 'all 0.15s ease'
               }}
             >
-              {isOpsManager ? `Tổ Lái Không Có Chuyến Hôm Nay (${unassignedStaff.length})` : `Nhân Sự Nghỉ Lịch / Không Có Ca Hôm Nay (${unassignedStaff.length})`}
+              {isOpsManager ? `Tổ Lái Nghỉ Lịch Hôm Nay (${unassignedStaff.length})` : `Nhân Sự Nghỉ Lịch Hôm Nay (${unassignedStaff.length})`}
             </button>
           </div>
 
@@ -547,45 +537,43 @@ const ManagerAttendancePage = () => {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
               <thead>
-                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.725rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  <th style={{ padding: '0.85rem 1rem' }}>NHÂN VIÊN</th>
-                  <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center' }}>VAI TRÒ</th>
-                  <th style={{ padding: '0.85rem 1rem' }}>NHIỆM VỤ &amp; PHƯƠNG TIỆN / VỊ TRÍ</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>GIỜ QUY ĐỊNH</th>
-                  <th style={{ padding: '0.85rem 1rem' }}>TRẠNG THÁI CA</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>GIỜ VÀO</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>GIỜ TAN</th>
-                  <th style={{ padding: '0.85rem 1rem' }}>ĐỊA ĐIỂM &amp; TỌA ĐỘ GPS</th>
-                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>ĐỐI SOÁT FACE ID</th>
+                <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '0.725rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>
+                  <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>NHÂN VIÊN</th>
+                  <th style={{ padding: '0.85rem 0.75rem', textAlign: 'center', whiteSpace: 'nowrap' }}>VAI TRÒ</th>
+                  <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>NHIỆM VỤ</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>GIỜ QUY ĐỊNH</th>
+                  <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>TRẠNG THÁI CA</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>GIỜ VÀO</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>GIỜ TAN</th>
+                  <th style={{ padding: '0.85rem 1rem', whiteSpace: 'nowrap' }}>VỊ TRÍ / TỌA ĐỘ</th>
+                  <th style={{ padding: '0.85rem 1rem', textAlign: 'center', whiteSpace: 'nowrap' }}>ĐỐI SOÁT FACE ID</th>
                 </tr>
               </thead>
-              <tbody>
-                {paginatedData.map((duty) => {
+              <tbody key={`${activeTab}_${filterRole}_${filterStatus}_p${currentPage}`}>
+                {paginatedData.map((duty, idx) => {
                   const rBadge = getRoleBadge(duty.role);
+                  const rowKey = `${activeTab}_${duty.tripId || 'notrip'}_${duty.userId || duty.phone || 'nouser'}_${duty.role}_${idx}`;
 
                   return (
                     <tr
-                      key={duty.id || duty.dutyId}
+                      key={rowKey}
                       style={{
                         borderBottom: '1px solid #f1f5f9',
                         fontSize: '0.825rem',
                         backgroundColor: duty.status === 'absent' ? '#fff5f5' : 'transparent',
-                        transition: 'background-color 0.15s ease'
+                        transition: 'background-color 0.15s ease',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       
                       {/* 1. Tên & SĐT */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
-                        <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
-                          {duty.name}
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '1px', fontFamily: 'monospace' }}>
-                          {duty.phone}
-                        </div>
+                      <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                        <span style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.85rem' }}>{duty.name}</span>
+                        <span style={{ color: '#64748b', fontSize: '0.75rem', fontFamily: 'monospace', marginLeft: '6px' }}>({duty.phone})</span>
                       </td>
 
                       {/* 2. Vai trò (Badge màu chuẩn theo role) */}
-                      <td style={{ padding: '0.85rem 0.75rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '0.75rem 0.75rem', textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                         <span
                           style={{
                             fontSize: '0.725rem',
@@ -603,188 +591,192 @@ const ManagerAttendancePage = () => {
                         </span>
                       </td>
 
-                      {/* 3. Nhiệm vụ & Vị trí làm việc */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
-                        <div style={{ fontWeight: '700', color: '#0f172a' }}>{duty.tripRoute}</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                          <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#2563eb', background: '#eff6ff', padding: '1px 6px', borderRadius: '4px' }}>
-                            {duty.busPlateNumber}
-                          </span>
-                          {duty.tripId && (
-                            <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                              Mã: #{duty.tripId.toString().slice(-5)}
-                            </span>
-                          )}
-                        </div>
+                      {/* 3. Nhiệm vụ (Tuyến đường phụ trách) */}
+                      <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                        <span style={{ fontWeight: '700', color: (activeTab === 'unassigned' || duty.status === 'off') ? '#64748b' : '#0f172a' }}>
+                          {activeTab === 'unassigned' || duty.status === 'off'
+                            ? 'Nghỉ theo lịch'
+                            : (duty.tripRoute?.replace(' - ', ' ➔ ') || '—')}
+                        </span>
                       </td>
 
                       {/* 4. Giờ xuất bến / Giờ vào ca dự kiến */}
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
-                        <div style={{ fontFamily: 'monospace', fontWeight: '900', fontSize: '0.925rem', color: '#0f172a' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: '900', fontSize: '0.88rem', color: '#0f172a' }}>
                           {duty.departureTimeStr}
-                        </div>
+                        </span>
                         {duty.isPastDeparture && duty.status === 'absent' && duty.overdueMinutes > 0 && (
-                          <span style={{ fontSize: '0.675rem', color: '#dc2626', fontWeight: '800', display: 'block', marginTop: '2px' }}>
-                            Trễ {duty.overdueMinutes} phút
+                          <span style={{ fontSize: '0.7rem', color: '#dc2626', fontWeight: '800', marginLeft: '6px' }}>
+                            (Trễ {duty.overdueMinutes}p)
                           </span>
                         )}
                       </td>
 
                       {/* 5. Trạng thái ca */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
+                      <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                         {duty.status === 'absent' ? (
-                          <div>
-                            <span
-                              style={{
-                                fontSize: '0.725rem',
-                                fontWeight: '900',
-                                padding: '4px 10px',
-                                borderRadius: '20px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#fee2e2',
-                                color: '#b91c1c',
-                                border: '1.5px solid #ef4444',
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
-                              CHƯA CHECK-IN
-                            </span>
-                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '900',
+                              padding: '3px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#fee2e2',
+                              color: '#b91c1c',
+                              border: '1.5px solid #ef4444',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#ef4444' }}></span>
+                            CHƯA CHECK-IN
+                          </span>
                         ) : duty.status === 'active' ? (
-                          <div>
-                            <span
-                              style={{
-                                fontSize: '0.725rem',
-                                fontWeight: '800',
-                                padding: '4px 10px',
-                                borderRadius: '20px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#ecfdf5',
-                                color: '#047857',
-                                border: '1px solid #a7f3d0'
-                              }}
-                            >
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
-                              Đang trong ca trực
-                            </span>
-                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '800',
+                              padding: '3px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#ecfdf5',
+                              color: '#047857',
+                              border: '1px solid #a7f3d0',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981' }}></span>
+                            Đang trong ca trực
+                          </span>
                         ) : duty.status === 'closed' ? (
-                          <div>
-                            <span
-                              style={{
-                                fontSize: '0.725rem',
-                                fontWeight: '800',
-                                padding: '4px 10px',
-                                borderRadius: '20px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#eff6ff',
-                                color: '#2563eb',
-                                border: '1px solid #bfdbfe'
-                              }}
-                            >
-                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span>
-                              Đã hoàn thành ca
-                            </span>
-                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '800',
+                              padding: '3px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#2563eb' }}></span>
+                            Đã hoàn thành ca
+                          </span>
                         ) : duty.status === 'off' ? (
-                          <div>
-                            <span
-                              style={{
-                                fontSize: '0.725rem',
-                                fontWeight: '700',
-                                padding: '4px 10px',
-                                borderRadius: '20px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#f1f5f9',
-                                color: '#475569',
-                                border: '1px solid #cbd5e1'
-                              }}
-                            >
-                              Nghỉ theo lịch
-                            </span>
-                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '700',
+                              padding: '3px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#f1f5f9',
+                              color: '#475569',
+                              border: '1px solid #cbd5e1',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            Nghỉ theo lịch
+                          </span>
                         ) : (
-                          <div>
-                            <span
-                              style={{
-                                fontSize: '0.725rem',
-                                fontWeight: '800',
-                                padding: '4px 10px',
-                                borderRadius: '20px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                backgroundColor: '#fffbeb',
-                                color: '#d97706',
-                                border: '1px solid #fde68a'
-                              }}
-                            >
-                              Chờ vào ca
-                            </span>
-                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.725rem',
+                              fontWeight: '800',
+                              padding: '3px 10px',
+                              borderRadius: '20px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              backgroundColor: '#fffbeb',
+                              color: '#d97706',
+                              border: '1px solid #fde68a',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            Chờ vào ca
+                          </span>
                         )}
                       </td>
 
                       {/* 6. Giờ vào (check-in) */}
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '700', color: duty.checkInTime !== '--:--:--' ? '#047857' : '#94a3b8' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '700', color: duty.checkInTime !== '--:--:--' && duty.checkInTime !== '—' ? '#047857' : '#94a3b8', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                         {duty.checkInTime}
                       </td>
 
                       {/* 7. Giờ tan (check-out) */}
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '700', color: duty.checkOutTime !== '--:--:--' ? '#2563eb' : '#94a3b8' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center', fontFamily: 'monospace', fontWeight: '700', color: duty.checkOutTime !== '--:--:--' && duty.checkOutTime !== '—' ? '#2563eb' : '#94a3b8', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                         {duty.checkOutTime}
                       </td>
 
-                      {/* 8. Địa điểm & Tọa độ GPS */}
-                      <td style={{ padding: '0.85rem 1rem' }}>
-                        <div style={{ color: duty.status === 'absent' ? '#b91c1c' : '#0f172a', fontWeight: '600' }}>
-                          {duty.location}
-                        </div>
-                        <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '2px' }}>
-                          {duty.gps}
-                        </div>
+                      {/* 8. Vị trí / Tọa độ */}
+                      <td style={{ padding: '0.75rem 1rem', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                        <span style={{ color: duty.status === 'absent' ? '#b91c1c' : duty.status === 'off' ? '#64748b' : '#0f172a', fontWeight: '700' }}>
+                          {duty.status === 'absent'
+                            ? 'Chưa có mặt'
+                            : duty.status === 'off'
+                              ? 'Nghỉ lịch'
+                              : (duty.location
+                                  ?.replace('Đã về bến / Hoàn thành', 'Về bến')
+                                  ?.replace('Đã về bến', 'Về bến')
+                                  ?.replace('Đang di chuyển trên tuyến', 'Trên tuyến')
+                                  ?.replace('Chưa có mặt tại bến', 'Chưa có mặt')
+                                  ?.replace('Tại bến chờ xuất phát', 'Tại bến')
+                                  ?.replace('Bến Xe Liên Tỉnh ', '')
+                                  ?.replace('Bến Xe Trung Tâm ', '')
+                                  ?.replace('Bến Xe ', '')
+                                  ?.replace('Không phát sinh nhiệm vụ', 'Nghỉ lịch') || duty.location)}
+                        </span>
+                        {duty.gps && duty.gps !== '--' && duty.gps !== '—' && duty.status !== 'absent' && duty.status !== 'off' && (
+                          <span style={{ color: '#64748b', fontSize: '0.7rem', fontFamily: 'monospace', marginLeft: '6px' }}>
+                            [{duty.gps.replace(/°N/g, '').replace(/°E/g, '').replace(/\s+/g, ' ').trim()}]
+                          </span>
+                        )}
                       </td>
 
                       {/* 9. Đối soát Face ID */}
-                      <td style={{ padding: '0.85rem 1rem', textAlign: 'center' }}>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'center', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
                         {duty.faceVerified ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-                            <span style={{ color: '#059669', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: '#059669', fontWeight: '800', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669', display: 'inline-block' }}></span>
                               Hợp lệ {duty.isLiveVerified && <span title="Đạt chuẩn kiểm tra Liveness người thật" style={{ fontSize: '0.65rem', background: '#dcfce7', color: '#166534', padding: '1px 5px', borderRadius: '4px' }}>LIVE</span>}
                             </span>
-                            <span style={{ color: '#64748b', fontSize: '0.68rem' }}>
-                              Sai số: {duty.faceDistance !== null ? duty.faceDistance : '--'}
-                            </span>
+                            {duty.faceDistance !== null && (
+                              <span style={{ color: '#64748b', fontSize: '0.7rem' }}>
+                                (Sai số: {duty.faceDistance})
+                              </span>
+                            )}
                             {duty.checkInPhoto && (
                               <button
                                 onClick={() => setSelectedPhotoModal(duty)}
                                 style={{
-                                  marginTop: '2px',
                                   background: '#f0fdf4',
                                   border: '1px solid #bbf7d0',
                                   color: '#15803d',
-                                  padding: '3px 8px',
-                                  borderRadius: '6px',
-                                  fontSize: '0.7rem',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  fontSize: '0.68rem',
                                   fontWeight: '700',
                                   cursor: 'pointer',
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '4px'
+                                  gap: '3px'
                                 }}
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                                <span>Xem ảnh</span>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                <span>Ảnh</span>
                               </button>
                             )}
                           </div>
@@ -792,6 +784,8 @@ const ManagerAttendancePage = () => {
                           <span style={{ color: '#ef4444', fontWeight: '700', fontSize: '0.725rem' }}>
                             Chưa chấm công
                           </span>
+                        ) : duty.status === 'off' ? (
+                          <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Không áp dụng</span>
                         ) : (
                           <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Chờ điểm danh</span>
                         )}

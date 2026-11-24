@@ -77,7 +77,12 @@ const memoryRouteCache = new Map();
 export async function fetchFastHighwayRoute(stops, cacheKey) {
   if (!stops || stops.length < 2) return [];
 
-  const key = `osrm_v3_${cacheKey || 'default'}`;
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  const dirKey = (first && last && typeof first.lat === 'number' && typeof last.lat === 'number')
+    ? `${first.lat.toFixed(3)}_${first.lng.toFixed(3)}_to_${last.lat.toFixed(3)}_${last.lng.toFixed(3)}`
+    : 'default';
+  const key = `osrm_v4_${dirKey}_${cacheKey || ''}`;
 
   // 1. Kiểm tra RAM cache
   if (memoryRouteCache.has(key)) {
