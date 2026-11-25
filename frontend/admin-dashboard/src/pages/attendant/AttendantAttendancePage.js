@@ -91,9 +91,14 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        const isClosed = data.todayRecord && (data.todayRecord.status === 'closed' || data.todayRecord.checkOutTime != null);
         const computedStatus = (data.todayRecord && data.todayRecord.status === 'active')
           ? 'active'
-          : (data.todayStatus || 'not_checked');
+          : isClosed
+          ? 'closed'
+          : (data.todayStatus === 'on_time' || data.todayStatus === 'late'
+              ? (data.todayRecord ? 'closed' : data.todayStatus)
+              : (data.todayStatus || 'not_checked'));
         setTodayStatus(computedStatus);
         setTodayRecord(data.todayRecord || null);
         setHistory(data.history || []);
@@ -253,11 +258,11 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
   const handleAttendanceAction = async (actionType) => {
     if (actionLoading) return;
     if (!cameraActive) {
-      showToast('Vui lòng bật Camera để quét khuôn mặt trước khi bấm chấm công!', 'error');
+      showToast('Vui lòng bật Camera để quét khuôn mặt!', 'error');
       return;
     }
     if (!faceDetected) {
-      showToast('Không tìm thấy khuôn mặt trong khung hình. Vui lòng nhìn thẳng vào ống kính!', 'error');
+      showToast('Không tìm thấy khuôn mặt. Vui lòng nhìn thẳng vào camera!', 'error');
       return;
     }
 
@@ -267,7 +272,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       const { descriptor } = await detectFaceAndExtractDescriptor(videoRef.current, 416);
 
       if (!descriptor || descriptor.length !== 128) {
-        showToast('Chất lượng nhận diện chưa đạt chuẩn. Vui lòng giữ yên khuôn mặt và thử lại.', 'error');
+        showToast('Chất lượng quét chưa đạt. Vui lòng giữ yên khuôn mặt!', 'error');
         setActionLoading(false);
         return;
       }
@@ -275,10 +280,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       if (registeredDescriptors.length > 0) {
         const matchCheck = verifyFaceMatch(descriptor, registeredDescriptors, 0.38);
         if (!matchCheck.isMatch) {
-          showToast(
-            `Từ chối: Khuôn mặt không khớp với phụ xe ${user?.name || ''} (sai số: ${matchCheck.bestDistance.toFixed(4)}, ngưỡng tối đa: 0.38). Vui lòng không điểm danh hộ!`,
-            'error'
-          );
+          showToast('Khuôn mặt không khớp với hồ sơ nhân sự. Vui lòng thử lại!', 'error');
           setActionLoading(false);
           return;
         }
@@ -287,9 +289,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       // Kiểm tra quy định thời gian: Phải sớm hơn giờ xe lăn bánh tối thiểu 5 phút
       if (actionType === 'check-in') {
         if (gpsLocation.isTimeValid === false) {
-          const proceed = window.confirm(
-            'CẢNH BÁO QUY ĐỊNH: Thời gian chấm công phải sớm hơn giờ xe lăn bánh tối thiểu 5 phút. Bạn đang chấm công muộn hơn quy định. Bạn có chắc chắn muốn tiếp tục?'
-          );
+          const proceed = window.confirm('Chấm công muộn hơn quy định giờ lăn bánh. Tiếp tục xác nhận?');
           if (!proceed) {
             setActionLoading(false);
             return;
@@ -303,10 +303,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
               ? `${(gpsLocation.distance / 1000).toFixed(1)}km`
               : `${Math.round(gpsLocation.distance)}m`)
             : 'quá xa';
-          showToast(
-            `Không thể chấm công: Bạn đang cách bến xuất phát ${distKm} (vượt quá bán kính cho phép 1.5km). Vui lòng di chuyển đến bến xuất phát hoặc chuyển sang chế độ "Tại Bến Xuất Bến (Demo)" để thử nghiệm!`,
-            'error'
-          );
+          showToast(`Chưa đến bến xe (cách ${distKm}, bán kính cho phép 1.5km).`, 'error');
           setActionLoading(false);
           return;
         }
@@ -347,7 +344,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        showToast(data.message, 'success');
+        showToast(data.message || 'Chấm công thành công!', 'success');
         setTodayStatus(actionType === 'check-in' ? 'active' : 'closed');
         fetchMyAttendance();
       } else {
@@ -356,7 +353,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
           fetchMyAttendance();
           showToast(data.message, 'info');
         } else {
-          showToast(data.message || 'Xác thực khuôn mặt thất bại. Vui lòng thử lại!', 'error');
+          showToast(data.message || 'Xác thực thất bại. Vui lòng thử lại!', 'error');
         }
       }
     } catch (err) {
@@ -370,7 +367,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
   // 6b. Tự chụp ảnh & kích hoạt Face ID cho phụ xe chưa có dữ liệu mẫu
   const handleSelfEnrollFace = async () => {
     if (!videoRef.current || !faceDetected) {
-      showToast('Vui lòng nhìn thẳng vào ống kính camera và giữ yên khuôn mặt!', 'error');
+      showToast('Vui lòng nhìn thẳng vào camera và giữ yên khuôn mặt!', 'error');
       return;
     }
 
@@ -378,7 +375,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
     try {
       const { descriptor } = await detectFaceAndExtractDescriptor(videoRef.current, 416);
       if (!descriptor || descriptor.length !== 128) {
-        showToast('Chất lượng nhận diện chưa đạt chuẩn. Vui lòng nhìn rõ vào camera và thử lại!', 'error');
+        showToast('Chất lượng quét chưa đạt. Vui lòng thử lại!', 'error');
         setIsRegisteringFace(false);
         return;
       }
@@ -401,14 +398,14 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       if (res.ok && data.success) {
         setRegisteredDescriptors([descriptor]);
         setFaceRegistered(true);
-        showToast('Kích hoạt khuôn mặt Face ID thành công! Bây giờ bạn đã có thể bắt đầu ca trực.', 'success');
+        showToast('Đăng ký khuôn mặt thành công!', 'success');
         fetchMyAttendance();
       } else {
         showToast(data.message || 'Lỗi lưu dữ liệu khuôn mặt.', 'error');
       }
     } catch (err) {
       console.error('[Self Enroll Error]:', err);
-      showToast('Lỗi kết nối máy chủ khi lưu khuôn mặt.', 'error');
+      showToast('Lỗi kết nối máy chủ.', 'error');
     } finally {
       setIsRegisteringFace(false);
     }
@@ -416,9 +413,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
 
   // 7. Đặt lại (Reset) dữ liệu ca trực hôm nay để phục vụ test/demo
   const handleResetTodayAttendance = async () => {
-    const confirmReset = window.confirm(
-      'Bạn có chắc chắn muốn đặt lại (xóa) dữ liệu ca trực hôm nay để kiểm thử check-in lại từ đầu không?'
-    );
+    const confirmReset = window.confirm('Đặt lại ca trực hôm nay để kiểm thử lại?');
     if (!confirmReset) return;
 
     setActionLoading(true);
@@ -431,7 +426,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        showToast(data.message, 'success');
+        showToast(data.message || 'Đặt lại ca trực thành công!', 'success');
         setTodayStatus('not_checked');
         setTodayRecord(null);
         await fetchMyAttendance();
@@ -440,7 +435,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       }
     } catch (err) {
       console.error('[Reset Today Error]:', err);
-      showToast('Lỗi kết nối máy chủ khi đặt lại dữ liệu ca trực.', 'error');
+      showToast('Lỗi kết nối máy chủ.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -460,8 +455,12 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
       : 'quá xa';
 
   return (
-    <div style={{ animation: 'fadeIn 0.25s ease', maxWidth: '1280px', margin: '0 auto', paddingBottom: '2.5rem' }}>
+    <div className="attendance-page-container" style={{ animation: 'fadeIn 0.25s ease', maxWidth: '1280px', margin: '0 auto', paddingBottom: '2.5rem' }}>
       <style>{`
+        .attendance-page-container {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
         .attendance-grid {
           display: grid;
           grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
@@ -470,6 +469,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
         @media (max-width: 1024px) {
           .attendance-grid {
             grid-template-columns: 1fr;
+            gap: 12px;
           }
         }
         .executive-box {
@@ -479,118 +479,117 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
           padding: 1.15rem;
           box-shadow: 0 1px 3px rgba(0,0,0,0.02);
         }
+        @media (max-width: 640px) {
+          .attendance-page-container {
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+          }
+          .executive-box {
+            padding: 0.85rem !important;
+            border-radius: 8px;
+          }
+        }
       `}</style>
 
       {/* ── HEADER QUẢN TRỊ CA TRỰC ── */}
-      <div className="executive-box" style={{ marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.85rem' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-                Chấm Công Số Bằng Nhận Diện Khuôn Mặt (Face ID)
-              </h1>
-              <span style={{ background: '#eff6ff', color: '#2563eb', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: '800' }}>
-                Phụ Xe: {user?.name || 'Nhân Viên'}
-              </span>
-              <span style={{ background: '#f1f5f9', color: '#475569', padding: '2px 8px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: '800' }}>
-                SĐT: {user?.phone || '0900000000'}
-              </span>
-              <span
-                style={{
-                  background:
-                    todayStatus === 'closed'
-                      ? '#ecfdf5'
-                      : todayStatus === 'active'
-                        ? '#eff6ff'
-                        : todayStatus === 'absent'
-                          ? '#fef2f2'
-                          : '#fef3c7',
-                  color:
-                    todayStatus === 'closed'
-                      ? '#059669'
-                      : todayStatus === 'active'
-                        ? '#1d4ed8'
-                        : todayStatus === 'absent'
-                          ? '#b91c1c'
-                          : '#b45309',
-                  border: `1px solid ${todayStatus === 'closed'
-                      ? '#a7f3d0'
-                      : todayStatus === 'active'
-                        ? '#bfdbfe'
-                        : todayStatus === 'absent'
-                          ? '#fecaca'
-                          : '#fde68a'
-                    }`,
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.68rem',
-                  fontWeight: '800'
-                }}
-              >
-                {todayStatus === 'closed'
-                  ? 'ĐÃ HOÀN THÀNH CA HÔM NAY'
-                  : todayStatus === 'active'
-                    ? 'ĐANG TRỰC CA'
-                    : todayStatus === 'absent'
-                      ? 'VẮNG KHÔNG PHÉP'
-                      : 'CHƯA CHECK-IN'}
-              </span>
-              <span
-                style={{
-                  background: faceRegistered ? '#ecfdf5' : '#fef3c7',
-                  color: faceRegistered ? '#059669' : '#b45309',
-                  border: `1px solid ${faceRegistered ? '#a7f3d0' : '#fde68a'}`,
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  fontSize: '0.68rem',
-                  fontWeight: '800'
-                }}
-              >
-                {faceRegistered ? 'ĐÃ ĐĂNG KÝ KHUÔN MẶT' : 'CHƯA ĐĂNG KÝ KHUÔN MẶT'}
-              </span>
-            </div>
-            <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '4px', margin: 0 }}>
-              Hệ thống xác thực khuôn mặt sinh trắc học và đối soát cự ly tới bến xuất phát của chuyến xe được phân công.
-            </p>
-          </div>
+      <div className="executive-box" style={{ marginBottom: '1rem', padding: '0.85rem 1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginBottom: '8px' }}>
+          <h1 style={{ fontSize: '1.02rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.2px', lineHeight: 1.3 }}>
+            Chấm Công Nhận Diện Khuôn Mặt
+          </h1>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={handleResetTodayAttendance}
-              disabled={actionLoading}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #fca5a5',
-                color: '#b91c1c',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                cursor: actionLoading ? 'not-allowed' : 'pointer'
-              }}
-              title="Xóa dữ liệu ca trực hôm nay để bạn có thể test lại từ đầu"
-            >
-              Đặt Lại Ca Trực (Reset Test)
-            </button>
-            <button
-              type="button"
-              onClick={fetchMyAttendance}
-              style={{
-                backgroundColor: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                padding: '6px 12px',
-                borderRadius: '4px',
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-            >
-              Làm Mới
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleResetTodayAttendance}
+            disabled={actionLoading}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '30px',
+              height: '30px',
+              minWidth: '30px',
+              backgroundColor: '#ffffff',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+              borderRadius: '6px',
+              cursor: actionLoading ? 'not-allowed' : 'pointer',
+              flexShrink: 0,
+              padding: 0,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+              transition: 'all 0.15s ease'
+            }}
+            title="Đặt lại ca trực hôm nay (Reset test)"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+          </button>
         </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+          <span
+            style={{
+              background:
+                todayStatus === 'closed'
+                  ? '#ecfdf5'
+                  : todayStatus === 'active'
+                    ? '#eff6ff'
+                    : todayStatus === 'absent'
+                      ? '#fef2f2'
+                      : '#fef3c7',
+              color:
+                todayStatus === 'closed'
+                  ? '#059669'
+                  : todayStatus === 'active'
+                    ? '#1d4ed8'
+                    : todayStatus === 'absent'
+                      ? '#b91c1c'
+                      : '#b45309',
+              border: `1px solid ${
+                todayStatus === 'closed'
+                  ? '#a7f3d0'
+                  : todayStatus === 'active'
+                    ? '#bfdbfe'
+                    : todayStatus === 'absent'
+                      ? '#fecaca'
+                      : '#fde68a'
+              }`,
+              padding: '2px 7px',
+              borderRadius: '4px',
+              fontSize: '0.67rem',
+              fontWeight: '700',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {todayStatus === 'closed'
+              ? 'ĐÃ HOÀN THÀNH CA'
+              : todayStatus === 'active'
+                ? 'ĐANG TRỰC CA'
+                : todayStatus === 'absent'
+                  ? 'VẮNG KHÔNG PHÉP'
+                  : 'CHƯA CHECK-IN'}
+          </span>
+          <span
+            style={{
+              background: faceRegistered ? '#ecfdf5' : '#fef3c7',
+              color: faceRegistered ? '#059669' : '#b45309',
+              border: `1px solid ${faceRegistered ? '#a7f3d0' : '#fde68a'}`,
+              padding: '2px 7px',
+              borderRadius: '4px',
+              fontSize: '0.67rem',
+              fontWeight: '700',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {faceRegistered ? 'ĐÃ ĐĂNG KÝ FACE ID' : 'CHƯA ĐĂNG KÝ FACE ID'}
+          </span>
+        </div>
+
+        <p style={{ color: '#64748b', fontSize: '0.73rem', margin: 0, lineHeight: 1.45 }}>
+          Xác thực khuôn mặt sinh trắc học và đối soát vị trí xuất bến của chuyến xe được phân công.
+        </p>
       </div>
 
       {/* ── BỐ CỤC 2 CỘT RESPONSIVE ── */}
@@ -758,7 +757,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
             )}
 
             {cameraActive && (
-              <div style={{ marginTop: '0.65rem', textAlign: 'right' }}>
+              <div style={{ marginTop: '0.5rem', textAlign: 'right' }}>
                 <button
                   type="button"
                   onClick={handleStopCamera}
@@ -766,9 +765,9 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
                     background: '#f1f5f9',
                     border: '1px solid #cbd5e1',
                     color: '#475569',
-                    padding: '4px 10px',
+                    padding: '3px 8px',
                     borderRadius: '4px',
-                    fontSize: '0.72rem',
+                    fontSize: '0.7rem',
                     fontWeight: '700',
                     cursor: 'pointer'
                   }}
@@ -778,11 +777,8 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
               </div>
             )}
 
-            {/* Thẻ Giám Sát Vị Trí Xuất Bến & Giờ Lăn Bánh */}
-            <AttendanceGpsCard onLocationChange={handleGpsLocationChange} token={token} user={user} />
-
-            {/* Cụm Nút Hành Động Chấm Công hoặc Kích Hoạt Face ID */}
-            <div style={{ marginTop: '1.25rem' }}>
+            {/* Cụm Nút Hành Động Chấm Công hoặc Kích Hoạt Face ID (Đặt ngay dưới Camera theo Phương án A) */}
+            <div style={{ marginTop: '0.75rem' }}>
               {!faceRegistered ? (
                 // ── TRƯỜNG HỢP CHƯA CÓ FACE ID: BẮT BUỘC CHỤP ẢNH KÍCH HOẠT TRƯỚC ──
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -822,7 +818,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
                 </div>
               ) : todayStatus !== 'closed' ? (
                 isGpsBlocked ? (
-                  // NÚT BỊ KHÓA KHI NGOÀI BÁN KÍNH (NGẮN GỌN, KHÔNG DÒNG ĐỎ GIẢI THÍCH)
+                  // NÚT BỊ KHÓA KHI NGOÀI BÁN KÍNH
                   <button
                     type="button"
                     disabled={true}
@@ -842,7 +838,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
                     Chưa Đến Bến Xe (Cách {distText})
                   </button>
                 ) : (
-                  // NÚT BẮT ĐẦU / KẾT THÚC CA (NGẮN GỌN)
+                  // NÚT BẮT ĐẦU / KẾT THÚC CA
                   <div>
                     <button
                       onClick={() => handleAttendanceAction(todayStatus === 'active' ? 'check-out' : 'check-in')}
@@ -868,11 +864,11 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
                           : 'Bắt Đầu Ca Trực'}
                     </button>
 
-                    <div style={{ textAlign: 'center', marginTop: '8px' }}>
+                    <div style={{ textAlign: 'center', marginTop: '6px' }}>
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm('Bạn có muốn chụp ảnh mới để cập nhật lại khuôn mặt Face ID không?')) {
+                          if (window.confirm('Cập nhật lại khuôn mặt Face ID?')) {
                             setFaceRegistered(false);
                           }
                         }}
@@ -907,6 +903,9 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
                 </div>
               )}
             </div>
+
+            {/* Thẻ Giám Sát Vị Trí Xuất Bến & Giờ Lăn Bánh */}
+            <AttendanceGpsCard onLocationChange={handleGpsLocationChange} token={token} user={user} refreshTrigger={todayStatus} />
           </div>
         </div>
 
@@ -1027,99 +1026,6 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
               </div>
             )}
           </div>
-
-          {/* Card: Lịch sử chấm công gần đây */}
-          <div className="executive-box">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase' }}>
-                Nhật Ký Chấm Công Gần Đây
-              </div>
-              <button
-                onClick={fetchMyAttendance}
-                style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700' }}
-              >
-                Làm mới
-              </button>
-            </div>
-
-            {loadingHistory ? (
-              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#64748b', fontSize: '0.8rem' }}>Đang nạp dữ liệu...</div>
-            ) : history.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#94a3b8', fontSize: '0.8rem' }}>
-                Chưa có lịch sử chấm công.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
-                {history.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: '0.65rem 0.85rem',
-                      borderRadius: '4px',
-                      border: '1px solid #e2e8f0',
-                      background: '#f8fafc',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontSize: '0.78rem'
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: '800', color: '#0f172a' }}>{item.date}</div>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                        Vào: <strong style={{ color: '#059669' }}>{item.checkInTime}</strong> • Tan:{' '}
-                        <strong style={{ color: '#0f172a' }}>{item.checkOutTime}</strong>
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>{item.location}</div>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                      <span
-                        style={{
-                          fontSize: '0.65rem',
-                          fontWeight: '800',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          backgroundColor:
-                            item.status === 'closed' ? '#ecfdf5' : item.status === 'active' ? '#eff6ff' : '#fef2f2',
-                          color:
-                            item.status === 'closed' ? '#059669' : item.status === 'active' ? '#1d4ed8' : '#dc2626',
-                          border: `1px solid ${item.status === 'closed' ? '#a7f3d0' : item.status === 'active' ? '#bfdbfe' : '#fecaca'
-                            }`
-                        }}
-                      >
-                        {item.status === 'closed' ? 'HOÀN THÀNH' : item.status === 'active' ? 'ĐANG TRỰC' : 'VẮNG MẶT'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {setActiveTab && (
-              <button
-                onClick={() => setActiveTab('attendant-attendance-report')}
-                style={{
-                  width: '100%',
-                  marginTop: '0.85rem',
-                  padding: '9px 12px',
-                  backgroundColor: '#ffffff',
-                  color: '#6d28d9',
-                  border: '1.5px solid #ddd6fe',
-                  borderRadius: '8px',
-                  fontWeight: '800',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                <span>Xem toàn bộ lịch sử chấm công & chuyến xe →</span>
-              </button>
-            )}
-          </div>
         </div>
       </div>
       {/* MODAL ĐĂNG KÝ SINH TRẮC HỌC FACE ID 3 GÓC MẶT TỰ ĐỘNG */}
@@ -1128,7 +1034,7 @@ const AttendantAttendancePage = ({ setActiveTab }) => {
         onClose={() => setShowAutoEnrollModal(false)}
         onSuccess={(data) => {
           setFaceRegistered(true);
-          showToast('Kích hoạt khuôn mặt Face ID 3 góc thành công! Bây giờ bạn đã có thể bắt đầu ca trực.', 'success');
+          showToast('Đăng ký khuôn mặt 3 góc thành công!', 'success');
           setShowAutoEnrollModal(false);
           if (fetchMyAttendance) {
             fetchMyAttendance();

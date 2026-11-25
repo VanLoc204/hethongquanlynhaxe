@@ -75,6 +75,7 @@ const DriverIncidentPage = ({ setActiveTab }) => {
   const [locationText, setLocationText] = useState('');
   const [reimbursementAmount, setReimbursementAmount] = useState('');
   const [images, setImages] = useState([]);
+  const [formErrors, setFormErrors] = useState({});
 
   // Preview Image Modal
   const [previewImage, setPreviewImage] = useState(null);
@@ -132,17 +133,23 @@ const DriverIncidentPage = ({ setActiveTab }) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
 
+    let hasSizeError = false;
     files.forEach(file => {
       if (file.size > 5 * 1024 * 1024) {
-        alert(`File ${file.name} quá lớn (vui lòng chọn ảnh dưới 5MB).`);
+        hasSizeError = true;
         return;
       }
       const reader = new FileReader();
       reader.onloadend = () => {
         setImages(prev => [...prev, reader.result]);
+        setFormErrors(prev => ({ ...prev, images: '' }));
       };
       reader.readAsDataURL(file);
     });
+
+    if (hasSizeError) {
+      setFormErrors(prev => ({ ...prev, images: 'Có ảnh vượt quá 5MB. Vui lòng chọn ảnh dung lượng dưới 5MB.' }));
+    }
   };
 
   const removeImage = (index) => {
@@ -156,28 +163,54 @@ const DriverIncidentPage = ({ setActiveTab }) => {
         (pos) => {
           const { latitude, longitude } = pos.coords;
           setLocationText(`GPS: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+          setFormErrors(prev => ({ ...prev, location: '' }));
         },
         () => {
-          alert('Không thể lấy tọa độ GPS tự động. Vui lòng nhập vị trí bằng tay (VD: Km 110, QL20).');
+          setFormErrors(prev => ({
+            ...prev,
+            location: 'Không thể lấy tọa độ GPS tự động. Vui lòng nhập vị trí bằng tay (VD: Km 115, QL20).'
+          }));
         }
       );
     }
   };
 
-  // Submit Incident (chỉ gửi những trường mới, không gửi trường dư thừa)
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // Validate form
+  const validateForm = () => {
+    const errors = {};
+
+    if (!locationText.trim()) {
+      errors.location = 'Vui lòng nhập vị trí hiện tại của xe hoặc bấm lấy tọa độ GPS tự động.';
+    }
+
     if (!details.trim()) {
-      alert('Vui lòng nhập mô tả chi tiết sự cố.');
-      return;
+      errors.details = 'Vui lòng nhập mô tả chi tiết sự cố.';
+    } else if (details.trim().length < 10) {
+      errors.details = 'Vui lòng mô tả chi tiết hơn về tình trạng sự cố (tối thiểu 10 ký tự).';
     }
 
     if (activeScenario === 'self_resolved') {
       const amt = Number(reimbursementAmount);
-      if (isNaN(amt) || amt <= 0) {
-        alert('Vui lòng nhập số tiền bạn đã tự ứng chi trả hợp lệ (> 0 đ).');
-        return;
+      if (!reimbursementAmount || isNaN(amt) || amt <= 0) {
+        errors.amount = 'Vui lòng nhập số tiền bạn đã tự ứng chi trả hợp lệ (lớn hơn 0 đ).';
+      } else if (amt > 20000000) {
+        errors.amount = 'Số tiền xin hoàn ứng vượt quá hạn mức cho phép tự sửa chữa (tối đa 20.000.000 đ).';
       }
+
+      if (!images || images.length === 0) {
+        errors.images = 'Vui lòng tải lên ít nhất 1 ảnh hóa đơn, biên lai tiệm sửa xe hoặc ảnh hiện trường để được duyệt hoàn ứng.';
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Submit Incident (chỉ gửi những trường mới, không gửi trường dư thừa)
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) {
+      return;
     }
 
     setSubmitting(true);
@@ -191,7 +224,7 @@ const DriverIncidentPage = ({ setActiveTab }) => {
         category,
         severity: activeScenario === 'need_assistance' ? 'urgent' : 'medium',
         details: details.trim(),
-        location: locationText.trim() || 'Trên tuyến đường',
+        location: locationText.trim(),
         images,
         reimbursementAmount: activeScenario === 'self_resolved' ? Number(reimbursementAmount) : 0,
         tripId: currentTrip?._id || null
@@ -216,6 +249,7 @@ const DriverIncidentPage = ({ setActiveTab }) => {
         setLocationText('');
         setReimbursementAmount('');
         setImages([]);
+        setFormErrors({});
         fetchIncidents();
       } else {
         setError(data.message || 'Lỗi khi gửi báo cáo sự cố.');
@@ -267,6 +301,7 @@ const DriverIncidentPage = ({ setActiveTab }) => {
           border-collapse: collapse;
           font-size: 0.8rem;
           text-align: left;
+          min-width: 720px;
         }
         .driver-table th {
           background: #f8fafc;
@@ -285,28 +320,67 @@ const DriverIncidentPage = ({ setActiveTab }) => {
           background-color: #f8fafc;
         }
         .tab-btn {
-          padding: 6px 14px;
+          padding: 6px 12px;
           border-radius: 6px;
-          font-size: 0.78rem;
+          font-size: 0.76rem;
           font-weight: 700;
           cursor: pointer;
           border: 1px solid #e2e8f0;
           background: #ffffff;
           color: #475569;
           transition: all 0.15s ease;
+          white-space: nowrap;
+          flex-shrink: 0;
         }
         .tab-btn.active {
           background: #0f172a;
           color: #ffffff;
           border-color: #0f172a;
         }
+        .driver-kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+        }
+        @media (max-width: 768px) {
+          .driver-kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+          .driver-header-wrap {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .driver-header-btn {
+            width: 100% !important;
+            text-align: center !important;
+            padding: 9px 16px !important;
+          }
+          .driver-trip-banner {
+            flex-direction: column !important;
+            align-items: stretch !important;
+          }
+          .driver-trip-actions {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+          }
+          .driver-tabs-container {
+            width: 100% !important;
+            overflow-x: auto !important;
+            white-space: nowrap !important;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 3px !important;
+          }
+        }
       `}</style>
 
       {/* Header bar */}
-      <div className="driver-box" style={{ padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div className="driver-box driver-header-wrap" style={{ padding: '0.85rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a' }}>
+            <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '800', color: '#0f172a' }}>
               Báo Cáo Sự Cố Trên Tuyến
             </h1>
             <span style={{
@@ -316,22 +390,32 @@ const DriverIncidentPage = ({ setActiveTab }) => {
               Tài Xế
             </span>
           </div>
-          <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-            Báo sự cố khẩn cấp yêu cầu cứu hộ hoặc khai báo chi phí đã tự ứng trước để xin hoàn tiền sau chuyến đi.
+          <p style={{ margin: '3px 0 0', fontSize: '0.74rem', color: '#64748b' }}>
+            Báo sự cố khẩn cấp yêu cầu cứu hộ hoặc khai báo chi phí đã tự ứng để xin hoàn tiền.
           </p>
         </div>
 
         <button
+          className="driver-header-btn"
           onClick={() => {
+            setFormErrors({});
             setShowCreateModal(true);
             setActiveScenario('self_resolved');
           }}
           style={{
-            background: '#dc2626', color: '#ffffff', border: 'none',
-            padding: '7px 16px', borderRadius: '6px', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer'
+            background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+            color: '#ffffff',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontWeight: '800',
+            fontSize: '0.8rem',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(220,38,38,0.25)',
+            whiteSpace: 'nowrap'
           }}
         >
-          Báo Cáo Sự Cố Mới
+          + Báo Cáo Sự Cố Mới
         </button>
       </div>
 
@@ -349,42 +433,46 @@ const DriverIncidentPage = ({ setActiveTab }) => {
 
       {/* Current Trip Context Banner */}
       {currentTrip && (
-        <div style={{
+        <div className="driver-trip-banner" style={{
           background: '#f8fafc', border: '1px solid #cbd5e1', borderLeft: '4px solid #2563eb',
-          borderRadius: '8px', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between',
+          borderRadius: '10px', padding: '0.75rem 1rem', display: 'flex', justifyContent: 'space-between',
           alignItems: 'center', flexWrap: 'wrap', gap: '10px'
         }}>
           <div>
             <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
               Chuyến xe đang vận hành hôm nay:
             </div>
-            <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.88rem', marginTop: '2px' }}>
-              {currentTrip.routeId?.startPoint || 'Sài Gòn'} -&gt; {currentTrip.routeId?.endPoint || 'Đà Lạt'} ({new Date(currentTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
+            <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '0.84rem', marginTop: '2px' }}>
+              {currentTrip.routeId?.startPoint || 'Sài Gòn'} ➔ {currentTrip.routeId?.endPoint || 'Đà Lạt'} ({new Date(currentTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })})
               &nbsp;• Biển số xe: <strong style={{ color: '#2563eb' }}>{currentTrip.busId?.plateNumber || 'N/A'}</strong>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="driver-trip-actions" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
               onClick={() => {
+                setFormErrors({});
                 setShowCreateModal(true);
                 setActiveScenario('need_assistance');
               }}
               style={{
                 backgroundColor: '#dc2626', color: '#ffffff', border: 'none',
-                padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer'
+                padding: '7px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '800',
+                cursor: 'pointer', whiteSpace: 'nowrap', textAlign: 'center'
               }}
             >
               Cần cứu viện khẩn cấp
             </button>
             <button
               onClick={() => {
+                setFormErrors({});
                 setShowCreateModal(true);
                 setActiveScenario('self_resolved');
               }}
               style={{
                 backgroundColor: '#16a34a', color: '#ffffff', border: 'none',
-                padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', cursor: 'pointer'
+                padding: '7px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: '800',
+                cursor: 'pointer', whiteSpace: 'nowrap', textAlign: 'center'
               }}
             >
               Đề xuất hoàn ứng chi phí
@@ -394,54 +482,54 @@ const DriverIncidentPage = ({ setActiveTab }) => {
       )}
 
       {/* 4 KPI Cards Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '10px' }}>
-        <div className="driver-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+      <div className="driver-kpi-grid">
+        <div className="driver-box" style={{ padding: '0.75rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Tổng Sự Cố Đã Báo
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#0f172a' }}>
-            {totalCount} <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>vụ</span>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a' }}>
+            {totalCount} <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#64748b' }}>vụ</span>
           </div>
         </div>
 
-        <div className="driver-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #ef4444' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#dc2626', textTransform: 'uppercase' }}>
+        <div className="driver-box" style={{ padding: '0.75rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #ef4444' }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: '700', color: '#dc2626', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Yêu Cầu Cứu Viện
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: needAssistanceCount > 0 ? '#dc2626' : '#16a34a' }}>
-            {needAssistanceCount} <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>chờ điều phối</span>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: needAssistanceCount > 0 ? '#dc2626' : '#16a34a' }}>
+            {needAssistanceCount} <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#64748b' }}>chờ điều phối</span>
           </div>
         </div>
 
-        <div className="driver-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #f59e0b' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#d97706', textTransform: 'uppercase' }}>
+        <div className="driver-box" style={{ padding: '0.75rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #f59e0b' }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: '700', color: '#d97706', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             Chờ Duyệt Hoàn Ứng
           </div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: pendingReimburseCount > 0 ? '#d97706' : '#16a34a' }}>
-            {pendingReimburseCount} <span style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748b' }}>đơn</span>
+          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: pendingReimburseCount > 0 ? '#d97706' : '#16a34a' }}>
+            {pendingReimburseCount} <span style={{ fontSize: '0.72rem', fontWeight: '600', color: '#64748b' }}>đơn</span>
           </div>
         </div>
 
-        <div className="driver-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #10b981' }}>
-          <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#15803d', textTransform: 'uppercase' }}>
-            Tổng Tiền Đã Được Duyệt
+        <div className="driver-box" style={{ padding: '0.75rem 0.9rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #10b981' }}>
+          <div style={{ fontSize: '0.66rem', fontWeight: '700', color: '#15803d', textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Tổng Tiền Đã Duyệt
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#166534' }}>
+          <div style={{ fontSize: '1.15rem', fontWeight: '800', color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {formatCurrency(totalReimbursed)}
           </div>
         </div>
       </div>
 
       {/* Main Table Box */}
-      <div className="driver-box" style={{ padding: '1rem' }}>
-        {/* Controls: Filter tabs & Refresh */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ display: 'flex', gap: '6px' }}>
+      <div className="driver-box" style={{ padding: '0.85rem' }}>
+        {/* Controls: Filter tabs */}
+        <div style={{ marginBottom: '0.85rem' }}>
+          <div className="driver-tabs-container" style={{ display: 'flex', gap: '6px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <button
               onClick={() => setScenarioFilter('all')}
               className={`tab-btn ${scenarioFilter === 'all' ? 'active' : ''}`}
             >
-              Tất cả sự cố ({totalCount})
+              Tất cả ({totalCount})
             </button>
             <button
               onClick={() => setScenarioFilter('need_assistance')}
@@ -456,16 +544,6 @@ const DriverIncidentPage = ({ setActiveTab }) => {
               Đề xuất hoàn ứng ({incidents.filter(i => i.scenario === 'self_resolved').length})
             </button>
           </div>
-
-          <button
-            onClick={fetchIncidents}
-            style={{
-              padding: '5px 12px', background: '#f8fafc', border: '1px solid #cbd5e1',
-              borderRadius: '6px', fontSize: '0.75rem', fontWeight: '700', color: '#334155', cursor: 'pointer'
-            }}
-          >
-            Làm mới
-          </button>
         </div>
 
         {/* Compact Table */}
@@ -759,7 +837,10 @@ const DriverIncidentPage = ({ setActiveTab }) => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '0.85rem' }}>
               <button
                 type="button"
-                onClick={() => setActiveScenario('self_resolved')}
+                onClick={() => {
+                  setActiveScenario('self_resolved');
+                  setFormErrors({});
+                }}
                 style={{
                   padding: '9px 8px', borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
                   border: `2px solid ${activeScenario === 'self_resolved' ? '#16a34a' : '#e2e8f0'}`,
@@ -773,7 +854,10 @@ const DriverIncidentPage = ({ setActiveTab }) => {
 
               <button
                 type="button"
-                onClick={() => setActiveScenario('need_assistance')}
+                onClick={() => {
+                  setActiveScenario('need_assistance');
+                  setFormErrors({});
+                }}
                 style={{
                   padding: '9px 8px', borderRadius: '8px', cursor: 'pointer', textAlign: 'center',
                   border: `2px solid ${activeScenario === 'need_assistance' ? '#dc2626' : '#e2e8f0'}`,
@@ -788,6 +872,21 @@ const DriverIncidentPage = ({ setActiveTab }) => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {/* Alert banner if validation errors exist */}
+              {Object.keys(formErrors).length > 0 && (
+                <div style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fca5a5',
+                  borderRadius: '6px',
+                  padding: '8px 12px',
+                  color: '#b91c1c',
+                  fontSize: '0.74rem',
+                  fontWeight: '700'
+                }}>
+                  Vui lòng kiểm tra và điền đầy đủ các thông tin bắt buộc còn thiếu bên dưới.
+                </div>
+              )}
+
               {/* Category */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>
@@ -810,7 +909,7 @@ const DriverIncidentPage = ({ setActiveTab }) => {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: '700', color: '#0f172a' }}>
-                    Vị trí hiện tại của xe:
+                    Vị trí hiện tại của xe (bắt buộc):
                   </label>
                   <button
                     type="button"
@@ -824,15 +923,31 @@ const DriverIncidentPage = ({ setActiveTab }) => {
                   type="text"
                   placeholder="VD: Km 115 QL20, Đèo Chuối hoặc Đèo Bảo Lộc..."
                   value={locationText}
-                  onChange={e => setLocationText(e.target.value)}
-                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }}
+                  onChange={e => {
+                    setLocationText(e.target.value);
+                    if (formErrors.location) setFormErrors(prev => ({ ...prev, location: '' }));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '7px 10px',
+                    fontSize: '0.8rem',
+                    border: formErrors.location ? '1px solid #ef4444' : '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box',
+                    backgroundColor: formErrors.location ? '#fff5f5' : '#ffffff'
+                  }}
                 />
+                {formErrors.location && (
+                  <div style={{ color: '#dc2626', fontSize: '0.7rem', fontWeight: '700', marginTop: '3px' }}>
+                    {formErrors.location}
+                  </div>
+                )}
               </div>
 
               {/* Description */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#0f172a', marginBottom: '3px' }}>
-                  Mô tả tình trạng chi tiết:
+                  Mô tả tình trạng chi tiết (tối thiểu 10 ký tự):
                 </label>
                 <textarea
                   rows="3"
@@ -842,10 +957,25 @@ const DriverIncidentPage = ({ setActiveTab }) => {
                       : 'VD: Xe đang leo đèo thì báo nhiệt độ cao, bốc khói khoang máy, xe chết máy dừng sát lề không nổ lại được...'
                   }
                   value={details}
-                  onChange={e => setDetails(e.target.value)}
-                  style={{ width: '100%', padding: '7px 10px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '6px', boxSizing: 'border-box' }}
-                  required
+                  onChange={e => {
+                    setDetails(e.target.value);
+                    if (formErrors.details) setFormErrors(prev => ({ ...prev, details: '' }));
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '7px 10px',
+                    fontSize: '0.8rem',
+                    border: formErrors.details ? '1px solid #ef4444' : '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    boxSizing: 'border-box',
+                    backgroundColor: formErrors.details ? '#fff5f5' : '#ffffff'
+                  }}
                 />
+                {formErrors.details && (
+                  <div style={{ color: '#dc2626', fontSize: '0.7rem', fontWeight: '700', marginTop: '3px' }}>
+                    {formErrors.details}
+                  </div>
+                )}
               </div>
 
               {/* CASE A: Reimbursement Amount & Invoice Photo */}
@@ -859,18 +989,45 @@ const DriverIncidentPage = ({ setActiveTab }) => {
                       type="number"
                       placeholder="VD: 350000"
                       value={reimbursementAmount}
-                      onChange={e => setReimbursementAmount(e.target.value)}
-                      style={{ width: '100%', padding: '7px 10px', fontSize: '0.88rem', fontWeight: '800', color: '#0f172a', border: '1px solid #86efac', borderRadius: '6px', boxSizing: 'border-box' }}
-                      required
+                      onChange={e => {
+                        setReimbursementAmount(e.target.value);
+                        if (formErrors.amount) setFormErrors(prev => ({ ...prev, amount: '' }));
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '7px 10px',
+                        fontSize: '0.88rem',
+                        fontWeight: '800',
+                        color: '#0f172a',
+                        border: formErrors.amount ? '1px solid #ef4444' : '1px solid #86efac',
+                        borderRadius: '6px',
+                        boxSizing: 'border-box',
+                        backgroundColor: formErrors.amount ? '#fff5f5' : '#ffffff'
+                      }}
                     />
+                    {reimbursementAmount && !isNaN(Number(reimbursementAmount)) && Number(reimbursementAmount) > 0 && (
+                      <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: '700', marginTop: '3px' }}>
+                        Số tiền quy đổi: {Number(reimbursementAmount).toLocaleString('vi-VN')} ₫
+                      </div>
+                    )}
+                    {formErrors.amount && (
+                      <div style={{ color: '#dc2626', fontSize: '0.7rem', fontWeight: '700', marginTop: '3px' }}>
+                        {formErrors.amount}
+                      </div>
+                    )}
                     <div style={{ fontSize: '0.68rem', color: '#15803d', marginTop: '2px' }}>
                       Số tiền sẽ được trình Quản lý vận tải đối chiếu và hoàn lại tiền mặt/chuyển khoản sau chuyến đi.
                     </div>
                   </div>
 
-                  <div>
+                  <div style={{
+                    border: formErrors.images ? '1px solid #ef4444' : 'transparent',
+                    borderRadius: '6px',
+                    padding: formErrors.images ? '6px' : '0',
+                    backgroundColor: formErrors.images ? '#fff5f5' : 'transparent'
+                  }}>
                     <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#166534', marginBottom: '3px' }}>
-                      Chụp / Tải ảnh hóa đơn, biên lai tiệm sửa xe hoặc hiện trường:
+                      Chụp / Tải ảnh hóa đơn, biên lai tiệm sửa xe hoặc hiện trường (bắt buộc):
                     </label>
                     <input
                       type="file"
@@ -879,6 +1036,11 @@ const DriverIncidentPage = ({ setActiveTab }) => {
                       onChange={handleImageChange}
                       style={{ fontSize: '0.75rem' }}
                     />
+                    {formErrors.images && (
+                      <div style={{ color: '#dc2626', fontSize: '0.7rem', fontWeight: '700', marginTop: '4px' }}>
+                        {formErrors.images}
+                      </div>
+                    )}
                     {images.length > 0 && (
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                         {images.map((img, idx) => (

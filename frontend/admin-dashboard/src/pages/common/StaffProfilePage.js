@@ -362,164 +362,197 @@ const StaffProfilePage = () => {
   const roleName = ROLE_LABELS[user?.role] || user?.role || 'Nhân viên';
 
   return (
-    <div style={{ animation: 'fadeIn 0.25s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-      
-      {/* 1. Header Card Chuẩn Quản Trị (Mẫu giao diện thống nhất toàn hệ thống, tràn đều 100%) */}
-      <div style={{
-        background: '#ffffff',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        padding: '1.25rem 1.5rem',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+    <div className="staff-profile-container" style={{ animation: 'fadeIn 0.25s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%', maxWidth: '1200px', margin: '0 auto', paddingBottom: '2rem' }}>
+      <style>{`
+        .staff-profile-container, .staff-profile-container * {
+          box-sizing: border-box;
+        }
+        .profile-card {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1.25rem 1.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          box-sizing: border-box;
+        }
+        .profile-grid-2col {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1.25rem;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .profile-pass-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1rem;
+          width: 100%;
+        }
+        .profile-submit-btn {
+          background-color: #2563eb;
+          border: none;
+          color: #ffffff;
+          padding: 0.65rem 1.4rem;
+          border-radius: 8px;
+          font-size: 0.82rem;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+          transition: background-color 0.2s;
+        }
+        .profile-submit-btn:hover:not(:disabled) {
+          background-color: #1d4ed8;
+        }
+
+        /* ── RESPONSIVE MOBILE & TABLET ── */
+        @media (max-width: 900px) {
+          .staff-profile-container {
+            gap: 0.85rem !important;
+            padding: 0 4px 1.5rem 4px !important;
+          }
+          .profile-card {
+            padding: 1rem !important;
+            border-radius: 12px !important;
+          }
+          .profile-grid-2col {
+            grid-template-columns: 1fr !important;
+            gap: 0.85rem !important;
+          }
+          .profile-pass-grid {
+            grid-template-columns: 1fr !important;
+            gap: 0.85rem !important;
+          }
+          .profile-submit-btn {
+            width: 100% !important;
+            padding: 0.75rem !important;
+            font-size: 0.85rem !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+          }
+        }
+      `}</style>
+
+      {/* 1. Header Card Chuẩn Quản Trị */}
+      <div className="profile-card" style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '1rem',
-        width: '100%',
-        boxSizing: 'border-box'
+        gap: '0.85rem',
+        width: '100%'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* Avatar Đại Diện */}
-          <div style={{
-            width: '52px',
-            height: '52px',
-            borderRadius: '50%',
-            backgroundColor: '#eff6ff',
-            color: '#2563eb',
-            border: '2px solid #bfdbfe',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '1.2rem',
-            fontWeight: '800',
-            flexShrink: 0
-          }}>
-            {user?.name ? user.name.trim().split(' ').slice(-1)[0].substring(0, 2).toUpperCase() : 'AB'}
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a' }}>
-                {user?.name || user?.fullName || 'Hồ sơ nhân sự'}
-              </h1>
-              {user?.employeeCode && (
-                <span style={{
-                  background: '#f8fafc',
-                  color: '#334155',
-                  border: '1px solid #cbd5e1',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
-                  fontSize: '0.72rem',
-                  fontWeight: '700'
-                }}>
-                  {user.employeeCode}
-                </span>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', fontSize: '0.78rem', color: '#64748b', flexWrap: 'wrap' }}>
-              <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '1px 7px', borderRadius: '4px', fontWeight: '700' }}>
-                {roleName}
-              </span>
-              <span style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', padding: '1px 7px', borderRadius: '4px', fontWeight: '700' }}>
-                {branchName}
-              </span>
-              <span style={{
-                background: faceRegistered ? '#ecfdf5' : '#fffbeb',
-                color: faceRegistered ? '#047857' : '#b45309',
-                border: `1px solid ${faceRegistered ? '#a7f3d0' : '#fde68a'}`,
-                padding: '1px 7px',
-                borderRadius: '4px',
-                fontWeight: '700'
-              }}>
-                {faceRegistered ? 'Đã kích hoạt Face ID' : 'Chưa kích hoạt Face ID'}
-              </span>
-            </div>
-          </div>
+        {/* Avatar Đại Diện */}
+        <div style={{
+          width: '46px',
+          height: '46px',
+          borderRadius: '50%',
+          backgroundColor: '#eff6ff',
+          color: '#2563eb',
+          border: '2px solid #bfdbfe',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '1.1rem',
+          fontWeight: '800',
+          flexShrink: 0
+        }}>
+          {user?.name ? user.name.trim().split(' ').slice(-1)[0].substring(0, 2).toUpperCase() : 'AB'}
         </div>
 
-        <div style={{ textAlign: 'right', fontSize: '0.75rem', color: '#64748b' }}>
-          <div>Hệ thống Quản lý Vận tải An Bình Lines</div>
-          <div style={{ marginTop: '2px', color: '#0f172a', fontWeight: '600' }}>
-            Trạng thái: <span style={{ color: '#16a34a' }}>Đang hoạt động</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>
+              {user?.name || user?.fullName || 'Hồ sơ nhân sự'}
+            </h1>
+            {user?.employeeCode && (
+              <span style={{
+                background: '#f8fafc',
+                color: '#334155',
+                border: '1px solid #cbd5e1',
+                padding: '1px 6px',
+                borderRadius: '5px',
+                fontSize: '0.68rem',
+                fontWeight: '700'
+              }}>
+                {user.employeeCode}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', fontSize: '0.72rem' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block' }}></span>
+            <span style={{ fontWeight: '600', color: '#16a34a' }}>Đang hoạt động</span>
           </div>
         </div>
       </div>
 
       {/* 2. Grid 2 Cột: Thông tin phân công & Thông tin cá nhân (Tràn viền 100% không để trống 2 bên) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '1.25rem', width: '100%', boxSizing: 'border-box' }}>
+      <div className="profile-grid-2col">
         
         {/* KHỐI 1: THÔNG TIN CÔNG TÁC & PHÂN CÔNG (ĐÃ XÓA QUẦY VÉ HOÀN TOÀN) */}
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          padding: '1.25rem 1.5rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        <div className="profile-card" style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem',
-          boxSizing: 'border-box'
+          gap: '1rem'
         }}>
-          <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-            <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
+          <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.65rem' }}>
+            <h2 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a' }}>
               Thông tin công tác & phân công
             </h2>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
-              Thông tin phân công nhiệm vụ và đơn vị trực thuộc
+            <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+              Nhiệm vụ và đơn vị trực thuộc
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9' }}>
-              <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Chi nhánh trực thuộc</span>
-              <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#1e3a8a' }}>{branchName}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9', gap: '8px' }}>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', flexShrink: 0 }}>Chi nhánh trực thuộc</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#1e3a8a', textAlign: 'right' }}>{branchName}</span>
             </div>
 
             {user?.assignedOffice && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9' }}>
-                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Văn phòng làm việc</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#0f172a' }}>{user.assignedOffice}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', flexShrink: 0 }}>Văn phòng làm việc</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0f172a', textAlign: 'right' }}>{user.assignedOffice}</span>
               </div>
             )}
 
             {user?.shiftName ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9' }}>
-                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Khung giờ làm việc</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', flexShrink: 0 }}>Khung giờ làm việc</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '4px', textAlign: 'right' }}>
                   {user.shiftName}
                 </span>
               </div>
             ) : ['driver', 'attendant'].includes(user?.role) ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9' }}>
-                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Hình thức trực</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', flexShrink: 0 }}>Hình thức trực</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: '4px', textAlign: 'right' }}>
                   Theo biểu đồ chạy xe
                 </span>
               </div>
             ) : (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9' }}>
-                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Chế độ làm việc</span>
-                <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', borderBottom: '1px dashed #f1f5f9', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', color: '#64748b', flexShrink: 0 }}>Chế độ làm việc</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: '700', color: '#475569', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', textAlign: 'right' }}>
                   Toàn thời gian (Full-time)
                 </span>
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', flexWrap: 'wrap', gap: '6px' }}>
-              <span style={{ fontSize: '0.82rem', color: '#64748b' }}>Sinh trắc học Face ID</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', gap: '8px' }}>
+              <span style={{ fontSize: '0.8rem', color: '#64748b', flexShrink: 0 }}>Sinh trắc học Face ID</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{
-                  fontSize: '0.78rem',
+                  fontSize: '0.72rem',
                   fontWeight: '700',
-                  padding: '2px 8px',
-                  borderRadius: '6px',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
                   background: faceRegistered ? '#ecfdf5' : '#fffbeb',
                   color: faceRegistered ? '#047857' : '#b45309',
-                  border: `1px solid ${faceRegistered ? '#a7f3d0' : '#fde68a'}`
+                  border: `1px solid ${faceRegistered ? '#a7f3d0' : '#fde68a'}`,
+                  whiteSpace: 'nowrap'
                 }}>
-                  {faceRegistered ? 'Đã đăng ký sinh trắc học' : 'Chưa đăng ký Face ID'}
+                  {faceRegistered ? 'Đã đăng ký' : 'Chưa đăng ký'}
                 </span>
                 <button
                   type="button"
@@ -528,14 +561,15 @@ const StaffProfilePage = () => {
                     background: faceRegistered ? '#ffffff' : '#2563eb',
                     color: faceRegistered ? '#2563eb' : '#ffffff',
                     border: '1px solid #2563eb',
-                    padding: '3px 10px',
-                    borderRadius: '6px',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
                     fontSize: '0.72rem',
                     fontWeight: '700',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  {faceRegistered ? 'Quét lại Face ID' : 'Đăng ký 3 góc mặt'}
+                  {faceRegistered ? 'Quét lại' : 'Đăng ký'}
                 </button>
               </div>
             </div>
@@ -543,22 +577,16 @@ const StaffProfilePage = () => {
         </div>
 
         {/* KHỐI 2: THÔNG TIN LIÊN HỆ & CẬP NHẬT */}
-        <div style={{
-          background: '#ffffff',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          padding: '1.25rem 1.5rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        <div className="profile-card" style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: '1rem',
-          boxSizing: 'border-box'
+          gap: '1rem'
         }}>
-          <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-            <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
+          <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.65rem' }}>
+            <h2 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a' }}>
               Thông tin liên hệ & cá nhân
             </h2>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+            <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
               Cập nhật họ tên và email làm việc nhận thông báo vận hành
             </div>
           </div>
@@ -674,17 +702,9 @@ const StaffProfilePage = () => {
               <button
                 type="submit"
                 disabled={profileLoading}
+                className="profile-submit-btn"
                 style={{
-                  backgroundColor: '#2563eb',
-                  border: 'none',
-                  color: '#ffffff',
-                  padding: '0.6rem 1.4rem',
-                  borderRadius: '8px',
-                  fontSize: '0.82rem',
-                  fontWeight: '700',
-                  cursor: profileLoading ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                  transition: 'background-color 0.2s'
+                  cursor: profileLoading ? 'not-allowed' : 'pointer'
                 }}
               >
                 {profileLoading ? 'Đang lưu...' : 'Lưu Thay Đổi Thông Tin'}
@@ -696,23 +716,17 @@ const StaffProfilePage = () => {
       </div>
 
       {/* 3. KHỐI ĐỔI MẬT KHẨU TÀI KHOẢN (ĐỒNG BỘ 100% VỚI QUY TRÌNH & GIAO DIỆN KHÁCH HÀNG) */}
-      <div style={{
-        background: '#ffffff',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        padding: '1.25rem 1.5rem',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+      <div className="profile-card" style={{
         display: 'flex',
         flexDirection: 'column',
         gap: '1rem',
-        width: '100%',
-        boxSizing: 'border-box'
+        width: '100%'
       }}>
-        <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.75rem' }}>
-          <h2 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a' }}>
+        <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '0.65rem' }}>
+          <h2 style={{ margin: 0, fontSize: '0.92rem', fontWeight: '800', color: '#0f172a' }}>
             Đổi mật khẩu tài khoản
           </h2>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+          <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
             Mật khẩu công vụ được bảo vệ bằng mã xác thực OTP 2FA gửi về hộp thư điện tử của bạn
           </div>
         </div>
@@ -732,7 +746,7 @@ const StaffProfilePage = () => {
         )}
 
         <form onSubmit={handleRequestChangePasswordOtp} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', width: '100%' }}>
+          <div className="profile-pass-grid">
             
             {/* Trường 1: Mật khẩu hiện tại */}
             <div>
@@ -854,17 +868,9 @@ const StaffProfilePage = () => {
             <button
               type="submit"
               disabled={isSendingOtp}
+              className="profile-submit-btn"
               style={{
-                backgroundColor: '#2563eb',
-                border: 'none',
-                color: '#ffffff',
-                padding: '0.6rem 1.4rem',
-                borderRadius: '8px',
-                fontSize: '0.82rem',
-                fontWeight: '700',
-                cursor: isSendingOtp ? 'not-allowed' : 'pointer',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-                transition: 'background-color 0.2s'
+                cursor: isSendingOtp ? 'not-allowed' : 'pointer'
               }}
             >
               {isSendingOtp ? 'Đang gửi mã...' : 'Cập nhật mật khẩu'}

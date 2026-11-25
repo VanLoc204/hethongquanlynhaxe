@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const API_BASE = 'http://localhost:8000/api';
@@ -57,8 +57,24 @@ const StaffSalaryPage = () => {
   // Filter states
   const [month, setMonth] = useState(currentSystemMonth);
   const [year, setYear] = useState(currentSystemYear);
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'paid', 'pending'
-  const [activeView, setActiveView] = useState('payslip'); // 'payslip', 'incidents', 'history'
+  const [activeView, setActiveView] = useState('payslip'); // 'payslip', 'incidents'
+  const [openDropdown, setOpenDropdown] = useState(null); // 'month' | 'year' | null
+  const filterSuiteRef = useRef(null);
+
+  // Dong dropdown khi bam ra ngoai
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (filterSuiteRef.current && !filterSuiteRef.current.contains(e.target)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
 
   // Data states
   const [payroll, setPayroll] = useState(null);
@@ -149,8 +165,11 @@ const StaffSalaryPage = () => {
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '1200px', margin: '0 auto', paddingBottom: '2rem' }}>
+    <div className="staff-salary-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', maxWidth: '1200px', margin: '0 auto', paddingBottom: '2rem' }}>
       <style>{`
+        .staff-salary-container, .staff-salary-container * {
+          box-sizing: border-box;
+        }
         .salary-box {
           background: #ffffff;
           border: 1px solid #e2e8f0;
@@ -195,46 +214,127 @@ const StaffSalaryPage = () => {
         .salary-table tr:hover td {
           background-color: #f8fafc;
         }
+
+        /* ── RESPONSIVE MOBILE & TABLET ── */
+        @media (max-width: 768px) {
+          .staff-salary-container {
+            gap: 0.75rem !important;
+            padding: 0 4px 1.5rem 4px !important;
+          }
+          .salary-header-card {
+            padding: 0.85rem 1rem !important;
+          }
+          .salary-header-card h1 {
+            font-size: 1rem !important;
+          }
+          .salary-incident-card {
+            padding: 1rem !important;
+          }
+          .salary-incident-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 8px !important;
+          }
+          .salary-incident-total-badge {
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          .salary-filter-box {
+            padding: 0.75rem 1rem !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+          }
+          .salary-view-tabs {
+            display: flex !important;
+            gap: 4px !important;
+            width: 100% !important;
+          }
+          .salary-view-tabs .filter-btn {
+            flex: 1 1 auto !important;
+            text-align: center !important;
+            padding: 6px 4px !important;
+            font-size: 0.72rem !important;
+          }
+          .salary-filters-grid {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+          .salary-kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+          .salary-kpi-card {
+            padding: 0.75rem 0.85rem !important;
+          }
+          .salary-kpi-amount {
+            font-size: 1.15rem !important;
+            letter-spacing: -0.3px !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+          .salary-kpi-net-wide {
+            grid-column: span 2 !important;
+          }
+          .salary-payslip-header {
+            padding: 1rem !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 10px !important;
+          }
+          .salary-payslip-header h2 {
+            font-size: 1.05rem !important;
+          }
+          .salary-meta-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 10px !important;
+          }
+          .salary-breakdown-container {
+            padding: 1rem !important;
+          }
+          .salary-breakdown-grid {
+            grid-template-columns: 1fr !important;
+            gap: 1.5rem !important;
+          }
+          .salary-net-banner {
+            padding: 0.85rem 1rem !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+          }
+          .salary-net-amount {
+            font-size: 1.35rem !important;
+          }
+        }
       `}</style>
 
       {/* 1. Header Card */}
-      <div className="salary-box" style={{ padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: '#0f172a' }}>
-              Bảng Kê Quyết Toán Lương &amp; Phụ Cấp Nhân Sự
-            </h1>
-            <span style={{
-              background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
-              padding: '2px 8px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: '700'
-            }}>
-              {getRoleLabel(user?.role)}
-            </span>
-          </div>
-          <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-            {isDriver
-              ? 'Tra cứu chi tiết thu nhập, tiền hoàn ứng sự cố dọc đường, các khoản khấu trừ và lịch sử quyết toán lương hàng tháng.'
-              : 'Tra cứu chi tiết thu nhập, các khoản khấu trừ và lịch sử quyết toán lương hàng tháng.'}
-          </p>
+      <div className="salary-box salary-header-card" style={{ padding: '0.85rem 1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+          <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
+            Bảng Quyết Toán Lương &amp; Phụ Cấp
+          </h1>
+          <span style={{
+            background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+            padding: '2px 8px', borderRadius: '6px', fontSize: '0.68rem', fontWeight: '700', flexShrink: 0
+          }}>
+            {getRoleLabel(user?.role)}
+          </span>
         </div>
-
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            onClick={fetchSalary}
-            style={{
-              padding: '6px 14px', backgroundColor: '#ffffff', border: '1px solid #cbd5e1',
-              borderRadius: '6px', fontSize: '0.78rem', fontWeight: '700', color: '#334155', cursor: 'pointer'
-            }}
-          >
-            Làm mới
-          </button>
-        </div>
+        <p style={{ margin: '4px 0 0', fontSize: '0.76rem', color: '#64748b', lineHeight: '1.4' }}>
+          {isDriver
+            ? 'Tra cứu chi tiết thu nhập, hoàn ứng sự cố và các khoản khấu trừ hàng tháng.'
+            : 'Tra cứu chi tiết thu nhập, các khoản khấu trừ và lịch sử quyết toán lương hàng tháng.'}
+        </p>
       </div>
 
       {/* 2. Advanced Filter Suite */}
-      <div className="salary-box" style={{ padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div ref={filterSuiteRef} className="salary-box salary-filter-box" style={{ padding: '0.85rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         {/* Left: View Mode Tabs */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        <div className="salary-view-tabs" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveView('payslip')}
             className={`filter-btn ${activeView === 'payslip' ? 'active' : ''}`}
@@ -246,56 +346,179 @@ const StaffSalaryPage = () => {
               onClick={() => setActiveView('incidents')}
               className={`filter-btn ${activeView === 'incidents' ? 'active' : ''}`}
             >
-              Khoản hoàn ứng sự cố ({incidentItems.length})
+              Hoàn ứng sự cố ({incidentItems.length})
             </button>
           )}
-          <button
-            onClick={() => setActiveView('history')}
-            className={`filter-btn ${activeView === 'history' ? 'active' : ''}`}
-          >
-            Lịch sử quyết toán 6 tháng
-          </button>
         </div>
 
-        {/* Right: Select Year, Month, Status */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b' }}>Tháng:</span>
-            <select
-              value={month}
-              onChange={e => setMonth(Number(e.target.value))}
-              style={{ padding: '5px 8px', fontSize: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontWeight: '700', color: '#0f172a' }}
+        {/* Right: Custom Select: Month, Year, Status */}
+        <div className="salary-filters-grid" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Custom Select: Tháng */}
+          <div style={{ position: 'relative', minWidth: '100px' }}>
+            <button
+              type="button"
+              onClick={() => setOpenDropdown(openDropdown === 'month' ? null : 'month')}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                backgroundColor: '#ffffff',
+                border: openDropdown === 'month' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.76rem',
+                fontWeight: '700',
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px',
+                boxShadow: openDropdown === 'month' ? '0 0 0 3px rgba(37, 99, 235, 0.12)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
             >
-              {months.map(m => (
-                <option key={m} value={m}>Tháng {m}</option>
-              ))}
-            </select>
+              <span>Tháng {month}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" style={{ transform: openDropdown === 'month' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', flexShrink: 0 }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {openDropdown === 'month' && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                left: 0,
+                width: '120px',
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                padding: '4px',
+                zIndex: 100,
+                maxHeight: '220px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px'
+              }}>
+                {months.map(m => {
+                  const isSelected = m === month;
+                  return (
+                    <div
+                      key={m}
+                      onClick={() => {
+                        setMonth(m);
+                        setOpenDropdown(null);
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                        color: isSelected ? '#1d4ed8' : '#334155',
+                        fontWeight: isSelected ? '700' : '500',
+                        fontSize: '0.76rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'background-color 0.12s ease'
+                      }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >
+                      <span>Tháng {m}</span>
+                      {isSelected && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b' }}>Năm:</span>
-            <select
-              value={year}
-              onChange={e => setYear(Number(e.target.value))}
-              style={{ padding: '5px 8px', fontSize: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontWeight: '700', color: '#0f172a' }}
+          {/* Custom Select: Năm */}
+          <div style={{ position: 'relative', minWidth: '95px' }}>
+            <button
+              type="button"
+              onClick={() => setOpenDropdown(openDropdown === 'year' ? null : 'year')}
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                backgroundColor: '#ffffff',
+                border: openDropdown === 'year' ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                borderRadius: '8px',
+                fontSize: '0.76rem',
+                fontWeight: '700',
+                color: '#0f172a',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px',
+                boxShadow: openDropdown === 'year' ? '0 0 0 3px rgba(37, 99, 235, 0.12)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
             >
-              {years.map(y => (
-                <option key={y} value={y}>Năm {y}</option>
-              ))}
-            </select>
-          </div>
+              <span>Năm {year}</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5" style={{ transform: openDropdown === 'year' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease', flexShrink: 0 }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b' }}>Trạng thái:</span>
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              style={{ padding: '5px 8px', fontSize: '0.75rem', border: '1px solid #cbd5e1', borderRadius: '6px' }}
-            >
-              <option value="all">Tất cả kỳ lương</option>
-              <option value="paid">Đã quyết toán</option>
-              <option value="pending">Chờ quyết toán</option>
-            </select>
+            {openDropdown === 'year' && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                left: 0,
+                width: '110px',
+                backgroundColor: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                padding: '4px',
+                zIndex: 100,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px'
+              }}>
+                {years.map(y => {
+                  const isSelected = y === year;
+                  return (
+                    <div
+                      key={y}
+                      onClick={() => {
+                        setYear(y);
+                        setOpenDropdown(null);
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                        color: isSelected ? '#1d4ed8' : '#334155',
+                        fontWeight: isSelected ? '700' : '500',
+                        fontSize: '0.76rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'background-color 0.12s ease'
+                      }}
+                      onMouseEnter={e => { if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                      onMouseLeave={e => { if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >
+                      <span>Năm {y}</span>
+                      {isSelected && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -313,13 +536,13 @@ const StaffSalaryPage = () => {
       ) : payroll ? (
         <>
           {/* 3. KPI Cards Grid: 4 cột cho Tài xế, 3 cột cho các nhân sự khác */}
-          <div style={{ display: 'grid', gridTemplateColumns: isDriver ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
+          <div className="salary-kpi-grid" style={{ display: 'grid', gridTemplateColumns: isDriver ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
             {/* KPI 1 */}
-            <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="salary-box salary-kpi-card" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
                 Lương Cơ Bản Hợp Đồng
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a' }}>
+              <div className="salary-kpi-amount" style={{ fontSize: '1.35rem', fontWeight: '800', color: '#0f172a' }}>
                 {formatCurrency(payroll.baseSalary)}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
@@ -328,11 +551,11 @@ const StaffSalaryPage = () => {
             </div>
 
             {/* KPI 2 */}
-            <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #16a34a' }}>
+            <div className="salary-box salary-kpi-card" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #16a34a' }}>
               <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#16a34a', textTransform: 'uppercase' }}>
                 Phụ Cấp &amp; Ăn Ca
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#16a34a' }}>
+              <div className="salary-kpi-amount" style={{ fontSize: '1.35rem', fontWeight: '800', color: '#16a34a' }}>
                 +{formatCurrency(payroll.allowance)}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
@@ -342,25 +565,25 @@ const StaffSalaryPage = () => {
 
             {/* KPI 3: Hoàn Ứng Sự Cố Dọc Đường (CHỈ HIỂN THỊ VỚI TÀI XẾ) */}
             {isDriver && (
-              <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #059669' }}>
+              <div className="salary-box salary-kpi-card" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #059669' }}>
                 <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#059669', textTransform: 'uppercase' }}>
-                  Hoàn Ứng Sự Cố Dọc Đường
+                  Hoàn Ứng Sự Cố
                 </div>
-                <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#047857' }}>
+                <div className="salary-kpi-amount" style={{ fontSize: '1.35rem', fontWeight: '800', color: '#047857' }}>
                   +{formatCurrency(incidentTotal)}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: incidentItems.length > 0 ? '#047857' : '#64748b', fontWeight: incidentItems.length > 0 ? '700' : '500' }}>
-                  {incidentItems.length > 0 ? `${incidentItems.length} sự cố được Quản lý duyệt` : 'Không phát sinh chi phí'}
+                  {incidentItems.length > 0 ? `${incidentItems.length} sự cố đã duyệt` : 'Không phát sinh chi phí'}
                 </div>
               </div>
             )}
 
             {/* KPI 4: Thực Lĩnh */}
-            <div className="salary-box" style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #2563eb' }}>
+            <div className={`salary-box salary-kpi-card ${!isDriver ? 'salary-kpi-net-wide' : ''}`} style={{ padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '2px', borderLeft: '4px solid #2563eb' }}>
               <div style={{ fontSize: '0.68rem', fontWeight: '700', color: '#2563eb', textTransform: 'uppercase' }}>
                 Lương Thực Lĩnh
               </div>
-              <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#1d4ed8' }}>
+              <div className="salary-kpi-amount" style={{ fontSize: '1.35rem', fontWeight: '800', color: '#1d4ed8' }}>
                 {formatCurrency(totalNetPayout)}
               </div>
               <div style={{ fontSize: '0.72rem', color: payroll.status === 'paid' ? '#15803d' : '#b45309', fontWeight: '700' }}>
@@ -373,34 +596,18 @@ const StaffSalaryPage = () => {
           {activeView === 'payslip' && (
             <div className="salary-box" style={{ overflow: 'hidden' }}>
               {/* Payslip Header */}
-              <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                <div>
-                  <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
-                    CÔNG TY TNHH VẬN TẢI HÀNH KHÁCH AN BÌNH LINES
-                  </div>
-                  <h2 style={{ margin: '3px 0 0', fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
-                    Phiếu Quyết Toán Lương Kỳ Tháng {String(month).padStart(2, '0')}/{year}
-                  </h2>
+              <div className="salary-payslip-header" style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
+                  CÔNG TY TNHH VẬN TẢI HÀNH KHÁCH AN BÌNH LINES
                 </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{
-                    padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '800',
-                    backgroundColor: payroll.status === 'paid' ? '#ecfdf5' : '#fef3c7',
-                    color: payroll.status === 'paid' ? '#047857' : '#b45309',
-                    border: `1px solid ${payroll.status === 'paid' ? '#a7f3d0' : '#fde68a'}`
-                  }}>
-                    {payroll.status === 'paid' ? 'ĐÃ QUYẾT TOÁN QUA NGÂN HÀNG' : 'CHƯA ĐẾN KỲ QUYẾT TOÁN'}
-                  </span>
-                  <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '3px' }}>
-                    Mã phiếu: PL-{year}-{String(month).padStart(2, '0')}-{user?._id ? user._id.slice(-4).toUpperCase() : '001'}
-                  </div>
-                </div>
+                <h2 style={{ margin: '3px 0 0', fontSize: '1.15rem', fontWeight: '800', color: '#0f172a' }}>
+                  Phiếu Quyết Toán Lương Kỳ Tháng {String(month).padStart(2, '0')}/{year}
+                </h2>
               </div>
 
               {/* Employee Meta Info */}
               <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '12px', fontSize: '0.78rem' }}>
+                <div className="salary-meta-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '12px', fontSize: '0.78rem' }}>
                   <div>
                     <span style={{ color: '#64748b', display: 'block', fontSize: '0.7rem' }}>Họ và tên nhân sự:</span>
                     <strong style={{ color: '#0f172a', fontSize: '0.85rem' }}>{payroll.name || user?.name}</strong>
@@ -421,8 +628,8 @@ const StaffSalaryPage = () => {
               </div>
 
               {/* 2-Column Earnings & Deductions Breakdown */}
-              <div style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+              <div className="salary-breakdown-container" style={{ padding: '1.5rem' }}>
+                <div className="salary-breakdown-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                   {/* Left: Khoản Thu Nhập (+) */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #16a34a', paddingBottom: '6px' }}>
@@ -548,7 +755,7 @@ const StaffSalaryPage = () => {
                 </div>
 
                 {/* Final Net Pay Banner */}
-                <div style={{
+                <div className="salary-net-banner" style={{
                   marginTop: '1.5rem', background: '#0f172a', color: '#ffffff', borderRadius: '8px',
                   padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
                 }}>
@@ -561,7 +768,7 @@ const StaffSalaryPage = () => {
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#38bdf8' }}>
+                  <div className="salary-net-amount" style={{ fontSize: '1.6rem', fontWeight: '900', color: '#38bdf8' }}>
                     {formatCurrency(totalNetPayout)}
                   </div>
                 </div>
@@ -571,33 +778,42 @@ const StaffSalaryPage = () => {
 
           {/* VIEW 2: KHOẢN HOÀN ỨNG SỰ CỐ DỌC ĐƯỜNG (CHỈ DÀNH CHO TÀI XẾ) */}
           {isDriver && activeView === 'incidents' && (
-            <div className="salary-box" style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>
-                    Danh Sách Khoản Chi Sự Cố Dọc Đường Được Quyết Toán Vào Lương
+            <div className="salary-box salary-incident-card" style={{ padding: '1.25rem' }}>
+              <div className="salary-incident-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ flex: '1 1 auto' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: '800', color: '#0f172a' }}>
+                    Khoản Hoàn Ứng Sự Cố Dọc Đường
                   </h3>
-                  <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: '#64748b' }}>
-                    Các khoản tiền tài xế đã tự ứng (vá vỏ, thay bóng đèn, mua nhớt...) được Quản lý vận tải đối chiếu chứng từ và duyệt cộng trực tiếp vào phiếu lương kỳ này.
+                  <p style={{ margin: '3px 0 0', fontSize: '0.74rem', color: '#64748b', lineHeight: '1.4' }}>
+                    Chi phí tài xế tự ứng (vá vỏ, dầu nhớt, phụ tùng...) được duyệt cộng vào kỳ lương này.
                   </p>
                 </div>
 
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' }}>
-                    Tổng hoàn ứng kỳ Tháng {String(month).padStart(2, '0')}/{year}:
-                  </div>
-                  <strong style={{ fontSize: '1.25rem', color: '#059669' }}>
+                <div className="salary-incident-total-badge" style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  justifyContent: 'space-between'
+                }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#166534', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+                    Tổng hoàn ứng Tháng {String(month).padStart(2, '0')}/{year}:
+                  </span>
+                  <strong style={{ fontSize: '1.15rem', color: '#059669', fontWeight: '800', whiteSpace: 'nowrap' }}>
                     +{formatCurrency(incidentTotal)}
                   </strong>
                 </div>
               </div>
 
               {incidentItems.length === 0 ? (
-                <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.8rem', background: '#f8fafc', borderRadius: '8px' }}>
+                <div style={{ padding: '1.5rem 1rem', textAlign: 'center', color: '#64748b', fontSize: '0.78rem', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
                   Không phát sinh chi phí sự cố dọc đường nào được duyệt trong kỳ Tháng {month}/{year}.
                 </div>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
                   <table className="salary-table">
                     <thead>
                       <tr>
@@ -667,7 +883,7 @@ const StaffSalaryPage = () => {
                   Chưa có dữ liệu lịch sử lương trước đó.
                 </div>
               ) : (
-                <div style={{ overflowX: 'auto' }}>
+                <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
                   <table className="salary-table">
                     <thead>
                       <tr>

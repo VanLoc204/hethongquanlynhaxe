@@ -2876,12 +2876,32 @@ exports.createDriverIncident = async (req, res) => {
       reimbursementAmount
     } = req.body;
 
+    if (!location || !location.trim()) {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp vị trí hiện tại của xe.' });
+    }
+
     if (!details || !details.trim()) {
       return res.status(400).json({ success: false, message: 'Vui lòng nhập mô tả chi tiết sự cố.' });
     }
 
+    if (details.trim().length < 10) {
+      return res.status(400).json({ success: false, message: 'Mô tả chi tiết sự cố phải có tối thiểu 10 ký tự.' });
+    }
+
     const isSelfResolved = scenario === 'self_resolved';
     const amountNum = Number(reimbursementAmount) || 0;
+
+    if (isSelfResolved) {
+      if (isNaN(amountNum) || amountNum <= 0) {
+        return res.status(400).json({ success: false, message: 'Vui lòng nhập số tiền xin hoàn ứng hợp lệ (lớn hơn 0 đồng).' });
+      }
+      if (amountNum > 20000000) {
+        return res.status(400).json({ success: false, message: 'Số tiền xin hoàn ứng vượt quá hạn mức tối đa cho phép (20.000.000 đồng).' });
+      }
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ success: false, message: 'Vui lòng đính kèm ít nhất 1 ảnh hóa đơn, biên lai hoặc ảnh hiện trường để xin hoàn ứng.' });
+      }
+    }
 
     const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const randomSuffix = Math.floor(100 + Math.random() * 900);

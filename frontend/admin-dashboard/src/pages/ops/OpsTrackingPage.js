@@ -466,9 +466,6 @@ const OpsTrackingPage = () => {
         <div style="font-size: 0.74rem; color: #475569; margin-top:2px;">
           Tài xế: <strong style="color:#0f172a;">${activeTrip.driver?.name || 'Trần Minh Tâm'}</strong>
         </div>
-        <div style="font-size: 0.74rem; color: #2563eb; font-weight: 700; margin-top: 4px;">
-          Vận tốc: ${isCompleted ? '<span style="color:#059669; font-size:0.8rem;">0 km/h (Đã hoàn thành)</span>' : `<span style="font-size:0.85rem;">${Math.round(busSpeed)}</span> km/h ${busHeading ? `(${Math.round(busHeading)}°)` : ''}`}
-        </div>
         <div style="font-size: 0.68rem; color: #64748b; margin-top: 4px;">
           Tọa độ: ${busLat.toFixed(5)}, ${busLng.toFixed(5)}
         </div>
@@ -510,9 +507,6 @@ const OpsTrackingPage = () => {
           ">
             <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:${isLiveDevice ? '#22c55e' : '#cbd5e1'};"></span>
             <span>Xe ${busPlate}</span>
-            ${busSpeed > 0 ? `
-              <span style="background:#2563eb; padding:1px 5px; border-radius:8px; font-size:0.62rem; font-weight:800;">${Math.round(busSpeed)} km/h</span>
-            ` : ''}
           </div>
         </div>
       `,
