@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 
 const LEAVE_TYPES = [
-  { id: 'annual', name: 'Nghỉ phép năm (Hưởng nguyên lương)', badge: 'Phép năm' },
-  { id: 'sick', name: 'Nghỉ ốm đau / Khám chữa bệnh', badge: 'Nghỉ ốm' },
-  { id: 'personal', name: 'Việc riêng gia đình (Có phép)', badge: 'Việc riêng' },
-  { id: 'unpaid', name: 'Nghỉ không hưởng lương', badge: 'Không lương' },
-  { id: 'special', name: 'Nghỉ chế độ đặc thù / Thai sản', badge: 'Chế độ' }
+  { id: 'annual', name: 'Nghỉ phép năm' },
+  { id: 'sick', name: 'Nghỉ ốm đau' },
+  { id: 'personal', name: 'Việc riêng' },
+  { id: 'unpaid', name: 'Nghỉ không lương' },
+  { id: 'special', name: 'Thai sản / Chế độ' }
 ];
 
 const StaffLeavePage = () => {
@@ -23,6 +23,27 @@ const StaffLeavePage = () => {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [touched, setTouched] = useState({ startDate: false, endDate: false, reason: false });
+  const [selectOpen, setSelectOpen] = useState(false);
+  const selectRef = useRef(null);
+
+  // Dong dropdown khi bam ra ngoai
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (selectRef.current && !selectRef.current.contains(e.target)) {
+        setSelectOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
+  const selectedTypeObj = useMemo(() => {
+    return LEAVE_TYPES.find(t => t.id === leaveType) || LEAVE_TYPES[0];
+  }, [leaveType]);
 
   // Ngày hôm nay theo định dạng YYYY-MM-DD
   const todayStr = useMemo(() => {
@@ -223,55 +244,80 @@ const StaffLeavePage = () => {
   };
 
   return (
-    <div style={{ width: '100%', boxSizing: 'border-box', animation: 'fadeIn 0.3s ease' }}>
+    <div className="staff-leave-container" style={{ width: '100%', maxWidth: '1440px', margin: '0 auto', boxSizing: 'border-box', animation: 'fadeIn 0.3s ease' }}>
       
+      {/* ── STYLE RESPONSIVE MOBILE & TABLET ────────────────────────────── */}
+      <style>{`
+        .staff-leave-container, .staff-leave-container * {
+          box-sizing: border-box;
+        }
+        .staff-leave-grid {
+          display: grid;
+          grid-template-columns: minmax(360px, 450px) 1fr;
+          gap: 20px;
+          align-items: start;
+          width: 100%;
+        }
+        @media (max-width: 900px) {
+          .staff-leave-container {
+            padding: 0 4px !important;
+          }
+          .staff-leave-header {
+            padding: 12px 14px !important;
+            margin-bottom: 12px !important;
+            border-radius: 10px !important;
+          }
+          .staff-leave-header h1 {
+            font-size: 1.15rem !important;
+          }
+          .staff-leave-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+          .staff-leave-card {
+            padding: 14px !important;
+            border-radius: 10px !important;
+          }
+          .staff-leave-dates {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+          }
+          .staff-leave-dates input {
+            font-size: 0.775rem !important;
+            padding: 6px 6px !important;
+          }
+          .staff-leave-table-desktop {
+            display: none !important;
+          }
+          .staff-leave-cards-mobile {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+        }
+        @media (min-width: 901px) {
+          .staff-leave-cards-mobile {
+            display: none !important;
+          }
+        }
+      `}</style>
+
       {/* 1. Header Trang & Giới Thiệu Nghiệp Vụ */}
-      <div style={{
-        marginBottom: '20px',
-        padding: '18px 24px',
+      <div className="staff-leave-header" style={{
+        marginBottom: '16px',
+        padding: '16px 20px',
         backgroundColor: '#ffffff',
         borderRadius: '12px',
         border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '12px'
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
       }}>
-        <div>
-          <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0' }}>
-            Quản Lý &amp; Tạo Đơn Xin Nghỉ Phép
-          </h1>
-          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
-            Tạo đơn đề xuất nghỉ phép và theo dõi tiến độ xét duyệt trực tuyến.
-          </p>
-        </div>
-
-        <button
-          onClick={fetchLeaves}
-          style={{
-            backgroundColor: '#f1f5f9',
-            color: '#334155',
-            border: '1px solid #cbd5e1',
-            padding: '7px 14px',
-            borderRadius: '8px',
-            fontSize: '0.8rem',
-            fontWeight: '700',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}
-          title="Làm mới danh sách đơn"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-            <path d="M23 4v6h-6" />
-            <path d="M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-          Làm mới
-        </button>
+        <h1 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#0f172a', margin: '0 0 4px 0' }}>
+          Quản Lý &amp; Tạo Đơn Xin Nghỉ Phép
+        </h1>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+          Tạo đơn đề xuất nghỉ phép và theo dõi tiến độ xét duyệt trực tuyến.
+        </p>
       </div>
 
       {/* Thông báo Thành công / Lỗi tổng quát */}
@@ -321,18 +367,19 @@ const StaffLeavePage = () => {
       )}
 
       {/* 2. Bố cục 2 Cột: Form Tạo Đơn (Trái) & Lịch Sử (Phải) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 480px) 1fr', gap: '20px', alignItems: 'start' }}>
+      <div className="staff-leave-grid">
         
         {/* ================= CỘT TRÁI: FORM TẠO ĐƠN ================= */}
-        <section style={{
+        <section className="staff-leave-card" style={{
           backgroundColor: '#ffffff',
           borderRadius: '12px',
           padding: '20px',
           border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          width: '100%'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563eb', flexShrink: 0 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
@@ -352,37 +399,122 @@ const StaffLeavePage = () => {
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             
-            {/* Phân loại nghỉ phép */}
-            <div>
+            {/* Phân loại nghỉ phép - Custom Select Hiện Đại */}
+            <div ref={selectRef} style={{ position: 'relative', width: '100%' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                 Loại nghỉ phép <span style={{ color: '#ef4444' }}>*</span>
               </label>
-              <select
-                value={leaveType}
-                onChange={(e) => setLeaveType(e.target.value)}
+
+              <button
+                type="button"
+                onClick={() => setSelectOpen(!selectOpen)}
                 style={{
                   width: '100%',
                   padding: '9px 12px',
                   borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#f8fafc',
+                  border: selectOpen ? '1px solid #2563eb' : '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
                   color: '#0f172a',
                   fontSize: '0.82rem',
                   fontWeight: '600',
                   outline: 'none',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  boxShadow: selectOpen ? '0 0 0 3px rgba(37, 99, 235, 0.12)' : 'none',
+                  transition: 'all 0.15s ease',
+                  textAlign: 'left'
                 }}
               >
-                {LEAVE_TYPES.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+                <span style={{ fontWeight: '700', color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selectedTypeObj.name}
+                </span>
+
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#64748b"
+                  strokeWidth="2.5"
+                  style={{
+                    transform: selectOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease',
+                    flexShrink: 0
+                  }}
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </button>
+
+              {selectOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  left: 0,
+                  right: 0,
+                  backgroundColor: '#ffffff',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                  padding: '4px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px',
+                  maxHeight: '260px',
+                  overflowY: 'auto'
+                }}>
+                  {LEAVE_TYPES.map(t => {
+                    const isSelected = t.id === leaveType;
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => {
+                          setLeaveType(t.id);
+                          setSelectOpen(false);
+                        }}
+                        style={{
+                          padding: '9px 12px',
+                          borderRadius: '6px',
+                          backgroundColor: isSelected ? '#eff6ff' : 'transparent',
+                          color: isSelected ? '#1d4ed8' : '#334155',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '8px',
+                          transition: 'background-color 0.12s ease'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) e.currentTarget.style.backgroundColor = '#f8fafc';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
+                      >
+                        <span style={{ fontSize: '0.82rem', fontWeight: isSelected ? '700' : '500', color: isSelected ? '#1d4ed8' : '#1e293b' }}>
+                          {t.name}
+                        </span>
+
+                        {isSelected && (
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" style={{ flexShrink: 0 }}>
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Khoảng ngày nghỉ */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="staff-leave-dates" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               {/* Từ ngày */}
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                   Từ ngày <span style={{ color: '#ef4444' }}>*</span>
                 </label>
@@ -419,7 +551,7 @@ const StaffLeavePage = () => {
               </div>
 
               {/* Đến ngày */}
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '700', color: '#334155', marginBottom: '6px' }}>
                   Đến ngày (Hết ngày) <span style={{ color: '#ef4444' }}>*</span>
                 </label>
@@ -572,12 +704,13 @@ const StaffLeavePage = () => {
         </section>
 
         {/* ================= CỘT PHẢI: LỊCH SỬ ĐƠN NGHỈ PHÉP ================= */}
-        <section style={{
+        <section className="staff-leave-card" style={{
           backgroundColor: '#ffffff',
           borderRadius: '12px',
           padding: '20px',
           border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          width: '100%'
         }}>
           {/* Header Cột Phải & Bộ Thống Kê Nhanh */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: '10px' }}>
@@ -591,7 +724,7 @@ const StaffLeavePage = () => {
             </div>
 
             {/* Quick KPI stats */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
               <div style={{ padding: '4px 10px', borderRadius: '6px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', fontSize: '0.72rem', color: '#475569' }}>
                 Tổng: <strong style={{ color: '#0f172a' }}>{stats.total}</strong>
               </div>
@@ -632,92 +765,173 @@ const StaffLeavePage = () => {
               </div>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
-                    <th style={{ padding: '10px 12px', fontWeight: '700', width: '40px', textAlign: 'center' }}>#</th>
-                    <th style={{ padding: '10px 12px', fontWeight: '700' }}>LOẠI ĐƠN &amp; THỜI GIAN</th>
-                    <th style={{ padding: '10px 12px', fontWeight: '700', textAlign: 'center', width: '80px' }}>SỐ NGÀY</th>
-                    <th style={{ padding: '10px 12px', fontWeight: '700' }}>LÝ DO NGHỈ</th>
-                    <th style={{ padding: '10px 12px', fontWeight: '700', textAlign: 'center', width: '120px' }}>TRẠNG THÁI</th>
-                    <th style={{ padding: '10px 12px', fontWeight: '700', textAlign: 'center', width: '100px' }}>NGÀY GỬI</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaves.map((item, idx) => {
-                    const days = item.startDate && item.endDate
-                      ? Math.floor((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 3600 * 24)) + 1
-                      : 1;
+            <>
+              {/* Desktop Table View (>= 901px) */}
+              <div className="staff-leave-table-desktop" style={{ overflowX: 'auto', width: '100%' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
+                      <th style={{ padding: '10px 12px', fontWeight: '700', width: '40px', textAlign: 'center' }}>#</th>
+                      <th style={{ padding: '10px 12px', fontWeight: '700' }}>LOẠI ĐƠN &amp; THỜI GIAN</th>
+                      <th style={{ padding: '10px 12px', fontWeight: '700', textAlign: 'center', width: '80px' }}>SỐ NGÀY</th>
+                      <th style={{ padding: '10px 12px', fontWeight: '700' }}>LÝ DO NGHỈ</th>
+                      <th style={{ padding: '10px 12px', fontWeight: '700', textAlign: 'center', width: '120px' }}>TRẠNG THÁI</th>
+                      <th style={{ padding: '10px 12px', fontWeight: '700', textAlign: 'center', width: '100px' }}>NGÀY GỬI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaves.map((item, idx) => {
+                      const days = item.startDate && item.endDate
+                        ? Math.floor((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 3600 * 24)) + 1
+                        : 1;
 
-                    return (
-                      <tr
-                        key={item._id || idx}
-                        style={{
-                          borderBottom: '1px solid #f1f5f9',
-                          transition: 'background-color 0.15s ease'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        {/* STT */}
-                        <td style={{ padding: '12px 10px', textAlign: 'center', color: '#94a3b8', fontWeight: '600' }}>
-                          {idx + 1}
-                        </td>
+                      return (
+                        <tr
+                          key={item._id || idx}
+                          style={{
+                            borderBottom: '1px solid #f1f5f9',
+                            transition: 'background-color 0.15s ease'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
+                          {/* STT */}
+                          <td style={{ padding: '12px 10px', textAlign: 'center', color: '#94a3b8', fontWeight: '600' }}>
+                            {idx + 1}
+                          </td>
 
-                        {/* Loại đơn & thời gian */}
-                        <td style={{ padding: '12px 10px' }}>
-                          <div style={{ fontWeight: '700', color: '#0f172a', marginBottom: '2px' }}>
-                            {item.typeName || 'Đơn xin nghỉ phép'}
-                          </div>
-                          <div style={{ fontSize: '0.74rem', color: '#2563eb', fontWeight: '600' }}>
-                            {formatDate(item.startDate)} ➔ {formatDate(item.endDate)}
-                          </div>
-                        </td>
+                          {/* Loại đơn & thời gian */}
+                          <td style={{ padding: '12px 10px' }}>
+                            <div style={{ fontWeight: '700', color: '#0f172a', marginBottom: '2px' }}>
+                              {item.typeName || 'Đơn xin nghỉ phép'}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#2563eb', fontWeight: '600' }}>
+                              {formatDate(item.startDate)} ➔ {formatDate(item.endDate)}
+                            </div>
+                          </td>
 
-                        {/* Số ngày */}
-                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                          <span style={{
-                            backgroundColor: '#f1f5f9',
-                            color: '#334155',
-                            padding: '2px 8px',
-                            borderRadius: '6px',
-                            fontWeight: '700',
-                            fontSize: '0.75rem'
-                          }}>
-                            {days} ngày
+                          {/* Số ngày */}
+                          <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                            <span style={{
+                              backgroundColor: '#f1f5f9',
+                              color: '#334155',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontWeight: '700',
+                              fontSize: '0.75rem'
+                            }}>
+                              {days} ngày
+                            </span>
+                          </td>
+
+                          {/* Lý do */}
+                          <td style={{ padding: '12px 10px', color: '#334155', maxWidth: '240px' }}>
+                            <div
+                              style={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                              title={item.reason}
+                            >
+                              {item.reason}
+                            </div>
+                          </td>
+
+                          {/* Trạng thái */}
+                          <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                            {getStatusBadge(item.status)}
+                          </td>
+
+                          {/* Ngày gửi */}
+                          <td style={{ padding: '12px 10px', textAlign: 'center', color: '#64748b', fontSize: '0.74rem' }}>
+                            {formatDate(item.createdAt)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card List View (<= 900px) */}
+              <div className="staff-leave-cards-mobile" style={{ width: '100%' }}>
+                {leaves.map((item, idx) => {
+                  const days = item.startDate && item.endDate
+                    ? Math.floor((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 3600 * 24)) + 1
+                    : 1;
+
+                  return (
+                    <div
+                      key={item._id || idx}
+                      style={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '10px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
+                      }}
+                    >
+                      {/* Dòng 1: STT + Loại đơn + Badge Trạng thái */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '700', flexShrink: 0 }}>
+                            #{idx + 1}
                           </span>
-                        </td>
-
-                        {/* Lý do */}
-                        <td style={{ padding: '12px 10px', color: '#334155', maxWidth: '240px' }}>
-                          <div
-                            style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}
-                            title={item.reason}
-                          >
-                            {item.reason}
-                          </div>
-                        </td>
-
-                        {/* Trạng thái */}
-                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: '800', color: '#0f172a', wordBreak: 'break-word' }}>
+                            {item.typeName || 'Đơn xin nghỉ phép'}
+                          </span>
+                        </div>
+                        <div style={{ flexShrink: 0 }}>
                           {getStatusBadge(item.status)}
-                        </td>
+                        </div>
+                      </div>
 
-                        {/* Ngày gửi */}
-                        <td style={{ padding: '12px 10px', textAlign: 'center', color: '#64748b', fontSize: '0.74rem' }}>
-                          {formatDate(item.createdAt)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      {/* Dòng 2: Thời gian nghỉ & Số ngày */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', padding: '6px 10px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                          </svg>
+                          <span>{formatDate(item.startDate)} ➔ {formatDate(item.endDate)}</span>
+                        </div>
+                        <span style={{
+                          backgroundColor: '#e2e8f0',
+                          color: '#334155',
+                          padding: '1px 8px',
+                          borderRadius: '12px',
+                          fontWeight: '800',
+                          fontSize: '0.7rem'
+                        }}>
+                          {days} ngày
+                        </span>
+                      </div>
+
+                      {/* Dòng 3: Lý do nghỉ */}
+                      <div style={{ fontSize: '0.76rem', color: '#475569', lineHeight: '1.4', backgroundColor: '#fafafa', padding: '6px 8px', borderRadius: '6px' }}>
+                        <strong style={{ color: '#64748b' }}>Lý do: </strong>
+                        <span>{item.reason}</span>
+                      </div>
+
+                      {/* Dòng 4: Ngày nộp đơn */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: '#94a3b8' }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span>Gửi ngày: {formatDate(item.createdAt)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </section>
 

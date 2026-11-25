@@ -92,8 +92,8 @@ const StaffSchedulePage = ({ setActiveTab }) => {
   const formatWeekRange = (dates) => {
     const start = dates[0];
     const end = dates[6];
-    const opt = { day: '2-digit', month: '2-digit', year: 'numeric' };
-    return `Tuần từ ${start.toLocaleDateString('vi-VN', opt)} đến ${end.toLocaleDateString('vi-VN', opt)}`;
+    const opt = { day: '2-digit', month: '2-digit' };
+    return `${start.toLocaleDateString('vi-VN', opt)} - ${end.toLocaleDateString('vi-VN', opt)}/${end.getFullYear()}`;
   };
 
   const isToday = (dateObj) => {
@@ -397,6 +397,16 @@ const StaffSchedulePage = ({ setActiveTab }) => {
           display: none;
         }
 
+        .mobile-table-card-list {
+          display: none;
+        }
+
+        .desktop-table-container {
+          display: block;
+          overflow-x: auto;
+          width: 100%;
+        }
+
         /* Tablet (768px - 1024px) */
         @media (max-width: 1024px) {
           .kanban-desktop-grid {
@@ -410,6 +420,15 @@ const StaffSchedulePage = ({ setActiveTab }) => {
 
         /* Mobile (<= 768px) */
         @media (max-width: 768px) {
+          .desktop-table-container {
+            display: none !important;
+          }
+          .mobile-table-card-list {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+          }
+
           .schedule-panel-box {
             padding: 0.85rem 0.75rem !important;
             border-radius: 12px !important;
@@ -441,8 +460,14 @@ const StaffSchedulePage = ({ setActiveTab }) => {
           }
           .schedule-header-actions .refresh-btn {
             flex: 0 0 auto !important;
-            padding: 0.45rem 0.65rem !important;
+            padding: 0.45rem 0.55rem !important;
             font-size: 0.72rem !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+          }
+          .refresh-text {
+            display: none !important;
           }
 
           .schedule-stat-grid {
@@ -580,7 +605,7 @@ const StaffSchedulePage = ({ setActiveTab }) => {
               }}
               title="Xem tuần trước"
             >
-              Tuần trước
+              ‹ Trước
             </button>
 
             <button
@@ -597,7 +622,7 @@ const StaffSchedulePage = ({ setActiveTab }) => {
                 cursor: 'pointer'
               }}
             >
-              Tuần hiện tại
+              Tuần này
             </button>
 
             <button
@@ -615,25 +640,33 @@ const StaffSchedulePage = ({ setActiveTab }) => {
               }}
               title="Xem tuần sau"
             >
-              Tuần sau
+              Sau ›
             </button>
 
             <button
               onClick={fetchMySchedule}
               disabled={loading}
               className="refresh-btn"
+              title="Tải lại dữ liệu"
               style={{
                 backgroundColor: '#2563eb',
                 border: 'none',
                 color: '#ffffff',
-                padding: '0.42rem 0.85rem',
+                padding: '0.42rem 0.75rem',
                 borderRadius: '8px',
                 fontSize: '0.75rem',
                 fontWeight: '700',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px'
               }}
             >
-              {loading ? 'Đang tải...' : 'Tải lại'}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                <path d="M3 3v5h5" />
+              </svg>
+              <span className="refresh-text">{loading ? '...' : 'Tải lại'}</span>
             </button>
           </div>
         </div>
@@ -1319,169 +1352,302 @@ const StaffSchedulePage = ({ setActiveTab }) => {
           /* ========================================================= */
           /* CHẾ ĐỘ 2: BẢNG DANH SÁCH CHI TIẾT (TABLE / LIST VIEW)     */
           /* ========================================================= */
-          <div style={{ overflowX: 'auto', width: '100%' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '650px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  <th style={{ padding: '10px 12px', fontWeight: '800' }}>Ngày</th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800' }}>
-                    {isDriverOrAttendant ? 'Ca / Lộ Trình' : 'Ca Làm Việc'}
-                  </th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800' }}>
-                    {isDriverOrAttendant ? 'Phương Tiện' : 'Địa Điểm / Quầy'}
-                  </th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800' }}>Khung Giờ</th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800' }}>Thời Lượng</th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800' }}>Chế Độ Lương</th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800', textAlign: 'center' }}>Trạng Thái</th>
-                  <th style={{ padding: '10px 12px', fontWeight: '800', textAlign: 'right' }}>Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weekDates.flatMap((d, dayIndex) => {
-                  const shifts = getShiftsForDay(d);
-                  const isCurrentDay = isToday(d);
+          <div>
+            {/* Desktop Table View */}
+            <div className="desktop-table-container">
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '650px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc', color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    <th style={{ padding: '10px 12px', fontWeight: '800' }}>Ngày</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800' }}>
+                      {isDriverOrAttendant ? 'Ca / Lộ Trình' : 'Ca Làm Việc'}
+                    </th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800' }}>
+                      {isDriverOrAttendant ? 'Phương Tiện' : 'Địa Điểm / Quầy'}
+                    </th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800' }}>Khung Giờ</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800' }}>Thời Lượng</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800' }}>Chế Độ Lương</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800', textAlign: 'center' }}>Trạng Thái</th>
+                    <th style={{ padding: '10px 12px', fontWeight: '800', textAlign: 'right' }}>Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekDates.flatMap((d, dayIndex) => {
+                    const shifts = getShiftsForDay(d);
+                    const isCurrentDay = isToday(d);
 
-                  if (shifts.length === 0) {
-                    return [{
-                      _id: `off-${dayIndex}`,
+                    if (shifts.length === 0) {
+                      return [{
+                        _id: `off-${dayIndex}`,
+                        date: d,
+                        title: 'Nghỉ Chủ Nhật',
+                        timeRange: '--:--',
+                        workLocation: '--',
+                        busPlate: '--',
+                        isOff: true,
+                        isCurrentDay
+                      }];
+                    }
+
+                    return shifts.map(s => ({
+                      ...s,
                       date: d,
-                      title: 'Nghỉ Chủ Nhật',
-                      timeRange: '--:--',
-                      workLocation: '--',
-                      busPlate: '--',
-                      isOff: true,
                       isCurrentDay
-                    }];
-                  }
+                    }));
+                  }).map((item, i) => {
+                    const badge = item.isOff
+                      ? { text: 'Nghỉ tuần', bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' }
+                      : getStatusBadge(item.status);
 
-                  return shifts.map(s => ({
-                    ...s,
-                    date: d,
-                    isCurrentDay
-                  }));
-                }).map((item, i) => {
-                  const badge = item.isOff
-                    ? { text: 'Nghỉ tuần', bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' }
-                    : getStatusBadge(item.status);
+                    return (
+                      <tr
+                        key={i}
+                        style={{
+                          borderBottom: '1px solid #f1f5f9',
+                          fontSize: '0.8rem',
+                          backgroundColor: item.isCurrentDay ? '#f0f9ff' : 'transparent',
+                          transition: 'background-color 0.15s ease'
+                        }}
+                        onMouseEnter={e => { if (!item.isCurrentDay) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
+                        onMouseLeave={e => { if (!item.isCurrentDay) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                      >
+                        {/* Ngày */}
+                        <td style={{ padding: '12px 10px', fontWeight: '700', color: item.isCurrentDay ? '#1d4ed8' : '#0f172a' }}>
+                          <div>{item.date ? item.date.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'N/A'}</div>
+                          {item.isCurrentDay && <span style={{ fontSize: '0.62rem', background: '#2563eb', color: '#ffffff', padding: '1px 5px', borderRadius: '4px', fontWeight: '800' }}>Hôm nay</span>}
+                        </td>
 
-                  return (
-                    <tr
-                      key={i}
-                      style={{
-                        borderBottom: '1px solid #f1f5f9',
-                        fontSize: '0.8rem',
-                        backgroundColor: item.isCurrentDay ? '#f0f9ff' : 'transparent',
-                        transition: 'background-color 0.15s ease'
-                      }}
-                      onMouseEnter={e => { if (!item.isCurrentDay) e.currentTarget.style.backgroundColor = '#f8fafc'; }}
-                      onMouseLeave={e => { if (!item.isCurrentDay) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >
-                      {/* Ngày */}
-                      <td style={{ padding: '12px 10px', fontWeight: '700', color: item.isCurrentDay ? '#1d4ed8' : '#0f172a' }}>
-                        <div>{item.date ? item.date.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'N/A'}</div>
-                        {item.isCurrentDay && <span style={{ fontSize: '0.62rem', background: '#2563eb', color: '#ffffff', padding: '1px 5px', borderRadius: '4px', fontWeight: '800' }}>Hôm nay</span>}
-                      </td>
+                        {/* Ca / Lộ trình */}
+                        <td style={{ padding: '12px 10px', fontWeight: '800', color: item.isOff ? '#94a3b8' : '#1e40af' }}>
+                          {item.title}
+                        </td>
 
-                      {/* Ca / Lộ trình */}
-                      <td style={{ padding: '12px 10px', fontWeight: '800', color: item.isOff ? '#94a3b8' : '#1e40af' }}>
-                        {item.title}
-                      </td>
-
-                      {/* Vị trí / Phương tiện */}
-                      <td style={{ padding: '12px 10px' }}>
-                        {isDriverOrAttendant ? (
-                          item.busPlate && item.busPlate !== '--' ? (
-                            <span style={{ background: '#f1f5f9', color: '#0f172a', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', fontSize: '0.75rem' }}>
-                              {item.busPlate}
+                        {/* Vị trí / Phương tiện */}
+                        <td style={{ padding: '12px 10px' }}>
+                          {isDriverOrAttendant ? (
+                            item.busPlate && item.busPlate !== '--' ? (
+                              <span style={{ background: '#f1f5f9', color: '#0f172a', padding: '2px 6px', borderRadius: '4px', fontWeight: '700', fontSize: '0.75rem' }}>
+                                {item.busPlate}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>--</span>
+                            )
+                          ) : isTicketAgent ? (
+                            <span style={{ color: item.isOff ? '#94a3b8' : '#334155', fontWeight: '600' }}>
+                              {item.isOff ? '--' : (item.workLocation || agentInfo?.office || 'Văn phòng Bến xe Miền Đông')}
                             </span>
                           ) : (
-                            <span style={{ color: '#94a3b8' }}>--</span>
-                          )
-                        ) : isTicketAgent ? (
-                          <span style={{ color: item.isOff ? '#94a3b8' : '#334155', fontWeight: '600' }}>
-                            {item.isOff ? '--' : (item.workLocation || agentInfo?.office || 'Văn phòng Bến xe Miền Đông')}
+                            <span style={{ color: item.isOff ? '#94a3b8' : '#334155', fontWeight: '600' }}>
+                              {item.isOff ? '--' : (item.workLocation || 'Văn phòng Bến xe Miền Đông')}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Khung giờ */}
+                        <td style={{ padding: '12px 10px', fontWeight: '700', color: '#334155' }}>
+                          {item.timeRange}
+                        </td>
+
+                        {/* Thời lượng */}
+                        <td style={{ padding: '12px 10px', color: '#64748b' }}>
+                          {item.isOff ? '--' : (item.duration || '8 tiếng/ngày')}
+                        </td>
+
+                        {/* Chế độ lương */}
+                        <td style={{ padding: '12px 10px', color: '#047857', fontWeight: '700' }}>
+                          {item.isOff ? '--' : (item.salaryType || 'Lương cố định tháng')}
+                        </td>
+
+                        {/* Trạng thái */}
+                        <td style={{ padding: '12px 10px', textAlign: 'center' }}>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.7rem',
+                            fontWeight: '700',
+                            backgroundColor: badge.bg,
+                            color: badge.color,
+                            border: `1px solid ${badge.border}`
+                          }}>
+                            {badge.text}
                           </span>
-                        ) : (
-                          <span style={{ color: item.isOff ? '#94a3b8' : '#334155', fontWeight: '600' }}>
-                            {item.isOff ? '--' : (item.workLocation || 'Văn phòng Bến xe Miền Đông')}
-                          </span>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Khung giờ */}
-                      <td style={{ padding: '12px 10px', fontWeight: '700', color: '#334155' }}>
-                        {item.timeRange}
-                      </td>
+                        {/* Thao tác */}
+                        <td style={{ padding: '12px 10px', textAlign: 'right' }}>
+                          {item.isCurrentDay && !item.isOff && (
+                            isDriverOrAttendant ? (
+                              <button
+                                onClick={() => setActiveTab && setActiveTab('driver-status')}
+                                style={{
+                                  backgroundColor: '#2563eb',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Vào Chuyến
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setActiveTab && setActiveTab('agent-booking')}
+                                style={{
+                                  backgroundColor: '#2563eb',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: '700',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                Đến Quầy Vé
+                              </button>
+                            )
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-                      {/* Thời lượng */}
-                      <td style={{ padding: '12px 10px', color: '#64748b' }}>
-                        {item.isOff ? '--' : (item.duration || '8 tiếng/ngày')}
-                      </td>
+            {/* Mobile Card List View (Tối ưu riêng cho màn hình điện thoại) */}
+            <div className="mobile-table-card-list">
+              {weekDates.flatMap((d, dayIndex) => {
+                const shifts = getShiftsForDay(d);
+                const isCurrentDay = isToday(d);
 
-                      {/* Chế độ lương */}
-                      <td style={{ padding: '12px 10px', color: '#047857', fontWeight: '700' }}>
-                        {item.isOff ? '--' : (item.salaryType || 'Lương cố định tháng')}
-                      </td>
+                if (shifts.length === 0) {
+                  return [{
+                    _id: `off-${dayIndex}`,
+                    date: d,
+                    title: 'Nghỉ Chủ Nhật',
+                    timeRange: 'Nghỉ theo quy định',
+                    workLocation: '--',
+                    busPlate: '--',
+                    isOff: true,
+                    isCurrentDay
+                  }];
+                }
 
-                      {/* Trạng thái */}
-                      <td style={{ padding: '12px 10px', textAlign: 'center' }}>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.7rem',
-                          fontWeight: '700',
-                          backgroundColor: badge.bg,
-                          color: badge.color,
-                          border: `1px solid ${badge.border}`
-                        }}>
-                          {badge.text}
+                return shifts.map(s => ({
+                  ...s,
+                  date: d,
+                  isCurrentDay
+                }));
+              }).map((item, i) => {
+                const badge = item.isOff
+                  ? { text: 'Nghỉ tuần', bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' }
+                  : getStatusBadge(item.status);
+
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      backgroundColor: item.isCurrentDay ? '#f0f9ff' : '#ffffff',
+                      border: item.isCurrentDay ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      boxShadow: item.isCurrentDay ? '0 2px 8px rgba(37,99,235,0.1)' : '0 1px 2px rgba(0,0,0,0.02)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '5px'
+                    }}
+                  >
+                    {/* Hàng 1: Thứ, Ngày & Badge Trạng Thái */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: '800', fontSize: '0.8rem', color: item.isCurrentDay ? '#1d4ed8' : '#0f172a' }}>
+                          {item.date ? item.date.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }) : 'N/A'}
                         </span>
-                      </td>
-
-                      {/* Thao tác */}
-                      <td style={{ padding: '12px 10px', textAlign: 'right' }}>
-                        {item.isCurrentDay && !item.isOff && (
-                          isDriverOrAttendant ? (
-                            <button
-                              onClick={() => setActiveTab && setActiveTab('driver-status')}
-                              style={{
-                                backgroundColor: '#2563eb',
-                                color: '#ffffff',
-                                border: 'none',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '0.72rem',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              Vào Chuyến
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => setActiveTab && setActiveTab('agent-booking')}
-                              style={{
-                                backgroundColor: '#2563eb',
-                                color: '#ffffff',
-                                border: 'none',
-                                padding: '4px 10px',
-                                borderRadius: '6px',
-                                fontSize: '0.72rem',
-                                fontWeight: '700',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              Đến Quầy Vé
-                            </button>
-                          )
+                        {item.isCurrentDay && (
+                          <span style={{ fontSize: '0.62rem', background: '#2563eb', color: '#ffffff', padding: '1px 5px', borderRadius: '4px', fontWeight: '800' }}>
+                            Hôm nay
+                          </span>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        fontSize: '0.66rem',
+                        fontWeight: '700',
+                        backgroundColor: badge.bg,
+                        color: badge.color,
+                        border: `1px solid ${badge.border}`
+                      }}>
+                        {badge.text}
+                      </span>
+                    </div>
+
+                    {/* Hàng 2: Tên Lộ trình / Ca làm việc */}
+                    <div style={{ fontWeight: '800', fontSize: '0.82rem', color: item.isOff ? '#94a3b8' : '#1e40af' }}>
+                      {item.title}
+                    </div>
+
+                    {/* Hàng 3: Khung giờ & Xe / Địa điểm */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: '#475569' }}>
+                      <div>
+                        Xuất bến: <strong style={{ color: '#0f172a' }}>{item.timeRange}</strong>
+                      </div>
+                      {item.busPlate && item.busPlate !== '--' && (
+                        <div>
+                          Xe: <strong style={{ color: '#2563eb' }}>{item.busPlate}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hàng 4: Nút Vào Chuyến Chạy (hôm nay) */}
+                    {item.isCurrentDay && !item.isOff && (
+                      <div style={{ marginTop: '2px' }}>
+                        {isDriverOrAttendant ? (
+                          <button
+                            onClick={() => setActiveTab && setActiveTab('driver-status')}
+                            style={{
+                              width: '100%',
+                              backgroundColor: '#2563eb',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '0.74rem',
+                              fontWeight: '800',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Vào Chuyến Chạy
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => setActiveTab && setActiveTab('agent-booking')}
+                            style={{
+                              width: '100%',
+                              backgroundColor: '#2563eb',
+                              color: '#ffffff',
+                              border: 'none',
+                              padding: '6px 12px',
+                              borderRadius: '6px',
+                              fontSize: '0.74rem',
+                              fontWeight: '800',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Đến Quầy Bán Vé
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

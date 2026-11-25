@@ -11,7 +11,18 @@ const API_BASE = 'http://localhost:8000/api';
  * Lấy dữ liệu điểm xuất bến và tọa độ GPS thực tế 100% từ chuyến xe & tuyến đường trong MongoDB.
  * Chuẩn Executive: Không sử dụng icon/emoji, bố cục sắc nét, responsive.
  */
-const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
+const isSameDay = (dateStr) => {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+};
+
+const AttendanceGpsCard = ({ onLocationChange, token, user, refreshTrigger }) => {
   // Chế độ GPS: 'device' (Vệ tinh thiết bị thật) | 'simulation' (Mô phỏng tại bến xuất phát)
   const [gpsMode, setGpsMode] = useState('device');
 
@@ -42,14 +53,16 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
       const now = new Date();
 
       if (data.success && Array.isArray(data.trips) && data.trips.length > 0) {
-        const futureTrips = data.trips
-          .filter((t) => t.departureTime && new Date(t.departureTime) >= new Date(now.getTime() - 2 * 3600 * 1000))
-          .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+        // Sắp xếp các chuyến xe theo thứ tự thời gian xuất bến tăng dần
+        const sortedTrips = [...data.trips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
 
-        if (futureTrips.length > 0) {
-          tripCandidate = futureTrips[0];
+        // BỎ LỌC THEO NGÀY: Điểm bắt đầu chấm công luôn là bến xuất phát của chuyến chưa hoàn thành sớm nhất
+        const uncompletedTrips = sortedTrips.filter(t => t.journeyStatus !== 'completed' && t.journeyStatus !== 'cancelled');
+
+        if (uncompletedTrips.length > 0) {
+          tripCandidate = uncompletedTrips[0];
         } else {
-          tripCandidate = data.trips[data.trips.length - 1];
+          tripCandidate = sortedTrips[sortedTrips.length - 1];
         }
       }
 
@@ -65,7 +78,9 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
             return isDriver || isAttendant;
           });
           if (matched.length > 0) {
-            tripCandidate = matched.sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime))[0];
+            const sortedMatched = [...matched].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+            const uncompletedMatched = sortedMatched.filter(t => t.journeyStatus !== 'completed' && t.journeyStatus !== 'cancelled');
+            tripCandidate = uncompletedMatched.length > 0 ? uncompletedMatched[0] : sortedMatched[sortedMatched.length - 1];
           } else if (opsData.trips.length > 0) {
             tripCandidate = opsData.trips[0];
           }
@@ -80,7 +95,7 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
 
   useEffect(() => {
     fetchUpcomingTrip();
-  }, [fetchUpcomingTrip]);
+  }, [fetchUpcomingTrip, refreshTrigger]);
 
   // 3. Phân tích điểm xuất phát chuyến xe trực tiếp 100% từ dữ liệu MongoDB
   const startStationInfo = useMemo(() => {
@@ -107,9 +122,23 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
       startStop?.address ||
       `Điểm xuất phát tuyến ${routeStartName}`;
 
+    // Tọa độ GPS mặc định theo địa phương xuất phát nếu dữ liệu điểm dừng bị khuyết
+    let defaultLat = 10.741055;
+    let defaultLng = 106.618526;
+    if (routeStartName.toLowerCase().includes('đà lạt')) {
+      defaultLat = 11.92607;
+      defaultLng = 108.44512;
+    } else if (routeStartName.toLowerCase().includes('cần thơ')) {
+      defaultLat = 10.0245;
+      defaultLng = 105.7725;
+    } else if (routeStartName.toLowerCase().includes('nha trang')) {
+      defaultLat = 12.2388;
+      defaultLng = 109.1967;
+    }
+
     // Lấy tọa độ GPS thật do Quản lý vận tải lưu trong MongoDB
-    const stationLat = firstPickup?.lat ?? startStop?.lat ?? 10.741055;
-    const stationLng = firstPickup?.lng ?? startStop?.lng ?? 106.618526;
+    const stationLat = firstPickup?.lat ?? startStop?.lat ?? defaultLat;
+    const stationLng = firstPickup?.lng ?? startStop?.lng ?? defaultLng;
 
     return {
       name: stationName,
@@ -284,14 +313,14 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setGpsMode('device')}
             style={{
-              padding: '4px 10px',
+              padding: '4px 8px',
               borderRadius: '4px',
-              fontSize: '0.7rem',
+              fontSize: '0.68rem',
               fontWeight: '700',
               border: gpsMode === 'device' ? '1px solid #2563eb' : '1px solid #cbd5e1',
               background: gpsMode === 'device' ? '#eff6ff' : '#ffffff',
@@ -305,9 +334,9 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
             type="button"
             onClick={() => setGpsMode('simulation')}
             style={{
-              padding: '4px 10px',
+              padding: '4px 8px',
               borderRadius: '4px',
-              fontSize: '0.7rem',
+              fontSize: '0.68rem',
               fontWeight: '700',
               border: gpsMode === 'simulation' ? '1px solid #059669' : '1px solid #cbd5e1',
               background: gpsMode === 'simulation' ? '#ecfdf5' : '#ffffff',
@@ -315,7 +344,7 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
               cursor: 'pointer'
             }}
           >
-            Tại Bến Xuất Bến (Demo)
+            Tại Bến (Demo)
           </button>
           {gpsMode === 'device' && (
             <button
@@ -325,7 +354,7 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
               style={{
                 padding: '4px 8px',
                 borderRadius: '4px',
-                fontSize: '0.7rem',
+                fontSize: '0.68rem',
                 fontWeight: '700',
                 border: '1px solid #cbd5e1',
                 background: '#ffffff',
@@ -359,7 +388,7 @@ const AttendanceGpsCard = ({ onLocationChange, token, user }) => {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
           gap: '10px',
           marginBottom: '0.85rem'
         }}

@@ -332,8 +332,42 @@ class DriverGpsService {
       this.sendGpsToBackend(tripId, firstTarget[0], firstTarget[1], 0, initialHeading);
 
       // Chạy vòng lặp mô phỏng mỗi 3 giây riêng cho chuyến xe này
-      tracker.simTimer = setInterval(() => {
-        currIdx = (currIdx + 1) % coords.length;
+      tracker.simTimer = setInterval(async () => {
+        if (currIdx >= coords.length - 1) {
+          // Xe đã chạy tới điểm đích cuối cùng của hành trình!
+          clearInterval(tracker.simTimer);
+          tracker.simTimer = null;
+          tracker.isTracking = false;
+          tracker.currentSpeed = 0;
+          tracker.pingStatus = 'Đã đến bến đích';
+
+          // Tự động gọi API cập nhật trạng thái completed để chuyển map tiếp theo
+          if (tripId) {
+            try {
+              const headers = { 'Content-Type': 'application/json' };
+              if (tracker.token) headers['Authorization'] = `Bearer ${tracker.token}`;
+              await fetch(`http://localhost:8000/api/trips/${tripId}/update-journey`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({
+                  action: 'complete',
+                  bypassTime: true,
+                  enforceDistance: false
+                })
+              });
+            } catch (e) {
+              console.error('[driverGpsService] Lỗi tự động kết thúc chuyến tại điểm đích:', e);
+            }
+          }
+
+          if (tracker.trip) {
+            tracker.trip.journeyStatus = 'completed';
+          }
+          this.notify(tripId);
+          return;
+        }
+
+        currIdx = currIdx + 1;
         tracker.simIndex = currIdx;
 
         const target = coords[currIdx];

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useContext, useMemo, useCallback } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
 import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute, getDistanceMeters } from '../../utils/mapRoutingUtils';
@@ -197,77 +197,96 @@ const DriverMapPage = ({ setActiveTab }) => {
     document.head.appendChild(script);
   }, []);
 
-  // 2. Lấy dữ liệu chuyến xe của tài xế (CHỈ LỌC CHUYẾN XE HÔM NAY)
-  useEffect(() => {
-    const fetchDriverTrips = async () => {
-      try {
-        setLoadingTrip(true);
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+  // 2. Lấy dữ liệu chuyến xe của tài xế (BỎ LỌC THEO NGÀY: XONG CHUYẾN HIỆN TẠI MỚI QUA CHUYẾN TIẾP THEO)
+  const fetchDriverTrips = useCallback(async () => {
+    try {
+      setLoadingTrip(true);
+      const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-        // 1. Lấy lịch phân công cá nhân của tài xế từ my-schedule
-        let tripsList = [];
-        const myRes = await fetch(`${API_BASE}/users/my-schedule`, { headers });
-        const myData = await myRes.json();
+      // 1. Lấy lịch phân công cá nhân của tài xế từ my-schedule
+      let tripsList = [];
+      const myRes = await fetch(`${API_BASE}/users/my-schedule`, { headers });
+      const myData = await myRes.json();
 
-        let driverTrips = [];
-        if (myData.success && Array.isArray(myData.trips) && myData.trips.length > 0) {
-          driverTrips = myData.trips;
-        } else {
-          // Dự phòng: Chỉ lọc các chuyến xe của CHÍNH tài xế này từ ops/trips
-          const allRes = await fetch(`${API_BASE}/trips/ops/trips`, { headers });
-          const allData = await allRes.json();
-          if (allData.success && Array.isArray(allData.trips)) {
-            driverTrips = allData.trips.filter(t => {
-              const matchesPhone = user?.phone && (t.driver?.phone === user.phone || t.assistant?.phone === user.phone);
-              const matchesName = user?.name && (
-                (t.driver?.name && t.driver.name.toLowerCase().includes(user.name.toLowerCase())) ||
-                (t.assistant?.name && t.assistant.name.toLowerCase().includes(user.name.toLowerCase()))
-              );
-              return matchesPhone || matchesName;
-            });
-          }
-        }
-
-        if (driverTrips.length > 0) {
-          // Ưu tiên 1: Chuyến xe có ngày khởi hành hôm nay
-          const todayTrips = driverTrips.filter(t => {
-            if (!t.departureTime) return false;
-            return new Date(t.departureTime).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }) === todayStr;
+      let driverTrips = [];
+      if (myData.success && Array.isArray(myData.trips) && myData.trips.length > 0) {
+        driverTrips = myData.trips;
+      } else {
+        // Dự phòng: Chỉ lọc các chuyến xe của CHÍNH tài xế này từ ops/trips
+        const allRes = await fetch(`${API_BASE}/trips/ops/trips`, { headers });
+        const allData = await allRes.json();
+        if (allData.success && Array.isArray(allData.trips)) {
+          driverTrips = allData.trips.filter(t => {
+            const matchesPhone = user?.phone && (t.driver?.phone === user.phone || t.assistant?.phone === user.phone);
+            const matchesName = user?.name && (
+              (t.driver?.name && t.driver.name.toLowerCase().includes(user.name.toLowerCase())) ||
+              (t.assistant?.name && t.assistant.name.toLowerCase().includes(user.name.toLowerCase()))
+            );
+            return matchesPhone || matchesName;
           });
-
-          if (todayTrips.length > 0) {
-            tripsList = todayTrips;
-          } else {
-            // Ưu tiên 2: Nếu hôm nay không có chuyến, lấy chuyến xe sắp tới gần nhất của chính tài xế này
-            const futureTrips = driverTrips
-              .filter(t => t.departureTime && new Date(t.departureTime) >= new Date(Date.now() - 4 * 3600 * 1000))
-              .sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
-
-            tripsList = futureTrips.length > 0 ? futureTrips : driverTrips;
-          }
         }
-
-        // Sắp xếp các chuyến theo giờ xuất bến
-        tripsList.sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
-
-        setAssignedTrips(tripsList);
-        if (tripsList.length > 0) {
-          setSelectedTripId(tripsList[0]._id);
-        } else {
-          setSelectedTripId(null);
-        }
-      } catch (err) {
-        console.error('Lỗi nạp chuyến xe tài xế:', err);
-      } finally {
-        setLoadingTrip(false);
       }
-    };
 
+      if (driverTrips.length > 0) {
+        // Sắp xếp toàn bộ chuyến xe của tài xế theo thứ tự thời gian xuất bến tăng dần (từ quá khứ đến tương lai)
+        const sortedTrips = [...driverTrips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+
+        // BỎ HOÀN TOÀN LOGIC THEO NGÀY:
+        // Lấy danh sách các chuyến chưa hoàn thành (chưa completed và chưa cancelled)
+        // Bắt buộc phải hoàn thành chuyến xe hiện tại mới được chuyển sang chuyến tiếp theo!
+        const uncompletedTrips = sortedTrips.filter(t => t.journeyStatus !== 'completed' && t.journeyStatus !== 'cancelled');
+
+        if (uncompletedTrips.length > 0) {
+          // Chuyến xe chưa hoàn thành sớm nhất theo trình tự thời gian (kể cả Chờ xuất bến hay Đang chạy)
+          // bắt buộc phải xong thì mới sang chuyến tiếp theo
+          const targetTrip = uncompletedTrips[0];
+
+          tripsList = uncompletedTrips;
+          setAssignedTrips(tripsList);
+          setSelectedTripId(targetTrip._id);
+        } else {
+          // Nếu tất cả chuyến đã hoàn thành xong, lấy chuyến vừa hoàn thành gần nhất
+          tripsList = sortedTrips;
+          setAssignedTrips(tripsList);
+          setSelectedTripId(sortedTrips[sortedTrips.length - 1]?._id || null);
+        }
+      } else {
+        setAssignedTrips([]);
+        setSelectedTripId(null);
+      }
+    } catch (err) {
+      console.error('Lỗi nạp chuyến xe tài xế:', err);
+    } finally {
+      setLoadingTrip(false);
+    }
+  }, [token, user]);
+
+  useEffect(() => {
     if (token) {
       fetchDriverTrips();
     }
-  }, [token, user]);
+  }, [token, fetchDriverTrips]);
+
+  // Tự động kiểm tra trạng thái chuyến xe: nếu chuyến hiện tại được hoàn thành (bởi QLVT hoặc tự động khi tới đích)
+  // thì tự động chuyển sang chuyến xe kế tiếp
+  useEffect(() => {
+    if (!token || !selectedTripId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/trips/${selectedTripId}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        const data = await res.json();
+        if (data.success && data.trip && data.trip.journeyStatus === 'completed') {
+          // Chuyến hiện tại đã hoàn thành -> Nạp lại danh sách chuyến để chuyển map mới ngay lập tức
+          fetchDriverTrips();
+        }
+      } catch (e) {
+        // Silent poll error
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [token, selectedTripId, fetchDriverTrips]);
 
   // 2b. Kiểm tra trạng thái Chấm công hôm nay của tài xế
   useEffect(() => {
@@ -282,10 +301,6 @@ const DriverMapPage = ({ setActiveTab }) => {
         if (res.ok && data.success) {
           const isCurrentlyActive = data.todayStatus === 'active' || data.todayRecord?.status === 'active';
           setAttendanceStatus(isCurrentlyActive ? 'active' : (data.todayStatus || 'not_checked'));
-          // Nếu chưa vào ca (chưa check-in) mà GPS đang phát ngầm thì tự động dừng phát
-          if (!isCurrentlyActive && driverGpsService.isTracking) {
-            driverGpsService.stopTracking();
-          }
         } else {
           setAttendanceStatus('not_checked');
         }
@@ -346,7 +361,14 @@ const DriverMapPage = ({ setActiveTab }) => {
     // Vẽ tức thì đường trực tiếp (0ms)
     const directFallback = allStops.map(s => [s.lat, s.lng]);
     setRouteCoordinates(directFallback);
-    if (!currentCoord && directFallback.length > 0) {
+    const isTripCompleted = activeTrip.journeyStatus === 'completed';
+
+    if (isTripCompleted && directFallback.length > 0) {
+      const lastStopCoord = directFallback[directFallback.length - 1];
+      setCurrentCoord({ lat: lastStopCoord[0], lng: lastStopCoord[1] });
+      setCurrentSpeed(0);
+      if (driverGpsService.isTracking) driverGpsService.stopTracking();
+    } else if (!currentCoord && directFallback.length > 0) {
       setCurrentCoord({ lat: directFallback[0][0], lng: directFallback[0][1] });
     }
 
@@ -355,7 +377,11 @@ const DriverMapPage = ({ setActiveTab }) => {
         const coords = await fetchFastHighwayRoute(allStops, activeTrip._id);
         if (coords && coords.length > 0) {
           setRouteCoordinates(coords);
-          if (!currentCoord) {
+          if (isTripCompleted) {
+            const lastCoord = coords[coords.length - 1];
+            setCurrentCoord({ lat: lastCoord[0], lng: lastCoord[1] });
+            setCurrentSpeed(0);
+          } else if (!currentCoord) {
             setCurrentCoord({ lat: coords[0][0], lng: coords[0][1] });
           }
         }
@@ -711,17 +737,16 @@ const DriverMapPage = ({ setActiveTab }) => {
       if (state.lastPingTime) setLastPingTime(state.lastPingTime);
       if (state.pingStatus) setPingStatus(state.pingStatus);
       if (state.simIndex !== undefined) setSimIndex(state.simIndex);
+      if (state.pingStatus === 'Đã đến bến đích' || state.isCompleted) {
+        fetchDriverTrips();
+      }
     });
     return unsubscribe;
-  }, []);
+  }, [fetchDriverTrips]);
 
   // 8. Bật / Tắt Phát GPS (Tracking Core kết nối với background service)
   const toggleTracking = () => {
-    // Nếu chưa chấm công, chuyển trực tiếp sang trang chấm công
-    if (attendanceStatus !== 'active') {
-      if (setActiveTab) {
-        setActiveTab('driver-attendance');
-      }
+    if (activeTrip?.journeyStatus === 'completed') {
       return;
     }
 
@@ -862,31 +887,12 @@ const DriverMapPage = ({ setActiveTab }) => {
               </span>
             </div>
 
-            {/* Trạng thái chấm công & phát GPS */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {attendanceStatus !== 'active' && !loadingAttendance && (
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  backgroundColor: 'rgba(127, 29, 29, 0.9)',
-                  color: '#fca5a5',
-                  padding: '3px 8px',
-                  borderRadius: '10px',
-                  fontSize: '0.68rem',
-                  fontWeight: '800',
-                  border: '1px solid #ef4444',
-                  flexShrink: 0,
-                  whiteSpace: 'nowrap'
-                }}>
-                  <span style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    backgroundColor: '#ef4444'
-                  }}></span>
-                  <span>Chưa Điểm Danh Ca Trực</span>
-                </div>
+            {/* Trạng thái phát GPS & Giờ xuất bến */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              {activeTrip?.departureTime && (
+                <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                  {new Date(activeTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               )}
               <div style={{
                 display: 'inline-flex',
@@ -908,17 +914,18 @@ const DriverMapPage = ({ setActiveTab }) => {
                   borderRadius: '50%',
                   backgroundColor: isTracking ? '#10b981' : '#64748b'
                 }}></span>
-                <span>{isTracking ? `Đang phát (${lastPingTime || 'Vừa xong'})` : 'Chưa phát GPS'}</span>
+                <span>{isTracking ? 'Đang phát' : 'Chưa phát GPS'}</span>
               </div>
             </div>
           </div>
 
-          {/* Hàng 2: Giờ xuất bến, Nút Xem trạm dừng, Dropdown Mode & Nút Toàn màn hình */}
+          {/* Hàng 2: Nút Xem trạm dừng, Dropdown Mode, Nút Test rẽ & Nút Toàn màn hình */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            flexWrap: 'wrap'
+            flexWrap: 'nowrap',
+            overflowX: 'auto'
           }}>
             {/* Nút Xem trạm dừng */}
             <button
@@ -935,7 +942,8 @@ const DriverMapPage = ({ setActiveTab }) => {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '5px',
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -943,11 +951,6 @@ const DriverMapPage = ({ setActiveTab }) => {
               </svg>
               <span>{showStopsList ? 'Đóng trạm' : `Trạm (${allStops.length})`}</span>
             </button>
-
-            {/* Giờ xuất bến */}
-            <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: '700', whiteSpace: 'nowrap' }}>
-              Xuất bến: {activeTrip?.departureTime ? new Date(activeTrip.departureTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-            </span>
 
             {/* Chọn chế độ test / GPS thật */}
             <select
@@ -960,46 +963,23 @@ const DriverMapPage = ({ setActiveTab }) => {
               disabled={isTracking}
               style={{
                 flex: 1,
-                minWidth: '110px',
+                minWidth: '95px',
+                maxWidth: '120px',
                 backgroundColor: '#1e293b',
                 color: '#ffffff',
                 border: '1px solid #334155',
-                padding: '5px 8px',
+                padding: '5px 6px',
                 borderRadius: '6px',
                 fontSize: '0.72rem',
                 fontWeight: '600',
                 cursor: isTracking ? 'not-allowed' : 'pointer',
-                outline: 'none'
-              }}
-            >
-              <option value="simulation">Mô phỏng (Dọc tuyến)</option>
-              <option value="real">GPS Thiết Bị Thật</option>
-            </select>
-
-            {/* Nút Toàn màn hình */}
-            <button
-              onClick={toggleFullscreen}
-              style={{
-                backgroundColor: isFullscreen ? '#dc2626' : 'rgba(37, 99, 235, 0.9)',
-                color: '#ffffff',
-                border: 'none',
-                padding: '5px 9px',
-                borderRadius: '6px',
-                fontSize: '0.72rem',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                whiteSpace: 'nowrap',
+                outline: 'none',
                 flexShrink: 0
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-              </svg>
-              <span>{isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
-            </button>
+              <option value="simulation">Mô phỏng</option>
+              <option value="real">GPS Thật</option>
+            </select>
 
             {/* Nút Test Rẽ Đường Khác (Mô phỏng xe đi lệch lộ trình & tự động vẽ lại đường mới) */}
             <button
@@ -1015,7 +995,7 @@ const DriverMapPage = ({ setActiveTab }) => {
                 backgroundColor: isDetourDemo ? '#ea580c' : 'rgba(245, 158, 11, 0.2)',
                 color: isDetourDemo ? '#ffffff' : '#fbbf24',
                 border: `1px solid ${isDetourDemo ? '#ea580c' : '#f59e0b'}`,
-                padding: '5px 9px',
+                padding: '5px 8px',
                 borderRadius: '6px',
                 fontSize: '0.72rem',
                 fontWeight: '800',
@@ -1028,7 +1008,36 @@ const DriverMapPage = ({ setActiveTab }) => {
               }}
               title="Thử nghiệm tính năng xe đi lệch lộ trình & tự động vẽ lại đường mới"
             >
-              <span>{isDetourDemo ? '↩ Về lộ trình chuẩn' : '🔀 Thử rẽ đường khác'}</span>
+              <span>{isDetourDemo ? 'Về tuyến' : 'Thử rẽ'}</span>
+            </button>
+
+            {/* Nút Toàn màn hình - Thu gọn thành icon */}
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}
+              style={{
+                backgroundColor: isFullscreen ? '#dc2626' : 'rgba(37, 99, 235, 0.9)',
+                color: '#ffffff',
+                border: 'none',
+                width: '28px',
+                height: '28px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}
+            >
+              {isFullscreen ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M10 4H4v6m6-6L3 3m14 1h6v6m-6-6l7 7"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                </svg>
+              )}
             </button>
           </div>
 
@@ -1047,9 +1056,20 @@ const DriverMapPage = ({ setActiveTab }) => {
               gap: '6px',
               marginTop: '4px'
             }}>
-              <span>⚠️ <strong>ĐANG ĐI LỆCH LỘ TRÌNH (+{offRouteInfo.distance}m):</strong> Đang tự động dẫn đường theo hướng rẽ mới (đường xanh đậm). Lộ trình cũ đã mờ.</span>
-              <span style={{ backgroundColor: '#ea580c', color: '#ffffff', padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '800' }}>
-                Đã đồng bộ Realtime
+              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                ⚠️ <strong>LỆCH LỘ TRÌNH (+{offRouteInfo.distance}m):</strong> Tự động dẫn đường mới
+              </span>
+              <span style={{
+                backgroundColor: '#ea580c',
+                color: '#ffffff',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                fontSize: '0.65rem',
+                fontWeight: '800',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
+              }}>
+                Realtime
               </span>
             </div>
           )}
@@ -1298,37 +1318,12 @@ const DriverMapPage = ({ setActiveTab }) => {
           flexDirection: 'column',
           gap: '8px'
         }}>
-          {/* Hàng 1: Đồng hồ Vận tốc + Cụm thông số trạng thái */}
+          {/* Hàng 1: Thông số trạng thái & Telemetry chuyến xe */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* Box Vận tốc buồng lái */}
-            <div style={{
-              backgroundColor: '#1e293b',
-              borderRadius: '10px',
-              padding: '4px 10px',
-              textAlign: 'center',
-              border: '1px solid #334155',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              flexShrink: 0
-            }}>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '0.52rem', color: '#94a3b8', fontWeight: '800', letterSpacing: '0.5px' }}>
-                  VẬN TỐC
-                </div>
-                <div style={{ fontSize: '0.58rem', color: '#64748b', fontWeight: '700' }}>
-                  km/h
-                </div>
-              </div>
-              <div style={{ fontSize: '1.65rem', fontWeight: '900', color: currentSpeed > 80 ? '#ef4444' : '#38bdf8', lineHeight: 1 }}>
-                {Math.round(currentSpeed)}
-              </div>
-            </div>
-
             {/* Thông tin trạng thái & Telemetry chuyến xe */}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <div style={{ fontSize: '0.72rem', color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                <span>Trạng thái: <strong style={{ color: isTracking ? '#4ade80' : '#facc15' }}>{isTracking ? 'ĐANG CHẠY' : 'SẴN SÀNG'}</strong></span>
+                <span>Trạng thái: <strong style={{ color: activeTrip?.journeyStatus === 'completed' ? '#6ee7b7' : isTracking ? '#4ade80' : '#facc15' }}>{activeTrip?.journeyStatus === 'completed' ? 'ĐÃ HOÀN THÀNH' : isTracking ? 'ĐANG CHẠY' : 'SẴN SÀNG'}</strong></span>
                 <span style={{ color: '#475569' }}>•</span>
                 <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {currentCoord ? `${currentCoord.lat.toFixed(5)}, ${currentCoord.lng.toFixed(5)}` : 'Đang chờ GPS'}
@@ -1343,23 +1338,24 @@ const DriverMapPage = ({ setActiveTab }) => {
             </div>
           </div>
 
-          {/* Hàng 2: Nút BẬT / DỪNG PHÁT GPS hoặc KHÓA KHI CHƯA CHẤM CÔNG + Nút RESTART */}
+          {/* Hàng 2: Nút BẬT / DỪNG PHÁT GPS hoặc THÔNG BÁO HOÀN THÀNH + Nút RESTART */}
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <button
               onClick={toggleTracking}
+              disabled={activeTrip?.journeyStatus === 'completed'}
               style={{
                 flex: 1,
                 padding: '10px 16px',
                 borderRadius: '10px',
                 border: 'none',
-                backgroundColor: attendanceStatus !== 'active'
-                  ? '#475569'
+                backgroundColor: activeTrip?.journeyStatus === 'completed'
+                  ? '#059669'
                   : (isTracking ? '#dc2626' : '#2563eb'),
                 color: '#ffffff',
                 fontSize: '0.86rem',
                 fontWeight: '800',
-                cursor: 'pointer',
-                boxShadow: attendanceStatus !== 'active'
+                cursor: activeTrip?.journeyStatus === 'completed' ? 'default' : 'pointer',
+                boxShadow: activeTrip?.journeyStatus === 'completed'
                   ? 'none'
                   : (isTracking ? '0 4px 14px rgba(220,38,38,0.45)' : '0 4px 14px rgba(37,99,235,0.45)'),
                 display: 'flex',
@@ -1371,8 +1367,8 @@ const DriverMapPage = ({ setActiveTab }) => {
               }}
             >
               <span>
-                {attendanceStatus !== 'active'
-                  ? 'Chưa Chấm Công (Bấm Để Điểm Danh)'
+                {activeTrip?.journeyStatus === 'completed'
+                  ? 'Chuyến xe đã hoàn thành'
                   : (isTracking ? 'DỪNG PHÁT GPS' : 'BẮT ĐẦU & PHÁT GPS')}
               </span>
             </button>
@@ -1380,30 +1376,28 @@ const DriverMapPage = ({ setActiveTab }) => {
             {/* Nút Restart vị trí xe về điểm xuất phát ban đầu */}
             <button
               onClick={handleRestartJourney}
-              title="Đặt lại vị trí xe về điểm xuất phát ban đầu"
+              title="Đặt lại vị trí xe về điểm xuất phát ban đầu (Restart)"
               style={{
-                padding: '10px 16px',
+                width: '42px',
+                height: '42px',
+                padding: 0,
                 borderRadius: '10px',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 backgroundColor: '#334155',
                 color: '#ffffff',
-                fontSize: '0.86rem',
-                fontWeight: '800',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '6px',
-                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 transition: 'all 0.2s ease',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.25)'
               }}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
                 <path d="M3 3v5h5" />
               </svg>
-              <span>Restart</span>
             </button>
           </div>
         </div>

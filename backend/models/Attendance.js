@@ -39,15 +39,21 @@ const attendanceSchema = new mongoose.Schema(
     // ── Trạng thái chấm công ─────────────────────────────────────────────────
     /**
      * scheduled - Đã phân công / Chờ đến ca
-     * active    - Đang trong ca làm việc (đã check-in)
-     * closed    - Đã hoàn thành ca / Tan ca (đã check-out)
-     * absent    - Vắng mặt (quá giờ quy định mà chưa check-in)
+     * active    - Đang trong ca làm việc (đã check-in đúng giờ)
+     * closed    - Đã hoàn thành ca / Tan ca đúng giờ
+     * late      - Đi trễ (check-in sau giờ quy định, giữ nguyên kể cả khi đã tan ca)
+     * absent    - Vắng mặt (quá giờ quy định hoặc hết ca mà không check-in)
      */
     status: {
       type: String,
-      enum: ['scheduled', 'active', 'closed', 'absent'],
+      enum: ['scheduled', 'active', 'closed', 'absent', 'late'],
       default: 'scheduled',
       index: true
+    },
+    punctuality: {
+      type: String,
+      enum: ['on_time', 'late', 'early'],
+      default: 'on_time'
     },
 
     // ── Phân loại ca làm việc ────────────────────────────────────────────────

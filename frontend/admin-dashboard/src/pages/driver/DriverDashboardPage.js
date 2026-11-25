@@ -19,12 +19,18 @@ const DriverDashboardPage = ({ setActiveTab }) => {
   const [attendanceStatus, setAttendanceStatus] = useState('not_checked');
 
   useEffect(() => {
-    fetchSchedule();
+    fetchSchedule(false);
+    const interval = setInterval(() => {
+      fetchSchedule(true);
+    }, 4000);
+    return () => clearInterval(interval);
   }, [token]);
 
-  const fetchSchedule = async () => {
-    setLoading(true);
-    setIsRefreshing(true);
+  const fetchSchedule = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setIsRefreshing(true);
+    }
     try {
       const res = await fetch('http://localhost:8000/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -35,7 +41,7 @@ const DriverDashboardPage = ({ setActiveTab }) => {
         calculateStats(data.trips || []);
         setError('');
       } else {
-        setError(data.message || 'Không thể tải lịch trình phân công.');
+        if (!silent) setError(data.message || 'Không thể tải lịch trình phân công.');
       }
 
       // Tải dữ liệu chấm công thực tế từ Database
@@ -71,14 +77,16 @@ const DriverDashboardPage = ({ setActiveTab }) => {
   };
 
   const calculateStats = async (allTrips) => {
-    const todayTripsList = allTrips.filter(trip => isSameDay(trip.departureTime));
+    const sorted = [...allTrips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+    const uncompleted = sorted.filter(t => t.journeyStatus !== 'completed' && t.journeyStatus !== 'cancelled');
+    const target = uncompleted.length > 0 ? uncompleted[0] : (sorted[0] || null);
 
     let totalBooked = 0;
     let totalBoarded = 0;
 
-    for (const trip of todayTripsList) {
+    if (target) {
       try {
-        const res = await fetch(`http://localhost:8000/api/users/attendant/trip-bookings/${trip._id}`, {
+        const res = await fetch(`http://localhost:8000/api/users/attendant/trip-bookings/${target._id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
@@ -93,7 +101,7 @@ const DriverDashboardPage = ({ setActiveTab }) => {
     }
 
     setTodayStats({
-      totalTrips: todayTripsList.length,
+      totalTrips: target ? 1 : 0,
       totalBooked,
       totalBoarded
     });
@@ -109,19 +117,20 @@ const DriverDashboardPage = ({ setActiveTab }) => {
     return new Date(timeStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
-  const todayTrips = trips.filter(trip => isSameDay(trip.departureTime));
-  const futureTrips = trips.filter(trip => !isSameDay(trip.departureTime) && new Date(trip.departureTime) > new Date());
+  // HÀNG ĐỢI TUYẾN CHẠY: Luôn hoàn thành chuyến hiện tại mới chuyển sang chuyến tiếp theo
+  const sortedTrips = [...trips].sort((a, b) => new Date(a.departureTime) - new Date(b.departureTime));
+  const uncompletedTrips = sortedTrips.filter(t => t.journeyStatus !== 'completed' && t.journeyStatus !== 'cancelled');
+  const activeCurrentTrip = uncompletedTrips.length > 0 ? uncompletedTrips[0] : (sortedTrips[sortedTrips.length - 1] || null);
+  const displayTrips = activeCurrentTrip ? [activeCurrentTrip] : [];
+  const upcomingTrips = uncompletedTrips.length > 0 ? uncompletedTrips.slice(1) : [];
 
-  const currentBusPlate = todayTrips[0]?.busId?.plateNumber || trips[0]?.busId?.plateNumber || '51B-029.29';
-  const currentBusType = todayTrips[0]?.busId?.type || trips[0]?.busId?.type || 'Xe Khách Cao Cấp';
+  const currentBusPlate = activeCurrentTrip?.busId?.plateNumber || '51B-045.45';
+  const currentBusType = activeCurrentTrip?.busId?.type || 'Xe Khách An Bình';
 
   // Logic xác định trạng thái thực tế của chuyến xe từ Database
   const getTripStatus = (trip) => {
     if (trip.journeyStatus === 'in_transit') {
       return { label: 'Đang di chuyển', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
-    }
-    if (trip.journeyStatus === 'completed') {
-      return { label: 'Đã hoàn thành', bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' };
     }
     if (trip.journeyStatus === 'cancelled') {
       return { label: 'Đã hủy', bg: '#fef2f2', color: '#991b1b', border: '#fecaca' };
@@ -133,42 +142,55 @@ const DriverDashboardPage = ({ setActiveTab }) => {
 
     if (duty) {
       if (duty.status === 'active') {
-        return { label: 'Đã check-in (Sẵn sàng)', bg: '#ecfdf5', color: '#15803d', border: '#bbf7d0' };
+        return { label: 'Đang làm việc', bg: '#ecfdf5', color: '#15803d', border: '#bbf7d0' };
       }
-      if (duty.status === 'closed') {
-        return { label: 'Đã hoàn thành ca', bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
+      if (duty.status === 'late' || duty.punctuality === 'late') {
+        return { label: 'Đi trễ', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
+      }
+      if (duty.status === 'closed' || duty.status === 'on_time' || duty.punctuality === 'on_time') {
+        return { label: 'Đúng giờ', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' };
       }
       if (duty.status === 'absent') {
-        return { label: 'Vắng không phép', bg: '#fee2e2', color: '#b91c1c', border: '#ef4444' };
+        return { label: 'Vắng mặt', bg: '#fee2e2', color: '#b91c1c', border: '#ef4444' };
       }
+    }
+
+    // Nếu chuyến xe đã hoàn thành hành trình
+    if (trip.journeyStatus === 'completed') {
+      return { label: 'Đúng giờ', bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' };
     }
 
     // Chưa chấm công
     if (isPastDeparture) {
-      return { label: 'Vắng không phép', bg: '#fee2e2', color: '#b91c1c', border: '#ef4444' };
+      return { label: 'Vắng mặt', bg: '#fee2e2', color: '#b91c1c', border: '#ef4444' };
     }
 
-    return { label: 'Chưa check-in', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
+    return { label: 'Chưa chấm công', bg: '#fffbeb', color: '#b45309', border: '#fde68a' };
   };
 
-  // Xác định trạng thái tổng ca làm việc trong ngày
+  // Xác định trạng thái tổng ca làm việc (Dựa trên Chấm Công của chuyến xe hiện tại, không dùng Đã Hoàn Thành)
   const getOverallShiftBadge = () => {
-    if (todayTrips.length === 0) {
-      return { title: 'Nghỉ Theo Lịch', subtitle: 'Không có ca chạy hôm nay', color: '#64748b', bg: '#ffffff', border: '#e2e8f0', iconBg: '#f1f5f9' };
+    if (displayTrips.length === 0) {
+      return { title: 'Nghỉ Theo Lịch', subtitle: 'Không có ca chạy', color: '#64748b', bg: '#ffffff', border: '#e2e8f0', iconBg: '#f1f5f9' };
     }
-    const hasActive = attendanceDuties.some((d) => d.status === 'active');
+    const currentDuty = attendanceDuties.find((d) => d.tripId?.toString() === activeCurrentTrip?._id?.toString());
+    const hasActive = currentDuty?.status === 'active' || attendanceDuties.some((d) => d.status === 'active') || attendanceStatus === 'active';
     if (hasActive) {
-      return { title: 'Đang Trong Ca', subtitle: '▲ Đã check-in Face ID', color: '#059669', bg: '#ffffff', border: '#a7f3d0', iconBg: '#ecfdf5' };
+      return { title: 'Đang Làm Việc', subtitle: '▲ Đã check-in Face ID', color: '#059669', bg: '#ffffff', border: '#a7f3d0', iconBg: '#ecfdf5' };
     }
-    const allClosed = todayTrips.length > 0 && attendanceDuties.length >= todayTrips.length && attendanceDuties.every((d) => d.status === 'closed');
-    if (allClosed) {
-      return { title: 'Đã Hoàn Thành', subtitle: '✓ Đã check-out chốt ca', color: '#2563eb', bg: '#ffffff', border: '#bfdbfe', iconBg: '#eff6ff' };
+    const hasLate = currentDuty?.status === 'late' || currentDuty?.punctuality === 'late' || attendanceDuties.some((d) => d.status === 'late' || d.punctuality === 'late') || attendanceStatus === 'late';
+    if (hasLate) {
+      return { title: 'Đi Trễ', subtitle: '⚠ Chấm công sau giờ quy định', color: '#d97706', bg: '#ffffff', border: '#fde68a', iconBg: '#fef3c7' };
     }
-    const hasAbsent = attendanceDuties.some((d) => d.status === 'absent') || todayTrips.some((t) => new Date() > new Date(t.departureTime) && !attendanceDuties.find((d) => d.tripId?.toString() === t._id?.toString() && (d.status === 'active' || d.status === 'closed')));
-    if (hasAbsent) {
-      return { title: 'Vắng Không Phép', subtitle: '⚠ Quá giờ chưa check-in', color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', iconBg: '#fee2e2' };
+    const hasOnTime = currentDuty?.status === 'on_time' || currentDuty?.punctuality === 'on_time' || attendanceDuties.some((d) => d.status === 'on_time' || d.punctuality === 'on_time') || attendanceStatus === 'on_time';
+    if (hasOnTime) {
+      return { title: 'Đúng Giờ', subtitle: '✓ Chấm công sớm/đúng giờ', color: '#16a34a', bg: '#ffffff', border: '#bbf7d0', iconBg: '#ecfdf5' };
     }
-    return { title: 'Chưa Vào Ca', subtitle: '• Cần check-in trước giờ chạy', color: '#d97706', bg: '#ffffff', border: '#fde68a', iconBg: '#fffbeb' };
+    const isPastDeparture = activeCurrentTrip && new Date() > new Date(activeCurrentTrip.departureTime);
+    if (isPastDeparture && (!currentDuty || currentDuty.status === 'absent')) {
+      return { title: 'Chưa Chấm Công', subtitle: '⚠ Quá giờ xuất bến, cần check-in', color: '#dc2626', bg: '#ffffff', border: '#fca5a5', iconBg: '#fee2e2' };
+    }
+    return { title: 'Chưa Chấm Công', subtitle: '• Cần check-in trước giờ chạy', color: '#475569', bg: '#ffffff', border: '#e2e8f0', iconBg: '#f1f5f9' };
   };
 
   return (
@@ -244,41 +266,18 @@ const DriverDashboardPage = ({ setActiveTab }) => {
         /* Responsive Mobile & Điện thoại di động (<= 768px) */
         @media (max-width: 768px) {
           .driver-panel-box {
-            padding: 1rem 0.85rem;
-            border-radius: 12px;
-            gap: 1rem;
+            padding: 0.85rem 1rem !important;
+            border-radius: 12px !important;
+            gap: 0.85rem !important;
           }
           .driver-header-wrap {
-            flex-direction: column;
-            align-items: flex-start;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.5rem !important;
           }
-          .driver-header-buttons {
-            width: 100%;
-          }
-          .driver-header-buttons button {
-            flex: 1;
-            justify-content: center;
-          }
-
-          /* Ẩn bảng dài trên mobile, thay bằng Card di động */
-          .driver-desktop-table {
-            display: none;
-          }
-          .driver-mobile-cards {
-            display: flex;
-            flex-direction: column;
-            gap: 0.85rem;
-          }
-          .driver-quick-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        /* Màn hình điện thoại nhỏ (<= 480px) */
-        @media (max-width: 480px) {
           .driver-stat-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 0.5rem;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
           }
           .driver-stat-card {
             padding: 0.65rem 0.75rem !important;
@@ -286,11 +285,23 @@ const DriverDashboardPage = ({ setActiveTab }) => {
           .driver-stat-value {
             font-size: 1.15rem !important;
           }
-          .driver-header-buttons {
-            flex-direction: column;
+
+          /* Ẩn bảng dài trên mobile, thay bằng Card di động */
+          .driver-desktop-table {
+            display: none !important;
           }
-          .driver-header-buttons button {
-            width: 100%;
+          .driver-mobile-cards {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+          }
+          .driver-future-grid {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
+          }
+          .driver-quick-grid {
+            grid-template-columns: 1fr !important;
+            gap: 8px !important;
           }
         }
       `}</style>
@@ -313,101 +324,26 @@ const DriverDashboardPage = ({ setActiveTab }) => {
       {/* VÙNG 1: CARD TRẮNG HEADER TỔNG QUAN & 4 THẺ THỐNG KÊ (TOP) */}
       {/* ========================================================= */}
       <div className="driver-panel-box">
-        {/* Top Header & Buttons */}
+        {/* Top Header */}
         <div className="driver-header-wrap">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
-                Trung Tâm Điều Hành Tài Xế
-              </h1>
-              <span style={{
-                background: '#dbeafe',
-                color: '#1d4ed8',
-                padding: '2px 8px',
-                borderRadius: '12px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Driver Live Console
-              </span>
-            </div>
-            <p style={{ color: '#64748b', fontSize: '0.75rem', marginTop: '3px', margin: 0 }}>
-              Chào mừng trở lại, <strong style={{ color: '#2563eb' }}>Tài xế {user?.name || 'Trần Minh Tâm'}!</strong> Giám sát lịch trình chuyến xe, định vị GPS &amp; cập nhật hành trình thời gian thực
+            <h1 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.3px' }}>
+              Trung Tâm Điều Hành Tài Xế
+            </h1>
+            <p style={{ color: '#64748b', fontSize: '0.74rem', marginTop: '3px', margin: 0 }}>
+              Chào mừng trở lại, <strong style={{ color: '#2563eb' }}>Tài xế {user?.name || 'Trần Minh Tâm'}!</strong> Giám sát lịch trình chuyến xe và hành trình thực tế.
             </p>
-          </div>
-
-          {/* Quick Header Actions */}
-          <div className="driver-header-buttons">
-            <button
-              onClick={fetchSchedule}
-              disabled={isRefreshing}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #e2e8f0',
-                color: '#334155',
-                fontWeight: '600',
-                padding: '0.45rem 0.85rem',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: isRefreshing ? 'wait' : 'pointer',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <svg
-                width="13"
-                height="13"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#2563eb"
-                strokeWidth="2.5"
-                style={{
-                  transition: 'transform 0.5s ease',
-                  transform: isRefreshing ? 'rotate(360deg)' : 'none'
-                }}
-              >
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-              </svg>
-              {isRefreshing ? 'Đang đồng bộ...' : 'Đồng bộ tức thời'}
-            </button>
-
-            <button
-              onClick={() => setActiveTab && setActiveTab('driver-map')}
-              style={{
-                backgroundColor: '#2563eb',
-                border: 'none',
-                color: '#ffffff',
-                fontWeight: '700',
-                padding: '0.45rem 0.95rem',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                boxShadow: '0 2px 4px rgba(37,99,235,0.2)',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5">
-                <polygon points="3 11 22 2 13 21 11 13 3 11" />
-              </svg>
-              Bản Đồ Di Chuyển GPS
-            </button>
           </div>
         </div>
 
         {/* 4 Key Stat Cards (Responsive Grid) */}
         <div className="driver-stat-grid">
           
-          {/* Card 1: Chuyến đi hôm nay */}
+          {/* Card 1: Chuyến đi hiện tại */}
           <div className="driver-stat-card" style={{ background: '#ffffff', padding: '0.75rem 1rem', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
               <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                CHUYẾN ĐI HÔM NAY
+                CHUYẾN ĐI HIỆN TẠI
               </span>
               <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2">
@@ -419,10 +355,10 @@ const DriverDashboardPage = ({ setActiveTab }) => {
               </div>
             </div>
             <div className="driver-stat-value" style={{ fontSize: '1.3rem', fontWeight: '800', color: '#0f172a', marginBottom: '2px', lineHeight: '1.2' }}>
-              {todayStats.totalTrips} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>chuyến</span>
+              {displayTrips.length} <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#64748b' }}>chuyến</span>
             </div>
-            <div style={{ fontSize: '0.68rem', color: todayTrips.length > 0 ? '#16a34a' : '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <span>▲</span> {todayTrips.length > 0 ? `${todayTrips.length} chuyến khởi hành` : 'Không có chuyến'}
+            <div style={{ fontSize: '0.68rem', color: displayTrips.length > 0 ? '#16a34a' : '#64748b', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <span>▲</span> {activeCurrentTrip ? `Khởi hành: ${formatTime(activeCurrentTrip.departureTime)}` : 'Không có chuyến'}
             </div>
           </div>
 
@@ -519,25 +455,13 @@ const DriverDashboardPage = ({ setActiveTab }) => {
       {/* ========================================================= */}
       <div className="driver-panel-box">
         {/* Table Panel Header */}
-        <div className="driver-header-wrap">
+        <div className="driver-header-wrap" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                Bảng Điều Hành &amp; Giám Sát Chuyến Xe (Real-time)
-              </h2>
-              <span style={{
-                background: '#dcfce7',
-                color: '#15803d',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                fontSize: '0.65rem',
-                fontWeight: '700'
-              }}>
-                Lịch Phân Công Cá Nhân
-              </span>
-            </div>
+            <h2 style={{ fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+              Bảng Điều Hành &amp; Giám Sát Chuyến Xe
+            </h2>
             <p style={{ color: '#64748b', fontSize: '0.72rem', marginTop: '2px', margin: 0 }}>
-              Theo dõi tuyến chạy, giờ xuất bến, biển số xe, phụ xe đồng hành và cập nhật trạng thái hành trình theo thời gian thực
+              Theo dõi tuyến chạy, giờ xuất bến, biển số xe và phụ xe đồng hành.
             </p>
           </div>
 
@@ -587,19 +511,19 @@ const DriverDashboardPage = ({ setActiveTab }) => {
                     Đang tải lịch trình chuyến xe của bạn...
                   </td>
                 </tr>
-              ) : todayTrips.length === 0 ? (
+              ) : displayTrips.length === 0 ? (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
                     <div style={{ fontWeight: '600', color: '#0f172a', marginBottom: '4px' }}>
-                      Hôm nay ({new Date().toLocaleDateString('vi-VN')}) bạn không có lịch khởi hành.
+                      Bạn không có chuyến xe nào đang chờ vận hành.
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                      Vui lòng xem các chuyến tiếp theo trong tuần được liệt kê bên dưới.
+                      Vui lòng xem các chuyến tiếp theo được liệt kê bên dưới.
                     </div>
                   </td>
                 </tr>
               ) : (
-                todayTrips.map(trip => {
+                displayTrips.map(trip => {
                   const plate = trip.busId?.plateNumber || 'Chưa nhận xe';
                   const busType = trip.busId?.type || 'Xe Khách An Bình';
                   const routeName = trip.routeId ? `${trip.routeId.startPoint} ➔ ${trip.routeId.endPoint}` : 'Đà Lạt ➔ Hồ Chí Minh';
@@ -729,17 +653,17 @@ const DriverDashboardPage = ({ setActiveTab }) => {
             <div style={{ textAlign: 'center', padding: '1.5rem', color: '#64748b', fontSize: '0.8rem' }}>
               Đang tải lịch trình chuyến xe...
             </div>
-          ) : todayTrips.length === 0 ? (
+          ) : displayTrips.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '1.5rem', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1' }}>
               <div style={{ fontWeight: '700', color: '#0f172a', fontSize: '0.85rem' }}>
-                Hôm nay bạn không có lịch khởi hành.
+                Bạn không có chuyến xe nào đang chờ vận hành.
               </div>
               <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
-                Xem danh sách chuyến tiếp theo trong tuần bên dưới.
+                Xem danh sách chuyến tiếp theo bên dưới.
               </div>
             </div>
           ) : (
-            todayTrips.map(trip => {
+            displayTrips.map(trip => {
               const plate = trip.busId?.plateNumber || '51B-029.29';
               const busType = trip.busId?.type || 'Xe Khách An Bình';
               const routeName = trip.routeId ? `${trip.routeId.startPoint} ➔ ${trip.routeId.endPoint}` : 'Đà Lạt ➔ Hồ Chí Minh';
@@ -875,16 +799,16 @@ const DriverDashboardPage = ({ setActiveTab }) => {
           )}
         </div>
 
-        {/* Các chuyến đi tiếp theo trong tuần */}
-        {futureTrips.length > 0 && (
+        {/* Các chuyến đi tiếp theo trong hàng đợi */}
+        {upcomingTrips.length > 0 && (
           <div style={{ marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
               <div style={{ fontWeight: '800', fontSize: '0.85rem', color: '#0f172a' }}>
-                Lịch Trình Các Chuyến Tiếp Theo ({futureTrips.length} chuyến sắp tới)
+                Lịch Trình Các Chuyến Tiếp Theo ({upcomingTrips.length} chuyến sắp tới)
               </div>
             </div>
             <div className="driver-future-grid">
-              {futureTrips.slice(0, 3).map(trip => (
+              {upcomingTrips.slice(0, 3).map(trip => (
                 <div
                   key={trip._id}
                   style={{
