@@ -11,7 +11,7 @@ class PricingService {
   }
 
   async createRule(ruleData) {
-    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, isActive } = ruleData;
+    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, startDate, endDate, isActive } = ruleData;
     return await pricingRuleRepository.create({
       name,
       routeId,
@@ -20,12 +20,14 @@ class PricingService {
       dayOfWeek,
       adjustmentType,
       adjustmentValue,
+      startDate: startDate ? new Date(startDate) : null,
+      endDate: endDate ? new Date(endDate) : null,
       isActive
     });
   }
 
   async updateRule(id, ruleData) {
-    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, isActive } = ruleData;
+    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, startDate, endDate, isActive } = ruleData;
     
     let rule = await pricingRuleRepository.findById(id);
     if (!rule) {
@@ -41,6 +43,8 @@ class PricingService {
     if (dayOfWeek !== undefined) rule.dayOfWeek = dayOfWeek;
     if (adjustmentType !== undefined) rule.adjustmentType = adjustmentType;
     if (adjustmentValue !== undefined) rule.adjustmentValue = adjustmentValue;
+    if (startDate !== undefined) rule.startDate = startDate ? new Date(startDate) : null;
+    if (endDate !== undefined) rule.endDate = endDate ? new Date(endDate) : null;
     if (isActive !== undefined) rule.isActive = isActive;
 
     await pricingRuleRepository.save(rule);
@@ -185,20 +189,147 @@ class PricingService {
   }
 
   /**
-   * Lấy danh sách tổ hợp Tuyến đường & Dòng xe THỰC TẾ đang khai thác
-   * Dựa trên dữ liệu chuyến xe (trips) và phương tiện (buses) thực có trong hệ thống,
-   * loại bỏ việc nhân bản giả lập tổ hợp lý thuyết.
+   * Lấy danh sách gợi ý giá vé AI CHỈ DỰA TRÊN các chuyến xe ĐÃ VÀ ĐANG VẬN HÀNH TÍNH ĐẾN THỜI ĐIỂM HIỆN TẠI.
+   * Loại bỏ các chuyến xe trong tương lai xa (tránh làm loãng tỷ lệ lấp đầy do tính cả chuyến chưa chạy).
+   */
+  async getDynamicPricingSuggestions() {
+    const routes = await routeRepository.find({});
+    const basePrices = await basePriceRepository.find({});
+    
+    // CHỈ lấy các chuyến xe có thời gian xuất phát tính đến thời điểm hiện tại (departureTime <= now)
+    const now = new Date();
+    const allTrips = await tripRepository.findWithPopulate({ departureTime: { $lte: now } }) || [];
+    const allBookings = await bookingRepository.find({ status: { $in: ['paid', 'confirmed'] } }) || [];
+
+    const routeMap = new Map(routes.map(r => [r._id.toString(), r]));
+    const comboMap = new Map();
+
+    // Gom nhóm CHỈ từ các chuyến xe THỰC TẾ đã và đang vận hành tính đến hiện tại
+    for (const t of allTrips) {
+      const rId = t.routeId?._id ? t.routeId._id.toString() : t.routeId?.toString();
+      const route = routeMap.get(rId);
+      if (!route) continue;
+
+      const busType = t.busId?.type || 'Xe Ghế Ngồi';
+      const key = `${rId}_${busType}`;
+
+      if (!comboMap.has(key)) {
+        const startStop = (route.stops && route.stops.find(s => s.type === 'start')?.name) || `Bến xe ${route.startPoint}`;
+        const endStop = (route.stops && route.stops.find(s => s.type === 'end')?.name) || `Bến xe ${route.endPoint}`;
+        const distanceMatch = (route.distance || '').replace(/\s+/g, '').match(/\d+/);
+        const distanceKm = distanceMatch ? parseInt(distanceMatch[0], 10) : 200;
+
+        comboMap.set(key, {
+          routeId: route._id,
+          routeName: `${route.startPoint} → ${route.endPoint}`,
+          startPoint: route.startPoint,
+          endPoint: route.endPoint,
+          startStation: startStop,
+          endStation: endStop,
+          busType: busType,
+          distance: route.distance || `${distanceKm} km`,
+          duration: route.duration,
+          distanceKm,
+          trips: []
+        });
+      }
+
+      comboMap.get(key).trips.push(t);
+    }
+
+    const suggestions = [];
+
+    for (const item of comboMap.values()) {
+      // Bỏ qua nếu tổ hợp này không có chuyến xe nào tính đến hiện tại
+      if (!item.trips || item.trips.length === 0) continue;
+
+      let totalBookedSeats = 0;
+      item.trips.forEach(t => {
+        const tripBookings = allBookings.filter(b => b.tripId && (b.tripId._id ? b.tripId._id.toString() : b.tripId.toString()) === t._id.toString());
+        let seatsFromBookings = 0;
+        tripBookings.forEach(b => {
+          if (Array.isArray(b.seats)) seatsFromBookings += b.seats.length;
+        });
+        const bookedCount = Math.max(seatsFromBookings, Array.isArray(t.bookedSeats) ? t.bookedSeats.length : 0);
+        totalBookedSeats += bookedCount;
+      });
+
+      const totalCapacity = item.trips.reduce((acc, t) => acc + (t.busId?.capacity || 36), 0);
+      const occupancyRate = totalCapacity > 0 
+        ? Math.min(100, Math.max(0, (totalBookedSeats / totalCapacity) * 100))
+        : 0;
+
+      const existingPrice = basePrices.find(
+        bp => bp.routeId.toString() === item.routeId.toString() && bp.busType === item.busType
+      );
+
+      const recommendedPrice = this.calculateRecommendedPrice(item.distance, item.busType, occupancyRate);
+      const currentPrice = existingPrice ? existingPrice.price : null;
+      const effectivePrice = currentPrice || recommendedPrice;
+      const unitPricePerKm = Math.round(effectivePrice / (item.distanceKm || 1));
+
+      // Tính phần trăm chênh lệch giữa giá đề xuất AI và giá niêm yết hiện tại
+      let diffPercent = 0;
+      if (currentPrice && currentPrice > 0) {
+        diffPercent = Math.round(((recommendedPrice - currentPrice) / currentPrice) * 100);
+      }
+
+      // Tạo thông điệp phân tích & khuyến nghị AI rõ ràng, gắn với dữ liệu thật đến thời điểm hiện tại
+      let analysisRecommendation = '';
+      if (occupancyRate >= 80) {
+        analysisRecommendation = `✓ Tỷ lệ lấp đầy ${occupancyRate.toFixed(1)}% (${item.trips.length} chuyến tới nay) - Nhu cầu cao, đề xuất tăng 10% tối ưu doanh thu`;
+      } else if (occupancyRate <= 40) {
+        analysisRecommendation = `⚠️ Tỷ lệ lấp đầy chỉ ${occupancyRate.toFixed(1)}% (${item.trips.length} chuyến tới nay) - Vắng khách, đề xuất giảm 10% kích cầu`;
+      } else {
+        analysisRecommendation = `✓ Tỷ lệ lấp đầy ${occupancyRate.toFixed(1)}% (${item.trips.length} chuyến tới nay) - Công suất đạt chuẩn`;
+      }
+
+      suggestions.push({
+        routeId: item.routeId,
+        routeName: item.routeName,
+        startPoint: item.startPoint,
+        endPoint: item.endPoint,
+        startStation: item.startStation,
+        endStation: item.endStation,
+        busType: item.busType,
+        price: currentPrice,
+        isSet: !!existingPrice,
+        basePriceId: existingPrice ? existingPrice._id : null,
+        distance: item.distance,
+        duration: item.duration,
+        tripsCount: item.trips.length,
+        totalCapacity,
+        bookedSeats: totalBookedSeats,
+        occupancyRate: Math.round(occupancyRate * 10) / 10,
+        recommendedPrice,
+        diffPercent,
+        unitPricePerKm,
+        analysisRecommendation
+      });
+    }
+
+    // Sắp xếp ưu tiên các tuyến có nhiều chuyến hoặc có tỷ lệ lấp đầy cần can thiệp
+    suggestions.sort((a, b) => b.tripsCount - a.tripsCount);
+
+    return suggestions;
+  }
+
+  /**
+   * Lấy danh sách tổ hợp Tuyến đường & Dòng xe THỰC TẾ đang khai thác tính đến hiện tại
+   * Dựa trên dữ liệu chuyến xe (trips) xuất bến tính đến hiện tại (departureTime <= now)
+   * loại bỏ các chuyến trong tương lai xa để phản ánh tỷ lệ lấp đầy chính xác.
    */
   async getRealRoutesAnalytics() {
     const routes = await routeRepository.find({});
-    const allTrips = await tripRepository.findWithPopulate({}) || [];
+    const now = new Date();
+    const allTrips = await tripRepository.findWithPopulate({ departureTime: { $lte: now } }) || [];
     const allBookings = await bookingRepository.find({ status: { $in: ['paid', 'confirmed'] } }) || [];
     const basePrices = await basePriceRepository.find({});
 
     const routeMap = new Map(routes.map(r => [r._id.toString(), r]));
     const comboMap = new Map();
 
-    // 1. Gom nhóm từ các chuyến xe THỰC TẾ đang vận hành
+    // 1. Gom nhóm từ các chuyến xe THỰC TẾ đã và đang chạy tính đến hiện tại
     for (const t of allTrips) {
       const rId = t.routeId?._id ? t.routeId._id.toString() : t.routeId?.toString();
       const route = routeMap.get(rId);
@@ -231,48 +362,26 @@ class PricingService {
       comboMap.get(key).trips.push(t);
     }
 
-    // 2. Nếu có tuyến trong danh mục routes chưa có chuyến nào chạy, thêm 1 dòng đại diện duy nhất
-    for (const route of routes) {
-      const hasAny = Array.from(comboMap.values()).some(c => c.routeId.toString() === route._id.toString());
-      if (!hasAny) {
-        const key = `${route._id.toString()}_default`;
-        const startStop = (route.stops && route.stops.find(s => s.type === 'start')?.name) || `Bến xe ${route.startPoint}`;
-        const endStop = (route.stops && route.stops.find(s => s.type === 'end')?.name) || `Bến xe ${route.endPoint}`;
-        const distanceMatch = (route.distance || '').replace(/\s+/g, '').match(/\d+/);
-        const distanceKm = distanceMatch ? parseInt(distanceMatch[0], 10) : 200;
-
-        comboMap.set(key, {
-          routeId: route._id,
-          routeName: `${route.startPoint} → ${route.endPoint}`,
-          startPoint: route.startPoint,
-          endPoint: route.endPoint,
-          startStation: startStop,
-          endStation: endStop,
-          busType: 'Xe Giường Nằm 44 Chỗ',
-          distance: route.distance || `${distanceKm} km`,
-          duration: route.duration,
-          distanceKm,
-          trips: [],
-        });
-      }
-    }
-
-    // 3. Tính toán tỷ lệ lấp đầy thực tế từ bookings
+    // 2. Tính toán tỷ lệ lấp đầy thực tế từ bookings và chuyến xe tính đến hiện tại
     const combinations = [];
     for (const item of comboMap.values()) {
+      if (!item.trips || item.trips.length === 0) continue;
+
       let totalBookedSeats = 0;
       let totalCapacity = 0;
+      item.trips.forEach(t => {
+        const tripBookings = allBookings.filter(b => b.tripId && (b.tripId._id ? b.tripId._id.toString() : b.tripId.toString()) === t._id.toString());
+        const seatsFromBookings = tripBookings.reduce((sum, b) => sum + (Array.isArray(b.seats) ? b.seats.length : 0), 0);
+        const bookedCount = seatsFromBookings > 0 ? seatsFromBookings : (Array.isArray(t.bookedSeats) ? t.bookedSeats.length : 0);
+        const tripCap = t.busId?.totalSeats || t.busId?.capacity || 40;
 
-      if (item.trips.length > 0) {
-        const tripIdsStr = item.trips.map(t => t._id.toString());
-        const matchingBookings = allBookings.filter(b => b.tripId && tripIdsStr.includes(b.tripId._id ? b.tripId._id.toString() : b.tripId.toString()));
-        matchingBookings.forEach(b => {
-          if (Array.isArray(b.seats)) totalBookedSeats += b.seats.length;
-        });
-        totalCapacity = item.trips.reduce((acc, t) => acc + (t.busId?.capacity || 36), 0);
-      }
+        totalBookedSeats += bookedCount;
+        totalCapacity += tripCap;
+      });
 
-      const occupancyRate = totalCapacity > 0 ? Math.min(100, Math.max(0, Math.round((totalBookedSeats / totalCapacity) * 100))) : 65;
+      const occupancyRate = totalCapacity > 0 
+        ? Math.min(100, Math.max(0, Math.round((totalBookedSeats / totalCapacity) * 100))) 
+        : 0;
 
       const existingPrice = basePrices.find(
         bp => bp.routeId.toString() === item.routeId.toString() && bp.busType === item.busType
@@ -293,6 +402,9 @@ class PricingService {
         occupancyRate,
       });
     }
+
+    // Sắp xếp theo số chuyến
+    combinations.sort((a, b) => b.tripsCount - a.tripsCount);
 
     return combinations;
   }
@@ -321,7 +433,7 @@ class PricingService {
     const analytics = filtered.map(item => {
       const key = `${item.routeId}_${item.busType}`;
       const aiEval = aiMap.get(key) || {};
-      const occ = item.occupancyRate || 65;
+      const occ = item.occupancyRate != null ? item.occupancyRate : 0;
       const isHigh = occ >= 80;
       const isLow = occ <= 45;
 

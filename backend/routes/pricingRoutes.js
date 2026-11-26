@@ -5,6 +5,7 @@ const {
   updateRule, 
   deleteRule,
   getBasePrices,
+  getDynamicSuggestions,
   setBasePrice,
   lookupPrice,
   getExecutiveAiChat,
@@ -47,6 +48,9 @@ router.route('/rules/:id')
 router.route('/base-prices')
   .get(getBasePrices)
   .post(restrictTo('general_manager', 'admin'), setBasePrice);
+
+// AI Dynamic Pricing Suggestions (Only for routes and trips actively operating)
+router.get('/dynamic-suggestions', restrictTo('general_manager', 'admin'), getDynamicSuggestions);
 
 router.route('/base-prices/lookup')
   .get(lookupPrice);

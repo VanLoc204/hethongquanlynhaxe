@@ -69,27 +69,132 @@ exports.createPromotion = async (req, res, next) => {
       status,
     } = req.body;
 
-    // Check duplicate code
-    const existing = await Promotion.findOne({ code: code.toUpperCase().trim() });
+    // 1. Validate Code
+    const cleanCode = (code || '').toUpperCase().trim();
+    if (!cleanCode) {
+      return res.status(400).json({ success: false, message: 'Vui lòng nhập mã voucher.' });
+    }
+    if (!/^[A-Z0-9_-]{3,20}$/.test(cleanCode)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã voucher phải từ 3 đến 20 ký tự, viết liền không dấu, chỉ gồm chữ cái, số, gạch nối (-) hoặc gạch dưới (_).'
+      });
+    }
+
+    // 2. Validate Title
+    const cleanTitle = (title || '').trim();
+    if (!cleanTitle || cleanTitle.length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tên chương trình khuyến mãi phải có ít nhất 5 ký tự.'
+      });
+    }
+
+    // 3. Validate Discount Type & Value
+    const type = discountType === 'percentage' ? 'percentage' : 'fixed_amount';
+    const numValue = Number(discountValue);
+    if (isNaN(numValue) || numValue <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mức giảm giá phải là số dương lớn hơn 0.'
+      });
+    }
+
+    if (type === 'percentage') {
+      if (numValue < 1 || numValue > 100) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tỷ lệ giảm giá (%) phải nằm trong khoảng từ 1% đến 100%.'
+        });
+      }
+    } else {
+      if (numValue < 1000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mức giảm tiền cố định tối thiểu là 1.000 VNĐ.'
+        });
+      }
+    }
+
+    // 4. Validate minOrderValue
+    const numMinOrder = Number(minOrderValue) || 0;
+    if (numMinOrder < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Đơn hàng tối thiểu không được là số âm.'
+      });
+    }
+
+    if (type === 'fixed_amount' && numMinOrder > 0 && numValue > numMinOrder) {
+      return res.status(400).json({
+        success: false,
+        message: `Mức giảm (${numValue.toLocaleString('vi-VN')}đ) không được vượt quá đơn hàng tối thiểu (${numMinOrder.toLocaleString('vi-VN')}đ).`
+      });
+    }
+
+    // 5. Validate maxDiscountAmount
+    const numMaxDiscount = Number(maxDiscountAmount) || 0;
+    if (numMaxDiscount < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mức giảm tối đa không được là số âm.'
+      });
+    }
+
+    // 6. Validate usageLimit
+    const numLimit = Number(usageLimit);
+    if (isNaN(numLimit) || numLimit < 1 || !Number.isInteger(numLimit)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Giới hạn lượt dùng phải là số nguyên lớn hơn hoặc bằng 1.'
+      });
+    }
+
+    // 7. Validate Dates
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng chọn ngày bắt đầu và ngày kết thúc khuyến mãi.'
+      });
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Định dạng ngày bắt đầu hoặc ngày kết thúc không hợp lệ.'
+      });
+    }
+
+    if (end < start) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ngày kết thúc phải diễn ra sau hoặc cùng ngày với ngày bắt đầu.'
+      });
+    }
+
+    // 8. Check duplicate code
+    const existing = await Promotion.findOne({ code: cleanCode });
     if (existing) {
       return res.status(400).json({
         success: false,
-        message: `Mã khuyến mãi "${code.toUpperCase()}" đã tồn tại trên hệ thống.`,
+        message: `Mã khuyến mãi "${cleanCode}" đã tồn tại trên hệ thống.`,
       });
     }
 
     const promotion = await Promotion.create({
-      code: code.toUpperCase().trim(),
-      title,
-      description,
-      discountType: discountType || 'fixed_amount',
-      discountValue: Number(discountValue) || 0,
-      maxDiscountAmount: Number(maxDiscountAmount) || 0,
-      minOrderValue: Number(minOrderValue) || 0,
-      usageLimit: Number(usageLimit) || 100,
+      code: cleanCode,
+      title: cleanTitle,
+      description: (description || '').trim(),
+      discountType: type,
+      discountValue: numValue,
+      maxDiscountAmount: type === 'percentage' ? numMaxDiscount : 0,
+      minOrderValue: numMinOrder,
+      usageLimit: numLimit,
       usedCount: 0,
-      startDate: startDate ? new Date(startDate) : new Date(),
-      endDate: endDate ? new Date(endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      startDate: start,
+      endDate: end,
       status: status || 'active',
       createdBy: req.user ? `${req.user.name || req.user.email}` : 'Ban Giám Đốc',
     });
@@ -119,13 +224,118 @@ exports.updatePromotion = async (req, res, next) => {
     }
 
     const updateData = { ...req.body };
-    if (updateData.code) {
-      updateData.code = updateData.code.toUpperCase().trim();
+
+    // Validate Code if changed
+    if (updateData.code !== undefined) {
+      const cleanCode = (updateData.code || '').toUpperCase().trim();
+      if (!cleanCode) {
+        return res.status(400).json({ success: false, message: 'Mã voucher không được để trống.' });
+      }
+      if (!/^[A-Z0-9_-]{3,20}$/.test(cleanCode)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mã voucher phải từ 3 đến 20 ký tự, viết liền không dấu (A-Z, 0-9, -, _).'
+        });
+      }
+      const duplicate = await Promotion.findOne({ code: cleanCode, _id: { $ne: id } });
+      if (duplicate) {
+        return res.status(400).json({
+          success: false,
+          message: `Mã khuyến mãi "${cleanCode}" đã tồn tại trên hệ thống.`,
+        });
+      }
+      updateData.code = cleanCode;
     }
-    if (updateData.discountValue) updateData.discountValue = Number(updateData.discountValue);
-    if (updateData.maxDiscountAmount !== undefined) updateData.maxDiscountAmount = Number(updateData.maxDiscountAmount);
-    if (updateData.minOrderValue !== undefined) updateData.minOrderValue = Number(updateData.minOrderValue);
-    if (updateData.usageLimit !== undefined) updateData.usageLimit = Number(updateData.usageLimit);
+
+    // Validate Title if changed
+    if (updateData.title !== undefined) {
+      const cleanTitle = (updateData.title || '').trim();
+      if (!cleanTitle || cleanTitle.length < 5) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tên chương trình khuyến mãi phải có ít nhất 5 ký tự.'
+        });
+      }
+      updateData.title = cleanTitle;
+    }
+
+    const currentType = updateData.discountType || promo.discountType;
+    if (updateData.discountValue !== undefined) {
+      const numValue = Number(updateData.discountValue);
+      if (isNaN(numValue) || numValue <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mức giảm giá phải là số dương lớn hơn 0.'
+        });
+      }
+      if (currentType === 'percentage' && (numValue < 1 || numValue > 100)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tỷ lệ giảm giá (%) phải nằm trong khoảng từ 1% đến 100%.'
+        });
+      }
+      if (currentType === 'fixed_amount' && numValue < 1000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Mức giảm tiền cố định tối thiểu là 1.000 VNĐ.'
+        });
+      }
+      updateData.discountValue = numValue;
+    }
+
+    if (updateData.minOrderValue !== undefined) {
+      const numMinOrder = Number(updateData.minOrderValue) || 0;
+      if (numMinOrder < 0) {
+        return res.status(400).json({ success: false, message: 'Đơn hàng tối thiểu không được là số âm.' });
+      }
+      updateData.minOrderValue = numMinOrder;
+    }
+
+    if (currentType === 'fixed_amount') {
+      const minOrder = updateData.minOrderValue !== undefined ? updateData.minOrderValue : promo.minOrderValue;
+      const discountVal = updateData.discountValue !== undefined ? updateData.discountValue : promo.discountValue;
+      if (minOrder > 0 && discountVal > minOrder) {
+        return res.status(400).json({
+          success: false,
+          message: `Mức giảm (${discountVal.toLocaleString('vi-VN')}đ) không được vượt quá đơn hàng tối thiểu (${minOrder.toLocaleString('vi-VN')}đ).`
+        });
+      }
+    }
+
+    if (updateData.maxDiscountAmount !== undefined) {
+      const numMax = Number(updateData.maxDiscountAmount) || 0;
+      if (numMax < 0) {
+        return res.status(400).json({ success: false, message: 'Mức giảm tối đa không được là số âm.' });
+      }
+      updateData.maxDiscountAmount = currentType === 'percentage' ? numMax : 0;
+    }
+
+    if (updateData.usageLimit !== undefined) {
+      const numLimit = Number(updateData.usageLimit);
+      if (isNaN(numLimit) || numLimit < 1 || !Number.isInteger(numLimit)) {
+        return res.status(400).json({ success: false, message: 'Giới hạn lượt dùng phải là số nguyên >= 1.' });
+      }
+      if (numLimit < promo.usedCount) {
+        return res.status(400).json({
+          success: false,
+          message: `Giới hạn lượt dùng mới (${numLimit}) không được nhỏ hơn số lượt đã dùng hiện tại (${promo.usedCount}).`
+        });
+      }
+      updateData.usageLimit = numLimit;
+    }
+
+    if (updateData.startDate || updateData.endDate) {
+      const start = new Date(updateData.startDate || promo.startDate);
+      const end = new Date(updateData.endDate || promo.endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return res.status(400).json({ success: false, message: 'Định dạng ngày không hợp lệ.' });
+      }
+      if (end < start) {
+        return res.status(400).json({ success: false, message: 'Ngày kết thúc phải diễn ra sau hoặc cùng ngày với ngày bắt đầu.' });
+      }
+      if (updateData.startDate) updateData.startDate = start;
+      if (updateData.endDate) updateData.endDate = end;
+    }
 
     promo = await Promotion.findByIdAndUpdate(id, updateData, {
       new: true,

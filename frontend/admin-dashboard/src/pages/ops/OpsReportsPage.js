@@ -111,6 +111,7 @@ const OpsReportsPage = () => {
   const [rawTrips, setRawTrips] = useState([]);
   const [routesList, setRoutesList] = useState([]);
   const [rawLeaves, setRawLeaves] = useState([]);
+  const [rawIncidents, setRawIncidents] = useState([]);
   const [attendanceData, setAttendanceData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -182,6 +183,17 @@ const OpsReportsPage = () => {
       setRawTrips(tripsData.success ? tripsData.trips || [] : []);
       setRoutesList(routesData.success ? routesData.routes || [] : []);
 
+      // Báo cáo sự cố thực tế từ collection incidents trong MongoDB
+      try {
+        const incRes = await fetch(`${API_BASE}/users/ops/incidents`, { headers });
+        const incData = await incRes.json();
+        if (incData.success) {
+          setRawIncidents(incData.incidents || []);
+        }
+      } catch (e) {
+        console.warn('Không tải được danh sách incidents:', e);
+      }
+
       // Báo cáo sự cố & Đơn nghỉ (LeaveRequest model)
       try {
         const leavesRes = await fetch(`${API_BASE}/users/admin/leaves`, { headers });
@@ -235,35 +247,38 @@ const OpsReportsPage = () => {
       list = list.filter((t) => t.departureTime && new Date(t.departureTime).toISOString().slice(0, 10) === todayStr);
     } else if (timeRange === 'last7days') {
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      list = list.filter((t) => {
-        if (!t.departureTime) return false;
-        const d = new Date(t.departureTime);
-        return d >= sevenDaysAgo && d <= endOfToday;
-      });
+      list = list.filter((t) => t.departureTime && new Date(t.departureTime) >= sevenDaysAgo);
     } else if (timeRange === 'thisMonth') {
       const curMonth = now.getMonth();
       const curYear = now.getFullYear();
       list = list.filter((t) => {
         if (!t.departureTime) return false;
         const d = new Date(t.departureTime);
-        return d.getMonth() === curMonth && d.getFullYear() === curYear && d <= endOfToday;
+        return d.getMonth() === curMonth && d.getFullYear() === curYear;
       });
     } else if (timeRange === 'custom') {
       if (fromDate || toDate) {
-        const start = fromDate ? new Date(fromDate) : new Date(0);
-        const end = toDate ? new Date(toDate) : endOfToday;
-        end.setHours(23, 59, 59, 999);
+        let start = new Date(0);
+        let end = new Date(8640000000000000);
+        if (fromDate) {
+          const parts = fromDate.split('-').map(Number);
+          if (parts.length === 3) start = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+          else start = new Date(fromDate);
+        }
+        if (toDate) {
+          const parts = toDate.split('-').map(Number);
+          if (parts.length === 3) end = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999);
+          else {
+            end = new Date(toDate);
+            end.setHours(23, 59, 59, 999);
+          }
+        }
         list = list.filter((t) => {
           if (!t.departureTime) return false;
           const d = new Date(t.departureTime);
-          return d >= start && d <= end && d <= endOfToday;
+          return d >= start && d <= end;
         });
-      } else {
-        list = list.filter((t) => t.departureTime && new Date(t.departureTime) <= endOfToday);
       }
-    } else {
-      // Mặc định 'all' (Tất cả): Chỉ hiển thị các chuyến cho đến ngày hiện tại
-      list = list.filter((t) => t.departureTime && new Date(t.departureTime) <= endOfToday);
     }
 
     if (selectedRoute !== 'all') {
@@ -411,7 +426,7 @@ const OpsReportsPage = () => {
         ...r,
         occupancy: r.capacity > 0 ? Math.round((r.ticketsSold / r.capacity) * 100) : 0
       }))
-      .sort((a, b) => b.occupancy - a.occupancy);
+      .sort((a, b) => b.revenue - a.revenue);
 
     const busTypeStats = Object.values(busTypeMap).map((b) => ({
       ...b,
@@ -438,63 +453,42 @@ const OpsReportsPage = () => {
     };
   }, [filteredTrips]);
 
-  // 5. Tính toán BÁO CÁO 2.3: TỔNG HỢP SỰ CỐ HÀNH TRÌNH
+  // 5. Tính toán BÁO CÁO 2.3: TỔNG HỢP SỰ CỐ HÀNH TRÌNH TỪ CSDL THỰC
   const incidentReports = useMemo(() => {
-    // 1. Sự cố từ LeaveRequest (type === 'incident')
-    const dbIncidents = (rawLeaves || [])
-      .filter((l) => l.type === 'incident')
-      .map((inc) => {
-        // Trích xuất mức độ và chi phí nếu có trong details
-        const detailsStr = inc.details || inc.reason || '';
-        let severity = 'Vừa';
-        if (detailsStr.includes('Nghiêm trọng')) severity = 'Nghiêm trọng';
-        else if (detailsStr.includes('Nhẹ')) severity = 'Nhẹ';
-
-        let cost = 0;
-        const costMatch = detailsStr.match(/(\d+[\d,.]*)\s*(đ|VNĐ|đồng)/i);
-        if (costMatch) {
-          cost = parseInt(costMatch[1].replace(/[,.]/g, ''), 10) || 0;
-        }
-
-        return {
-          _id: inc._id,
-          createdAt: inc.createdAt || inc.startDate,
-          typeName: inc.typeName || 'Sự cố hành trình & Kỹ thuật',
-          details: detailsStr,
-          severity,
-          cost,
-          status: inc.status, // 'pending', 'approved', 'rejected'
-          reporterName: inc.userId?.name || 'Tài xế / Phụ xe hiện trường',
-          reporterPhone: inc.userId?.phone || 'N/A',
-          reporterRole: inc.userId?.role || 'driver'
-        };
-      });
-
-    // 2. Bổ sung sự cố từ các chuyến xe có lý do trễ kỹ thuật
-    const tripIncidents = [];
-    filteredTrips.forEach((t) => {
-      if (t.delayReason && (t.delayReason.includes('Sự cố') || t.delayReason.includes('Hỏng') || t.delayReason.includes('lốp'))) {
-        tripIncidents.push({
-          _id: `trip-${t._id}`,
-          createdAt: t.departureTime,
-          typeName: 'Sự cố kỹ thuật phát sinh trên chuyến',
-          details: `Chuyến xe ${t.routeId?.startPoint || ''} ➔ ${t.routeId?.endPoint || ''} (Xe ${t.busId?.plateNumber || ''}): ${t.delayReason}. Trễ ${t.delayDepartureMinutes || 0} phút.`,
-          severity: t.delayDepartureMinutes > 30 ? 'Nghiêm trọng' : 'Nhẹ',
-          cost: 0,
-          status: t.journeyStatus === 'completed' ? 'approved' : 'pending',
-          reporterName: t.driver?.name || 'Tài xế chuyến xe',
-          reporterPhone: t.driver?.phone || 'N/A',
-          reporterRole: 'driver'
-        });
-      }
-    });
-
-    const allInc = [...dbIncidents, ...tripIncidents];
+    let allInc = [];
+    if (rawIncidents && rawIncidents.length > 0) {
+      allInc = rawIncidents.map((inc) => ({
+        _id: inc._id,
+        code: inc.incidentCode || 'SC-TX',
+        createdAt: inc.createdAt,
+        reporterName: inc.reportedBy?.name || 'Tài xế kíp trực',
+        reporterPhone: inc.reportedBy?.phone || '0908123456',
+        reporterRole: inc.reportedBy?.role || 'driver',
+        typeName: inc.title || 'Sự cố hành trình & Kỹ thuật',
+        details: inc.details || inc.location || 'Sự cố trên tuyến',
+        severity: (inc.severity === 'urgent' || inc.severity === 'high') ? 'Nghiêm trọng' : inc.severity === 'medium' ? 'Vừa' : 'Nhẹ',
+        cost: inc.reimbursementAmount || inc.estimatedCost || 0,
+        status: (inc.status === 'resolved' || inc.status === 'closed') ? 'approved' : 'pending',
+        category: inc.category || 'vehicle'
+      }));
+    } else {
+      allInc = [];
+    }
 
     // Thống kê phân loại
-    const technicalCount = allInc.filter((i) => i.details.includes('lốp') || i.details.includes('máy') || i.details.includes('kỹ thuật') || i.details.includes('phanh')).length;
-    const trafficCount = allInc.filter((i) => i.details.includes('va chạm') || i.details.includes('kẹt xe') || i.details.includes('giao thông')).length;
-    const passengerCount = allInc.filter((i) => i.details.includes('khách') || i.details.includes('hành lý') || i.details.includes('sức khỏe')).length;
+    const technicalCount = allInc.filter((i) =>
+      i.details.toLowerCase().includes('lốp') ||
+      i.details.toLowerCase().includes('máy') ||
+      i.details.toLowerCase().includes('kỹ thuật') ||
+      i.details.toLowerCase().includes('phanh') ||
+      i.typeName.toLowerCase().includes('lốp') ||
+      i.typeName.toLowerCase().includes('đèn') ||
+      i.typeName.toLowerCase().includes('nhớt') ||
+      i.typeName.toLowerCase().includes('làm mát') ||
+      i.typeName.toLowerCase().includes('củ đề')
+    ).length;
+    const trafficCount = allInc.filter((i) => i.details.toLowerCase().includes('va chạm') || i.details.toLowerCase().includes('kẹt xe') || i.details.toLowerCase().includes('giao thông')).length;
+    const passengerCount = allInc.filter((i) => i.details.toLowerCase().includes('khách') || i.details.toLowerCase().includes('hành lý') || i.details.toLowerCase().includes('sức khỏe')).length;
     const otherCount = allInc.length - technicalCount - trafficCount - passengerCount;
 
     const resolvedCount = allInc.filter((i) => i.status === 'approved').length;
@@ -503,14 +497,14 @@ const OpsReportsPage = () => {
     return {
       list: allInc,
       totalCount: allInc.length,
-      technicalCount: Math.max(technicalCount, 1),
+      technicalCount,
       trafficCount,
       passengerCount,
       otherCount: Math.max(otherCount, 0),
       resolvedCount,
       totalCost
     };
-  }, [rawLeaves, filteredTrips]);
+  }, [rawIncidents, rawLeaves, filteredTrips]);
 
   // 6. Tính toán BÁO CÁO 2.4: ĐIỀU ĐỘNG & CHẤM CÔNG TỔ LÁI
   const crewWorkloadMetrics = useMemo(() => {
@@ -773,14 +767,26 @@ const OpsReportsPage = () => {
   // Hành động 3: Đánh dấu đã giải quyết sự cố
   const handleResolveIncident = async (incidentId) => {
     try {
-      const res = await fetch(`${API_BASE}/users/admin/leaves/${incidentId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: 'approved' })
-      });
+      let res;
+      if (rawIncidents.some((i) => i._id === incidentId)) {
+        res = await fetch(`${API_BASE}/users/ops/incidents/${incidentId}/assistance`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ assistanceStatus: 'resolved', assistanceNotes: 'Đã hoàn tất khắc phục sự cố tại hiện trường.' })
+        });
+      } else {
+        res = await fetch(`${API_BASE}/users/admin/leaves/${incidentId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ status: 'approved' })
+        });
+      }
       const data = await res.json();
       if (res.ok && data.success) {
         showToast('Đã xác nhận khắc phục xong sự cố!');
@@ -855,7 +861,7 @@ const OpsReportsPage = () => {
               </span>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: 0 }}>
-              Hệ thống 4 báo cáo nghiệp vụ thời gian thực: Đúng giờ chuyến xe, Lấp đầy ghế &amp; Loại xe, Tổng hợp sự cố hành trình và Chấm công tổ lái.
+              Hệ thống 3 báo cáo nghiệp vụ thời gian thực: Đúng giờ chuyến xe, Lấp đầy ghế &amp; Loại xe và Tổng hợp sự cố hành trình.
             </p>
           </div>
         </div>
@@ -957,8 +963,8 @@ const OpsReportsPage = () => {
           </div>
         </div>
 
-        {/* 4 THẺ CHỈ SỐ KPI TƯƠNG ỨNG 4 BÁO CÁO NGHIỆP VỤ */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.85rem', marginTop: '1rem' }}>
+        {/* 3 THẺ CHỈ SỐ KPI TƯƠNG ỨNG 3 BÁO CÁO NGHIỆP VỤ */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.85rem', marginTop: '1rem' }}>
           {/* Card 1: Báo cáo 2.1 - Đúng giờ */}
           <div
             onClick={() => setReportTab('punctuality')}
@@ -1056,42 +1062,10 @@ const OpsReportsPage = () => {
               Đã xử lý: {incidentReports.resolvedCount} | Chi phí: {incidentReports.totalCost.toLocaleString('vi-VN')} đ
             </div>
           </div>
-
-          {/* Card 4: Báo cáo 2.4 - Chấm công tổ lái */}
-          <div
-            onClick={() => setReportTab('timesheet')}
-            style={{
-              background: reportTab === 'timesheet' ? '#faf5ff' : '#ffffff',
-              padding: '0.75rem 1rem',
-              borderRadius: '12px',
-              border: reportTab === 'timesheet' ? '2px solid #7c3aed' : '1px solid #e2e8f0',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
-              <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>
-                BÁO CÁO 2.4 • CHẤM CÔNG TỔ LÁI
-              </span>
-              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <polyline points="16 11 18 13 22 9" />
-                </svg>
-              </div>
-            </div>
-            <div style={{ fontSize: '1.35rem', fontWeight: '800', color: '#7c3aed', marginBottom: '2px' }}>
-              {crewWorkloadMetrics.totalDrivers + crewWorkloadMetrics.totalAssistants} <span style={{ fontSize: '0.8rem', fontWeight: '600' }}>nhân sự</span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: '#7c3aed', fontWeight: '600' }}>
-              {crewWorkloadMetrics.totalEstDriveHours}h lái xe | An toàn: {crewWorkloadMetrics.safetyComplianceRate}%
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* 5 TABS NAVIGATION */}
+      {/* 3 TABS NAVIGATION */}
       <div style={{ display: 'flex', gap: '0.5rem', background: '#ffffff', padding: '0.4rem 0.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
         <button
           onClick={() => setReportTab('punctuality')}
@@ -1151,46 +1125,6 @@ const OpsReportsPage = () => {
           }}
         >
           3. Tổng Hợp Sự Cố ({incidentReports.totalCount})
-        </button>
-
-        <button
-          onClick={() => setReportTab('timesheet')}
-          style={{
-            flex: 1,
-            padding: '0.6rem 0.5rem',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '0.78rem',
-            fontWeight: '700',
-            cursor: 'pointer',
-            backgroundColor: reportTab === 'timesheet' ? '#faf5ff' : 'transparent',
-            color: reportTab === 'timesheet' ? '#6d28d9' : '#64748b',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          4. Chấm Công Tổ Lái ({crewWorkloadMetrics.crewList.length})
-        </button>
-
-        <button
-          onClick={() => setReportTab('ledger')}
-          style={{
-            flex: 1,
-            padding: '0.6rem 0.5rem',
-            borderRadius: '8px',
-            border: 'none',
-            fontSize: '0.78rem',
-            fontWeight: '700',
-            cursor: 'pointer',
-            backgroundColor: reportTab === 'ledger' ? '#f1f5f9' : 'transparent',
-            color: reportTab === 'ledger' ? '#0f172a' : '#64748b',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          5. Bảng Kê Chuyến ({filteredTrips.length})
         </button>
       </div>
 
@@ -1766,278 +1700,7 @@ const OpsReportsPage = () => {
               </div>
             )}
 
-            {/* ======================================================== */}
-            {/* TAB 4: BÁO CÁO 2.4 - ĐIỀU ĐỘNG & CHẤM CÔNG TỔ LÁI */}
-            {/* ======================================================== */}
-            {reportTab === 'timesheet' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '8px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                      Báo Cáo 2.4: Điều Động &amp; Chấm Công Tổ Lái (Crew Timesheet &amp; Workload)
-                    </h3>
-                    <p style={{ fontSize: '0.73rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                      Theo dõi khối lượng công việc, ước tính giờ lái xe, kiểm soát tuân thủ an toàn (Luật GTĐB: Không lái quá 4h liên tục / 10h ngày).
-                    </p>
-                  </div>
-
-                  {/* Nút xem bảng chấm công thời gian thực */}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <span
-                      style={{
-                        padding: '0.45rem 0.85rem',
-                        background: '#eff6ff',
-                        color: '#1d4ed8',
-                        borderRadius: '8px',
-                        fontSize: '0.75rem',
-                        fontWeight: '700'
-                      }}
-                    >
-                      Tuân thủ an toàn: {crewWorkloadMetrics.safetyComplianceRate}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* 4 Chỉ Số Tổng Quan Chấm Công */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '0.85rem', marginBottom: '1.25rem' }}>
-                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700' }}>TỔNG TÀI XẾ HOẠT ĐỘNG</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#2563eb' }}>
-                      {crewWorkloadMetrics.totalDrivers} tài xế
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Được gán trên các chuyến xe</div>
-                  </div>
-
-                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700' }}>PHỤ XE HỖ TRỢ CHUYẾN</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#059669' }}>
-                      {crewWorkloadMetrics.totalAssistants} phụ xe
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: '#64748b' }}>Soát vé, hành lý &amp; hỗ trợ khách</div>
-                  </div>
-
-                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700' }}>TỔNG GIỜ LÁI XE TÍCH LŨY</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#7c3aed' }}>
-                      {crewWorkloadMetrics.totalEstDriveHours} giờ
-                    </div>
-                    <div style={{ fontSize: '0.68rem', color: '#7c3aed' }}>Tính theo cự ly và thời gian chuyến</div>
-                  </div>
-
-                  <div style={{ background: '#f8fafc', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700' }}>QUY ĐỊNH AN TOÀN LAO ĐỘNG</div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#16a34a' }}>Chuẩn Luật GTĐB</div>
-                    <div style={{ fontSize: '0.68rem', color: '#16a34a' }}>Tối đa 10h/ngày, đổi tài chặng dài</div>
-                  </div>
-                </div>
-
-                {/* Bảng Thống Kê Khối Lượng & Chấm Công Từng Nhân Sự */}
-                <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-                        <th style={{ padding: '8px 12px' }}>HỌ TÊN NHÂN SỰ</th>
-                        <th style={{ padding: '8px 12px' }}>SỐ ĐIỆN THOẠI</th>
-                        <th style={{ padding: '8px 12px' }}>VAI TRÒ</th>
-                        <th style={{ padding: '8px 12px' }}>SỐ CHUYẾN CHẠY</th>
-                        <th style={{ padding: '8px 12px' }}>ƯỚC TÍNH GIỜ LÁI</th>
-                        <th style={{ padding: '8px 12px' }}>ĐÁNH GIÁ AN TOÀN</th>
-                        <th style={{ padding: '8px 12px' }}>ĐIỂM DANH HÔM NAY</th>
-                        <th style={{ padding: '8px 12px' }}>ĐƠN NGHỈ PHÉP</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedCrew.map((c, i) => (
-                        <tr key={c.id || i} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '8px 12px', fontWeight: '700', color: '#0f172a' }}>{c.name}</td>
-                          <td style={{ padding: '8px 12px', color: '#475569' }}>{c.phone}</td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <span
-                              style={{
-                                padding: '2px 8px',
-                                borderRadius: '10px',
-                                fontSize: '0.68rem',
-                                fontWeight: '700',
-                                background: c.role === 'driver' ? '#e0f2fe' : '#ecfdf5',
-                                color: c.role === 'driver' ? '#0369a1' : '#047857'
-                              }}
-                            >
-                              {c.role === 'driver' ? 'Tài xế' : 'Phụ xe'}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 12px', fontWeight: '700', color: '#2563eb' }}>
-                            {c.tripsRun} chuyến
-                          </td>
-                          <td style={{ padding: '8px 12px', fontWeight: '600' }}>
-                            {c.role === 'driver' ? `${c.estDriveHours} giờ` : '—'}
-                          </td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <span
-                              style={{
-                                padding: '2px 8px',
-                                borderRadius: '10px',
-                                fontSize: '0.68rem',
-                                fontWeight: '700',
-                                background: c.complianceColor === '#16a34a' ? '#dcfce7' : c.complianceColor === '#d97706' ? '#fef3c7' : '#fee2e2',
-                                color: c.complianceColor
-                              }}
-                            >
-                              {c.complianceStatus}
-                            </span>
-                          </td>
-                          <td style={{ padding: '8px 12px' }}>
-                            <span style={{ color: '#059669', fontWeight: '600' }}>{c.attendanceToday}</span>
-                          </td>
-                          <td style={{ padding: '8px 12px' }}>
-                            {c.leavesCount > 0 ? (
-                              <span style={{ color: '#d97706', fontWeight: '600' }}>{c.leavesCount} ngày phép</span>
-                            ) : (
-                              <span style={{ color: '#64748b' }}>Chuyên cần 100%</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination */}
-                {crewWorkloadMetrics.crewList.length > ITEMS_PER_PAGE && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '0.75rem' }}>
-                    <button
-                      disabled={pageTimesheet === 1}
-                      onClick={() => setPageTimesheet((p) => Math.max(1, p - 1))}
-                      style={{ padding: '4px 10px', fontSize: '0.72rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                    >
-                      Trang trước
-                    </button>
-                    <span style={{ fontSize: '0.72rem', alignSelf: 'center' }}>
-                      Trang {pageTimesheet} / {Math.ceil(crewWorkloadMetrics.crewList.length / ITEMS_PER_PAGE)}
-                    </span>
-                    <button
-                      disabled={pageTimesheet >= Math.ceil(crewWorkloadMetrics.crewList.length / ITEMS_PER_PAGE)}
-                      onClick={() => setPageTimesheet((p) => p + 1)}
-                      style={{ padding: '4px 10px', fontSize: '0.72rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                    >
-                      Trang sau
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* ======================================================== */}
-            {/* TAB 5: BẢNG KÊ CHI TIẾT TỪNG CHUYẾN XE (LEDGER) */}
-            {/* ======================================================== */}
-            {reportTab === 'ledger' && (
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-                      Bảng Kê Chi Tiết Từng Chuyến Xe (Dữ Liệu Thực CSDL)
-                    </h3>
-                    <p style={{ fontSize: '0.73rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                      Tổng hợp dữ liệu đối soát từng chuyến: Biển số xe, Kíp lái phụ trách, Tỷ lệ vé bán và Doanh thu thực nhận.
-                    </p>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#059669' }}>
-                    Tổng doanh thu: {occupancyMetrics.totalRevenue.toLocaleString('vi-VN')} VNĐ
-                  </div>
-                </div>
-
-                <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-                        <th style={{ padding: '8px 12px' }}>MÃ CHUYẾN</th>
-                        <th style={{ padding: '8px 12px' }}>TUYẾN KHAI THÁC</th>
-                        <th style={{ padding: '8px 12px' }}>GIỜ XUẤT PHÁT</th>
-                        <th style={{ padding: '8px 12px' }}>TÀI XẾ</th>
-                        <th style={{ padding: '8px 12px' }}>PHỤ XE</th>
-                        <th style={{ padding: '8px 12px' }}>BIỂN SỐ XE</th>
-                        <th style={{ padding: '8px 12px' }}>VÉ BÁN / GHẾ</th>
-                        <th style={{ padding: '8px 12px' }}>ĐÚNG GIỜ</th>
-                        <th style={{ padding: '8px 12px' }}>DOANH THU</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedLedger.map((trip) => {
-                        const now = new Date();
-                        const depDate = trip.departureTime ? new Date(trip.departureTime) : null;
-                        const isFuture = trip.journeyStatus === 'scheduled' && depDate && depDate > now;
-                        const isCan = trip.journeyStatus === 'cancelled';
-                        const isDel = trip.punctualityStatus === 'delayed' || (trip.delayDepartureMinutes && trip.delayDepartureMinutes > 10);
-                        const seatsSold = trip.bookedSeats?.length || 0;
-                        const totalCap = trip.busId?.totalSeats || 40;
-                        const tripOcc = Math.round((seatsSold / totalCap) * 100);
-                        const tripRev = trip.actualRevenue || ((trip.price || 165000) * seatsSold);
-
-                        return (
-                          <tr key={trip._id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                            <td style={{ padding: '8px 12px', fontWeight: '700', color: '#2563eb' }}>
-                              #{trip._id.slice(-6).toUpperCase()}
-                            </td>
-                            <td style={{ padding: '8px 12px', fontWeight: '600' }}>
-                              {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              {new Date(trip.departureTime).toLocaleString('vi-VN')}
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>{trip.driver?.name || 'Chưa gán'}</td>
-                            <td style={{ padding: '8px 12px' }}>{trip.assistant?.name || 'Chưa gán'}</td>
-                            <td style={{ padding: '8px 12px' }}>{trip.busId?.plateNumber || 'N/A'}</td>
-                            <td style={{ padding: '8px 12px', fontWeight: '600' }}>
-                              {seatsSold}/{totalCap} ({tripOcc}%)
-                            </td>
-                            <td style={{ padding: '8px 12px' }}>
-                              <span
-                                style={{
-                                  padding: '2px 6px',
-                                  borderRadius: '8px',
-                                  fontSize: '0.68rem',
-                                  fontWeight: '700',
-                                  background: isFuture ? '#eff6ff' : isCan ? '#fef3c7' : isDel ? '#fee2e2' : '#ecfdf5',
-                                  color: isFuture ? '#2563eb' : isCan ? '#d97706' : isDel ? '#dc2626' : '#16a34a',
-                                  border: isFuture ? '1px solid #bfdbfe' : 'none'
-                                }}
-                              >
-                                {isFuture ? 'Chờ xuất bến' : isCan ? 'Hủy' : isDel ? 'Trễ giờ' : 'Đúng giờ'}
-                              </span>
-                            </td>
-                            <td style={{ padding: '8px 12px', fontWeight: '700', color: '#059669' }}>
-                              {tripRev.toLocaleString('vi-VN')} đ
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination */}
-                {filteredTrips.length > ITEMS_PER_PAGE && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '0.75rem' }}>
-                    <button
-                      disabled={pageLedger === 1}
-                      onClick={() => setPageLedger((p) => Math.max(1, p - 1))}
-                      style={{ padding: '4px 10px', fontSize: '0.72rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                    >
-                      Trang trước
-                    </button>
-                    <span style={{ fontSize: '0.72rem', alignSelf: 'center' }}>
-                      Trang {pageLedger} / {Math.ceil(filteredTrips.length / ITEMS_PER_PAGE)}
-                    </span>
-                    <button
-                      disabled={pageLedger >= Math.ceil(filteredTrips.length / ITEMS_PER_PAGE)}
-                      onClick={() => setPageLedger((p) => p + 1)}
-                      style={{ padding: '4px 10px', fontSize: '0.72rem', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                    >
-                      Trang sau
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* TAB 4 & 5 (Chấm Công Tổ Lái & Bảng Kê Chuyến) have been removed per management report requirements */}
           </>
         )}
       </div>

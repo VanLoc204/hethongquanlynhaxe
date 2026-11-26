@@ -35,7 +35,153 @@ const GmPromotionsPage = () => {
     endDate: '',
     status: 'active',
   });
+  const [formErrors, setFormErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  // Validate single field
+  const validatePromotionField = (field, value, currentForm) => {
+    switch (field) {
+      case 'code': {
+        const clean = (value || '').trim();
+        if (!clean) return 'Vui lòng nhập mã voucher';
+        if (!/^[A-Za-z0-9_-]{3,20}$/.test(clean)) {
+          return 'Mã từ 3-20 ký tự, viết liền không dấu (A-Z, 0-9, -, _)';
+        }
+        return '';
+      }
+      case 'title': {
+        const clean = (value || '').trim();
+        if (!clean) return 'Vui lòng nhập tên chương trình';
+        if (clean.length < 5) return 'Tên chương trình phải có ít nhất 5 ký tự';
+        return '';
+      }
+      case 'discountValue': {
+        if (value === '' || value === null || value === undefined) return 'Vui lòng nhập mức giảm giá';
+        const num = Number(value);
+        if (isNaN(num) || num <= 0) return 'Mức giảm phải là số dương lớn hơn 0';
+        if (currentForm.discountType === 'percentage') {
+          if (num < 1 || num > 100) return 'Tỷ lệ giảm phải từ 1% đến 100%';
+        } else {
+          if (num < 1000) return 'Mức giảm cố định tối thiểu là 1.000 VNĐ';
+          const minOrder = Number(currentForm.minOrderValue) || 0;
+          if (minOrder > 0 && num > minOrder) {
+            return `Mức giảm (${num.toLocaleString('vi-VN')}đ) không được vượt quá đơn hàng tối thiểu (${minOrder.toLocaleString('vi-VN')}đ)`;
+          }
+        }
+        return '';
+      }
+      case 'minOrderValue': {
+        if (value !== '' && value !== null && value !== undefined) {
+          const num = Number(value);
+          if (isNaN(num) || num < 0) return 'Đơn hàng tối thiểu không được là số âm';
+          if (currentForm.discountType === 'fixed_amount') {
+            const disc = Number(currentForm.discountValue) || 0;
+            if (num > 0 && disc > num) {
+              return `Đơn hàng tối thiểu phải lớn hơn hoặc bằng mức giảm (${disc.toLocaleString('vi-VN')}đ)`;
+            }
+          }
+        }
+        return '';
+      }
+      case 'maxDiscountAmount': {
+        if (currentForm.discountType === 'percentage' && value !== '' && value !== null && value !== undefined) {
+          const num = Number(value);
+          if (isNaN(num) || num < 0) return 'Mức giảm tối đa không được là số âm';
+        }
+        return '';
+      }
+      case 'usageLimit': {
+        if (value === '' || value === null || value === undefined) return 'Vui lòng nhập giới hạn lượt dùng';
+        const num = Number(value);
+        if (isNaN(num) || num < 1 || !Number.isInteger(num)) return 'Lượt dùng phải là số nguyên >= 1';
+        return '';
+      }
+      case 'startDate': {
+        if (!value) return 'Vui lòng chọn ngày bắt đầu';
+        return '';
+      }
+      case 'endDate': {
+        if (!value) return 'Vui lòng chọn ngày kết thúc';
+        if (currentForm.startDate && new Date(value) < new Date(currentForm.startDate)) {
+          return 'Ngày kết thúc phải diễn ra sau hoặc cùng ngày với ngày bắt đầu';
+        }
+        return '';
+      }
+      default:
+        return '';
+    }
+  };
+
+  // Validate entire form
+  const validateAllFields = (data) => {
+    const errors = {};
+    const codeErr = validatePromotionField('code', data.code, data);
+    if (codeErr) errors.code = codeErr;
+
+    const titleErr = validatePromotionField('title', data.title, data);
+    if (titleErr) errors.title = titleErr;
+
+    const discErr = validatePromotionField('discountValue', data.discountValue, data);
+    if (discErr) errors.discountValue = discErr;
+
+    const minErr = validatePromotionField('minOrderValue', data.minOrderValue, data);
+    if (minErr) errors.minOrderValue = minErr;
+
+    const maxErr = validatePromotionField('maxDiscountAmount', data.maxDiscountAmount, data);
+    if (maxErr) errors.maxDiscountAmount = maxErr;
+
+    const limitErr = validatePromotionField('usageLimit', data.usageLimit, data);
+    if (limitErr) errors.usageLimit = limitErr;
+
+    const startErr = validatePromotionField('startDate', data.startDate, data);
+    if (startErr) errors.startDate = startErr;
+
+    const endErr = validatePromotionField('endDate', data.endDate, data);
+    if (endErr) errors.endDate = endErr;
+
+    return errors;
+  };
+
+  const handleFieldChange = (field, val) => {
+    let nextVal = val;
+    if (field === 'code') {
+      nextVal = val.toUpperCase().replace(/\s+/g, '');
+    }
+    const updatedForm = { ...formData, [field]: nextVal };
+    if (field === 'discountType') {
+      if (nextVal === 'fixed_amount') {
+        updatedForm.maxDiscountAmount = '0';
+      }
+    }
+    setFormData(updatedForm);
+
+    // Validate real-time
+    const err = validatePromotionField(field, nextVal, updatedForm);
+    setFormErrors((prev) => {
+      const nextErrors = { ...prev };
+      if (err) {
+        nextErrors[field] = err;
+      } else {
+        delete nextErrors[field];
+      }
+      // Correlated field checks
+      if (field === 'discountType' || field === 'discountValue' || field === 'minOrderValue') {
+        const recheckDisc = validatePromotionField('discountValue', updatedForm.discountValue, updatedForm);
+        if (recheckDisc) nextErrors.discountValue = recheckDisc;
+        else delete nextErrors.discountValue;
+
+        const recheckMin = validatePromotionField('minOrderValue', updatedForm.minOrderValue, updatedForm);
+        if (recheckMin) nextErrors.minOrderValue = recheckMin;
+        else delete nextErrors.minOrderValue;
+      }
+      if (field === 'startDate' || field === 'endDate') {
+        const recheckEnd = validatePromotionField('endDate', updatedForm.endDate, updatedForm);
+        if (recheckEnd) nextErrors.endDate = recheckEnd;
+        else delete nextErrors.endDate;
+      }
+      return nextErrors;
+    });
+  };
 
   // Fetch Promotions from API
   const fetchPromotions = useCallback(async () => {
@@ -83,6 +229,7 @@ const GmPromotionsPage = () => {
   // Open Modal for Creating
   const handleOpenCreateModal = () => {
     setEditingId(null);
+    setFormErrors({});
     const today = new Date().toISOString().split('T')[0];
     const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     setFormData({
@@ -91,7 +238,7 @@ const GmPromotionsPage = () => {
       description: '',
       discountType: 'fixed_amount',
       discountValue: '50000',
-      maxDiscountAmount: '50000',
+      maxDiscountAmount: '0',
       minOrderValue: '200000',
       usageLimit: 100,
       startDate: today,
@@ -104,14 +251,15 @@ const GmPromotionsPage = () => {
   // Open Modal for Editing
   const handleOpenEditModal = (promo) => {
     setEditingId(promo._id);
+    setFormErrors({});
     setFormData({
       code: promo.code || '',
       title: promo.title || '',
       description: promo.description || '',
       discountType: promo.discountType || 'fixed_amount',
       discountValue: promo.discountValue ? String(promo.discountValue) : '',
-      maxDiscountAmount: promo.maxDiscountAmount ? String(promo.maxDiscountAmount) : '',
-      minOrderValue: promo.minOrderValue ? String(promo.minOrderValue) : '',
+      maxDiscountAmount: promo.maxDiscountAmount ? String(promo.maxDiscountAmount) : '0',
+      minOrderValue: promo.minOrderValue ? String(promo.minOrderValue) : '0',
       usageLimit: promo.usageLimit || 100,
       startDate: promo.startDate ? new Date(promo.startDate).toISOString().split('T')[0] : '',
       endDate: promo.endDate ? new Date(promo.endDate).toISOString().split('T')[0] : '',
@@ -162,8 +310,10 @@ const GmPromotionsPage = () => {
   // Submit Form (Create / Update)
   const handleSubmitForm = async (e) => {
     e.preventDefault();
-    if (!formData.code || !formData.title || !formData.discountValue) {
-      showToast('Vui lòng điền đầy đủ các thông tin bắt buộc (*)', false);
+    const errors = validateAllFields(formData);
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      showToast('Vui lòng kiểm tra và sửa các thông tin chưa hợp lệ (*)', false);
       return;
     }
 
@@ -182,9 +332,13 @@ const GmPromotionsPage = () => {
       if (data.success) {
         showToast(data.message || (editingId ? 'Cập nhật mã thành công!' : 'Tạo mã khuyến mãi thành công!'));
         setShowModal(false);
+        setFormErrors({});
         fetchPromotions();
       } else {
         showToast(data.message || 'Lỗi lưu thông tin', false);
+        if (data.message && (data.message.toLowerCase().includes('đã tồn tại') || data.message.toLowerCase().includes('mã voucher'))) {
+          setFormErrors((prev) => ({ ...prev, code: data.message }));
+        }
       }
     } catch (err) {
       showToast('Lỗi kết nối: ' + err.message, false);
@@ -603,7 +757,10 @@ const GmPromotionsPage = () => {
                 </p>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  setFormErrors({});
+                }}
                 style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
               >
                 ✕
@@ -611,11 +768,23 @@ const GmPromotionsPage = () => {
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSubmitForm} style={{ padding: '1.2rem 1.4rem' }}>
+            <form onSubmit={handleSubmitForm} noValidate style={{ padding: '1.2rem 1.4rem' }}>
+              {/* Form Error Banner */}
+              {Object.keys(formErrors).length > 0 && (
+                <div style={{
+                  backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px',
+                  padding: '8px 12px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px',
+                  color: '#b91c1c', fontSize: '0.78rem', fontWeight: '600'
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  <span>Có {Object.keys(formErrors).length} trường thông tin chưa hợp lệ. Vui lòng kiểm tra các ô màu đỏ bên dưới.</span>
+                </div>
+              )}
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 {/* Code */}
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.code ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     MÃ VOUCHER *
                   </label>
                   <input
@@ -623,12 +792,19 @@ const GmPromotionsPage = () => {
                     required
                     placeholder="VD: ANBINH2026"
                     value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                    onChange={(e) => handleFieldChange('code', e.target.value)}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.code ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.code ? '#fff5f5' : '#ffffff',
                       fontSize: '0.85rem', fontWeight: '800', fontFamily: 'monospace', color: '#2563eb', outline: 'none'
                     }}
                   />
+                  {formErrors.code && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.code}
+                    </p>
+                  )}
                 </div>
 
                 {/* Status */}
@@ -638,7 +814,7 @@ const GmPromotionsPage = () => {
                   </label>
                   <select
                     value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    onChange={(e) => handleFieldChange('status', e.target.value)}
                     style={{
                       width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
                       fontSize: '0.82rem', fontWeight: '600', color: '#1e293b'
@@ -652,7 +828,7 @@ const GmPromotionsPage = () => {
 
               {/* Title */}
               <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.title ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                   TÊN CHƯƠNG TRÌNH KHUYẾN MÃI *
                 </label>
                 <input
@@ -660,12 +836,19 @@ const GmPromotionsPage = () => {
                   required
                   placeholder="VD: Chào Xuân 2026 - Giảm 50.000đ trực tiếp"
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  onChange={(e) => handleFieldChange('title', e.target.value)}
                   style={{
-                    width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                    width: '100%', padding: '8px 12px', borderRadius: '8px',
+                    border: formErrors.title ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: formErrors.title ? '#fff5f5' : '#ffffff',
                     fontSize: '0.82rem', color: '#1e293b', outline: 'none'
                   }}
                 />
+                {formErrors.title && (
+                  <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                    {formErrors.title}
+                  </p>
+                )}
               </div>
 
               {/* Description */}
@@ -677,7 +860,7 @@ const GmPromotionsPage = () => {
                   rows="2"
                   placeholder="Mô tả điều kiện và lợi ích của chương trình..."
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => handleFieldChange('description', e.target.value)}
                   style={{
                     width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
                     fontSize: '0.82rem', color: '#1e293b', outline: 'none', resize: 'vertical'
@@ -693,7 +876,7 @@ const GmPromotionsPage = () => {
                   </label>
                   <select
                     value={formData.discountType}
-                    onChange={(e) => setFormData({ ...formData, discountType: e.target.value })}
+                    onChange={(e) => handleFieldChange('discountType', e.target.value)}
                     style={{
                       width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
                       fontSize: '0.82rem', fontWeight: '600', color: '#1e293b'
@@ -705,7 +888,7 @@ const GmPromotionsPage = () => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.discountValue ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     MỨC GIẢM * ({formData.discountType === 'percentage' ? '%' : 'VNĐ'})
                   </label>
                   <input
@@ -714,19 +897,26 @@ const GmPromotionsPage = () => {
                     min="0"
                     placeholder={formData.discountType === 'percentage' ? 'VD: 15' : 'VD: 50000'}
                     value={formData.discountValue}
-                    onChange={(e) => setFormData({ ...formData, discountValue: e.target.value })}
+                    onChange={(e) => handleFieldChange('discountValue', e.target.value)}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.discountValue ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.discountValue ? '#fff5f5' : '#ffffff',
                       fontSize: '0.85rem', fontWeight: '700', color: '#16a34a', outline: 'none'
                     }}
                   />
+                  {formErrors.discountValue && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.discountValue}
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* Conditions: Min Order & Max Discount */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.minOrderValue ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     ĐƠN HÀNG TỐI THIỂU (VNĐ)
                   </label>
                   <input
@@ -734,82 +924,117 @@ const GmPromotionsPage = () => {
                     min="0"
                     placeholder="VD: 200000"
                     value={formData.minOrderValue}
-                    onChange={(e) => setFormData({ ...formData, minOrderValue: e.target.value })}
+                    onChange={(e) => handleFieldChange('minOrderValue', e.target.value)}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.minOrderValue ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.minOrderValue ? '#fff5f5' : '#ffffff',
                       fontSize: '0.82rem', color: '#1e293b', outline: 'none'
                     }}
                   />
+                  {formErrors.minOrderValue && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.minOrderValue}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.maxDiscountAmount ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     GIẢM TỐI ĐA (VNĐ, cho %)
                   </label>
                   <input
                     type="number"
                     min="0"
-                    placeholder="VD: 100000 (0: Không trần)"
-                    value={formData.maxDiscountAmount}
-                    onChange={(e) => setFormData({ ...formData, maxDiscountAmount: e.target.value })}
+                    placeholder={formData.discountType === 'percentage' ? 'VD: 100000 (0: Không trần)' : 'Chỉ áp dụng khi giảm %'}
+                    value={formData.discountType === 'percentage' ? formData.maxDiscountAmount : ''}
+                    onChange={(e) => handleFieldChange('maxDiscountAmount', e.target.value)}
                     disabled={formData.discountType !== 'percentage'}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
-                      fontSize: '0.82rem', color: '#1e293b', outline: 'none',
-                      backgroundColor: formData.discountType !== 'percentage' ? '#f1f5f9' : '#ffffff'
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.maxDiscountAmount ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formData.discountType !== 'percentage' ? '#f1f5f9' : (formErrors.maxDiscountAmount ? '#fff5f5' : '#ffffff'),
+                      fontSize: '0.82rem', color: formData.discountType !== 'percentage' ? '#94a3b8' : '#1e293b',
+                      cursor: formData.discountType !== 'percentage' ? 'not-allowed' : 'text', outline: 'none'
                     }}
                   />
+                  {formErrors.maxDiscountAmount && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.maxDiscountAmount}
+                    </p>
+                  )}
                 </div>
               </div>
 
               {/* Usage Limit & Dates */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.usageLimit ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     GIỚI HẠN LƯỢT DÙNG
                   </label>
                   <input
                     type="number"
                     min="1"
                     value={formData.usageLimit}
-                    onChange={(e) => setFormData({ ...formData, usageLimit: e.target.value })}
+                    onChange={(e) => handleFieldChange('usageLimit', e.target.value)}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.usageLimit ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.usageLimit ? '#fff5f5' : '#ffffff',
                       fontSize: '0.82rem', color: '#1e293b', outline: 'none'
                     }}
                   />
+                  {formErrors.usageLimit && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.usageLimit}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.startDate ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     NGÀY BẮT ĐẦU *
                   </label>
                   <input
                     type="date"
                     required
                     value={formData.startDate}
-                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    onChange={(e) => handleFieldChange('startDate', e.target.value)}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.startDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.startDate ? '#fff5f5' : '#ffffff',
                       fontSize: '0.82rem', color: '#1e293b', outline: 'none'
                     }}
                   />
+                  {formErrors.startDate && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.startDate}
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', color: formErrors.endDate ? '#dc2626' : '#334155', marginBottom: '4px' }}>
                     NGÀY KẾT THÚC *
                   </label>
                   <input
                     type="date"
                     required
                     value={formData.endDate}
-                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    onChange={(e) => handleFieldChange('endDate', e.target.value)}
                     style={{
-                      width: '100%', padding: '8px 12px', borderRadius: '8px', border: '1px solid #cbd5e1',
+                      width: '100%', padding: '8px 12px', borderRadius: '8px',
+                      border: formErrors.endDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: formErrors.endDate ? '#fff5f5' : '#ffffff',
                       fontSize: '0.82rem', color: '#1e293b', outline: 'none'
                     }}
                   />
+                  {formErrors.endDate && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {formErrors.endDate}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -817,7 +1042,10 @@ const GmPromotionsPage = () => {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e2e8f0' }}>
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setFormErrors({});
+                  }}
                   style={{
                     padding: '8px 16px', borderRadius: '8px', border: '1px solid #cbd5e1',
                     backgroundColor: '#ffffff', color: '#475569', fontWeight: '700', fontSize: '0.82rem', cursor: 'pointer'

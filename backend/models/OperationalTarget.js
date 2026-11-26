@@ -15,32 +15,32 @@ const operationalTargetSchema = new mongoose.Schema(
     revenueTarget: {
       type: Number,
       required: true,
-      default: 1000000000 // Default 1 Billion VND
+      default: 200000000 // Chuẩn hóa 200 Triệu VNĐ quy mô doanh số thực tế
     },
     occupancyTarget: {
       type: Number,
       required: true,
-      default: 80 // Default 80% seat occupancy
+      default: 20 // Mặc định 20% tỷ lệ lấp đầy ghế thực tế
     },
     fuelBudget: {
       type: Number,
-      default: 150000000
+      default: 30000000
     },
     maintenanceBudget: {
       type: Number,
-      default: 50000000
+      default: 15000000
     },
     otherBudget: {
       type: Number,
-      default: 30000000
+      default: 5000000
     },
     counterTarget: {
       type: Number,
-      default: 600000000 // 600 Million VND counter sales target
+      default: 140000000 // 140 Triệu VNĐ vé quầy (70%)
     },
     onlineTarget: {
       type: Number,
-      default: 400000000 // 400 Million VND online sales target
+      default: 60000000 // 60 Triệu VNĐ vé online PayOS (30%)
     },
     branchTargets: [
       {

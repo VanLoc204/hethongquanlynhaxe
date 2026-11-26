@@ -82,36 +82,74 @@ exports.getUnmetDemandAnalytics = async (req, res) => {
     const RouteDemandLog = require('../models/RouteDemandLog');
     const { generateUnmetDemandAiAnalysis } = require('../services/geminiService');
 
-    // Aggregation Pipeline gom cụm nhu cầu thực tế theo chặng đường
-    const aggregatePipeline = [
-      {
-        $match: {
-          hasResults: false
+    // Lấy toàn bộ các bản ghi tìm kiếm chưa có kết quả (hasResults = false)
+    // Loại trừ các bản ghi mà hệ thống đã ghi nhận là tuyến đã có (isRouteExistingInSystem = true)
+    const rawLogs = await RouteDemandLog.find({
+      hasResults: false,
+      isRouteExistingInSystem: { $ne: true }
+    }).lean();
+
+    // Gom cụm thông minh theo nhãn Vùng do Gemini AI chuẩn hóa (Zero-Hardcode)
+    const fullRouteMap = new Map();
+    const singleDestMap = new Map();
+
+    for (const log of rawLogs) {
+      // Phân tách nhu cầu 2 chiều và nhu cầu 1 chiều
+      const isSingleDest = log.demandType === 'destination_only' || (!log.fromRaw && log.toRaw);
+
+      if (isSingleDest) {
+        const destKey = log.toNormalized || log.toRaw || 'Điểm đến chưa rõ';
+        if (!singleDestMap.has(destKey)) {
+          singleDestMap.set(destKey, {
+            destination: destKey,
+            province: log.toProvince || '',
+            searchCount: 0,
+            totalPassengers: 0,
+            lastSearched: log.createdAt || new Date()
+          });
         }
-      },
-      {
-        $group: {
-          _id: {
-            from: '$fromNormalized',
-            to: '$toNormalized'
-          },
-          searchCount: { $sum: 1 },
-          totalPassengers: { $sum: '$passengers' },
-          lastSearched: { $max: '$createdAt' },
-          isRouteExisting: { $max: '$isRouteExistingInSystem' }
+        const entry = singleDestMap.get(destKey);
+        entry.searchCount += 1;
+        entry.totalPassengers += (log.passengers || 1);
+        if (log.createdAt && new Date(log.createdAt) > new Date(entry.lastSearched)) {
+          entry.lastSearched = log.createdAt;
         }
-      },
-      {
-        $sort: { searchCount: -1 }
-      },
-      {
-        $limit: 15
+      } else {
+        // Cặp chặng 2 chiều: Dùng regionCluster do Gemini chuẩn hóa
+        const clusterName = log.regionCluster || `${log.fromNormalized || log.fromRaw} ➔ ${log.toNormalized || log.toRaw}`;
+        const fromNorm = log.fromNormalized || log.fromRaw || 'Toàn quốc';
+        const toNorm = log.toNormalized || log.toRaw || 'Toàn quốc';
+
+        if (!fullRouteMap.has(clusterName)) {
+          fullRouteMap.set(clusterName, {
+            from: fromNorm,
+            to: toNorm,
+            routeName: clusterName,
+            searchCount: 0,
+            totalPassengers: 0,
+            lastSearched: log.createdAt || new Date(),
+            isExistingRoute: false
+          });
+        }
+
+        const entry = fullRouteMap.get(clusterName);
+        entry.searchCount += 1;
+        entry.totalPassengers += (log.passengers || 1);
+        if (log.createdAt && new Date(log.createdAt) > new Date(entry.lastSearched)) {
+          entry.lastSearched = log.createdAt;
+        }
       }
-    ];
+    }
 
-    const results = await RouteDemandLog.aggregate(aggregatePipeline);
+    const baseRoutes = Array.from(fullRouteMap.values())
+      .sort((a, b) => b.searchCount - a.searchCount)
+      .slice(0, 15);
 
-    if (results.length === 0) {
+    const singleDestinations = Array.from(singleDestMap.values())
+      .sort((a, b) => b.searchCount - a.searchCount)
+      .slice(0, 10);
+
+    if (baseRoutes.length === 0 && singleDestinations.length === 0) {
       return res.status(200).json({
         success: true,
         kpis: {
@@ -120,20 +158,13 @@ exports.getUnmetDemandAnalytics = async (req, res) => {
           topRouteSearches: 0,
           urgentRoutesCount: 0,
           potentialRoutesCount: 0,
-          totalTrackedRoutes: 0
+          totalTrackedRoutes: 0,
+          singleDestinations: []
         },
-        data: []
+        data: [],
+        singleDestinations: []
       });
     }
-
-    const baseRoutes = results.map(item => ({
-      from: item._id.from || 'Không xác định',
-      to: item._id.to || 'Không xác định',
-      searchCount: item.searchCount,
-      totalPassengers: item.totalPassengers || item.searchCount,
-      isExistingRoute: Boolean(item.isRouteExisting),
-      lastSearched: item.lastSearched
-    }));
 
     // Gọi Gemini AI phân tích thông minh các tuyến và tự động đưa ra đề xuất hành động thực tiễn
     const aiEvaluations = await generateUnmetDemandAiAnalysis(baseRoutes);
@@ -154,7 +185,7 @@ exports.getUnmetDemandAnalytics = async (req, res) => {
       return {
         from: item.from,
         to: item.to,
-        routeName: `${item.from} ➔ ${item.to}`,
+        routeName: item.routeName,
         searchCount: item.searchCount,
         totalPassengers: item.totalPassengers,
         urgencyLevel,
@@ -181,9 +212,11 @@ exports.getUnmetDemandAnalytics = async (req, res) => {
         topRouteSearches,
         urgentRoutesCount,
         potentialRoutesCount,
-        totalTrackedRoutes: analyzedRoutes.length
+        totalTrackedRoutes: analyzedRoutes.length,
+        singleDestinations
       },
-      data: analyzedRoutes
+      data: analyzedRoutes,
+      singleDestinations
     });
   } catch (error) {
     console.error('Lỗi lấy phân tích nhu cầu chưa đáp ứng:', error);
@@ -200,8 +233,8 @@ exports.getUnmetDemandAnalytics = async (req, res) => {
 // @access  Private (General Manager / Admin)
 exports.createRule = async (req, res) => {
   try {
-    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, isActive } = req.body;
-    const rule = await pricingService.createRule({ name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, isActive });
+    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, startDate, endDate, isActive } = req.body;
+    const rule = await pricingService.createRule({ name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, startDate, endDate, isActive });
 
     res.status(201).json({
       success: true,
@@ -224,9 +257,9 @@ exports.createRule = async (req, res) => {
 exports.updateRule = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, isActive } = req.body;
+    const { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, startDate, endDate, isActive } = req.body;
 
-    const rule = await pricingService.updateRule(id, { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, isActive });
+    const rule = await pricingService.updateRule(id, { name, routeId, routeName, busType, dayOfWeek, adjustmentType, adjustmentValue, startDate, endDate, isActive });
 
     res.status(200).json({
       success: true,
@@ -259,6 +292,27 @@ exports.deleteRule = async (req, res) => {
     res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || 'Lỗi hệ thống khi xóa quy định giá.'
+    });
+  }
+};
+
+// @desc    Get AI dynamic pricing suggestions (ONLY for active routes and trips operating)
+// @route   GET /api/pricing/dynamic-suggestions
+// @access  Private (General Manager / Admin)
+exports.getDynamicSuggestions = async (req, res) => {
+  try {
+    const suggestions = await pricingService.getDynamicPricingSuggestions();
+    res.status(200).json({
+      success: true,
+      count: suggestions.length,
+      suggestions
+    });
+  } catch (error) {
+    console.error('Lỗi lấy gợi ý điều chỉnh giá vé AI:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi hệ thống khi phân tích gợi ý giá vé AI.',
+      error: error.message
     });
   }
 };

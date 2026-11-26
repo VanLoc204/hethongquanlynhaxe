@@ -5,26 +5,51 @@ const routeDemandLogSchema = new mongoose.Schema(
     // Chuỗi gốc người dùng nhập vào ô tìm kiếm
     fromRaw: {
       type: String,
-      required: [true, 'Điểm đi là bắt buộc.'],
+      default: '',
       trim: true
     },
     toRaw: {
       type: String,
-      required: [true, 'Điểm đến là bắt buộc.'],
+      default: '',
       trim: true
     },
 
-    // Tỉnh/Thành phố sau khi chuẩn hóa bởi AI hoặc bộ từ điển
+    // Tỉnh/Thành phố sau khi chuẩn hóa bởi Gemini AI
     fromNormalized: {
       type: String,
-      required: true,
+      default: 'Toàn quốc',
       trim: true,
       index: true
     },
     toNormalized: {
       type: String,
-      required: true,
+      default: 'Toàn quốc',
       trim: true,
+      index: true
+    },
+
+    // Tỉnh/Thành phân giải bởi Gemini AI
+    fromProvince: {
+      type: String,
+      default: ''
+    },
+    toProvince: {
+      type: String,
+      default: ''
+    },
+
+    // Cụm chặng do Gemini AI chuẩn hóa (VD: "An Giang ➔ Lâm Đồng (Đà Lạt)")
+    regionCluster: {
+      type: String,
+      default: '',
+      index: true
+    },
+
+    // Phân loại hình thức tìm kiếm: Cặp chặng 2 chiều, chỉ tìm Điểm đến, hoặc chỉ tìm Điểm đi
+    demandType: {
+      type: String,
+      enum: ['full_route', 'destination_only', 'origin_only'],
+      default: 'full_route',
       index: true
     },
 

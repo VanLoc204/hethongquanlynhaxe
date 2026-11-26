@@ -19,11 +19,15 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
   const [attendanceStatus, setAttendanceStatus] = useState('not_checked');
 
   useEffect(() => {
-    fetchSchedule();
+    fetchSchedule(false);
+    const interval = setInterval(() => {
+      fetchSchedule(true);
+    }, 4000);
+    return () => clearInterval(interval);
   }, [token]);
 
-  const fetchSchedule = async () => {
-    setLoading(true);
+  const fetchSchedule = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch('http://localhost:8000/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -33,7 +37,7 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
         setTrips(data.trips);
         calculateStats(data.trips);
       } else {
-        setError(data.message || 'Không thể tải lịch trình phân công.');
+        if (!silent) setError(data.message || 'Không thể tải lịch trình phân công.');
       }
 
       // Tải dữ liệu chấm công thực tế từ Database
@@ -50,9 +54,9 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
         console.warn('Lỗi lấy dữ liệu chấm công phụ xe:', attErr);
       }
     } catch (err) {
-      setError('Lỗi kết nối máy chủ khi tải lịch trình.');
+      if (!silent) setError('Lỗi kết nối máy chủ khi tải lịch trình.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -138,6 +142,24 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
           flex-wrap: wrap;
         }
 
+        .attendant-date-badge {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          padding: 0.45rem 0.85rem;
+          border-radius: 8px;
+          font-size: 0.75rem;
+          color: #475569;
+          font-weight: 600;
+          text-transform: capitalize;
+          white-space: nowrap;
+        }
+
+        .attendant-btn-group {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
         .attendant-stat-grid {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -160,6 +182,40 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
           box-shadow: 0 2px 8px rgba(0,0,0,0.03);
         }
 
+        .attendant-stat-label {
+          font-size: 0.72rem;
+          font-weight: 800;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .attendant-stat-val-wrap {
+          margin-top: 0.5rem;
+          display: flex;
+          align-items: baseline;
+          gap: 6px;
+        }
+
+        .attendant-stat-num {
+          font-size: 1.75rem;
+          font-weight: 900;
+          color: #0f172a;
+          line-height: 1.1;
+        }
+
+        .attendant-stat-unit {
+          font-size: 0.8rem;
+          color: #64748b;
+          font-weight: 600;
+        }
+
+        .attendant-stat-sub {
+          font-size: 0.72rem;
+          font-weight: 600;
+          margin-top: 6px;
+        }
+
         .attendant-content-grid {
           display: grid;
           grid-template-columns: 1.4fr 1fr;
@@ -167,33 +223,235 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
           align-items: start;
         }
 
+        .attendant-card-header {
+          display: flex;
+          justifyContent: space-between;
+          align-items: center;
+          border-bottom: 1px solid #f1f5f9;
+          padding-bottom: 0.75rem;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .attendant-trip-card {
+          background: #f8fafc;
+          padding: 1.15rem;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          display: flex;
+          justifyContent: space-between;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .attendant-trip-main {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .attendant-trip-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 0.45rem;
+          flex-wrap: wrap;
+        }
+
+        .attendant-trip-badge {
+          background-color: #eff6ff;
+          color: #1d4ed8;
+          border: 1px solid #bfdbfe;
+          padding: 2px 8px;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 800;
+        }
+
+        .attendant-trip-title {
+          margin: 0 0 0.4rem 0;
+          font-size: 1.05rem;
+          font-weight: 800;
+          color: #0f172a;
+          word-break: break-word;
+        }
+
+        .attendant-trip-meta {
+          font-size: 0.78rem;
+          color: #64748b;
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .attendant-trip-action {
+          flex-shrink: 0;
+        }
+
+        .attendant-btn-checkin {
+          background-color: #2563eb;
+          color: #ffffff;
+          font-weight: 700;
+          font-size: 0.82rem;
+          padding: 8px 18px;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          box-shadow: 0 2px 6px rgba(37,99,235,0.2);
+          white-space: nowrap;
+          transition: all 0.15s ease;
+        }
+
+        .attendant-btn-checkin:hover {
+          background-color: #1d4ed8;
+        }
+
+        .attendant-future-item {
+          background: #f8fafc;
+          padding: 0.85rem 1rem;
+          border-radius: 10px;
+          border: 1px solid #e2e8f0;
+          display: flex;
+          justifyContent: space-between;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .attendant-future-route {
+          font-weight: 800;
+          font-size: 0.88rem;
+          color: #0f172a;
+        }
+
+        .attendant-future-sub {
+          font-size: 0.75rem;
+          color: #64748b;
+          margin-top: 3px;
+        }
+
+        .attendant-future-plate {
+          font-size: 0.75rem;
+          font-weight: 800;
+          color: #1e40af;
+          background: #eff6ff;
+          padding: 3px 9px;
+          border-radius: 6px;
+          border: 1px solid #dbeafe;
+          white-space: nowrap;
+        }
+
         /* Tablet (<= 992px) */
         @media (max-width: 992px) {
           .attendant-stat-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
           .attendant-content-grid {
             grid-template-columns: 1fr;
+            gap: 1rem;
           }
         }
 
         /* Mobile (<= 768px) */
         @media (max-width: 768px) {
           .attendant-panel-box {
-            padding: 1rem 0.85rem;
-            border-radius: 12px;
-            gap: 1rem;
+            padding: 0.85rem 1rem !important;
+            border-radius: 12px !important;
+            gap: 0.85rem !important;
           }
           .attendant-header-wrap {
-            flex-direction: column;
-            align-items: flex-start;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.65rem !important;
           }
           .attendant-header-buttons {
-            width: 100%;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            width: 100% !important;
           }
-          .attendant-header-buttons button {
-            flex: 1;
-            justify-content: center;
+          .attendant-date-badge {
+            width: 100% !important;
+            text-align: center !important;
+            box-sizing: border-box !important;
+            font-size: 0.72rem !important;
+            padding: 0.4rem 0.6rem !important;
+          }
+          .attendant-btn-group {
+            display: grid !important;
+            grid-template-columns: 1fr 1.6fr !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+          .attendant-btn-group button {
+            width: 100% !important;
+            justify-content: center !important;
+            text-align: center !important;
+            padding: 0.55rem 0.75rem !important;
+            font-size: 0.75rem !important;
+          }
+          .attendant-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+          .attendant-stat-card {
+            padding: 0.65rem 0.75rem !important;
+            border-radius: 10px !important;
+          }
+          .attendant-stat-card:nth-child(3) {
+            grid-column: span 2 !important;
+          }
+          .attendant-stat-label {
+            font-size: 0.65rem !important;
+          }
+          .attendant-stat-val-wrap {
+            margin-top: 0.25rem !important;
+          }
+          .attendant-stat-num {
+            font-size: 1.3rem !important;
+          }
+          .attendant-stat-unit {
+            font-size: 0.72rem !important;
+          }
+          .attendant-stat-sub {
+            font-size: 0.65rem !important;
+            margin-top: 3px !important;
+          }
+          .attendant-trip-card {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            padding: 0.85rem !important;
+            gap: 0.75rem !important;
+          }
+          .attendant-trip-title {
+            font-size: 0.95rem !important;
+            margin-bottom: 0.25rem !important;
+          }
+          .attendant-trip-meta {
+            font-size: 0.72rem !important;
+            gap: 6px !important;
+          }
+          .attendant-trip-action {
+            width: 100% !important;
+          }
+          .attendant-btn-checkin {
+            width: 100% !important;
+            padding: 0.65rem 1rem !important;
+            font-size: 0.82rem !important;
+            text-align: center !important;
+            display: block !important;
+          }
+          .attendant-future-item {
+            padding: 0.65rem 0.75rem !important;
+            gap: 6px !important;
+          }
+          .attendant-future-route {
+            font-size: 0.82rem !important;
+          }
+          .attendant-future-sub {
+            font-size: 0.7rem !important;
+          }
+          .attendant-future-plate {
+            font-size: 0.7rem !important;
+            padding: 2px 7px !important;
           }
         }
       `}</style>
@@ -229,57 +487,50 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
 
           {/* Quick Header Actions: Ngày tháng, Nút Làm mới, Nút Soát vé nhanh (Không icon) */}
           <div className="attendant-header-buttons">
-            <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              padding: '0.45rem 0.85rem',
-              borderRadius: '8px',
-              fontSize: '0.75rem',
-              color: '#475569',
-              fontWeight: '600',
-              textTransform: 'capitalize'
-            }}>
+            <div className="attendant-date-badge">
               {currentDateLabel}
             </div>
 
-            <button
-              onClick={fetchSchedule}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#1e293b',
-                fontWeight: '700',
-                padding: '0.45rem 0.95rem',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                cursor: 'pointer',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                whiteSpace: 'nowrap'
-              }}
-              title="Tải lại dữ liệu lịch trình"
-            >
-              Làm Mới
-            </button>
-
-            {setActiveTab && (
+            <div className="attendant-btn-group">
               <button
-                onClick={() => setActiveTab('attendant-checkin')}
+                onClick={fetchSchedule}
                 style={{
-                  backgroundColor: '#2563eb',
-                  border: 'none',
-                  color: '#ffffff',
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  color: '#1e293b',
                   fontWeight: '700',
-                  padding: '0.45rem 1rem',
+                  padding: '0.45rem 0.95rem',
                   borderRadius: '8px',
                   fontSize: '0.75rem',
                   cursor: 'pointer',
-                  boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
                   whiteSpace: 'nowrap'
                 }}
+                title="Tải lại dữ liệu lịch trình"
               >
-                Quét QR Soát Vé
+                Làm Mới
               </button>
-            )}
+
+              {setActiveTab && (
+                <button
+                  onClick={() => setActiveTab('attendant-checkin')}
+                  style={{
+                    backgroundColor: '#2563eb',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontWeight: '700',
+                    padding: '0.45rem 1rem',
+                    borderRadius: '8px',
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Quét QR Soát Vé
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -302,36 +553,36 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
           
           {/* Stat 1: Chuyến đi hôm nay */}
           <div className="attendant-stat-card" style={{ borderLeft: '4px solid #2563eb' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <span className="attendant-stat-label">
               Chuyến Đi Hôm Nay
             </span>
-            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-              <span style={{ fontSize: '1.75rem', fontWeight: '900', color: '#0f172a' }}>
+            <div className="attendant-stat-val-wrap">
+              <span className="attendant-stat-num">
                 {todayStats.totalTrips}
               </span>
-              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>chuyến</span>
+              <span className="attendant-stat-unit">chuyến</span>
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: '600', marginTop: '6px' }}>
+            <div className="attendant-stat-sub" style={{ color: '#2563eb' }}>
               Lịch trình được phân công trong ngày
             </div>
           </div>
 
           {/* Stat 2: Hành khách lên xe */}
           <div className="attendant-stat-card" style={{ borderLeft: '4px solid #10b981' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <span className="attendant-stat-label">
               Hành Khách Lên Xe
             </span>
-            <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-              <span style={{ fontSize: '1.75rem', fontWeight: '900', color: '#10b981' }}>
+            <div className="attendant-stat-val-wrap">
+              <span className="attendant-stat-num" style={{ color: '#10b981' }}>
                 {todayStats.totalBoarded}
               </span>
               <span style={{ fontSize: '1.15rem', color: '#94a3b8', fontWeight: '600' }}>/</span>
               <span style={{ fontSize: '1.15rem', color: '#475569', fontWeight: '800' }}>
                 {todayStats.totalBooked}
               </span>
-              <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600', marginLeft: '4px' }}>hành khách</span>
+              <span className="attendant-stat-unit" style={{ marginLeft: '4px' }}>khách</span>
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '600', marginTop: '6px' }}>
+            <div className="attendant-stat-sub" style={{ color: '#059669' }}>
               {todayStats.totalBooked > 0 
                 ? `Đã soát vé ${Math.round((todayStats.totalBoarded / todayStats.totalBooked) * 100)}% hành khách`
                 : 'Sẵn sàng soát vé khi khách lên'}
@@ -378,15 +629,15 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
                 style={{ borderLeft: border, cursor: 'pointer' }}
                 title="Bấm để đến trang Chấm công phụ xe"
               >
-                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <span className="attendant-stat-label">
                   Trạng Thái Ca Trực
                 </span>
-                <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                  <span style={{ fontSize: '1.2rem', fontWeight: '900', color: color }}>
+                <div className="attendant-stat-val-wrap">
+                  <span className="attendant-stat-num" style={{ fontSize: '1.2rem', color: color }}>
                     {title}
                   </span>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: color, fontWeight: '600', marginTop: '6px' }}>
+                <div className="attendant-stat-sub" style={{ color: color }}>
                   {subtitle}
                 </div>
               </div>
@@ -428,28 +679,10 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 {todayTrips.map(trip => (
-                  <div key={trip._id} style={{
-                    background: '#f8fafc',
-                    padding: '1.15rem',
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '12px'
-                  }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.45rem' }}>
-                        <span style={{
-                          backgroundColor: '#eff6ff',
-                          color: '#1d4ed8',
-                          border: '1px solid #bfdbfe',
-                          padding: '2px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.75rem',
-                          fontWeight: '800'
-                        }}>
+                  <div key={trip._id} className="attendant-trip-card">
+                    <div className="attendant-trip-main">
+                      <div className="attendant-trip-header">
+                        <span className="attendant-trip-badge">
                           Giờ xuất bến: {formatTime(trip.departureTime)}
                         </span>
                         {(() => {
@@ -483,31 +716,21 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
                         })()}
                       </div>
                       
-                      <h3 style={{ margin: '0 0 0.4rem 0', fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>
+                      <h3 className="attendant-trip-title">
                         {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
                       </h3>
 
-                      <div style={{ fontSize: '0.78rem', color: '#64748b', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <div className="attendant-trip-meta">
                         <span>Biển số xe: <strong style={{ color: '#0f172a' }}>{trip.busId?.plateNumber}</strong></span>
                         <span>•</span>
                         <span>Dòng xe: <strong>{trip.busId?.type}</strong></span>
                       </div>
                     </div>
 
-                    <div>
+                    <div className="attendant-trip-action">
                       <button
                         onClick={() => setActiveTab && setActiveTab('attendant-checkin')}
-                        style={{
-                          backgroundColor: '#2563eb',
-                          color: '#ffffff',
-                          fontWeight: '700',
-                          fontSize: '0.82rem',
-                          padding: '8px 18px',
-                          border: 'none',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          boxShadow: '0 2px 6px rgba(37,99,235,0.2)'
-                        }}
+                        className="attendant-btn-checkin"
                       >
                         Soát Vé &amp; Check-in
                       </button>
@@ -532,34 +755,16 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
                 {futureTrips.slice(0, 4).map(trip => (
-                  <div key={trip._id} style={{
-                    background: '#f8fafc',
-                    padding: '0.85rem 1rem',
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '8px'
-                  }}>
-                    <div>
-                      <div style={{ fontWeight: '800', fontSize: '0.88rem', color: '#0f172a' }}>
+                  <div key={trip._id} className="attendant-future-item">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="attendant-future-route">
                         {trip.routeId?.startPoint} ➔ {trip.routeId?.endPoint}
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '3px' }}>
+                      <div className="attendant-future-sub">
                         Khởi hành: <strong>{formatTime(trip.departureTime)}</strong> - {formatDate(trip.departureTime)} | Dòng xe: {trip.busId?.type}
                       </div>
                     </div>
-                    <div style={{
-                      fontSize: '0.75rem',
-                      fontWeight: '800',
-                      color: '#1e40af',
-                      background: '#eff6ff',
-                      padding: '3px 9px',
-                      borderRadius: '6px',
-                      border: '1px solid #dbeafe'
-                    }}>
+                    <div className="attendant-future-plate">
                       Xe: {trip.busId?.plateNumber}
                     </div>
                   </div>

@@ -119,4 +119,4 @@ const tripIncidentSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model('TripIncident', tripIncidentSchema);
+module.exports = mongoose.model('TripIncident', tripIncidentSchema, 'incidents');
