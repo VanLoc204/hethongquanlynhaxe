@@ -1,3 +1,4 @@
+﻿import API_BASE_URL from '../config/api';
 /**
  * Smart Geocoding & Fuzzy Location Search Engine (Backend Gateway Architecture)
  * 
@@ -8,7 +9,7 @@
  * - Không lưu dữ liệu tĩnh ở Frontend; toàn bộ logic và tri thức định vị do Backend xử lý
  */
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 /**
  * Tiền xử lý làm sạch văn bản thuần túy (Loại bỏ ký tự lạ và lỗi gõ lặp từ vô thức như "go go vap" -> "go vap")

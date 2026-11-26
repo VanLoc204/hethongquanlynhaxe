@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import AutoFaceEnrollModal from '../../components/AutoFaceEnrollModal';
 import {
@@ -16,7 +17,7 @@ import {
 
 import AttendanceGpsCard from '../../components/AttendanceGpsCard';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const DriverAttendancePage = ({ setActiveTab }) => {
   const { token, user } = useContext(AuthContext);

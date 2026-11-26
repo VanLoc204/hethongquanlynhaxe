@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
@@ -376,7 +377,7 @@ const AIAssistantPage = () => {
     if (selectedSeats.length > 0 && earliestExpiry && nowTime >= earliestExpiry) {
       alert('Đã hết thời gian 5 phút giữ chỗ! Ghế đã được tự động mở khóa.');
       if (bookingModalTrip?._id) {
-        axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
+        axios.post(`${API_BASE_URL}/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
           clientId: getClientId(),
           seats: selectedSeats
         }).catch(() => { });
@@ -394,7 +395,7 @@ const AIAssistantPage = () => {
           seats: selectedSeats
         });
         navigator.sendBeacon?.(
-          `http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`,
+          `${API_BASE_URL}/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`,
           new Blob([payload], { type: 'application/json' })
         );
       }
@@ -407,7 +408,7 @@ const AIAssistantPage = () => {
   useEffect(() => {
     const fetchPromos = async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/promotions');
+        const res = await axios.get(API_BASE_URL + '/api/promotions');
         if (res.data && res.data.data) {
           setAvailableVouchers(res.data.data.filter(p => p.status === 'active'));
         }
@@ -434,7 +435,7 @@ const AIAssistantPage = () => {
     if (!bookingModalTrip?._id) return;
 
     const tripId = bookingModalTrip._id;
-    const es = new EventSource(`http://localhost:8000/api/trips/${tripId}/seat-locks/stream`);
+    const es = new EventSource(`${API_BASE_URL}/api/trips/${tripId}/seat-locks/stream`);
 
     // 1. Nhận danh sách ghế đang bị khóa khi vừa kết nối
     es.addEventListener('INITIAL_LOCKS', (e) => {
@@ -635,7 +636,7 @@ const AIAssistantPage = () => {
         }));
 
       // 3. Gọi Backend Gemini AI Chat API
-      const res = await axios.post('http://localhost:8000/api/chat', {
+      const res = await axios.post(API_BASE_URL + '/api/chat', {
         message: textToSend.trim(),
         sessionId,
         history: historyPayload
@@ -696,7 +697,7 @@ const AIAssistantPage = () => {
 
     // 1. Luôn tải thông tin chuyến xe mới nhất từ server (đảm bảo bookedSeats chuẩn xác 100% thời gian thực)
     try {
-      const res = await axios.get(`http://localhost:8000/api/trips/${tripId}`);
+      const res = await axios.get(`${API_BASE_URL}/api/trips/${tripId}`);
       if (res.data?.trip) {
         tripData = res.data.trip;
       }
@@ -706,7 +707,7 @@ const AIAssistantPage = () => {
 
     // 2. Tải ngay các ghế đang bị khóa thời gian thực từ server
     try {
-      const lockRes = await axios.get(`http://localhost:8000/api/trips/${tripId}/locked-seats`);
+      const lockRes = await axios.get(`${API_BASE_URL}/api/trips/${tripId}/locked-seats`);
       if (lockRes.data?.success && Array.isArray(lockRes.data.lockedSeats)) {
         const map = {};
         lockRes.data.lockedSeats.forEach(l => {
@@ -731,7 +732,7 @@ const AIAssistantPage = () => {
   const handleCloseBookingModal = async () => {
     if (bookingModalTrip && selectedSeats.length > 0) {
       try {
-        await axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
+        await axios.post(`${API_BASE_URL}/api/trips/${bookingModalTrip._id}/unlock-all-my-seats`, {
           clientId: getClientId(),
           seats: selectedSeats
         });
@@ -762,7 +763,7 @@ const AIAssistantPage = () => {
     if (isSelected) {
       // Mở khóa ghế
       try {
-        await axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/unlock-seat`, {
+        await axios.post(`${API_BASE_URL}/api/trips/${bookingModalTrip._id}/unlock-seat`, {
           seat: seatCode,
           clientId: myClientId
         });
@@ -776,7 +777,7 @@ const AIAssistantPage = () => {
     } else {
       // Khóa giữ chỗ ghế 5 phút
       try {
-        const res = await axios.post(`http://localhost:8000/api/trips/${bookingModalTrip._id}/lock-seat`, {
+        const res = await axios.post(`${API_BASE_URL}/api/trips/${bookingModalTrip._id}/lock-seat`, {
           seat: seatCode,
           clientId: myClientId
         });
@@ -886,7 +887,7 @@ const AIAssistantPage = () => {
     }
 
     try {
-      const res = await axios.post('http://localhost:8000/api/trips/book', {
+      const res = await axios.post(API_BASE_URL + '/api/trips/book', {
         tripId: bookingModalTrip._id,
         userId: isGuest ? 'user_guest' : (user?.id || user?._id || 'user_guest'),
         seats: selectedSeats,
@@ -919,7 +920,10 @@ const AIAssistantPage = () => {
 
     const interval = setInterval(async () => {
       try {
-        const res = await axios.get(`http://localhost:8000/api/bookings/order/${createdBooking.orderCode}`);
+        const backendOrigin = (typeof window !== 'undefined' && window.location.hostname !== 'localhost')
+          ? `${window.location.protocol}//${window.location.hostname}:8000`
+          : API_BASE_URL;
+        const res = await axios.get(`${backendOrigin}/api/bookings/order/${createdBooking.orderCode}`);
         if (res.data?.success && res.data.booking?.status === 'paid') {
           clearInterval(interval);
           const routeText = bookingModalTrip?.routeId?.name || (bookingModalTrip?.routeId?.startPoint ? `${bookingModalTrip.routeId.startPoint} ➔ ${bookingModalTrip.routeId.endPoint}` : 'TP.HCM ➔ Đà Lạt');
@@ -927,7 +931,7 @@ const AIAssistantPage = () => {
           const confirmBotMsg = {
             id: `bot_booked_${Date.now()}`,
             sender: 'bot',
-            text: `🎉 Chúc mừng ${customerName}! Đã nhận thanh toán thành công qua PayOS cho mã vé #${createdBooking.orderCode}. Tuyến: ${routeText} ${departureTimeText ? `| Khởi hành: ${departureTimeText}` : ''} | Ghế: ${selectedSeats.join(', ')} | Số tiền: ${createdBooking.totalAmount?.toLocaleString('vi-VN')} đ. Quý khách có thể xem vé tại mục Quản lý vé!`,
+            text: `🎉 Chúc mừng ${customerName}! Đã nhận thanh toán thành công qua VietQR cho mã vé #${createdBooking.orderCode}. Tuyến: ${routeText} ${departureTimeText ? `| Khởi hành: ${departureTimeText}` : ''} | Ghế: ${selectedSeats.join(', ')} | Số tiền: ${createdBooking.totalAmount?.toLocaleString('vi-VN')} đ. Quý khách có thể xem vé tại mục Quản lý vé!`,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
           };
 
@@ -951,7 +955,7 @@ const AIAssistantPage = () => {
   const handleSimulatePayment = async () => {
     if (!createdBooking) return;
     try {
-      await axios.post('http://localhost:8000/api/trips/payment/webhook', {
+      await axios.post(API_BASE_URL + '/api/trips/payment/webhook', {
         code: '00',
         desc: 'success',
         data: {
@@ -1743,22 +1747,20 @@ const AIAssistantPage = () => {
                       Số tiền cần thanh toán: <strong style={{ color: '#dc2626', fontSize: '0.95rem' }}>{createdBooking.totalAmount.toLocaleString('vi-VN')} đ</strong>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleSimulatePayment}
-                      style={{
-                        padding: '8px 16px',
-                        background: '#16a34a',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '0.78rem',
-                        fontWeight: '700',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Giả Lập Thanh Toán Thành Công (PayOS Webhook)
-                    </button>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 12px',
+                      backgroundColor: '#eff6ff',
+                      borderRadius: '8px',
+                      border: '1px solid #bfdbfe',
+                      fontSize: '0.75rem',
+                      color: '#1e40af'
+                    }}>
+                      <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '14px', height: '14px', flexShrink: 0 }}></div>
+                      <span>Đang chờ chuyển khoản... Hệ thống sẽ tự động xác nhận ngay.</span>
+                    </div>
                   </>
                 ) : (
                   <div style={{ padding: '10px', color: '#16a34a', fontWeight: '700', fontSize: '0.86rem' }}>

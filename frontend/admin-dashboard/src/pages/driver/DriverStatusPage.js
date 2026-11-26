@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+﻿import React, { useState, useEffect, useContext, useRef } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
 
@@ -58,7 +59,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/my-schedule', {
+      const res = await fetch(API_BASE_URL + '/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -126,7 +127,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
       if (!token) return;
       setLoadingAttendance(true);
       try {
-        const res = await fetch('http://localhost:8000/api/attendance/mine', {
+        const res = await fetch(API_BASE_URL + '/api/attendance/mine', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
@@ -151,7 +152,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
     if (!token || !trip?._id || trip.journeyStatus === 'completed') return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/trips/${trip._id}`);
+        const res = await fetch(`${API_BASE_URL}/api/trips/${trip._id}`);
         const data = await res.json();
         if (data.success && data.trip) {
           if (data.trip.journeyStatus === 'completed') {
@@ -238,7 +239,7 @@ const DriverStatusPage = ({ setActiveTab }) => {
     setIsUpdating(true);
     setError('');
     try {
-      const res = await fetch(`http://localhost:8000/api/trips/${trip._id}/update-journey`, {
+      const res = await fetch(`${API_BASE_URL}/api/trips/${trip._id}/update-journey`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

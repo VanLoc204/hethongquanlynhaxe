@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const DriverDashboardPage = ({ setActiveTab }) => {
@@ -32,7 +33,7 @@ const DriverDashboardPage = ({ setActiveTab }) => {
       setIsRefreshing(true);
     }
     try {
-      const res = await fetch('http://localhost:8000/api/users/my-schedule', {
+      const res = await fetch(API_BASE_URL + '/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -46,7 +47,7 @@ const DriverDashboardPage = ({ setActiveTab }) => {
 
       // Tải dữ liệu chấm công thực tế từ Database
       try {
-        const attRes = await fetch('http://localhost:8000/api/attendance/mine', {
+        const attRes = await fetch(API_BASE_URL + '/api/attendance/mine', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const attData = await attRes.json();
@@ -86,7 +87,7 @@ const DriverDashboardPage = ({ setActiveTab }) => {
 
     if (target) {
       try {
-        const res = await fetch(`http://localhost:8000/api/users/attendant/trip-bookings/${target._id}`, {
+        const res = await fetch(`${API_BASE_URL}/api/users/attendant/trip-bookings/${target._id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

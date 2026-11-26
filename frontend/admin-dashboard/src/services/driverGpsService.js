@@ -1,4 +1,5 @@
-const API_BASE = 'http://localhost:8000/api';
+﻿import API_BASE_URL from '../config/api';
+const API_BASE = API_BASE_URL;
 
 // Tính khoảng cách giữa 2 tọa độ GPS (theo mét) bằng công thức Haversine
 function getDistanceMeters(lat1, lon1, lat2, lon2) {
@@ -346,7 +347,7 @@ class DriverGpsService {
             try {
               const headers = { 'Content-Type': 'application/json' };
               if (tracker.token) headers['Authorization'] = `Bearer ${tracker.token}`;
-              await fetch(`http://localhost:8000/api/trips/${tripId}/update-journey`, {
+              await fetch(`${API_BASE_URL}/api/trips/${tripId}/update-journey`, {
                 method: 'PATCH',
                 headers,
                 body: JSON.stringify({

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+﻿import React, { useState, useEffect, useContext, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 // Smooth Animated Number Component
 const AnimatedNumber = ({ value = 0, suffix = '', prefix = '', decimals = 0, duration = 500 }) => {

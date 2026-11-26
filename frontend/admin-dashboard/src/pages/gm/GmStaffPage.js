@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import { BRANCHES, getBranchById } from '../../constants/branches';
 
@@ -26,7 +27,7 @@ const PROVINCE_OFFICES = {
   }
 };
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const ROLE_LABELS = {
   driver: 'Tài xế',

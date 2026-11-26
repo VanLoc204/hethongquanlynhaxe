@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import { driverGpsService } from '../../services/driverGpsService';
 import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute } from '../../utils/mapRoutingUtils';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const OpsTrackingPage = () => {
   const { token } = useContext(AuthContext);

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+﻿import React, { useState, useEffect, useContext, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import MonthlyFleetExpenseReportModal from '../../components/MonthlyFleetExpenseReportModal';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const formatCurrency = (val) => {
   return (val || 0).toLocaleString('vi-VN') + ' đ';

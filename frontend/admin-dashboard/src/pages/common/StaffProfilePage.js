@@ -1,8 +1,9 @@
-import React, { useState, useContext, useEffect } from 'react';
+﻿import React, { useState, useContext, useEffect } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import AutoFaceEnrollModal from '../../components/AutoFaceEnrollModal';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 // Clean SVG Icons for 2FA Password Change matching Customer App
 const IconKey = () => (

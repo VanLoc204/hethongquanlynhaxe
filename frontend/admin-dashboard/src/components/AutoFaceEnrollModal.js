@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import API_BASE_URL from '../config/api';
 import {
   loadFaceApiModels,
   startWebcam,
@@ -8,7 +9,7 @@ import {
   analyzeFacePose
 } from '../utils/faceApiHelper';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 /**
  * AutoFaceEnrollModal - Modal Đăng Ký Sinh Trắc Học Face ID 3 Góc Mặt Tự Động

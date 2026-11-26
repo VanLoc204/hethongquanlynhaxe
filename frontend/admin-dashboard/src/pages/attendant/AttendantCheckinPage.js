@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+﻿import React, { useState, useEffect, useContext, useRef } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import TripReportModal from '../../components/TripReportModal';
 
@@ -167,7 +168,7 @@ const AttendantCheckinPage = () => {
     if (!silent) setLoadingSchedule(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/my-schedule', {
+      const res = await fetch(API_BASE_URL + '/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -200,7 +201,7 @@ const AttendantCheckinPage = () => {
   const fetchTripReportStatus = async (tripId) => {
     setLoadingReport(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/users/attendant/trip-reports/by-trip/${tripId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/attendant/trip-reports/by-trip/${tripId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -227,7 +228,7 @@ const AttendantCheckinPage = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/attendant/trip-reports', {
+      const res = await fetch(API_BASE_URL + '/api/users/attendant/trip-reports', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -258,7 +259,7 @@ const AttendantCheckinPage = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch(`http://localhost:8000/api/users/attendant/trip-bookings/${tripId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/attendant/trip-bookings/${tripId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -287,7 +288,7 @@ const AttendantCheckinPage = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch(`http://localhost:8000/api/users/attendant/check-in/${bookingId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/attendant/check-in/${bookingId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -323,7 +324,7 @@ const AttendantCheckinPage = () => {
         throw new Error('Định dạng mã QR không hợp lệ (Cần cấu trúc JSON hợp lệ gồm ticketId và signature)');
       }
 
-      const res = await fetch('http://localhost:8000/api/users/attendant/verify-ticket-qr', {
+      const res = await fetch(API_BASE_URL + '/api/users/attendant/verify-ticket-qr', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

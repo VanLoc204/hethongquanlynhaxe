@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentShiftSummaryPage = () => {
@@ -17,7 +18,7 @@ const AgentShiftSummaryPage = () => {
     setError('');
     try {
       // 1. Ca trực đang mở hiện tại
-      const activeRes = await fetch('http://localhost:8000/api/users/shift/current', {
+      const activeRes = await fetch(API_BASE_URL + '/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const activeData = await activeRes.json();
@@ -28,7 +29,7 @@ const AgentShiftSummaryPage = () => {
       }
 
       // 2. Lịch sử các ca trực đã chốt
-      const historyRes = await fetch('http://localhost:8000/api/users/shift/history', {
+      const historyRes = await fetch(API_BASE_URL + '/api/users/shift/history', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const historyData = await historyRes.json();
@@ -51,7 +52,7 @@ const AgentShiftSummaryPage = () => {
     setClosing(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/shift/pause', {
+      const res = await fetch(API_BASE_URL + '/api/users/shift/pause', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -82,7 +83,7 @@ const AgentShiftSummaryPage = () => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/shift/end', {
+      const res = await fetch(API_BASE_URL + '/api/users/shift/end', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

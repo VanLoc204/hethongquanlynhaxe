@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const MOCK_LOGS = [
   { _id: 'LOG-2398', id: 'LOG-2398', timestamp: '15:58:01  26/9/2026', user: 'Quản Trị Viên Hệ Thống', username: 'admin', role: 'Quản trị viên', module: 'SYSTEM', action: 'GET /api/system/logs', subAction: '', ip: '127.0.0.1', level: 'SUCCESS', details: 'Lấy danh sách nhật ký hoạt động hệ thống thành công. Mã phản hồi: 200 OK.' },

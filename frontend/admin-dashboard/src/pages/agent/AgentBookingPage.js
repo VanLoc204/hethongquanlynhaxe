@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentBookingPage = ({ setActiveTab }) => {
@@ -116,7 +117,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
     }
 
     const tripId = selectedTrip._id;
-    const es = new EventSource(`http://localhost:8000/api/trips/${tripId}/seat-locks/stream`);
+    const es = new EventSource(`${API_BASE_URL}/api/trips/${tripId}/seat-locks/stream`);
 
     es.addEventListener('INITIAL_LOCKS', (e) => {
       try {
@@ -188,7 +189,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
     if (cleanPhone.length >= 10) {
       let isMounted = true;
       setMemberLoading(true);
-      fetch(`http://localhost:8000/api/users/member-by-phone/${cleanPhone}`)
+      fetch(`${API_BASE_URL}/api/users/member-by-phone/${cleanPhone}`)
         .then(res => res.json())
         .then(data => {
           if (!isMounted) return;
@@ -223,7 +224,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
     setError('');
     try {
       // 1. Kiểm tra thông tin ca trực tại quầy của nhân viên
-      const shiftRes = await fetch('http://localhost:8000/api/users/shift/current', {
+      const shiftRes = await fetch(API_BASE_URL + '/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const shiftData = await shiftRes.json();
@@ -233,7 +234,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
 
       // 2. Lấy danh sách điểm đi / điểm đến thực tế từ CSDL
       try {
-        const locRes = await fetch('http://localhost:8000/api/trips/routes');
+        const locRes = await fetch(API_BASE_URL + '/api/trips/routes');
         const locData = await locRes.json();
         if (locRes.ok && locData.success) {
           setPublicLocations({
@@ -247,7 +248,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
       }
 
       // 3. Lấy toàn bộ chuyến xe thực tế từ CSDL hệ thống
-      const tripsRes = await fetch('http://localhost:8000/api/trips/ops/trips', {
+      const tripsRes = await fetch(API_BASE_URL + '/api/trips/ops/trips', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const tripsData = await tripsRes.json();
@@ -255,7 +256,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
         setTrips(tripsData.trips || []);
       } else {
         // Phương án dự phòng nếu không phải ops_manager: dùng my-schedule
-        const backupRes = await fetch('http://localhost:8000/api/users/my-schedule', {
+        const backupRes = await fetch(API_BASE_URL + '/api/users/my-schedule', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const backupData = await backupRes.json();
@@ -442,7 +443,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
     // Nếu ghế đang được chính mình chọn -> Hủy chọn (Mở khóa)
     if (selectedSeats.includes(seatCode)) {
       try {
-        await fetch(`http://localhost:8000/api/trips/${selectedTrip._id}/unlock-seat`, {
+        await fetch(`${API_BASE_URL}/api/trips/${selectedTrip._id}/unlock-seat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ seat: seatCode, clientId: myClientId })
@@ -459,7 +460,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
 
     // Tiến hành khóa giữ chỗ ghế trong 5 phút trên server
     try {
-      const res = await fetch(`http://localhost:8000/api/trips/${selectedTrip._id}/lock-seat`, {
+      const res = await fetch(`${API_BASE_URL}/api/trips/${selectedTrip._id}/lock-seat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seat: seatCode, clientId: myClientId })
@@ -485,7 +486,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
   const handleBackToList = async () => {
     if (selectedTrip && selectedSeats.length > 0) {
       try {
-        await fetch(`http://localhost:8000/api/trips/${selectedTrip._id}/unlock-all-my-seats`, {
+        await fetch(`${API_BASE_URL}/api/trips/${selectedTrip._id}/unlock-all-my-seats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clientId: getClientId(), seats: selectedSeats })
@@ -559,7 +560,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
       const maxPts = Math.min(availablePts, origTotal);
       const discountPts = usePoints ? Math.min(Math.max(0, Number(pointsInput) || 0), maxPts) : 0;
 
-      const res = await fetch('http://localhost:8000/api/users/agent/book', {
+      const res = await fetch(API_BASE_URL + '/api/users/agent/book', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2178,21 +2179,20 @@ const AgentBookingPage = ({ setActiveTab }) => {
               Hướng màn hình cho khách hàng quét mã bằng ứng dụng Ngân Hàng bất kỳ.
             </p>
 
-            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'inline-block' }}>
+            <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'inline-block' }}>
               <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
-                  `https://pay.anbinhlines.vn/checkout/${showQRModal._id}`
-                )}`}
+                src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${(showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1)}&addInfo=ANBINH%20${showQRModal.orderCode}&accountName=HO%20VAN%20LOC`}
                 alt="VietQR Code"
-                style={{ width: '180px', height: '180px', display: 'block' }}
+                style={{ width: '210px', maxWidth: '100%', borderRadius: '6px', display: 'block' }}
               />
             </div>
 
             <div style={{ marginTop: '0.85rem', fontSize: '0.85rem', fontWeight: '800', color: '#2563eb' }}>
               Số tiền: {formatCurrency((showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1))}
             </div>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-              Nội dung CK: ANBINH {showQRModal.orderCode}
+            <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '4px', textAlign: 'left', display: 'inline-block' }}>
+              <div>Ngân hàng: <strong>MBBank (0919210046 - HO VAN LOC)</strong></div>
+              <div>Nội dung CK: <strong style={{ color: '#0f172a' }}>ANBINH {showQRModal.orderCode}</strong></div>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '1.25rem' }}>

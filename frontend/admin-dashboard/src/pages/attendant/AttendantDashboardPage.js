@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const AttendantDashboardPage = ({ setActiveTab }) => {
@@ -29,7 +30,7 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
   const fetchSchedule = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('http://localhost:8000/api/users/my-schedule', {
+      const res = await fetch(API_BASE_URL + '/api/users/my-schedule', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -42,7 +43,7 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
 
       // Tải dữ liệu chấm công thực tế từ Database
       try {
-        const attRes = await fetch('http://localhost:8000/api/attendance/mine', {
+        const attRes = await fetch(API_BASE_URL + '/api/attendance/mine', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const attData = await attRes.json();
@@ -69,7 +70,7 @@ const AttendantDashboardPage = ({ setActiveTab }) => {
 
     for (const trip of todayTripsList) {
       try {
-        const res = await fetch(`http://localhost:8000/api/users/attendant/trip-bookings/${trip._id}`, {
+        const res = await fetch(`${API_BASE_URL}/api/users/attendant/trip-bookings/${trip._id}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

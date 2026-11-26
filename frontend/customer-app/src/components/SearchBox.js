@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import API_BASE_URL from '../config/api';
 import { MapPin, Calendar, Users, Search, ChevronDown, RotateCcw } from 'lucide-react';
 import '../pages/customer/TripsPage.css';
 
@@ -36,7 +37,7 @@ const SearchBox = ({
   useEffect(() => {
     const fetchLocations = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/trips/routes');
+        const response = await fetch(API_BASE_URL + '/api/trips/routes');
         const data = await response.json();
         if (data && data.success) {
           setFromLocations(data.origins || []);

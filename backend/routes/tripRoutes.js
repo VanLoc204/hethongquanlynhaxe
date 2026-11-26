@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { getBookingByOrderCode } = require('../controllers/bookingController');
 const {
   searchTrips,
   resolveSemanticLocation,
@@ -76,6 +77,7 @@ router.get('/routes', getPublicRoutes);
 
 // PayOS Webhook Route
 router.post('/payment/webhook', payosWebhook);
+router.get('/order/:orderCode', getBookingByOrderCode);
 
 // Shipment Routes
 router.post('/shipment/create', createShipment);

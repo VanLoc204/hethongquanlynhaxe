@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext } from 'react';
+import API_BASE_URL from '../config/api';
 import axios from 'axios';
 import { Bot, User, Send, X, MessageSquare, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
@@ -90,7 +91,7 @@ const AIChatbotWidget = () => {
       }
 
       const response = await axios.post(
-        'http://localhost:8000/api/reviews/chat',
+        API_BASE_URL + '/api/reviews/chat',
         {
           message: textToSend.trim(),
           sessionId,

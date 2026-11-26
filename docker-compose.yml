@@ -1,27 +1,32 @@
 version: '3.8'
 
-services:
-  mysql:
-    image: mysql:8.0
-    container_name: bus_mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root_password
-      MYSQL_DATABASE: bus_management
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
+# ============================================================
+# DOCKER COMPOSE - HỆ THỐNG QUẢN LÝ NHÀ XE AN BÌNH LINES
+# Dành cho môi trường phát triển LOCAL (dev/KLTN demo)
+#
+# Lệnh khởi động toàn bộ: docker-compose up -d
+# Lệnh tắt:               docker-compose down
+# ============================================================
 
+services:
+  # -----------------------------------------------------------
+  # 1. CSDL chính: MongoDB (toàn bộ dữ liệu hệ thống)
+  #    Khi up host Render: thay bằng MongoDB Atlas (miễn phí)
+  # -----------------------------------------------------------
   mongodb:
     image: mongo:6.0
     container_name: bus_mongodb
     restart: always
     ports:
-      - "27018:27017" # Map host 27018 to container 27017
+      - "27018:27017"
     volumes:
       - mongo_data:/data/db
 
+  # -----------------------------------------------------------
+  # 2. Cache RAM: Redis (lưu tọa độ GPS xe theo thời gian thực)
+  #    Khi up host Render: tự động fallback sang In-Memory cache
+  #    nếu không có Redis (không ảnh hưởng chức năng)
+  # -----------------------------------------------------------
   redis:
     image: redis:7.0-alpine
     container_name: bus_redis
@@ -31,19 +36,9 @@ services:
     volumes:
       - redis_data:/data
 
-  rabbitmq:
-    image: rabbitmq:3.11-management-alpine
-    container_name: bus_rabbitmq
-    restart: always
-    ports:
-      - "5672:5672"     # RabbitMQ port
-      - "15672:15672"   # Management UI port
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-
+  # -----------------------------------------------------------
+  # 3. Backend API (Node.js / Express)
+  # -----------------------------------------------------------
   backend:
     build:
       context: ./backend
@@ -54,18 +49,28 @@ services:
     environment:
       - PORT=8000
       - MONGO_URI=mongodb://mongodb:27017/bus_management
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=super_secret_jwt_key_for_smart_bus_system_2026
       - JWT_EXPIRES_IN=7d
       - BREVO_API_KEY=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
       - GEMINI_API_KEY=AQ.Ab8RN6Lh4FK6DiJw0B7BVCK_y_eAqtRFWlGj050VS90huXTKvQ
+      - PAYOS_CLIENT_ID=4d3bc19d-cb78-4cdf-8fc8-1ceab7ea70d5
+      - PAYOS_API_KEY=2912e193-a4ec-4109-a39d-f2ea2a28b3e8
+      - PAYOS_CHECKSUM_KEY=67630b90e08f035cdb3898d01962133fe4b79ff463ef14d6610b31e828c69a9e
+      - FRONTEND_URL=http://localhost:3000
+      - ADMIN_URL=http://localhost:3001
     depends_on:
       - mongodb
       - redis
-      - rabbitmq
 
+  # -----------------------------------------------------------
+  # 4. Frontend khách hàng (React)
+  # -----------------------------------------------------------
   customer-app:
     build:
       context: ./frontend/customer-app
+      args:
+        - REACT_APP_API_URL=http://localhost:8000
     container_name: bus_customer_app
     restart: always
     ports:
@@ -73,9 +78,14 @@ services:
     depends_on:
       - backend
 
+  # -----------------------------------------------------------
+  # 5. Frontend quản trị (React)
+  # -----------------------------------------------------------
   admin-dashboard:
     build:
       context: ./frontend/admin-dashboard
+      args:
+        - REACT_APP_API_URL=http://localhost:8000
     container_name: bus_admin_dashboard
     restart: always
     ports:
@@ -83,6 +93,9 @@ services:
     depends_on:
       - backend
 
+  # -----------------------------------------------------------
+  # 6. API Gateway / Reverse Proxy (Nginx - cổng 80)
+  # -----------------------------------------------------------
   gateway:
     image: nginx:alpine
     container_name: bus_gateway
@@ -97,7 +110,7 @@ services:
       - admin-dashboard
 
 volumes:
-  mysql_data:
+  mongo_data:
   mongo_data:
   redis_data:
   rabbitmq_data:

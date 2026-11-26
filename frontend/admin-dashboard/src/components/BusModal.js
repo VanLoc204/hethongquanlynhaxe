@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+import API_BASE_URL from '../config/api';
 
 // Clean SVG Icon mapping matching mockup 2 perfectly with standard DB IDs & aliases
 const ALL_AMENITIES = [
@@ -282,7 +283,7 @@ const BusModal = ({ bus, token, onClose, onSaved }) => {
   const [upperFloor, setUpperFloor] = useState(initialLayout.upperFloor || []);
   const [activeFloor, setActiveFloor] = useState('lower');
 
-  const API_BASE = 'http://localhost:8000/api';
+  const API_BASE = API_BASE_URL;
 
   // Calculate live seats per floor
   const countLower = lowerFloor.flat().filter(c => c !== null && c !== undefined && String(c).trim() !== '').length;

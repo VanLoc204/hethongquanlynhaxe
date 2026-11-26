@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+﻿import React, { useState, useEffect, useContext, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const ManagerLeavesPage = () => {
@@ -15,7 +16,7 @@ const ManagerLeavesPage = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/admin/leaves', {
+      const res = await fetch(API_BASE_URL + '/api/users/admin/leaves', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -45,7 +46,7 @@ const ManagerLeavesPage = () => {
     }
 
     try {
-      const res = await fetch(`http://localhost:8000/api/users/admin/leaves/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/admin/leaves/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

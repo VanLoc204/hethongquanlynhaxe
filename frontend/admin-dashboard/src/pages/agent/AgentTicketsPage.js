@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentTicketsPage = ({ setActiveTab }) => {
@@ -63,7 +64,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
     setResending(true);
     setResendFeedback({ type: '', text: '' });
     try {
-      const res = await fetch(`http://localhost:8000/api/users/agent/resend-ticket/${detailTarget._id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/agent/resend-ticket/${detailTarget._id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -91,7 +92,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
   const fetchShiftStatus = async () => {
     try {
       // 1. Kiểm tra ShiftSession (đối với nhân viên bán vé trực ca két tiền)
-      const res = await fetch('http://localhost:8000/api/users/shift/current', {
+      const res = await fetch(API_BASE_URL + '/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -101,7 +102,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
       }
 
       // 2. Kiểm tra Attendance chấm công Face ID hôm nay (đối với Quản lý phòng vé & nhân sự khác)
-      const attRes = await fetch('http://localhost:8000/api/attendance/mine', {
+      const attRes = await fetch(API_BASE_URL + '/api/attendance/mine', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const attData = await attRes.json();
@@ -134,7 +135,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
         params.append('status', st);
       }
 
-      const res = await fetch(`http://localhost:8000/api/users/agent/tickets?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/agent/tickets?${params.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -206,7 +207,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
     setSuccess('');
 
     if (booking.customerPhone) {
-      fetch(`http://localhost:8000/api/users/member-by-phone/${booking.customerPhone.trim()}`, {
+      fetch(`${API_BASE_URL}/api/users/member-by-phone/${booking.customerPhone.trim()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -238,7 +239,7 @@ const AgentTicketsPage = ({ setActiveTab }) => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch(`http://localhost:8000/api/users/agent/cancel-ticket/${cancellationTarget._id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/agent/cancel-ticket/${cancellationTarget._id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
