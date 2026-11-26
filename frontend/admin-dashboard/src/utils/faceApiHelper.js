@@ -27,9 +27,9 @@ export async function loadFaceApiModels(modelPath = '/face-models') {
       console.log('[FaceAPI] Tải mô hình thành công!');
       return true;
     } catch (err) {
-      console.warn(`[FaceAPI Warning] Thử lại với máy chủ backend http://localhost:8000/face-models do: ${err.message}`);
+      console.warn(`[FaceAPI Warning] Thử lại với fallback face-models path do: ${err.message}`);
       try {
-        const fallbackPath = 'http://localhost:8000/face-models';
+        const fallbackPath = `${process.env.REACT_APP_API_URL || window.location.origin}/face-models`;
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(fallbackPath),
           faceapi.nets.faceLandmark68Net.loadFromUri(fallbackPath),

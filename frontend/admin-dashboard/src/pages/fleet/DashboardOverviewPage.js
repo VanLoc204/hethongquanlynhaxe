@@ -1,9 +1,10 @@
-import React, { useContext, useState, useEffect, useMemo } from 'react';
+﻿import React, { useContext, useState, useEffect, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
 import TicketManagerOverview from '../ticket/TicketManagerOverview';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const exportAuditLogsToExcel = (logs = [], healthData = null) => {
   if (!logs || logs.length === 0) {

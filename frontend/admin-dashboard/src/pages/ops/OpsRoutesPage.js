@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import { smartGeocode, getSmartSuggestions } from '../../utils/smartGeocoder';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 // Shared hook to safely load Leaflet CSS and JS on demand
 const useLeaflet = () => {

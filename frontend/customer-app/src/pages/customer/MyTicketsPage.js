@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+﻿import React, { useState, useEffect, useContext, useRef } from 'react';
+import API_BASE_URL from '../../config/api';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
@@ -9,8 +10,8 @@ import {
 } from 'lucide-react';
 import './MyTicketsPage.css';
 
-const BOOKING_API = 'http://localhost:8000/api/trips';
-const TRIP_API = 'http://localhost:8000/api/trips';
+const BOOKING_API = API_BASE_URL + '/api/trips';
+const TRIP_API = API_BASE_URL + '/api/trips';
 const CANCEL_HOURS_LIMIT = 120; // Must cancel at least 5 days (120h) before departure
 
 const MyTicketsPage = () => {
@@ -125,6 +126,36 @@ const MyTicketsPage = () => {
   const handlePayNow = (ticket) => {
     setPayingTicketId(prev => prev === ticket._id ? null : ticket._id);
   };
+
+  // Tự động kiểm tra trạng thái thanh toán vé trả sau (polling mỗi 2s khi mở thanh toán QR)
+  useEffect(() => {
+    if (!payingTicketId) return;
+    const ticket = tickets.find(t => t._id === payingTicketId);
+    if (!ticket?.orderCode) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const backendOrigin = (typeof window !== 'undefined' && window.location.hostname !== 'localhost')
+          ? `${window.location.protocol}//${window.location.hostname}:8000`
+          : API_BASE_URL;
+        const res = await axios.get(`${backendOrigin}/api/bookings/order/${ticket.orderCode}`);
+        if (!isMounted) return;
+
+        if (res.data?.success && res.data.booking?.status === 'paid') {
+          clearInterval(interval);
+          setTickets(prev => prev.map(t => t._id === ticket._id ? { ...t, status: 'paid' } : t));
+          setPayingTicketId(null);
+          alert('🎉 Chúc mừng bạn! Hệ thống đã nhận thanh toán thành công qua VietQR. Vé xe của bạn đã được xác nhận.');
+        }
+      } catch (err) {}
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [payingTicketId, tickets]);
 
   // Simulate webhook payment success
   const handleSimulatePayment = async (ticket) => {
@@ -511,14 +542,21 @@ const MyTicketsPage = () => {
                         <div>Chủ TK: <strong>HO VAN LOC</strong></div>
                         <div>Số tiền: <strong style={{ color: '#ea580c' }}>{formatCurrency(totalPrice)}</strong></div>
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ width: '100%', padding: '8px', fontSize: '0.82rem', fontWeight: '700' }}
-                        onClick={() => handleSimulatePayment(t)}
-                      >
-                        Giả lập chuyển khoản thành công
-                      </button>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        padding: '8px 10px',
+                        backgroundColor: '#eff6ff',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        fontSize: '0.74rem',
+                        color: '#1e40af',
+                        textAlign: 'left'
+                      }}>
+                        <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '14px', height: '14px', flexShrink: 0 }}></div>
+                        <span>Đang chờ nhận chuyển khoản VietQR tự động...</span>
+                      </div>
                     </div>
                   )}
                 </>

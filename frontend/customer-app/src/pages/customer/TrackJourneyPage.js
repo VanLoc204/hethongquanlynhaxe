@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useContext, useRef, useCallback, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import axios from 'axios';
 import { fetchFastHighwayRoute, checkOffRouteStatus, fetchDynamicReroute } from '../../utils/mapRoutingUtils';
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react';
 import './TrackJourneyPage.css';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const TrackJourneyPage = () => {
   const { user, isAuthenticated, token } = useContext(AuthContext);

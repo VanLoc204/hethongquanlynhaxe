@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const getScenarioBadge = (scenario) => {
   if (scenario === 'need_assistance') {

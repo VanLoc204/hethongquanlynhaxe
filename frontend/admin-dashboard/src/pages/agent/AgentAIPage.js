@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentAIPage = () => {
@@ -22,7 +23,7 @@ const AgentAIPage = () => {
     if (!token) return;
     try {
       setLoadingShift(true);
-      const res = await fetch('http://localhost:8000/api/users/shift/current', {
+      const res = await fetch(API_BASE_URL + '/api/users/shift/current', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -74,7 +75,7 @@ const AgentAIPage = () => {
           text: msg.text
         }));
 
-      const res = await fetch('http://localhost:8000/api/chat', {
+      const res = await fetch(API_BASE_URL + '/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

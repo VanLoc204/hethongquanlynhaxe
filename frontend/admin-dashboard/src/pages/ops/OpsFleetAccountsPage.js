@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import {
   loadFaceApiModels,
@@ -10,7 +11,7 @@ import {
   captureSnapshot
 } from '../../utils/faceApiHelper';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const FLEET_ROLE_CONFIG = {
   driver: {

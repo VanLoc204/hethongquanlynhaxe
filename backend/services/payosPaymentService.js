@@ -29,8 +29,9 @@ class PayosPaymentService {
     const cleanOrderCode = Number(orderCode);
     const cleanAmount = Math.round(Number(amount));
     const cleanDesc = (description || `SmartBus ${cleanOrderCode}`).slice(0, 25);
-    const cleanCancelUrl = cancelUrl || 'http://localhost:3000/trips';
-    const cleanReturnUrl = returnUrl || 'http://localhost:3000/my-tickets';
+    const appOrigin = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const cleanCancelUrl = cancelUrl || `${appOrigin}/trips`;
+    const cleanReturnUrl = returnUrl || `${appOrigin}/my-tickets`;
 
     // Chuỗi ký tự sinh chữ ký theo đúng tài liệu payOS:
     // amount={amount}&cancelUrl={cancelUrl}&description={description}&orderCode={orderCode}&returnUrl={returnUrl}

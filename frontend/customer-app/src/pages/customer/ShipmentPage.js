@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
+import API_BASE_URL from '../../config/api';
 import axios from 'axios';
 import { Package, Truck, User, Phone, MapPin, DollarSign, Search, CheckCircle2, ArrowLeft, Mail, QrCode, CreditCard } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000/api/trips';
+const API_BASE = API_BASE_URL;
 
 const ShipmentPage = () => {
   const [activeTab, setActiveTab] = useState('create');
@@ -73,6 +74,40 @@ const ShipmentPage = () => {
       alert(err.response?.data?.message || 'Có lỗi xảy ra khi tạo yêu cầu gửi hàng.');
     }
   };
+
+  // Tự động kiểm tra trạng thái thanh toán đơn gửi hàng (polling mỗi 2s khi mở thanh toán QR)
+  useEffect(() => {
+    if (paymentStep !== 'payment' || !createdShipment?.orderCode) return;
+
+    let isMounted = true;
+    const interval = setInterval(async () => {
+      try {
+        const queryId = createdShipment.shipmentId || createdShipment._id || createdShipment.orderCode;
+        const res = await axios.get(`${API_BASE}/shipment/track/${queryId}`);
+        if (!isMounted) return;
+
+        if (res.data?.success && res.data.shipment?.paymentStatus === 'paid') {
+          clearInterval(interval);
+          setCreatedShipment(prev => ({ ...prev, paymentStatus: 'paid' }));
+
+          const newShip = {
+            ...createdShipment,
+            paymentStatus: 'paid',
+            status: 'Collected'
+          };
+          const existing = JSON.parse(localStorage.getItem('shipments') || '[]');
+          localStorage.setItem('shipments', JSON.stringify([newShip, ...existing]));
+
+          setPaymentStep('success');
+        }
+      } catch (err) {}
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [paymentStep, createdShipment]);
 
   // Webhook Simulation (Simulate PayOS Success)
   const handleSimulatePaymentSuccess = async () => {
@@ -411,17 +446,24 @@ const ShipmentPage = () => {
                     <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartShip {createdShipment.orderCode}</strong></div>
                   </div>
 
-                  <div style={{ marginTop: '1.5rem' }}>
-                    <button 
-                      className="btn btn-success" 
-                      style={{ width: '100%', padding: '10px', fontWeight: '700' }}
-                      onClick={handleSimulatePaymentSuccess}
-                    >
-                      Giả lập chuyển khoản thành công (Webhook)
-                    </button>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
-                      Nhà xe tự động kiểm duyệt qua PayOS Webhook và cập nhật trạng thái đơn gửi hàng.
-                    </span>
+                  <div style={{
+                    marginTop: '1.25rem',
+                    padding: '12px 14px',
+                    backgroundColor: '#eff6ff',
+                    borderRadius: '10px',
+                    border: '1px solid #bfdbfe',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    textAlign: 'left'
+                  }}>
+                    <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '18px', height: '18px', flexShrink: 0 }}>
+                      <span className="visually-hidden">Đang chờ thanh toán...</span>
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#1e40af', lineHeight: 1.45 }}>
+                      <strong style={{ display: 'block', color: '#1e3a8a', fontWeight: '700' }}>Đang chờ nhận chuyển khoản cước phí...</strong>
+                      Hệ thống tự động kích hoạt mã vận đơn gửi hàng ngay khi nhận được thanh toán.
+                    </div>
                   </div>
                 </div>
               </div>

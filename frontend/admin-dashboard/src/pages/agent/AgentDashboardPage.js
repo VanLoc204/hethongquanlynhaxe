@@ -1,4 +1,5 @@
-import React, { useContext, useState, useEffect } from 'react';
+﻿import React, { useContext, useState, useEffect } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const AgentDashboardPage = ({ setActiveTab }) => {
@@ -19,7 +20,7 @@ const AgentDashboardPage = ({ setActiveTab }) => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/shift/current', {
+      const res = await fetch(API_BASE_URL + '/api/users/shift/current', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();

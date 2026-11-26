@@ -11,7 +11,6 @@
     "backend:dev": "npm run dev --workspace=backend",
     "customer:dev": "npm start --workspace=frontend/customer-app",
     "admin:dev": "npm start --workspace=frontend/admin-dashboard",
-    "seed": "npm run seed --workspace=backend",
     "docker:db:up": "docker-compose up -d mysql mongodb redis rabbitmq",
     "docker:db:down": "docker-compose down",
     "docker:up": "docker-compose up -d --build",

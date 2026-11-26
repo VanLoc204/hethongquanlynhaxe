@@ -25,7 +25,27 @@ app.locals.serverBootId = SERVER_BOOT_ID;
 
 // Global Middlewares
 app.set('trust proxy', 1);
-app.use(cors());
+// CORS: Cho phép frontend từ localhost (dev) và từ host production (Render/Vercel)
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  process.env.FRONTEND_URL,
+  process.env.ADMIN_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Cho phép requests không có origin (mobile app, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Cho phép tất cả domain onrender.com và vercel.app
+    if (/\.onrender\.com$/.test(origin) || /\.vercel\.app$/.test(origin) || /\.netlify\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Mở rộng hoàn toàn cho môi trường KLTN
+  },
+  credentials: true
+}));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import TripReportModal from '../../components/TripReportModal';
 
@@ -39,7 +40,7 @@ const OpsTripReportsPage = ({ role }) => {
       if (submissionFilter && submissionFilter !== 'all') queryParams.append('submissionType', submissionFilter);
       if (searchQuery) queryParams.append('search', searchQuery);
 
-      const res = await fetch(`http://localhost:8000/api/users/ops/trip-reports?${queryParams.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/ops/trip-reports?${queryParams.toString()}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -73,7 +74,7 @@ const OpsTripReportsPage = ({ role }) => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch(`http://localhost:8000/api/users/ops/trip-reports/${selectedReport._id}/sign`, {
+      const res = await fetch(`${API_BASE_URL}/api/users/ops/trip-reports/${selectedReport._id}/sign`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -106,7 +107,7 @@ const OpsTripReportsPage = ({ role }) => {
     setError('');
     setSuccess('');
     try {
-      const res = await fetch('http://localhost:8000/api/users/ops/trip-reports/auto-midnight-check', {
+      const res = await fetch(API_BASE_URL + '/api/users/ops/trip-reports/auto-midnight-check', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

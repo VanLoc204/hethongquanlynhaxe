@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import { getBranchById, getBranchName, getOfficesByBranchId } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const formatDateToISO = (date) => {
   if (!date) return '';

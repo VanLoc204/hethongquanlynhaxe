@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const LEAVE_TYPES = [
@@ -94,7 +95,7 @@ const StaffLeavePage = () => {
   const fetchLeaves = async () => {
     try {
       setLoading(true);
-      const res = await fetch('http://localhost:8000/api/users/leave', {
+      const res = await fetch(API_BASE_URL + '/api/users/leave', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
@@ -130,7 +131,7 @@ const StaffLeavePage = () => {
     const typeName = selectedTypeObj ? selectedTypeObj.name : 'Đơn xin nghỉ phép';
 
     try {
-      const res = await fetch('http://localhost:8000/api/users/leave', {
+      const res = await fetch(API_BASE_URL + '/api/users/leave', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

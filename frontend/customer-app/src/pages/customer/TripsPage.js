@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
@@ -34,7 +35,7 @@ import {
 } from 'lucide-react';
 import './TripsPage.css';
 
-const API_BASE = 'http://localhost:8000/api/trips';
+const API_BASE = API_BASE_URL;
 
 const TripsPage = () => {
   const { search } = useLocation();
@@ -81,7 +82,7 @@ const TripsPage = () => {
   useEffect(() => {
     const fetchLocations = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/trips/routes');
+        const response = await fetch(API_BASE_URL + '/api/trips/routes');
         const data = await response.json();
         if (data && data.success) {
           setFromLocations(data.origins || []);
@@ -205,7 +206,7 @@ const TripsPage = () => {
   useEffect(() => {
     const fetchPromos = async () => {
       try {
-        const res = await axios.get('http://localhost:8000/api/promotions');
+        const res = await axios.get(API_BASE_URL + '/api/promotions');
         if (res.data && res.data.data) {
           const activeList = res.data.data.filter(p => p.status === 'active');
           setPromotionsList(activeList);
@@ -670,7 +671,7 @@ const TripsPage = () => {
     if (!customVoucherCode.trim()) return;
     setVoucherError('');
     try {
-      const res = await axios.post('http://localhost:8000/api/promotions/validate', {
+      const res = await axios.post(API_BASE_URL + '/api/promotions/validate', {
         code: customVoucherCode.trim().toUpperCase(),
         orderAmount: currentTotal
       });
@@ -794,6 +795,76 @@ const TripsPage = () => {
       }
     }
   };
+
+  // Tự động kiểm tra trạng thái thanh toán từ PayOS Webhook (polling mỗi 2 giây)
+  useEffect(() => {
+    if (bookingStep !== 'payment' || !createdBooking?.orderCode || bookingSuccess) return;
+
+    let isMounted = true;
+    const orderCode = createdBooking.orderCode;
+    const currentTrip = trips.find(t => t._id === expandedTripId);
+
+    const interval = setInterval(async () => {
+      try {
+        const backendOrigin = API_BASE.replace(/\/api\/.*$/, '');
+        const res = await axios.get(`${backendOrigin}/api/bookings/order/${orderCode}`);
+        if (!isMounted) return;
+
+        if (res.data?.success && res.data.booking?.status === 'paid') {
+          clearInterval(interval);
+
+          const newBooking = {
+            id: orderCode,
+            bookingId: createdBooking._id,
+            tripId: currentTrip?._id,
+            busName: currentTrip?.busId?.name || 'Xe An Bình Lines',
+            busType: currentTrip?.busId?.type || 'Giường nằm VIP',
+            from: currentTrip?.routeId?.startPoint || fromParam || 'Hồ Chí Minh',
+            to: currentTrip?.routeId?.endPoint || toParam || 'Đà Lạt',
+            departureTime: currentTrip?.departureTime,
+            price: currentTrip?.price,
+            seats: [...selectedSeats],
+            pickup: selectedPickup,
+            dropoff: selectedDropoff,
+            customerName,
+            customerPhone,
+            customerBirthYear,
+            customerCCCD,
+            customerEmail,
+            bookingDate: new Date().toISOString(),
+            paymentType: 'immediate',
+            status: 'paid'
+          };
+
+          const existing = JSON.parse(localStorage.getItem('booked_tickets') || '[]');
+          localStorage.setItem('booked_tickets', JSON.stringify([newBooking, ...existing]));
+
+          // Chặn ghế đã đặt trong state trips
+          if (currentTrip) {
+            setTrips(prevTrips => prevTrips.map(t => {
+              if (t._id === currentTrip._id) {
+                return {
+                  ...t,
+                  bookedSeats: [...(t.bookedSeats || []), ...selectedSeats]
+                };
+              }
+              return t;
+            }));
+          }
+
+          setCreatedBooking(prev => ({ ...prev, status: 'paid' }));
+          setBookingSuccess(true);
+        }
+      } catch (err) {
+        // Bỏ qua lỗi kết nối polling tạm thời
+      }
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [bookingStep, createdBooking, bookingSuccess, trips, expandedTripId, selectedSeats, selectedPickup, selectedDropoff, customerName, customerPhone, customerBirthYear, customerCCCD, customerEmail, fromParam, toParam]);
 
   // Webhook Simulation (PayOS Success)
   const handleSimulatePaymentSuccess = async () => {
@@ -1892,29 +1963,6 @@ const TripsPage = () => {
                   <>
                     <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
 
-                    {createdBooking?.payosData?.checkoutUrl && (
-                      <div style={{ marginBottom: '14px' }}>
-                        <a
-                          href={createdBooking.payosData.checkoutUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            display: 'block',
-                            padding: '10px 14px',
-                            backgroundColor: '#059669',
-                            color: '#ffffff',
-                            borderRadius: '8px',
-                            fontWeight: '700',
-                            fontSize: '0.85rem',
-                            textDecoration: 'none',
-                            boxShadow: '0 2px 8px rgba(5, 150, 105, 0.3)'
-                          }}
-                        >
-                          Mở Cổng Thanh Toán payOS (AnBinhLine) &rarr;
-                        </a>
-                      </div>
-                    )}
-
                     <img
                       src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${createdBooking?.totalAmount ?? (trip.price * selectedSeats.length)}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`}
                       alt="VietQR PayOS"
@@ -1929,17 +1977,24 @@ const TripsPage = () => {
                       <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartBus {createdBooking?.orderCode}</strong></div>
                     </div>
 
-                    <div style={{ marginTop: '1.5rem' }}>
-                      <button
-                        className="btn btn-success"
-                        style={{ width: '100%', padding: '10px', fontWeight: '700' }}
-                        onClick={handleSimulatePaymentSuccess}
-                      >
-                        Giả lập chuyển khoản thành công (Webhook)
-                      </button>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
-                        Hệ thống tự động kích hoạt PayOS Webhook cập trạng thái sau khi chuyển khoản thành công.
-                      </span>
+                    <div style={{
+                      marginTop: '1.25rem',
+                      padding: '12px 14px',
+                      backgroundColor: '#eff6ff',
+                      borderRadius: '10px',
+                      border: '1px solid #bfdbfe',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      textAlign: 'left'
+                    }}>
+                      <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '18px', height: '18px', flexShrink: 0 }}>
+                        <span className="visually-hidden">Đang chờ thanh toán...</span>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#1e40af', lineHeight: 1.45 }}>
+                        <strong style={{ display: 'block', color: '#1e3a8a', fontWeight: '700' }}>Đang chờ nhận chuyển khoản VietQR...</strong>
+                        Hệ thống sẽ tự động xác nhận và xuất hóa đơn điện tử ngay khi bạn hoàn tất chuyển tiền.
+                      </div>
                     </div>
                   </>
                 )}

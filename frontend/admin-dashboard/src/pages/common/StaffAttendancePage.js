@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import AutoFaceEnrollModal from '../../components/AutoFaceEnrollModal';
 import {
@@ -14,7 +15,7 @@ import {
 } from '../../utils/faceApiHelper';
 import { BRANCHES } from '../../constants/branches';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const getRoleDetails = (role) => {
   switch (role) {

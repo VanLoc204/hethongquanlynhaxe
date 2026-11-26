@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
+import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
 const StaffNotificationsPage = () => {
@@ -10,7 +11,7 @@ const StaffNotificationsPage = () => {
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/users/notifications', {
+        const res = await fetch(API_BASE_URL + '/api/users/notifications', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

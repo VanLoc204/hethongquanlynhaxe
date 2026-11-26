@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import API_BASE_URL from '../config/api';
 import {
   calculateDistanceMeters,
   formatDistance
 } from '../utils/busStationsGeo';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 /**
  * AttendanceGpsCard: Thẻ giám sát vị trí xuất bến và quy định giờ lăn bánh
