@@ -724,8 +724,10 @@ const AIAssistantPage = () => {
     setSelectedFloor('lower');
     setModalStep('form');
     setBookingError('');
-    setSelectedPickup(tripData.pickupPoints?.[0]?.name || 'Bến Xe Miền Tây');
-    setSelectedDropoff(tripData.dropoffPoints?.[0]?.name || 'Bến Xe Liên Tỉnh Đà Lạt');
+    const firstPickup = tripData.pickupPoints?.[0]?.location || tripData.pickupPoints?.[0]?.name || 'Bến Xe Miền Tây';
+    const firstDropoff = tripData.dropoffPoints?.[0]?.location || tripData.dropoffPoints?.[0]?.name || 'Bến Xe Liên Tỉnh Đà Lạt';
+    setSelectedPickup(firstPickup);
+    setSelectedDropoff(firstDropoff);
   };
 
   // Đóng Modal và hủy giữ chỗ
@@ -1464,9 +1466,15 @@ const AIAssistantPage = () => {
                       value={selectedPickup}
                       onChange={e => setSelectedPickup(e.target.value)}
                     >
-                      {(bookingModalTrip.pickupPoints || [{ name: 'Bến Xe Miền Tây' }]).map((p, idx) => (
-                        <option key={idx} value={p.name}>{p.name}</option>
-                      ))}
+                      {(bookingModalTrip.pickupPoints || [{ location: 'Bến Xe Miền Tây' }]).map((p, idx) => {
+                        const loc = p.location || p.name || p.address || 'Điểm đón';
+                        const time = p.time ? `${p.time} - ` : '';
+                        return (
+                          <option key={idx} value={loc}>
+                            {time}{loc}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -1477,9 +1485,15 @@ const AIAssistantPage = () => {
                       value={selectedDropoff}
                       onChange={e => setSelectedDropoff(e.target.value)}
                     >
-                      {(bookingModalTrip.dropoffPoints || [{ name: 'Bến Xe Liên Tỉnh Đà Lạt' }]).map((p, idx) => (
-                        <option key={idx} value={p.name}>{p.name}</option>
-                      ))}
+                      {(bookingModalTrip.dropoffPoints || [{ location: 'Bến Xe Liên Tỉnh Đà Lạt' }]).map((p, idx) => {
+                        const loc = p.location || p.name || p.address || 'Điểm trả';
+                        const time = p.time ? `${p.time} - ` : '';
+                        return (
+                          <option key={idx} value={loc}>
+                            {time}{loc}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -1661,8 +1675,7 @@ const AIAssistantPage = () => {
                         <option value="">-- Không áp dụng voucher --</option>
                         {availableVouchers.map(v => (
                           <option key={v._id || v.code} value={v.code}>
-                            {v.code} - {v.discountType === 'percentage' ? `Giảm ${v.discountValue}%` : `Giảm ${v.discountValue.toLocaleString('vi-VN')}đ`}
-                            {v.minOrderValue ? ` (Đơn từ ${v.minOrderValue.toLocaleString('vi-VN')}đ)` : ''}
+                            {v.code} ({v.discountType === 'percentage' ? `Giảm ${v.discountValue}%` : `Giảm ${Math.round(v.discountValue / 1000)}k`})
                           </option>
                         ))}
                       </select>

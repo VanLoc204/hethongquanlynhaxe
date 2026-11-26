@@ -967,12 +967,30 @@
 
 .ai-form-input, .ai-form-select {
   width: 100%;
-  padding: 6px 8px;
-  font-size: 0.78rem;
+  max-width: 100%;
+  padding: 7px 10px;
+  font-size: 0.8rem;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   box-sizing: border-box;
   outline: none;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.ai-form-select {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ai-form-select option {
+  max-width: 100%;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: #0f172a;
+  background-color: #ffffff;
 }
 
 .ai-form-input:focus, .ai-form-select:focus {
