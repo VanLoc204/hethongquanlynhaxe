@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useContext, useMemo } from 'react';
 import API_BASE_URL from '../../config/api';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -906,7 +906,7 @@ const AIAssistantPage = () => {
       });
 
       if (res.data?.success) {
-        setCreatedBooking(res.data.booking);
+        setCreatedBooking({ ...res.data.booking, payosData: res.data.payosData });
         setModalStep('payment');
       } else {
         setBookingError(res.data?.message || 'Lỗi khi tạo đơn đặt vé.');
@@ -922,10 +922,7 @@ const AIAssistantPage = () => {
 
     const interval = setInterval(async () => {
       try {
-        const backendOrigin = (typeof window !== 'undefined' && window.location.hostname !== 'localhost')
-          ? `${window.location.protocol}//${window.location.hostname}:8000`
-          : API_BASE_URL;
-        const res = await axios.get(`${backendOrigin}/api/bookings/order/${createdBooking.orderCode}`);
+        const res = await axios.get(`${API_BASE_URL}/api/bookings/order/${createdBooking.orderCode}`);
         if (res.data?.success && res.data.booking?.status === 'paid') {
           clearInterval(interval);
           const routeText = bookingModalTrip?.routeId?.name || (bookingModalTrip?.routeId?.startPoint ? `${bookingModalTrip.routeId.startPoint} ➔ ${bookingModalTrip.routeId.endPoint}` : 'TP.HCM ➔ Đà Lạt');
@@ -1751,14 +1748,59 @@ const AIAssistantPage = () => {
 
                 {createdBooking?.totalAmount > 0 ? (
                   <>
-                    <img
-                      src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${createdBooking.totalAmount}&addInfo=SmartBus%20${createdBooking.orderCode}&accountName=HO%20VAN%20LOC`}
-                      alt="VietQR MBBank"
-                      style={{ width: '180px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 10px rgba(0,0,0,0.06)' }}
-                    />
-                    <div style={{ fontSize: '0.78rem', color: '#1e293b' }}>
-                      Số tiền cần thanh toán: <strong style={{ color: '#dc2626', fontSize: '0.95rem' }}>{createdBooking.totalAmount.toLocaleString('vi-VN')} đ</strong>
-                    </div>
+                    {(() => {
+                      const payosAcc = createdBooking?.payosData?.accountNumber || '0919210046';
+                      const payosQr = createdBooking?.payosData?.qrCode
+                        ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(createdBooking.payosData.qrCode)}`
+                        : `https://img.vietqr.io/image/MB-${payosAcc}-compact2.png?amount=${createdBooking?.totalAmount}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`;
+
+                      return (
+                        <>
+                          <img
+                            src={payosQr}
+                            alt="VietQR PayOS"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=2|99|${payosAcc}|HO%20VAN%20LOC||0|0|${createdBooking?.totalAmount}|SmartBus%20${createdBooking?.orderCode}|transfer_my_qr`;
+                            }}
+                            style={{ width: '100%', maxWidth: '200px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 10px rgba(0,0,0,0.06)' }}
+                          />
+
+                          <div style={{ textAlign: 'left', fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', maxWidth: '290px', margin: '4px auto', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                            <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
+                            <div>Số tài khoản: <strong style={{ color: '#1d4ed8' }}>{payosAcc}</strong></div>
+                            <div>Chủ tài khoản: <strong>{createdBooking?.payosData?.accountName || 'HO VAN LOC'}</strong></div>
+                            <div>Số tiền: <strong style={{ color: '#dc2626', fontSize: '0.92rem' }}>{createdBooking.totalAmount.toLocaleString('vi-VN')} đ</strong></div>
+                            <div>Nội dung CK: <strong style={{ color: '#1d4ed8' }}>SmartBus {createdBooking?.orderCode}</strong></div>
+                          </div>
+
+                          {createdBooking?.payosData?.checkoutUrl && (
+                            <a
+                              href={createdBooking.payosData.checkoutUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                padding: '8px 14px',
+                                background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+                                color: '#ffffff',
+                                borderRadius: '6px',
+                                fontSize: '0.78rem',
+                                fontWeight: '700',
+                                textDecoration: 'none',
+                                width: '100%',
+                                maxWidth: '290px'
+                              }}
+                            >
+                              👉 Mở trang thanh toán PayOS trực tiếp
+                            </a>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     <div style={{
                       display: 'flex',
@@ -1769,9 +1811,11 @@ const AIAssistantPage = () => {
                       borderRadius: '8px',
                       border: '1px solid #bfdbfe',
                       fontSize: '0.75rem',
-                      color: '#1e40af'
+                      color: '#1e40af',
+                      width: '100%',
+                      maxWidth: '290px'
                     }}>
-                      <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '14px', height: '14px', flexShrink: 0 }}></div>
+                      <div className="payment-pulse-spinner" style={{ width: '14px', height: '14px', flexShrink: 0 }}></div>
                       <span>Đang chờ chuyển khoản... Hệ thống sẽ tự động xác nhận ngay.</span>
                     </div>
                   </>
