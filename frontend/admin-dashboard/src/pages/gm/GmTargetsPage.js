@@ -15,13 +15,13 @@ const GmTargetsPage = () => {
   const [success, setSuccess] = useState('');
 
   // Target values stored in MongoDB
-  const [revenueTarget, setRevenueTarget] = useState(1000000000);
-  const [occupancyTarget, setOccupancyTarget] = useState(80);
-  const [counterTarget, setCounterTarget] = useState(600000000);
-  const [onlineTarget, setOnlineTarget] = useState(400000000);
-  const [targetSg, setTargetSg] = useState(500000000);
-  const [targetDl, setTargetDl] = useState(300000000);
-  const [targetCt, setTargetCt] = useState(200000000);
+  const [revenueTarget, setRevenueTarget] = useState(250000000);
+  const [occupancyTarget, setOccupancyTarget] = useState(25);
+  const [counterTarget, setCounterTarget] = useState(175000000);
+  const [onlineTarget, setOnlineTarget] = useState(75000000);
+  const [targetSg, setTargetSg] = useState(125000000);
+  const [targetDl, setTargetDl] = useState(75000000);
+  const [targetCt, setTargetCt] = useState(50000000);
   const [notes, setNotes] = useState('');
 
   // Actual data calculated from system
@@ -59,10 +59,10 @@ const GmTargetsPage = () => {
 
       if (res.ok && data.success) {
         const t = data.target || {};
-        setRevenueTarget(t.revenueTarget || 1000000000);
-        setOccupancyTarget(t.occupancyTarget || 80);
-        setCounterTarget(t.counterTarget || 600000000);
-        setOnlineTarget(t.onlineTarget || 400000000);
+        setRevenueTarget(t.revenueTarget || 250000000);
+        setOccupancyTarget(t.occupancyTarget || 25);
+        setCounterTarget(t.counterTarget || 175000000);
+        setOnlineTarget(t.onlineTarget || 75000000);
 
         if (Array.isArray(t.branchTargets)) {
           const sgObj = t.branchTargets.find(b => b.branchId === 'sg');
@@ -126,7 +126,7 @@ const GmTargetsPage = () => {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        setSuccess(data.message || 'Đã lưu chỉ tiêu vận hành vào CSDL MongoDB!');
+        setSuccess(data.message || 'Đã lưu chỉ tiêu doanh thu thành công!');
         fetchTargets();
       } else {
         setError(data.message || 'Không thể lưu chỉ tiêu vận hành.');
@@ -156,10 +156,10 @@ const GmTargetsPage = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-            Hoạch Định Doanh Thu &amp; Chỉ Tiêu Chi Nhánh
+            Hoạch Định Doanh Thu Chi Nhánh
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '4px', margin: 0 }}>
-            Thiết lập chỉ tiêu doanh số theo chi nhánh vào CSDL MongoDB và theo dõi hiệu suất bán vé quầy vs online từ thực tế.
+            Thiết lập chỉ tiêu doanh số theo chi nhánh và theo dõi hiệu suất bán vé quầy vs online từ thực tế.
           </p>
         </div>
 
@@ -251,7 +251,11 @@ const GmTargetsPage = () => {
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>MỤC TIÊU DOANH THU</span>
-            <span style={{ backgroundColor: '#ecfdf5', color: '#047857', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
+            <span style={{
+              backgroundColor: progressData.revenueProgress >= 80 ? '#ecfdf5' : progressData.revenueProgress >= 40 ? '#eff6ff' : '#fffbe6',
+              color: progressData.revenueProgress >= 80 ? '#047857' : progressData.revenueProgress >= 40 ? '#2563eb' : '#d97706',
+              fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px'
+            }}>
               {progressData.revenueProgress}%
             </span>
           </div>
@@ -262,7 +266,11 @@ const GmTargetsPage = () => {
             </div>
           </div>
           <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(progressData.revenueProgress, 100)}%`, height: '100%', backgroundColor: '#10b981', transition: 'width 0.5s ease' }}></div>
+            <div style={{
+              width: `${Math.min(progressData.revenueProgress, 100)}%`, height: '100%',
+              backgroundColor: progressData.revenueProgress >= 80 ? '#10b981' : progressData.revenueProgress >= 40 ? '#2563eb' : '#f59e0b',
+              transition: 'width 0.5s ease'
+            }}></div>
           </div>
         </div>
 
@@ -270,7 +278,11 @@ const GmTargetsPage = () => {
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.5px' }}>TỶ LỆ LẤP ĐẦY GHẾ</span>
-            <span style={{ backgroundColor: '#eff6ff', color: '#2563eb', fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px' }}>
+            <span style={{
+              backgroundColor: progressData.occupancyProgress >= 80 ? '#ecfdf5' : progressData.occupancyProgress >= 40 ? '#eff6ff' : '#fffbe6',
+              color: progressData.occupancyProgress >= 80 ? '#047857' : progressData.occupancyProgress >= 40 ? '#2563eb' : '#d97706',
+              fontSize: '0.75rem', fontWeight: '800', padding: '2px 10px', borderRadius: '12px'
+            }}>
               {progressData.occupancyProgress}%
             </span>
           </div>
@@ -281,7 +293,11 @@ const GmTargetsPage = () => {
             </div>
           </div>
           <div style={{ width: '100%', height: '8px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ width: `${Math.min(progressData.occupancyProgress, 100)}%`, height: '100%', backgroundColor: '#2563eb', transition: 'width 0.5s ease' }}></div>
+            <div style={{
+              width: `${Math.min(progressData.occupancyProgress, 100)}%`, height: '100%',
+              backgroundColor: progressData.occupancyProgress >= 80 ? '#10b981' : progressData.occupancyProgress >= 40 ? '#2563eb' : '#f59e0b',
+              transition: 'width 0.5s ease'
+            }}></div>
           </div>
         </div>
 
@@ -363,7 +379,12 @@ const GmTargetsPage = () => {
                 let ratingBg = '#fffbe6';
                 let ratingBorder = '#fef08a';
 
-                if (b.revenueProgress >= 80) {
+                if (b.revenueProgress >= 100) {
+                  ratingLabel = 'Vượt chỉ tiêu';
+                  ratingColor = '#047857';
+                  ratingBg = '#ecfdf5';
+                  ratingBorder = '#a7f3d0';
+                } else if (b.revenueProgress >= 80) {
                   ratingLabel = 'Đạt chỉ tiêu tốt';
                   ratingColor = '#047857';
                   ratingBg = '#ecfdf5';
@@ -545,10 +566,10 @@ const GmTargetsPage = () => {
           </div>
           <div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
-              Thiết Lập Chỉ Tiêu Vận Hành Tháng {String(month).padStart(2, '0')}/{year} (Lưu MongoDB)
+              Thiết Lập Chỉ Tiêu Vận Hành Tháng {String(month).padStart(2, '0')}/{year}
             </h2>
             <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '2px', margin: 0 }}>
-              Các chỉ tiêu sẽ được ghi trực tiếp vào collection <code style={{ color: '#2563eb', backgroundColor: '#eff6ff', padding: '1px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>operation_targets</code>
+              Thiết lập chỉ tiêu doanh số và phân bổ ngân sách kế hoạch cho các chi nhánh trong tháng.
             </p>
           </div>
         </div>
@@ -570,8 +591,8 @@ const GmTargetsPage = () => {
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     setRevenueTarget(val);
-                    setCounterTarget(Math.round(val * 0.6));
-                    setOnlineTarget(Math.round(val * 0.4));
+                    setCounterTarget(Math.round(val * 0.7));
+                    setOnlineTarget(Math.round(val * 0.3));
                     setTargetSg(Math.round(val * 0.5));
                     setTargetDl(Math.round(val * 0.3));
                     setTargetCt(Math.round(val * 0.2));
@@ -741,7 +762,7 @@ const GmTargetsPage = () => {
               }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              {saving ? 'Đang lưu vào MongoDB...' : 'Lưu Chỉ Tiêu Vào MongoDB'}
+              {saving ? 'Đang lưu...' : 'Lưu'}
             </button>
           </div>
         </form>

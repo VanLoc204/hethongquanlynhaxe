@@ -145,6 +145,220 @@ const OpsTripReportsPage = ({ role }) => {
 
   return (
     <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
+      {/* CSS Layout chuẩn Dashboard Vận Hành & Responsive Mobile */}
+      <style>{`
+        .ops-reports-panel-box {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1.25rem 1.5rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 1rem;
+        }
+
+        .ops-reports-header-actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .ops-reports-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 1rem;
+        }
+
+        .ops-reports-stat-card {
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 1rem 1.25rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          transition: all 0.2s ease;
+        }
+
+        .ops-reports-stat-label {
+          font-size: 0.72rem;
+          color: #64748b;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+
+        .ops-reports-stat-num {
+          font-size: 1.45rem;
+          font-weight: 900;
+          color: #0f172a;
+          margin-top: 2px;
+        }
+
+        .ops-reports-stat-badge {
+          background: #f1f5f9;
+          color: #334155;
+          padding: 4px 10px;
+          border-radius: 8px;
+          font-size: 0.75rem;
+          font-weight: 800;
+        }
+
+        .ops-reports-filter-box {
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e2e8f0;
+          padding: 1rem 1.25rem;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.85rem;
+          align-items: center;
+        }
+
+        .ops-reports-date-group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .ops-reports-selects-row {
+          display: flex;
+          align-items: center;
+          gap: 0.85rem;
+          flex-wrap: wrap;
+        }
+
+        .ops-reports-select-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .ops-reports-search-form {
+          flex: 1;
+          min-width: 220px;
+          display: flex;
+          gap: 6px;
+        }
+
+        .ops-reports-table-view {
+          display: block;
+          overflow-x: auto;
+        }
+
+        .ops-reports-card-view {
+          display: none;
+        }
+
+        /* Responsive Mobile (<= 768px) */
+        @media (max-width: 768px) {
+          .ops-reports-panel-box {
+            padding: 0.85rem 1rem !important;
+            border-radius: 12px !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 0.75rem !important;
+          }
+
+          .ops-reports-header-actions {
+            width: 100% !important;
+            display: flex !important;
+            gap: 8px !important;
+          }
+
+          .ops-reports-header-actions button {
+            width: 100% !important;
+            justify-content: center !important;
+            text-align: center !important;
+            padding: 0.55rem 1rem !important;
+            font-size: 0.78rem !important;
+          }
+
+          /* 4 Thẻ KPI: chuyển thành lưới 2x2 siêu gọn */
+          .ops-reports-stats-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+
+          .ops-reports-stat-card {
+            padding: 0.65rem 0.75rem !important;
+            border-radius: 10px !important;
+          }
+
+          .ops-reports-stat-label {
+            font-size: 0.62rem !important;
+          }
+
+          .ops-reports-stat-num {
+            font-size: 1.3rem !important;
+          }
+
+          .ops-reports-stat-badge {
+            font-size: 0.65rem !important;
+            padding: 2px 6px !important;
+            border-radius: 6px !important;
+          }
+
+          /* Bộ lọc tìm kiếm trên Mobile */
+          .ops-reports-filter-box {
+            padding: 0.85rem !important;
+            border-radius: 12px !important;
+            gap: 0.65rem !important;
+          }
+
+          .ops-reports-date-group {
+            width: 100% !important;
+            display: flex !important;
+          }
+
+          .ops-reports-date-group input {
+            flex: 1 !important;
+            min-width: 0 !important;
+          }
+
+          .ops-reports-selects-row {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+            width: 100% !important;
+          }
+
+          .ops-reports-select-item {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 2px !important;
+          }
+
+          .ops-reports-select-item select {
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+
+          .ops-reports-search-form {
+            width: 100% !important;
+            min-width: 0 !important;
+          }
+
+          /* Ẩn bảng trên mobile, hiện danh sách Card ngón tay dễ bấm */
+          .ops-reports-table-view {
+            display: none !important;
+          }
+
+          .ops-reports-card-view {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+          }
+        }
+      `}</style>
+
+
       
       {/* KHỐI 1: TIÊU ĐỀ & MÔ TẢ TRANG */}
       <div style={{
@@ -181,7 +395,7 @@ const OpsTripReportsPage = ({ role }) => {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="ops-reports-header-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {!isAttendant && (
             <button
               onClick={handleRunMidnightCheck}
@@ -532,7 +746,9 @@ const OpsTripReportsPage = ({ role }) => {
             </div>
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
+          <>
+          <div className="ops-reports-table-view">
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.78rem' }}>
             <thead>
               <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569' }}>
                 <th style={{ padding: '0.75rem 0.6rem', textAlign: 'center', width: '40px' }}>STT</th>
@@ -725,6 +941,107 @@ const OpsTripReportsPage = ({ role }) => {
               ))}
             </tbody>
           </table>
+          </div>
+
+          {/* DANH SÁCH DẠNG THẺ (CARD VIEW) TRÊN ĐIỆN THOẠI */}
+          <div className="ops-reports-card-view">
+            {reports.map((r, idx) => (
+              <div
+                key={r._id}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderLeft: `4px solid ${
+                    r.approvalStatus === 'approved' ? '#10b981' : r.approvalStatus === 'rejected' ? '#ef4444' : '#f59e0b'
+                  }`,
+                  borderRadius: '10px',
+                  padding: '0.85rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.55rem'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontWeight: '800', fontSize: '0.9rem', color: '#1d4ed8' }}>
+                    {r.routeInfo?.routeName || `${r.routeInfo?.startPoint} ➔ ${r.routeInfo?.endPoint}`}
+                  </span>
+                  {r.approvalStatus === 'approved' ? (
+                    <span style={{ backgroundColor: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 7px', borderRadius: '5px', fontWeight: '800', fontSize: '0.68rem' }}>
+                      ĐÃ KÝ DUYỆT
+                    </span>
+                  ) : r.approvalStatus === 'rejected' ? (
+                    <span style={{ backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '2px 7px', borderRadius: '5px', fontWeight: '800', fontSize: '0.68rem' }}>
+                      TỪ CHỐI
+                    </span>
+                  ) : (
+                    <span style={{ backgroundColor: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', padding: '2px 7px', borderRadius: '5px', fontWeight: '800', fontSize: '0.68rem' }}>
+                      CHỜ KÝ DUYỆT
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '0.74rem', color: '#475569', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                  <span>Mã: <strong style={{ color: '#0f172a' }}>{r.reportCode}</strong></span>
+                  <span>Khởi hành: <strong>{formatDate(r.routeInfo?.departureTime)}</strong></span>
+                </div>
+
+                <div style={{ fontSize: '0.72rem', color: '#64748b', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <span>Xe: <strong>{r.routeInfo?.plateNumber}</strong> ({r.routeInfo?.busType || '16 chỗ'})</span>
+                  <span>•</span>
+                  <span>Phụ xe: <strong>{r.routeInfo?.assistantName || 'Chưa cập nhật'}</strong></span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+                  <span style={{ backgroundColor: '#ecfdf5', color: '#15803d', border: '1px solid #bbf7d0', padding: '2px 8px', borderRadius: '5px', fontWeight: '800', fontSize: '0.72rem' }}>
+                    Khách: {r.stats?.totalBoarded || 0} / {r.stats?.totalBooked || 0} ({r.stats?.occupancyRate || 0}%)
+                  </span>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                    {r.submissionType === 'auto_midnight' ? '00:00 Auto' : 'Phụ xe nộp'}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                  <button
+                    onClick={() => handleOpenReportModal(r)}
+                    style={{
+                      flex: 1,
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '7px 12px',
+                      borderRadius: '6px',
+                      fontWeight: '700',
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
+                    }}
+                  >
+                    Xem / In Báo Cáo (A4)
+                  </button>
+
+                  {!isAttendant && r.approvalStatus !== 'approved' && (
+                    <button
+                      onClick={() => handleOpenReportModal(r)}
+                      style={{
+                        backgroundColor: '#16a34a',
+                        color: '#ffffff',
+                        border: 'none',
+                        padding: '7px 12px',
+                        borderRadius: '6px',
+                        fontWeight: '700',
+                        fontSize: '0.78rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Ký Duyệt
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
 

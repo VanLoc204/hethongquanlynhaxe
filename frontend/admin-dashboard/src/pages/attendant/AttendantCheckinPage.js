@@ -154,13 +154,17 @@ const AttendantCheckinPage = () => {
     }
   };
 
-  // Nạp lịch trình phân công khi vào trang
+  // Nạp lịch trình phân công khi vào trang và tự động đồng bộ ngầm định kỳ
   useEffect(() => {
-    fetchSchedule();
+    fetchSchedule(false);
+    const interval = setInterval(() => {
+      fetchSchedule(true);
+    }, 4500);
+    return () => clearInterval(interval);
   }, [token]);
 
-  const fetchSchedule = async () => {
-    setLoadingSchedule(true);
+  const fetchSchedule = async (silent = false) => {
+    if (!silent) setLoadingSchedule(true);
     setError('');
     try {
       const res = await fetch('http://localhost:8000/api/users/my-schedule', {
@@ -509,6 +513,39 @@ const AttendantCheckinPage = () => {
           display: none;
         }
 
+        
+        .checkin-trip-stats-grid {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .checkin-report-banner {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          background-color: #ffffff;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          padding: 0.65rem 1rem;
+        }
+
+        .checkin-report-banner-actions {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+
+        .checkin-filter-bar {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
         /* Responsive Tablet & Màn hình di động (<= 992px) */
         @media (max-width: 992px) {
           .checkin-split-layout {
@@ -554,8 +591,11 @@ const AttendantCheckinPage = () => {
           }
 
           .checkin-header-actions button {
-            flex: 1;
-            justify-content: center;
+            width: 100% !important;
+            padding: 0.6rem 1rem !important;
+            justify-content: center !important;
+            text-align: center !important;
+            font-size: 0.82rem !important;
           }
 
           /* Ẩn bảng trên mobile, hiển thị danh sách dạng Card ngón tay dễ bấm */
@@ -568,6 +608,58 @@ const AttendantCheckinPage = () => {
             flex-direction: column;
             gap: 0.75rem;
           }
+
+          .checkin-trip-stats-grid {
+            display: grid !important;
+            grid-template-columns: repeat(4, 1fr) !important;
+            gap: 6px !important;
+            width: 100% !important;
+            margin-top: 8px !important;
+          }
+          .checkin-trip-stats-grid > div {
+            min-width: 0 !important;
+            padding: 6px 3px !important;
+          }
+          .checkin-trip-stats-grid > div > div:first-child {
+            font-size: 0.58rem !important;
+          }
+          .checkin-trip-stats-grid > div > div:last-child {
+            font-size: 0.88rem !important;
+          }
+          .checkin-report-banner {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+            padding: 0.75rem 0.85rem !important;
+          }
+          .checkin-report-banner-actions {
+            width: 100% !important;
+            display: flex !important;
+            gap: 6px !important;
+          }
+          .checkin-report-banner-actions button {
+            flex: 1 !important;
+            padding: 8px 10px !important;
+            font-size: 0.78rem !important;
+            text-align: center !important;
+            justify-content: center !important;
+          }
+          .checkin-filter-bar {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+          }
+          .checkin-filter-bar input {
+            grid-column: span 2 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          .checkin-filter-bar select {
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+          /* Nút Tải Lại đã được loại bỏ, tự động đồng bộ ngầm */
+
         }
       `}</style>
 
@@ -599,28 +691,6 @@ const AttendantCheckinPage = () => {
           </div>
 
           <div className="checkin-header-actions">
-            <button
-              onClick={() => {
-                fetchSchedule();
-                if (selectedTrip) fetchPassengers(selectedTrip._id);
-              }}
-              style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #cbd5e1',
-                color: '#1e293b',
-                fontWeight: '700',
-                padding: '0.5rem 1rem',
-                borderRadius: '8px',
-                fontSize: '0.78rem',
-                cursor: 'pointer',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                whiteSpace: 'nowrap'
-              }}
-              title="Tải lại lịch chạy và danh sách hành khách"
-            >
-              Làm Mới
-            </button>
-
             <button
               onClick={() => {
                 setShowQRModal(true);
@@ -859,7 +929,7 @@ const AttendantCheckinPage = () => {
                   </div>
 
                   {/* 4 chỉ số tóm tắt của chuyến (Sức chứa, Vé đã đặt, Thực tế lên, Chờ soát) */}
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <div className="checkin-trip-stats-grid" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', textAlign: 'center', minWidth: '70px' }}>
                       <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: '700' }}>SỨC CHỨA</div>
                       <div style={{ fontSize: '1rem', fontWeight: '900', color: '#0f172a' }}>{totalBusSeats}</div>
@@ -882,7 +952,7 @@ const AttendantCheckinPage = () => {
                 </div>
 
                 {/* DÒNG TIỆN ÍCH BÁO CÁO CHUYẾN XE (GỬI BÁO CÁO CHO QUẢN LÝ VẬN TẢI / IN PHIẾU) */}
-                <div style={{
+                <div className="checkin-report-banner" style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -939,7 +1009,7 @@ const AttendantCheckinPage = () => {
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div className="checkin-report-banner-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                     {currentReport && (
                       <button
                         type="button"
@@ -1046,7 +1116,7 @@ const AttendantCheckinPage = () => {
                 </div>
 
                 {/* Thanh tìm kiếm & bộ lọc điểm đón / điểm trả */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <div className="checkin-filter-bar" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                   <input
                     type="text"
                     placeholder="Tìm theo tên hành khách, số điện thoại, vị trí ghế..."
@@ -1106,25 +1176,7 @@ const AttendantCheckinPage = () => {
                     ))}
                   </select>
 
-                  <button
-                    onClick={() => {
-                      fetchPassengers(selectedTrip._id);
-                      fetchTripReportStatus(selectedTrip._id);
-                    }}
-                    disabled={loadingPassengers}
-                    style={{
-                      padding: '0.5rem 0.85rem',
-                      border: '1px solid #cbd5e1',
-                      backgroundColor: '#f8fafc',
-                      borderRadius: '8px',
-                      fontSize: '0.75rem',
-                      fontWeight: '700',
-                      color: '#334155',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Tải Lại
-                  </button>
+                  
                 </div>
 
                 {loadingPassengers ? (

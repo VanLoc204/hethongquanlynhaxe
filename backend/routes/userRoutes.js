@@ -135,7 +135,7 @@ router.patch('/ticket-manager/feedbacks/:id/reply', restrictTo('ticket_manager',
 // 5. On-Route Driver Incidents (Chỉ dành cho Tài xế báo cáo & Quản lý vận tải xử lý)
 router.post('/driver/incidents', restrictTo('driver', 'admin'), createDriverIncident);
 router.get('/driver/incidents', restrictTo('driver', 'admin'), getDriverIncidents);
-router.get('/ops/incidents', restrictTo('ops_manager', 'admin'), getOpsIncidents);
+router.get('/ops/incidents', restrictTo('ops_manager', 'admin', 'general_manager'), getOpsIncidents);
 router.patch('/ops/incidents/:id/reimbursement', restrictTo('ops_manager', 'admin'), reviewIncidentReimbursement);
 router.patch('/ops/incidents/:id/assistance', restrictTo('ops_manager', 'admin'), updateIncidentAssistance);
 

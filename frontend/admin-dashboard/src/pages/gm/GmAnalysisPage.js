@@ -18,6 +18,7 @@ const GmAnalysisPage = ({ setActiveTab }) => {
 
   // Unmet Demand States
   const [unmetDemandData, setUnmetDemandData] = useState([]);
+  const [unmetSingleDestinations, setUnmetSingleDestinations] = useState([]);
   const [unmetKpis, setUnmetKpis] = useState(null);
   const [unmetLoading, setUnmetLoading] = useState(false);
   const [unmetSearchTerm, setUnmetSearchTerm] = useState('');
@@ -79,40 +80,13 @@ const GmAnalysisPage = ({ setActiveTab }) => {
     }
   }, [token, searchTerm, statusFilter]);
 
-  // Fetch Initial Dynamic AI Executive Report on Load
-  const fetchInitialAiReport = useCallback(async () => {
-    setChatLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/pricing/gm-ai-chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          history: [],
-          message: 'Tổng hợp nhanh tình hình vận tải hôm nay theo từng nhóm ý ngắn gọn cho Giám đốc',
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success && data.reply) {
-        setMessages([{ sender: 'ai', text: data.reply }]);
-      } else {
-        setMessages([{
-          sender: 'ai',
-          text: `Dạ thưa Ban Giám đốc, tổng hợp nhanh tình hình vận hành:\n\nTỔNG QUAN VẬN HÀNH:\n• Tỷ lệ lấp đầy bình quân: 76.4% công suất.\n• Doanh thu các tuyến chính tăng 18.4% so với tuần trước.\n\nĐIỂM CẦN LƯU Ý:\n• Các chuyến chiều tối còn ghế trống cần kích cầu sớm.\n\nĐỀ XUẤT HÀNH ĐỘNG:\n• Kích hoạt mã giảm giá 15% cho các chuyến tối nay.\n• Duy trì giá sàn hiện tại, sẵn sàng xe tăng cường dịp cuối tuần.`
-        }]);
-      }
-    } catch (err) {
-      setMessages([{
-        sender: 'ai',
-        text: `Dạ thưa Ban Giám đốc, tổng hợp nhanh tình hình:\n\nTỔNG QUAN:\n• Hiệu suất lấp đầy bình quân: 76.4% công suất.\n• Hoạt động ổn định trên các tuyến chính.\n\nĐỀ XUẤT:\n• Duy trì lịch chạy xe và giá sàn hiện tại.`
-      }]);
-    } finally {
-      setChatLoading(false);
-    }
-  }, [token]);
+  // Set Initial AI Executive Greeting on Load
+  const fetchInitialAiReport = useCallback(() => {
+    setMessages([{
+      sender: 'ai',
+      text: 'Dạ thưa Giám đốc! Tôi là Trợ lý Cố vấn Vận hành & Doanh thu An Bình Lines. Dữ liệu vận hành thời gian thực đã được cập nhật đầy đủ (doanh thu, tỷ lệ lấp đầy các tuyến, nhu cầu mở tuyến mới từ tìm kiếm của khách hàng và biểu giá vé).\n\nGiám đốc có thể bấm chọn các câu hỏi gợi ý nhanh phía trên hoặc đặt bất kỳ câu hỏi điều hành nào, tôi sẽ phân tích và tham mưu ngay.'
+    }]);
+  }, []);
 
   // Fetch Unmet Demand Analytics (Nhu cầu mở tuyến mới từ tìm kiếm)
   const fetchUnmetDemand = useCallback(async () => {
@@ -125,6 +99,7 @@ const GmAnalysisPage = ({ setActiveTab }) => {
       if (data.success) {
         setUnmetDemandData(data.data || []);
         setUnmetKpis(data.kpis || null);
+        setUnmetSingleDestinations(data.singleDestinations || []);
       }
     } catch (err) {
       console.warn('Lỗi lấy phân tích nhu cầu mở tuyến:', err.message);
@@ -190,10 +165,11 @@ const GmAnalysisPage = ({ setActiveTab }) => {
   const totalRoutesCount = routesAnalytics.length;
   const avgOccupancy = totalRoutesCount > 0
     ? Math.round(routesAnalytics.reduce((acc, r) => acc + (r.occupancyRate || 0), 0) / totalRoutesCount)
-    : 76.4;
+    : 5;
 
-  const topRouteObj = routesAnalytics.find(r => (r.occupancyRate || 0) >= 80) || routesAnalytics[0];
-  const topRouteName = topRouteObj ? topRouteObj.routeName : 'HCM ⇄ Đà Lạt';
+  const sortedRoutes = [...routesAnalytics].sort((a, b) => (b.occupancyRate || 0) - (a.occupancyRate || 0));
+  const topRouteObj = sortedRoutes[0];
+  const topRouteName = topRouteObj ? `${topRouteObj.routeName} (${topRouteObj.occupancyRate}%)` : 'Hồ Chí Minh → Đà Lạt';
 
   // Pagination Slice
   const totalPages = Math.ceil(routesAnalytics.length / pageSize) || 1;
@@ -514,10 +490,33 @@ const GmAnalysisPage = ({ setActiveTab }) => {
                 )}
               </div>
 
+              {/* Single Destination Demands (Nhu cầu tìm kiếm 1 chiều) */}
+              {unmetSingleDestinations && unmetSingleDestinations.length > 0 && (
+                <div style={{ padding: '12px 16px', borderTop: '1px solid #f1f5f9', backgroundColor: '#f8fafc' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: '800', color: '#475569', marginBottom: '8px' }}>
+                    Điểm đến 1 chiều được khách tìm kiếm nhiều nhất (Chưa chọn điểm xuất phát):
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {unmetSingleDestinations.map((dest, dIdx) => (
+                      <span key={dIdx} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        padding: '4px 10px', borderRadius: '6px', backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1', fontSize: '0.75rem', fontWeight: '700', color: '#1e293b'
+                      }}>
+                        <span>{dest.destination}</span>
+                        <span style={{ backgroundColor: '#e2e8f0', color: '#475569', padding: '1px 6px', borderRadius: '10px', fontSize: '0.7rem' }}>
+                          {dest.searchCount} lượt
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Explanatory Footer Card */}
               <div style={{ padding: '12px 16px', backgroundColor: '#faf5ff', borderTop: '1px solid #f3e8ff', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: '#6b21a8' }}>
-                <span style={{ fontWeight: '800' }}>Cơ chế ghi nhận:</span>
-                <span>Hệ thống tự động gom cụm các lượt tìm kiếm không có chuyến xe. Tuyến từ 30 lượt/tháng được đưa vào diện Tiềm năng; đạt từ 100 lượt/tháng sẽ kích hoạt Cảnh báo Mở tuyến cho Ban Giám đốc.</span>
+                <span style={{ fontWeight: '800' }}>Cơ chế Cảm biến AI:</span>
+                <span>Gemini AI tự động đối soát ngữ nghĩa địa danh với mạng lưới tuyến đang chạy (VD: TP.HCM đi Lâm Đồng tự nhận biết đã có tuyến đi Đà Lạt). Các lượt tìm kiếm ngoài mạng lưới được gom cụm động theo tỉnh/thành để phát hiện hành lang nhu cầu mới mà không cần danh mục cố định. Tuyến từ 30 lượt/tháng thuộc diện Tiềm năng, từ 100 lượt/tháng sẽ kích hoạt Cảnh báo Mở tuyến.</span>
               </div>
             </div>
           ) : (
@@ -595,7 +594,9 @@ const GmAnalysisPage = ({ setActiveTab }) => {
                         <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
                           <td style={{ padding: '12px 14px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                             {item.routeName}
-                            <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '400', marginTop: '2px' }}>{item.distance || '310km'}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>
+                              {item.tripsCount || 0} chuyến tính đến hiện tại • {item.distance || '310km'}
+                            </div>
                           </td>
                           <td style={{ padding: '12px 14px', color: '#334155', whiteSpace: 'nowrap', verticalAlign: 'top' }}>
                             <span style={{ backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', fontWeight: '600', fontSize: '0.75rem', color: '#475569' }}>
@@ -683,59 +684,6 @@ const GmAnalysisPage = ({ setActiveTab }) => {
               </div>
             )}
           </div>
-
-          {/* Peak Hourly Demand Grid */}
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '12px', padding: '1.25rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                Phân bổ nhu cầu theo Khung giờ Vàng (Hourly Distribution)
-              </h3>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: '600' }}>Tổng hợp 24h</span>
-            </div>
-
-            {/* Top Distribution Multi-color Bar */}
-            <div style={{ width: '100%', height: '8px', borderRadius: '4px', overflow: 'hidden', display: 'flex', marginBottom: '1rem' }}>
-              <div style={{ width: '32.4%', backgroundColor: '#00bdff' }} />
-              <div style={{ width: '15.8%', backgroundColor: '#ffc107' }} />
-              <div style={{ width: '41.2%', backgroundColor: '#10b981' }} />
-              <div style={{ width: '10.6%', backgroundColor: '#8b5cf6' }} />
-            </div>
-
-            {/* 4 Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#00bdff', fontWeight: '800', textTransform: 'uppercase' }}>KHUNG SÁNG (06H - 10H)</div>
-                <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#00bdff', marginTop: '4px' }}>32.4%</div>
-                <span style={{ display: 'inline-block', backgroundColor: '#e0f7fc', color: '#0090c4', fontSize: '0.65rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', marginTop: '4px' }}>
-                  Chuyến đi làm & Công tác
-                </span>
-              </div>
-
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: '800', textTransform: 'uppercase' }}>KHUNG TRƯA (11H - 14H)</div>
-                <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#d97706', marginTop: '4px' }}>15.8%</div>
-                <span style={{ display: 'inline-block', backgroundColor: '#fef3c7', color: '#b45309', fontSize: '0.65rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', marginTop: '4px' }}>
-                  Khung giờ thấp điểm
-                </span>
-              </div>
-
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#10b981', fontWeight: '800', textTransform: 'uppercase' }}>KHUNG TỐI (18H - 22H)</div>
-                <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#10b981', marginTop: '4px' }}>41.2%</div>
-                <span style={{ display: 'inline-block', backgroundColor: '#dcfce7', color: '#15803d', fontSize: '0.65rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', marginTop: '4px' }}>
-                  Xe giường nằm đêm
-                </span>
-              </div>
-
-              <div style={{ backgroundColor: '#ffffff', padding: '0.85rem', borderRadius: '10px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.68rem', color: '#8b5cf6', fontWeight: '800', textTransform: 'uppercase' }}>KHUNG ĐÊM (22H - 04H)</div>
-                <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#8b5cf6', marginTop: '4px' }}>10.6%</div>
-                <span style={{ display: 'inline-block', backgroundColor: '#f3e8ff', color: '#7e22ce', fontSize: '0.65rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', marginTop: '4px' }}>
-                  Chuyến chuyên biệt
-                </span>
-              </div>
-            </div>
-          </div>
             </>
           )}
 
@@ -777,10 +725,13 @@ const GmAnalysisPage = ({ setActiveTab }) => {
           </div>
 
           {/* Quick Prompts Bar */}
-          <div style={{
-            padding: '0.6rem 0.85rem', backgroundColor: '#f1f5f9', borderBottom: '1px solid #e2e8f0',
-            display: 'flex', gap: '6px', overflowX: 'auto', flexShrink: 0
-          }}>
+          <div 
+            style={{
+              padding: '0.65rem 0.85rem', backgroundColor: '#f1f5f9', borderBottom: '1px solid #e2e8f0',
+              display: 'flex', gap: '6px', overflowX: 'auto', flexShrink: 0,
+              scrollbarWidth: 'none', msOverflowStyle: 'none'
+            }}
+          >
             {quickPrompts.map((prompt, pIdx) => (
               <button
                 key={pIdx}
@@ -788,9 +739,12 @@ const GmAnalysisPage = ({ setActiveTab }) => {
                 disabled={chatLoading}
                 style={{
                   backgroundColor: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '16px',
-                  padding: '5px 12px', fontSize: '0.73rem', fontWeight: '600', color: '#334155',
-                  cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease'
+                  padding: '6px 13px', fontSize: '0.73rem', fontWeight: '600', color: '#334155',
+                  cursor: chatLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)', flexShrink: 0
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#eff6ff'; e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = '#1d4ed8'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#ffffff'; e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#334155'; }}
               >
                 {prompt}
               </button>
@@ -801,7 +755,7 @@ const GmAnalysisPage = ({ setActiveTab }) => {
           <div
             ref={chatMessagesContainerRef}
             style={{
-              flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex',
+              flex: 1, padding: '1rem', overflowY: 'auto', overflowX: 'hidden', display: 'flex',
               flexDirection: 'column', gap: '1rem', backgroundColor: '#fafafa'
             }}
           >
@@ -817,23 +771,23 @@ const GmAnalysisPage = ({ setActiveTab }) => {
                 >
                   {!isUser && (
                     <div style={{
-                      width: '28px', height: '28px', borderRadius: '50%',
-                      backgroundColor: '#8b5cf6', color: '#ffffff', fontSize: '0.7rem',
-                      fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0, marginTop: '2px'
+                      width: '30px', height: '30px', borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)', color: '#ffffff', fontSize: '0.72rem',
+                      fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, marginTop: '2px', boxShadow: '0 2px 4px rgba(99,102,241,0.2)'
                     }}>
                       AI
                     </div>
                   )}
 
-                  <div style={{ maxWidth: '88%' }}>
+                  <div style={{ maxWidth: '90%' }}>
                     <div
                       style={{
-                        padding: '11px 15px', borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                        padding: '12px 16px', borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
                         backgroundColor: isUser ? '#2563eb' : '#ffffff', color: isUser ? '#ffffff' : '#1e293b',
-                        fontSize: '0.82rem', lineHeight: '1.5', border: isUser ? 'none' : '1px solid #e2e8f0',
+                        fontSize: '0.825rem', lineHeight: '1.55', border: isUser ? 'none' : '1px solid #e2e8f0',
                         boxShadow: isUser ? '0 2px 6px rgba(37, 99, 235, 0.25)' : '0 1px 3px rgba(0,0,0,0.04)',
-                        whiteSpace: 'pre-wrap'
+                        whiteSpace: 'pre-wrap', wordBreak: 'break-word'
                       }}
                     >
                       {msg.text}
@@ -842,8 +796,8 @@ const GmAnalysisPage = ({ setActiveTab }) => {
 
                   {isUser && (
                     <div style={{
-                      width: '28px', height: '28px', borderRadius: '50%',
-                      backgroundColor: '#1e293b', color: '#ffffff', fontSize: '0.7rem',
+                      width: '30px', height: '30px', borderRadius: '50%',
+                      backgroundColor: '#1e293b', color: '#ffffff', fontSize: '0.72rem',
                       fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0, marginTop: '2px'
                     }}>

@@ -2501,13 +2501,17 @@ const TripsPage = () => {
               </div>
               <div>
                 <div style={{ fontSize: '0.88rem', fontWeight: '800', color: '#581c87', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>AI Đã Tối Ưu Lộ Trình: {activeAiBanner.landmark}</span>
+                  <span>AI Đã Tối Ưu Lộ Trình: {activeAiBanner.landmark || activeAiBanner.matchedRoute || activeAiBanner.originalQuery}</span>
                   <span style={{ fontSize: '0.62rem', backgroundColor: '#f3e8ff', color: '#7e22ce', padding: '1px 6px', borderRadius: '4px', border: '1px solid #d8b4fe' }}>
                     TÌM KIẾM THÔNG MINH
                   </span>
                 </div>
                 <div style={{ fontSize: '0.78rem', color: '#6b21a8', marginTop: '3px' }}>
-                  Địa danh thuộc <strong>{activeAiBanner.province}</strong>. Hệ thống tự động lọc các chuyến xe có điểm đón/trả thuận tiện nhất tại <strong>{activeAiBanner.stop}</strong>.
+                  {activeAiBanner.explanation ? (
+                    <span>{activeAiBanner.explanation}</span>
+                  ) : (
+                    <span>Địa danh thuộc <strong>{activeAiBanner.province}</strong>. Hệ thống tự động lọc các chuyến xe có điểm đón/trả thuận tiện nhất tại <strong>{activeAiBanner.stop || activeAiBanner.canonicalLocation}</strong>.</span>
+                  )}
                 </div>
               </div>
             </div>

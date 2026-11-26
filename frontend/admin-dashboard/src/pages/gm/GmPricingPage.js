@@ -33,7 +33,10 @@ const GmPricingPage = () => {
   const [dayOfWeek, setDayOfWeek] = useState([]);
   const [adjustmentType, setAdjustmentType] = useState('percentage');
   const [adjustmentValue, setAdjustmentValue] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [ruleErrors, setRuleErrors] = useState({});
 
   // Base Prices states
   const [basePrices, setBasePrices] = useState([]);
@@ -41,6 +44,7 @@ const GmPricingPage = () => {
   const [showBasePriceModal, setShowBasePriceModal] = useState(false);
   const [selectedCombo, setSelectedCombo] = useState(null);
   const [newBasePrice, setNewBasePrice] = useState('');
+  const [basePriceError, setBasePriceError] = useState('');
 
   // Filters for Base Prices
   const [baseSearch, setBaseSearch] = useState('');
@@ -209,6 +213,38 @@ const GmPricingPage = () => {
     }
   };
 
+  const validateRuleField = (field, val, currentType = adjustmentType, compareDate = startDate) => {
+    if (field === 'name') {
+      const clean = (val || '').trim();
+      if (!clean) return 'Vui lòng nhập tên quy định điều chỉnh';
+      if (clean.length < 5) return 'Tên quy định phải có ít nhất 5 ký tự';
+      return '';
+    }
+    if (field === 'adjustmentValue') {
+      if (val === '' || val === null || val === undefined) return 'Vui lòng nhập giá trị tăng/giảm';
+      const num = Number(val);
+      if (isNaN(num)) return 'Giá trị điều chỉnh phải là số hợp lệ';
+      if (num === 0) return 'Giá trị điều chỉnh không được bằng 0 (dương để tăng, âm để giảm)';
+      if (currentType === 'percentage') {
+        if (num < -50 || num > 200) return 'Tỷ lệ điều chỉnh (%) phải trong khoảng từ -50% đến +200%';
+      } else {
+        if (Math.abs(num) < 1000) return 'Mức điều chỉnh tiền mặt tối thiểu là 1.000 VNĐ';
+      }
+      return '';
+    }
+    if (field === 'startDate') {
+      if (!val) return 'Vui lòng chọn ngày bắt đầu hiệu lực';
+      return '';
+    }
+    if (field === 'endDate') {
+      if (val && compareDate && new Date(val) < new Date(compareDate)) {
+        return 'Ngày kết thúc phải diễn ra sau hoặc cùng ngày với ngày bắt đầu';
+      }
+      return '';
+    }
+    return '';
+  };
+
   const handleOpenAddRule = () => {
     setEditingRule(null);
     setName('');
@@ -217,7 +253,10 @@ const GmPricingPage = () => {
     setDayOfWeek([]);
     setAdjustmentType('percentage');
     setAdjustmentValue('');
+    setStartDate(new Date().toISOString().split('T')[0]);
+    setEndDate('');
     setIsActive(true);
+    setRuleErrors({});
     setShowModal(true);
   };
 
@@ -228,8 +267,11 @@ const GmPricingPage = () => {
     setBusType(rule.busType || 'all');
     setDayOfWeek(rule.dayOfWeek || []);
     setAdjustmentType(rule.adjustmentType || 'percentage');
-    setAdjustmentValue(rule.adjustmentValue || '');
+    setAdjustmentValue(rule.adjustmentValue !== undefined ? String(rule.adjustmentValue) : '');
+    setStartDate(rule.startDate ? new Date(rule.startDate).toISOString().split('T')[0] : '');
+    setEndDate(rule.endDate ? new Date(rule.endDate).toISOString().split('T')[0] : '');
     setIsActive(rule.isActive !== undefined ? rule.isActive : true);
+    setRuleErrors({});
     setShowModal(true);
   };
 
@@ -268,8 +310,19 @@ const GmPricingPage = () => {
 
   const handleSubmitRule = async (e) => {
     e.preventDefault();
-    if (!name || adjustmentValue === '') {
-      showToast('Vui lòng điền tên quy định và giá trị điều chỉnh.', 'error');
+    const nameErr = validateRuleField('name', name, adjustmentType);
+    const valErr = validateRuleField('adjustmentValue', adjustmentValue, adjustmentType);
+    const startErr = validateRuleField('startDate', startDate, adjustmentType);
+    const endErr = validateRuleField('endDate', endDate, adjustmentType, startDate);
+
+    if (nameErr || valErr || startErr || endErr) {
+      setRuleErrors({
+        ...(nameErr ? { name: nameErr } : {}),
+        ...(valErr ? { adjustmentValue: valErr } : {}),
+        ...(startErr ? { startDate: startErr } : {}),
+        ...(endErr ? { endDate: endErr } : {})
+      });
+      showToast('Vui lòng kiểm tra lại thông tin quy định chưa hợp lệ.', 'error');
       return;
     }
 
@@ -282,13 +335,15 @@ const GmPricingPage = () => {
     }
 
     const payload = {
-      name,
+      name: name.trim(),
       routeId,
       routeName,
       busType,
       dayOfWeek,
       adjustmentType,
       adjustmentValue: Number(adjustmentValue),
+      startDate: startDate || null,
+      endDate: endDate || null,
       isActive
     };
 
@@ -310,6 +365,7 @@ const GmPricingPage = () => {
       if (data.success) {
         showToast(editingRule ? 'Cập nhật quy định thành công!' : 'Tạo quy định mới thành công!');
         setShowModal(false);
+        setRuleErrors({});
         fetchRules();
       } else {
         showToast(data.message || 'Lỗi xử lý yêu cầu.', 'error');
@@ -323,13 +379,36 @@ const GmPricingPage = () => {
   const handleOpenBasePriceEdit = (combo) => {
     setSelectedCombo(combo);
     setNewBasePrice(combo.price || combo.recommendedPrice || '');
+    setBasePriceError('');
     setShowBasePriceModal(true);
+  };
+
+  const validateBasePriceValue = (val) => {
+    if (val === '' || val === null || val === undefined) {
+      return 'Vui lòng nhập giá vé cơ bản niêm yết';
+    }
+    const num = Number(val);
+    if (isNaN(num)) {
+      return 'Giá vé phải là số hợp lệ';
+    }
+    if (num <= 0) {
+      return 'Giá vé cơ bản phải là số dương lớn hơn 0';
+    }
+    if (num < 10000) {
+      return 'Giá vé cơ bản tối thiểu là 10.000 VNĐ';
+    }
+    if (num % 1000 !== 0) {
+      return 'Giá vé nên là bội số của 1.000 VNĐ (VD: 250.000đ, 290.000đ)';
+    }
+    return '';
   };
 
   const handleBasePriceSubmit = async (e) => {
     e.preventDefault();
-    if (newBasePrice === '' || Number(newBasePrice) < 0) {
-      showToast('Vui lòng nhập giá vé cơ bản hợp lệ.', 'error');
+    const err = validateBasePriceValue(newBasePrice);
+    if (err) {
+      setBasePriceError(err);
+      showToast(err, 'error');
       return;
     }
 
@@ -351,6 +430,7 @@ const GmPricingPage = () => {
       if (data.success) {
         showToast('Thiết lập giá vé cơ bản thành công!');
         setShowBasePriceModal(false);
+        setBasePriceError('');
         fetchBasePrices();
       } else {
         showToast(data.message || 'Lỗi thiết lập giá vé.', 'error');
@@ -432,7 +512,7 @@ const GmPricingPage = () => {
         </div>
       )}
 
-      {/* 1. TOP HEADER & GLOBAL ACTION BUTTONS */}
+      {/* 1. TOP HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
@@ -441,61 +521,6 @@ const GmPricingPage = () => {
           <p style={{ color: '#64748b', fontSize: '0.85rem', marginTop: '4px', margin: 0 }}>
             Thiết lập giá vé cơ bản và điều chỉnh linh hoạt cho các loại chuyến xe của hệ thống An Bình Lines
           </p>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={handleExportExcel}
-            style={{
-              backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1',
-              padding: '8px 14px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700',
-              display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer'
-            }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" /></svg>
-            Xuất bảng giá (Excel)
-          </button>
-
-          {activeTab === 'rules' ? (
-            <button
-              onClick={handleOpenAddRule}
-              style={{
-                backgroundColor: '#2563eb', color: '#ffffff', border: 'none',
-                padding: '8px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-                boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
-              Thêm quy định giá mới
-            </button>
-          ) : (
-            <button
-              onClick={() => showToast('Chức năng thiết lập tuyến mới đã sẵn sàng!', 'info')}
-              style={{
-                backgroundColor: '#2563eb', color: '#ffffff', border: 'none',
-                padding: '8px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700',
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-                boxShadow: '0 2px 4px rgba(37,99,235,0.2)'
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
-              Thiết lập tuyến mới
-            </button>
-          )}
-
-          <button
-            onClick={() => { fetchBasePrices(); fetchRules(); showToast('Đã đồng bộ dữ liệu CSDL MongoDB mới nhất!'); }}
-            style={{
-              backgroundColor: '#059669', color: '#ffffff', border: 'none',
-              padding: '8px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700',
-              display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-              boxShadow: '0 2px 4px rgba(5,150,105,0.2)'
-            }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
-            Lưu thay đổi
-          </button>
         </div>
       </div>
 
@@ -610,7 +635,7 @@ const GmPricingPage = () => {
             display: 'flex', alignItems: 'center', gap: '8px'
           }}
         >
-          Quy định điều chỉnh (Surcharges &amp; Discounts)
+          Quy định điều chỉnh giá
           <span style={{ backgroundColor: activeTab === 'rules' ? '#eff6ff' : '#f1f5f9', color: activeTab === 'rules' ? '#2563eb' : '#64748b', fontSize: '0.7rem', padding: '1px 7px', borderRadius: '10px', fontWeight: '800' }}>
             {rules.length}
           </span>
@@ -684,7 +709,7 @@ const GmPricingPage = () => {
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <select
                   value={ruleTypeFilter}
                   onChange={(e) => setRuleTypeFilter(e.target.value)}
@@ -711,6 +736,19 @@ const GmPricingPage = () => {
                   title="Tải lại danh sách"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
+                </button>
+
+                <button
+                  onClick={handleOpenAddRule}
+                  style={{
+                    backgroundColor: '#2563eb', color: '#ffffff', border: 'none',
+                    padding: '8px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '700',
+                    display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(37,99,235,0.2)', whiteSpace: 'nowrap'
+                  }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
+                  Thêm quy định mới
                 </button>
               </div>
             </div>
@@ -779,10 +817,18 @@ const GmPricingPage = () => {
                           </td>
 
                           <td style={{ padding: '1rem', fontSize: '0.75rem', color: '#64748b' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
-                              Liên tục cả năm 2026 - 2027
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '700', color: '#0f172a' }}>
+                              {rule.startDate ? (
+                                rule.endDate ? (
+                                  `${new Date(rule.startDate).toLocaleDateString('vi-VN')} → ${new Date(rule.endDate).toLocaleDateString('vi-VN')}`
+                                ) : (
+                                  `Từ ${new Date(rule.startDate).toLocaleDateString('vi-VN')} (Dài hạn)`
+                                )
+                              ) : (
+                                'Liên tục cả năm (Dài hạn)'
+                              )}
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '1px' }}>
+                            <div style={{ fontSize: '0.7rem', color: '#94a3b8', marginTop: '2px' }}>
                               {rule.dayOfWeek.length === 0 ? 'Áp dụng 7 ngày/tuần' : rule.dayOfWeek.map(d => DAYS_MAP[d]).join(', ')}
                             </div>
                           </td>
@@ -1225,21 +1271,54 @@ const GmPricingPage = () => {
           display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
         }}>
           <div style={{ backgroundColor: '#ffffff', width: '100%', maxWidth: '550px', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', marginBottom: '1rem', margin: 0 }}>
-              {editingRule ? 'Cập nhật quy định điều chỉnh giá' : 'Thêm quy định giá mới'}
+            <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#0f172a', marginBottom: '0.5rem', margin: 0 }}>
+              {editingRule ? 'Cập nhật quy định điều chỉnh giá' : 'Thêm quy định điều chỉnh giá mới'}
             </h3>
+            <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Quy định phụ thu hoặc giảm giá linh hoạt theo thứ trong tuần, loại xe và tuyến đường
+            </p>
 
-            <form onSubmit={handleSubmitRule} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+            {/* Error Banner */}
+            {Object.keys(ruleErrors).length > 0 && (
+              <div style={{
+                backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px',
+                padding: '8px 12px', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px',
+                color: '#b91c1c', fontSize: '0.78rem', fontWeight: '600'
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <span>Vui lòng kiểm tra và sửa các thông tin chưa hợp lệ bên dưới.</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmitRule} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Tên quy định *</label>
+                <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: ruleErrors.name ? '#dc2626' : '#334155', marginBottom: '4px' }}>
+                  Tên quy định *
+                </label>
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (ruleErrors.name) {
+                      const err = validateRuleField('name', e.target.value, adjustmentType);
+                      setRuleErrors(prev => ({ ...prev, name: err || undefined }));
+                    }
+                  }}
                   placeholder="Ví dụ: Phụ thu cao điểm cuối tuần (Thứ 6, T7, CN)"
                   required
-                  style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
+                  style={{
+                    width: '100%', padding: '8px 12px', fontSize: '0.85rem',
+                    border: ruleErrors.name ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: ruleErrors.name ? '#fff5f5' : '#ffffff',
+                    borderRadius: '8px', outline: 'none'
+                  }}
                 />
+                {ruleErrors.name && (
+                  <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                    {ruleErrors.name}
+                  </p>
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -1295,7 +1374,13 @@ const GmPricingPage = () => {
                   <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Hình thức điều chỉnh *</label>
                   <select
                     value={adjustmentType}
-                    onChange={(e) => setAdjustmentType(e.target.value)}
+                    onChange={(e) => {
+                      setAdjustmentType(e.target.value);
+                      if (ruleErrors.adjustmentValue) {
+                        const err = validateRuleField('adjustmentValue', adjustmentValue, e.target.value);
+                        setRuleErrors(prev => ({ ...prev, adjustmentValue: err || undefined }));
+                      }
+                    }}
                     style={{ width: '100%', padding: '8px 12px', fontSize: '0.825rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none', background: '#fff' }}
                   >
                     <option value="percentage">Phần trăm (%)</option>
@@ -1304,15 +1389,102 @@ const GmPricingPage = () => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Giá trị tăng/giảm *</label>
+                  <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: ruleErrors.adjustmentValue ? '#dc2626' : '#334155', marginBottom: '4px' }}>
+                    Giá trị tăng/giảm *
+                  </label>
                   <input
                     type="number"
                     value={adjustmentValue}
-                    onChange={(e) => setAdjustmentValue(e.target.value)}
+                    onChange={(e) => {
+                      setAdjustmentValue(e.target.value);
+                      if (ruleErrors.adjustmentValue) {
+                        const err = validateRuleField('adjustmentValue', e.target.value, adjustmentType);
+                        setRuleErrors(prev => ({ ...prev, adjustmentValue: err || undefined }));
+                      }
+                    }}
                     placeholder={adjustmentType === 'percentage' ? 'Ví dụ: 15 (+15%) hoặc -10' : 'Ví dụ: 40000 hoặc -20000'}
                     required
-                    style={{ width: '100%', padding: '8px 12px', fontSize: '0.85rem', border: '1px solid #cbd5e1', borderRadius: '8px', outline: 'none' }}
+                    style={{
+                      width: '100%', padding: '8px 12px', fontSize: '0.85rem',
+                      border: ruleErrors.adjustmentValue ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: ruleErrors.adjustmentValue ? '#fff5f5' : '#ffffff',
+                      borderRadius: '8px', outline: 'none'
+                    }}
                   />
+                  {ruleErrors.adjustmentValue && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {ruleErrors.adjustmentValue}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Thời điểm hiệu lực áp dụng */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: ruleErrors.startDate ? '#dc2626' : '#334155', marginBottom: '4px' }}>
+                    Thời điểm bắt đầu hiệu lực *
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      if (ruleErrors.startDate || ruleErrors.endDate) {
+                        const startErr = validateRuleField('startDate', e.target.value, adjustmentType);
+                        const endErr = validateRuleField('endDate', endDate, adjustmentType, e.target.value);
+                        setRuleErrors(prev => ({
+                          ...prev,
+                          startDate: startErr || undefined,
+                          endDate: endErr || undefined
+                        }));
+                      }
+                    }}
+                    required
+                    style={{
+                      width: '100%', padding: '8px 12px', fontSize: '0.825rem',
+                      border: ruleErrors.startDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: ruleErrors.startDate ? '#fff5f5' : '#ffffff',
+                      borderRadius: '8px', outline: 'none'
+                    }}
+                  />
+                  {ruleErrors.startDate && (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {ruleErrors.startDate}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: ruleErrors.endDate ? '#dc2626' : '#334155', marginBottom: '4px' }}>
+                    Thời điểm kết thúc (Tùy chọn)
+                  </label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      if (ruleErrors.endDate) {
+                        const endErr = validateRuleField('endDate', e.target.value, adjustmentType, startDate);
+                        setRuleErrors(prev => ({ ...prev, endDate: endErr || undefined }));
+                      }
+                    }}
+                    style={{
+                      width: '100%', padding: '8px 12px', fontSize: '0.825rem',
+                      border: ruleErrors.endDate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                      backgroundColor: ruleErrors.endDate ? '#fff5f5' : '#ffffff',
+                      borderRadius: '8px', outline: 'none'
+                    }}
+                  />
+                  {ruleErrors.endDate ? (
+                    <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                      {ruleErrors.endDate}
+                    </p>
+                  ) : (
+                    <span style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '3px', display: 'block' }}>
+                      Để trống = Áp dụng dài hạn cho đến khi có quyết định sửa đổi mới
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1329,7 +1501,14 @@ const GmPricingPage = () => {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setShowModal(false)} style={{ padding: '8px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModal(false);
+                    setRuleErrors({});
+                  }}
+                  style={{ padding: '8px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
                   Hủy
                 </button>
                 <button type="submit" style={{ padding: '8px 20px', border: 'none', borderRadius: '8px', background: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}>
@@ -1352,8 +1531,11 @@ const GmPricingPage = () => {
             <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#0f172a', margin: 0 }}>
               Thiết lập giá vé cơ bản
             </h3>
+            <p style={{ margin: '4px 0 1rem 0', fontSize: '0.78rem', color: '#64748b' }}>
+              Giá vé gốc niêm yết làm căn cứ tính tiền vé và áp dụng các quy định điều chỉnh
+            </p>
 
-            <form onSubmit={handleBasePriceSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.25rem' }}>
+            <form onSubmit={handleBasePriceSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Tuyến đường</label>
                 <input
@@ -1375,24 +1557,51 @@ const GmPricingPage = () => {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: '#334155', marginBottom: '4px' }}>Giá vé cơ bản niêm yết (VNĐ) *</label>
+                <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: '700', color: basePriceError ? '#dc2626' : '#334155', marginBottom: '4px' }}>
+                  Giá vé cơ bản niêm yết (VNĐ) *
+                </label>
                 <input
                   type="number"
                   value={newBasePrice}
-                  onChange={(e) => setNewBasePrice(e.target.value)}
+                  onChange={(e) => {
+                    setNewBasePrice(e.target.value);
+                    if (basePriceError) {
+                      const err = validateBasePriceValue(e.target.value);
+                      setBasePriceError(err);
+                    }
+                  }}
                   placeholder="Ví dụ: 290000"
                   required
-                  min="0"
+                  min="10000"
+                  step="1000"
                   autoFocus
-                  style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', fontWeight: '800', border: '1px solid #cbd5e1', borderRadius: '8px', color: '#2563eb', outline: 'none' }}
+                  style={{
+                    width: '100%', padding: '10px 12px', fontSize: '1rem', fontWeight: '800',
+                    border: basePriceError ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
+                    backgroundColor: basePriceError ? '#fff5f5' : '#ffffff',
+                    borderRadius: '8px', color: '#2563eb', outline: 'none'
+                  }}
                 />
-                <span style={{ fontSize: '0.725rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
-                  Giá đề xuất tối ưu: {selectedCombo.recommendedPrice?.toLocaleString('vi-VN')} đ
-                </span>
+                {basePriceError ? (
+                  <p style={{ color: '#ef4444', fontSize: '0.72rem', marginTop: '4px', marginBottom: 0, fontWeight: '500' }}>
+                    {basePriceError}
+                  </p>
+                ) : (
+                  <span style={{ fontSize: '0.725rem', color: '#64748b', marginTop: '4px', display: 'block' }}>
+                    Giá đề xuất tối ưu: {selectedCombo.recommendedPrice?.toLocaleString('vi-VN')} đ
+                  </span>
+                )}
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setShowBasePriceModal(false)} style={{ padding: '8px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBasePriceModal(false);
+                    setBasePriceError('');
+                  }}
+                  style={{ padding: '8px 16px', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', color: '#475569', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}
+                >
                   Hủy
                 </button>
                 <button type="submit" style={{ padding: '8px 20px', border: 'none', borderRadius: '8px', background: '#2563eb', color: '#ffffff', fontWeight: '700', fontSize: '0.8rem', cursor: 'pointer' }}>
@@ -1402,6 +1611,7 @@ const GmPricingPage = () => {
             </form>
           </div>
         </div>
+      )}
       )}
 
       {/* CONFIRMATION MODAL */}

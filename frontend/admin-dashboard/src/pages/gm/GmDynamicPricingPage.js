@@ -26,12 +26,12 @@ const GmDynamicPricingPage = () => {
   const fetchBasePrices = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/pricing/base-prices`, {
+      const res = await fetch(`${API_BASE}/pricing/dynamic-suggestions`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await res.json();
       if (data.success) {
-        setCombos(data.basePrices || []);
+        setCombos(data.suggestions || data.basePrices || []);
       } else {
         showToast(data.message || 'Lỗi tải gợi ý giá vé.', 'error');
       }
@@ -154,9 +154,9 @@ const GmDynamicPricingPage = () => {
         
         <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.15rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TỔNG SỐ TỔ HỢP</div>
+            <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TỔ HỢP ĐANG VẬN HÀNH</div>
             <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#2563eb', marginTop: '4px' }}>{totalCombos}</div>
-            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>Tất cả các tuyến và xe vận hành</div>
+            <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>Đánh giá các chuyến chạy đến hiện tại</div>
           </div>
           <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -168,7 +168,7 @@ const GmDynamicPricingPage = () => {
             <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>ĐÃ THIẾT LẬP GIÁ</div>
             <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#059669', marginTop: '4px' }}>{setCombosCount}</div>
             <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>
-              {totalCombos > 0 ? Math.round((setCombosCount / totalCombos) * 100) : 100}% chuyến xe có giá niêm yết
+              {totalCombos > 0 ? Math.round((setCombosCount / totalCombos) * 100) : 100}% tổ hợp có giá niêm yết
             </div>
           </div>
           <div style={{ width: '42px', height: '42px', borderRadius: '12px', backgroundColor: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -232,15 +232,6 @@ const GmDynamicPricingPage = () => {
             <option value="set">Đã thiết lập giá</option>
           </select>
 
-          <select 
-            value={aiConfidence}
-            onChange={(e) => setAiConfidence(e.target.value)}
-            style={{ padding: '8px 12px', fontSize: '0.8rem', border: '1px solid #cbd5e1', borderRadius: '8px', background: '#ffffff', fontWeight: '600', outline: 'none' }}
-          >
-            <option value="all">Độ tin cậy AI (Confidence &gt;= 90%)</option>
-            <option value="high">Rất cao (&gt;= 95%)</option>
-          </select>
-
         </div>
 
         <button 
@@ -291,8 +282,11 @@ const GmDynamicPricingPage = () => {
 
                 return (
                   <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '1rem', fontWeight: '800', color: '#2563eb', whiteSpace: 'nowrap' }}>
-                      {combo.routeName}
+                    <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontWeight: '800', color: '#2563eb' }}>{combo.routeName}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: '700', marginTop: '2px' }}>
+                        {combo.tripsCount || 0} chuyến tính đến hiện tại
+                      </div>
                     </td>
 
                     <td style={{ padding: '1rem', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap' }}>
@@ -321,7 +315,20 @@ const GmDynamicPricingPage = () => {
                         <span style={{ fontSize: '0.95rem', fontWeight: '900', color: '#7c3aed' }}>
                           {combo.recommendedPrice.toLocaleString('vi-VN')} đ
                         </span>
-                        <span style={{ fontSize: '0.675rem', color: '#059669', fontWeight: '800' }}>0%</span>
+                        {combo.diffPercent !== undefined && combo.diffPercent !== 0 ? (
+                          <span style={{
+                            fontSize: '0.675rem',
+                            color: combo.diffPercent > 0 ? '#16a34a' : '#ea580c',
+                            backgroundColor: combo.diffPercent > 0 ? '#dcfce7' : '#ffedd5',
+                            padding: '1px 6px',
+                            borderRadius: '6px',
+                            fontWeight: '800'
+                          }}>
+                            {combo.diffPercent > 0 ? `+${combo.diffPercent}%` : `${combo.diffPercent}%`}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.675rem', color: '#64748b', fontWeight: '700' }}>0%</span>
+                        )}
                       </div>
                       <div style={{ fontSize: '0.675rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         Cơ sở: {formulaDesc}
@@ -330,8 +337,10 @@ const GmDynamicPricingPage = () => {
 
                     <td style={{ padding: '1rem', whiteSpace: 'nowrap' }}>
                       <span style={{
-                        backgroundColor: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1',
-                        padding: '4px 10px', borderRadius: '16px', fontSize: '0.675rem', fontWeight: '700',
+                        backgroundColor: (combo.analysisRecommendation && combo.analysisRecommendation.includes('⚠️')) ? '#fff7ed' : '#f0fdf4',
+                        color: (combo.analysisRecommendation && combo.analysisRecommendation.includes('⚠️')) ? '#c2410c' : '#166534',
+                        border: (combo.analysisRecommendation && combo.analysisRecommendation.includes('⚠️')) ? '1px solid #fed7aa' : '1px solid #bbf7d0',
+                        padding: '4px 10px', borderRadius: '16px', fontSize: '0.7rem', fontWeight: '700',
                         whiteSpace: 'nowrap', display: 'inline-block'
                       }}>
                         {combo.analysisRecommendation || '✓ Giá đã tối ưu cho tỷ lệ lấp đầy'}
@@ -374,7 +383,7 @@ const GmDynamicPricingPage = () => {
       {/* 4. FOOTER PAGINATION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem', color: '#64748b' }}>
         <div>
-          Hiển thị {startIndex + 1} - {Math.min(startIndex + pageSize, totalFiltered)} trên tổng số {totalFiltered} tổ hợp tuyến
+          Hiển thị {startIndex + 1} - {Math.min(startIndex + pageSize, totalFiltered)} trên tổng số {totalFiltered} tổ hợp đang vận hành
         </div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button 

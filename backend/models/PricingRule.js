@@ -31,6 +31,14 @@ const pricingRuleSchema = new mongoose.Schema(
       type: Number,
       required: [true, 'Giá trị điều chỉnh là bắt buộc.']
     },
+    startDate: {
+      type: Date,
+      default: null
+    },
+    endDate: {
+      type: Date,
+      default: null
+    },
     isActive: {
       type: Boolean,
       default: true

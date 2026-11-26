@@ -117,15 +117,157 @@ const TripReportModal = ({
             display: none !important;
           }
         }
+
         .report-custom-table th, .report-custom-table td {
           border: 1px solid #334155;
           padding: 6px 8px;
           font-size: 0.78rem;
         }
+
+        .report-table-scroll {
+          width: 100%;
+          margin-bottom: 1rem;
+        }
+
+        .report-scroll-hint {
+          display: none;
+        }
+
+        /* Responsive Mobile cho Báo cáo A4 (<= 768px) */
+        @media (max-width: 768px) {
+          .report-modal-backdrop {
+            padding: 0 !important;
+            align-items: stretch !important;
+          }
+          .report-modal-dialog {
+            max-width: 100% !important;
+            width: 100% !important;
+            max-height: 100vh !important;
+            height: 100% !important;
+            border-radius: 0 !important;
+          }
+          .report-control-bar {
+            padding: 0.65rem 0.85rem !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 8px !important;
+          }
+          .report-control-header {
+            display: flex !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+          }
+          .report-control-actions {
+            display: flex !important;
+            gap: 6px !important;
+            width: 100% !important;
+          }
+          .report-control-actions button {
+            flex: 1 !important;
+            padding: 7px 10px !important;
+            font-size: 0.75rem !important;
+            text-align: center !important;
+            justify-content: center !important;
+          }
+          .report-scroll-body {
+            padding: 0.65rem 0.5rem !important;
+          }
+          .report-printable-area {
+            padding: 1rem 0.75rem !important;
+            border-radius: 6px !important;
+          }
+          .report-mobile-notice {
+            display: flex !important;
+          }
+          .report-company-header {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 8px !important;
+          }
+          .report-company-brand {
+            gap: 10px !important;
+          }
+          .report-brand-logo {
+            width: 46px !important;
+            height: 46px !important;
+            font-size: 1.1rem !important;
+            flex-shrink: 0 !important;
+          }
+          .report-company-name {
+            font-size: 0.88rem !important;
+          }
+          .report-company-desc {
+            font-size: 0.7rem !important;
+            line-height: 1.3 !important;
+          }
+          .report-tax-code {
+            text-align: left !important;
+            font-size: 0.75rem !important;
+          }
+          .report-main-title {
+            font-size: 1.1rem !important;
+          }
+          .report-sub-title {
+            font-size: 0.75rem !important;
+          }
+          .report-meta-grid {
+            grid-template-columns: 1fr !important;
+            gap: 5px !important;
+            padding: 0.65rem 0.75rem !important;
+            font-size: 0.75rem !important;
+          }
+          .report-table-scroll {
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            width: 100% !important;
+            margin-bottom: 0.85rem !important;
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 6px !important;
+          }
+          .report-table-scroll table {
+            min-width: 580px !important;
+            font-size: 0.72rem !important;
+          }
+          .report-table-scroll th, .report-table-scroll td {
+            padding: 5px 6px !important;
+            font-size: 0.72rem !important;
+            white-space: nowrap !important;
+          }
+          .report-scroll-hint {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            font-size: 0.68rem !important;
+            color: #64748b !important;
+            font-style: italic !important;
+            margin-bottom: 4px !important;
+            gap: 4px !important;
+          }
+          .report-signature-grid {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
+            margin-top: 1rem !important;
+          }
+          .report-signature-box {
+            font-size: 0.78rem !important;
+          }
+          .report-seal-svg {
+            width: 72px !important;
+            height: 72px !important;
+            transform: translate(-55%, -50%) rotate(-12deg) scale(0.85) !important;
+          }
+          .report-footer-bar {
+            flex-direction: column !important;
+            gap: 4px !important;
+            font-size: 0.65rem !important;
+          }
+        }
       `}</style>
 
       {/* Main Container */}
-      <div style={{
+      <div className="report-modal-dialog" style={{
         backgroundColor: '#ffffff',
         width: '100%',
         maxWidth: '920px',
@@ -146,7 +288,7 @@ const TripReportModal = ({
           color: '#ffffff',
           borderBottom: '1px solid #334155'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="report-control-header" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{
               backgroundColor: '#2563eb',
               color: '#ffffff',
@@ -186,7 +328,7 @@ const TripReportModal = ({
             )}
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="report-control-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {canSign && approvalStatus !== 'approved' && !showSignConfirm && (
               <button
                 type="button"
@@ -311,12 +453,29 @@ const TripReportModal = ({
         )}
 
         {/* Scrollable Document Area */}
-        <div style={{
+        <div className="report-scroll-body" style={{
           flex: 1,
           overflowY: 'auto',
           padding: '2rem 2.5rem',
           backgroundColor: '#f8fafc'
         }}>
+          {/* Thông báo chế độ xem di động */}
+          <div className="report-mobile-notice no-print" style={{
+            display: 'none',
+            alignItems: 'center',
+            backgroundColor: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: '8px',
+            padding: '0.6rem 0.85rem',
+            marginBottom: '0.85rem',
+            fontSize: '0.72rem',
+            color: '#1e40af',
+            lineHeight: '1.4'
+          }}>
+            <div>
+              <strong>Gợi ý hiển thị:</strong> Biểu mẫu được thiết kế chuẩn tỷ lệ in A4. Trên điện thoại đã tối ưu hiển thị và bạn có thể vuốt ngang các bảng kê. Khuyến nghị xem trên máy tính khi cần in ấn khổ giấy chuẩn hoặc quyết toán trang trọng.
+            </div>
+          </div>
           {/* A4 Paper Document Container */}
           <div className="report-printable-area" style={{
             backgroundColor: '#ffffff',
@@ -330,7 +489,7 @@ const TripReportModal = ({
           }}>
 
             {/* HEADER: LOGO & COMPANY INFO (Crystal Reports Format) */}
-            <div style={{
+            <div className="report-company-header" style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'flex-start',
@@ -339,8 +498,8 @@ const TripReportModal = ({
               marginBottom: '1.25rem'
             }}>
               {/* Left Brand */}
-              <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                <div style={{
+              <div className="report-company-brand" style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
+                <div className="report-brand-logo" style={{
                   backgroundColor: '#1e3a8a',
                   color: '#ffffff',
                   width: '64px',
@@ -356,7 +515,7 @@ const TripReportModal = ({
                   AB
                 </div>
                 <div>
-                  <div style={{ fontWeight: '900', fontSize: '1.05rem', color: '#1e3a8a', textTransform: 'uppercase' }}>
+                  <div className="report-company-name" style={{ fontWeight: '900', fontSize: '1.05rem', color: '#1e3a8a', textTransform: 'uppercase' }}>
                     CÔNG TY TNHH VẬN TẢI AN BÌNH - AN BÌNH LINES
                   </div>
                   <div style={{ fontSize: '0.78rem', color: '#334155' }}>
@@ -372,14 +531,14 @@ const TripReportModal = ({
               </div>
 
               {/* Right Tax Code */}
-              <div style={{ textAlign: 'right', fontSize: '0.8rem', color: '#1e293b' }}>
+              <div className="report-tax-code" style={{ textAlign: 'right', fontSize: '0.8rem', color: '#1e293b' }}>
                 <div>Mã số thuế: <strong>0312345678</strong></div>
               </div>
             </div>
 
             {/* TITLE */}
             <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-              <h1 style={{
+              <h1 className="report-main-title" style={{
                 fontSize: '1.35rem',
                 fontWeight: '900',
                 textTransform: 'uppercase',
@@ -389,7 +548,7 @@ const TripReportModal = ({
               }}>
                 BÁO CÁO THỐNG KÊ HÀNH KHÁCH CHUYẾN XE
               </h1>
-              <div style={{ fontStyle: 'italic', fontSize: '0.85rem', color: '#475569' }}>
+              <div className="report-sub-title" style={{ fontStyle: 'italic', fontSize: '0.85rem', color: '#475569' }}>
                 (Bảng kê đối soát hành khách thực tế lên xe &amp; Quyết toán vận hành tuyến)
               </div>
               <div style={{ fontSize: '0.8rem', color: '#334155', marginTop: '4px' }}>
@@ -398,7 +557,7 @@ const TripReportModal = ({
             </div>
 
             {/* METADATA SUMMARY GRID */}
-            <div style={{
+            <div className="report-meta-grid" style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
               gap: '8px 24px',
@@ -441,7 +600,11 @@ const TripReportModal = ({
               <div style={{ fontWeight: '800', fontSize: '0.88rem', textTransform: 'uppercase', marginBottom: '6px' }}>
                 1. TỔNG HỢP CHỈ SỐ VẬN HÀNH (KPI CHUYẾN XE)
               </div>
-              <table className="report-custom-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="report-scroll-hint">
+                <span>Vuốt ngang xem đầy đủ bảng KPI ➔</span>
+              </div>
+              <div className="report-table-scroll">
+                <table className="report-custom-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', fontWeight: '800' }}>
                     <th style={{ width: '45px', textAlign: 'center' }}>STT</th>
@@ -499,6 +662,7 @@ const TripReportModal = ({
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* SECTION 2: BẢNG KÊ CHI TIẾT HÀNH KHÁCH */}
@@ -506,7 +670,11 @@ const TripReportModal = ({
               <div style={{ fontWeight: '800', fontSize: '0.88rem', textTransform: 'uppercase', marginBottom: '6px' }}>
                 2. BẢNG KÊ CHI TIẾT HÀNH KHÁCH THEO VỊ TRÍ GHẾ NGỒI ({passengers.length} khách)
               </div>
-              <table className="report-custom-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <div className="report-scroll-hint">
+                <span>Vuốt ngang xem đầy đủ cột hành khách ➔</span>
+              </div>
+              <div className="report-table-scroll">
+                <table className="report-custom-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f1f5f9', fontWeight: '800' }}>
                     <th style={{ width: '35px', textAlign: 'center' }}>STT</th>
@@ -558,6 +726,7 @@ const TripReportModal = ({
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* SECTION 3: GHI CHÚ CỦA PHỤ XE */}
@@ -579,7 +748,7 @@ const TripReportModal = ({
             </div>
 
             {/* SECTION 4: CHỮ KÝ XÁC NHẬN & CHỨNG THỰC ĐIỆN TỬ */}
-            <div style={{
+            <div className="report-signature-grid" style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
               gap: '24px',
@@ -672,7 +841,7 @@ const TripReportModal = ({
                     </div>
 
                     {/* Dấu mộc tròn đỏ chứng thực điện tử đóng đè lên chữ ký */}
-                    <svg width="86" height="86" viewBox="0 0 100 100" style={{
+                    <svg className="report-seal-svg" width="86" height="86" viewBox="0 0 100 100" style={{
                       position: 'absolute',
                       left: '50%',
                       top: '50%',
@@ -731,7 +900,7 @@ const TripReportModal = ({
             </div>
 
             {/* FOOTER NOTICE */}
-            <div style={{
+            <div className="report-footer-bar" style={{
               borderTop: '1px solid #cbd5e1',
               marginTop: '2rem',
               paddingTop: '0.75rem',

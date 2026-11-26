@@ -118,11 +118,14 @@ class TripService {
 
     const andConditions = [];
 
-    // Filter by Origin if provided
+    // Filter by Origin if provided (Tìm kiếm trực tiếp theo tên tuyến, điểm đón và địa chỉ trạm đón)
     if (searchFrom) {
       const fromRegex = new RegExp(searchFrom.trim(), 'i');
       const routesFrom = await routeRepository.find({
-        startPoint: { $regex: fromRegex }
+        $or: [
+          { startPoint: { $regex: fromRegex } },
+          { name: { $regex: fromRegex } }
+        ]
       });
       const routeIdsFrom = routesFrom.map(r => r._id);
 
@@ -131,14 +134,18 @@ class TripService {
         fromConditions.push({ routeId: { $in: routeIdsFrom } });
       }
       fromConditions.push({ 'pickupPoints.location': { $regex: fromRegex } });
+      fromConditions.push({ 'pickupPoints.address': { $regex: fromRegex } });
       andConditions.push({ $or: fromConditions });
     }
 
-    // Filter by Destination if provided
+    // Filter by Destination if provided (Tìm kiếm trực tiếp theo tên tuyến, điểm trả và địa chỉ trạm trả)
     if (searchTo) {
       const toRegex = new RegExp(searchTo.trim(), 'i');
       const routesTo = await routeRepository.find({
-        endPoint: { $regex: toRegex }
+        $or: [
+          { endPoint: { $regex: toRegex } },
+          { name: { $regex: toRegex } }
+        ]
       });
       const routeIdsTo = routesTo.map(r => r._id);
 
@@ -147,6 +154,7 @@ class TripService {
         toConditions.push({ routeId: { $in: routeIdsTo } });
       }
       toConditions.push({ 'dropoffPoints.location': { $regex: toRegex } });
+      toConditions.push({ 'dropoffPoints.address': { $regex: toRegex } });
       andConditions.push({ $or: toConditions });
     }
 
