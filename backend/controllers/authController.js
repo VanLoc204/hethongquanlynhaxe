@@ -301,12 +301,9 @@ exports.sendForgotPasswordOTP = async (req, res) => {
     const result = await authService.sendForgotPasswordOTP(email);
     res.status(200).json({
       success: true,
-      message: result.emailSent
-        ? 'Mã xác thực OTP đã được gửi đến email của bạn (vui lòng kiểm tra cả Hộp thư đến và Spam).'
-        : `Mã OTP của bạn là: ${result.otp} (Hệ thống đã tạo mã)`,
+      message: 'Mã xác thực OTP đã được gửi đến email của bạn (vui lòng kiểm tra cả Hộp thư đến và Spam).',
       expiresIn: result.expiresIn,
-      emailSent: result.emailSent,
-      devOtp: result.otp
+      emailSent: result.emailSent
     });
   } catch (error) {
     res.status(400).json({

@@ -329,10 +329,8 @@ const AuthPage = ({ initialMode = 'login' }) => {
     if (res && res.success) {
       setForgotTimer(180); // 3 phút theo yêu cầu
       setForgotStep(2);
-      if (res.devOtp) {
-        setForgotOtp(res.devOtp);
-      }
-      setModalSuccess(res.message || 'Mã xác thực OTP đã được tạo thành công.');
+      setForgotOtp(''); // Để trống ô nhập để người dùng mở email lấy mã nhập vào
+      setModalSuccess(res.message || 'Mã xác thực OTP đã được gửi đến email của bạn.');
     } else {
       setModalError(res.message || 'Không thể gửi mã xác thực. Vui lòng kiểm tra lại email.');
     }
@@ -350,9 +348,7 @@ const AuthPage = ({ initialMode = 'login' }) => {
 
     if (res && res.success) {
       setForgotTimer(180);
-      if (res.devOtp) {
-        setForgotOtp(res.devOtp);
-      }
+      setForgotOtp(''); // Để trống khi gửi lại
       setModalSuccess(res.message || 'Mã xác thực mới đã được gửi lại.');
     } else {
       setModalError(res.message || 'Không thể gửi lại mã xác thực.');
