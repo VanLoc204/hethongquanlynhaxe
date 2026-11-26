@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import API_BASE_URL from '../../config/api';
 import axios from 'axios';
 import { Package, Truck, User, Phone, MapPin, DollarSign, Search, CheckCircle2, ArrowLeft, Mail, QrCode, CreditCard } from 'lucide-react';
@@ -454,16 +454,32 @@ const ShipmentPage = () => {
                     border: '1px solid #bfdbfe',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
+                    gap: '12px',
                     textAlign: 'left'
                   }}>
-                    <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '18px', height: '18px', flexShrink: 0 }}>
-                      <span className="visually-hidden">Đang chờ thanh toán...</span>
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: '#1e40af', lineHeight: 1.45 }}>
-                      <strong style={{ display: 'block', color: '#1e3a8a', fontWeight: '700' }}>Đang chờ nhận chuyển khoản cước phí...</strong>
+                    <div className="payment-pulse-spinner" />
+                    <div style={{ fontSize: '0.8rem', color: '#1e40af', lineHeight: 1.45, flex: 1 }}>
+                      <strong style={{ display: 'block', color: '#1e3a8a', fontWeight: '700', marginBottom: '2px' }}>Đang chờ nhận chuyển khoản cước phí...</strong>
                       Hệ thống tự động kích hoạt mã vận đơn gửi hàng ngay khi nhận được thanh toán.
                     </div>
+                  </div>
+
+                  <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#059669',
+                        fontSize: '0.78rem',
+                        fontWeight: '600',
+                        textDecoration: 'underline',
+                        cursor: 'pointer'
+                      }}
+                      onClick={handleSimulatePaymentSuccess}
+                    >
+                      Đã chuyển tiền? Bấm để hoàn tất tạo vận đơn ngay
+                    </button>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import API_BASE_URL from '../../config/api';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -1985,16 +1985,69 @@ const TripsPage = () => {
                       border: '1px solid #bfdbfe',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '10px',
+                      gap: '12px',
                       textAlign: 'left'
                     }}>
-                      <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '18px', height: '18px', flexShrink: 0 }}>
-                        <span className="visually-hidden">Đang chờ thanh toán...</span>
-                      </div>
-                      <div style={{ fontSize: '0.78rem', color: '#1e40af', lineHeight: 1.45 }}>
-                        <strong style={{ display: 'block', color: '#1e3a8a', fontWeight: '700' }}>Đang chờ nhận chuyển khoản VietQR...</strong>
+                      <div className="payment-pulse-spinner" />
+                      <div style={{ fontSize: '0.8rem', color: '#1e40af', lineHeight: 1.45, flex: 1 }}>
+                        <strong style={{ display: 'block', color: '#1e3a8a', fontWeight: '700', marginBottom: '2px' }}>Đang chờ nhận chuyển khoản VietQR...</strong>
                         Hệ thống sẽ tự động xác nhận và xuất hóa đơn điện tử ngay khi bạn hoàn tất chuyển tiền.
                       </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary"
+                      style={{
+                        marginTop: '12px',
+                        width: '100%',
+                        padding: '9px 12px',
+                        fontSize: '0.84rem',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        borderRadius: '8px',
+                        border: '1px solid #2563eb',
+                        color: '#2563eb',
+                        backgroundColor: '#ffffff',
+                        cursor: 'pointer'
+                      }}
+                      onClick={async () => {
+                        try {
+                          const backendOrigin = API_BASE.replace(/\/api\/.*$/, '');
+                          const res = await axios.get(`${backendOrigin}/api/bookings/order/${createdBooking?.orderCode}`);
+                          if (res.data?.success && res.data.booking?.status === 'paid') {
+                            setCreatedBooking(prev => ({ ...prev, status: 'paid' }));
+                            setBookingSuccess(true);
+                          } else {
+                            alert('Hệ thống đang đồng bộ dữ liệu giao dịch từ MBBank/PayOS. Nếu bạn đã chuyển khoản xong, vui lòng bấm "Xác nhận chuyển khoản thành công" bên dưới!');
+                          }
+                        } catch(e) {}
+                      }}
+                    >
+                      <RotateCcw size={14} />
+                      <span>Kiểm tra trạng thái thanh toán</span>
+                    </button>
+
+                    <div style={{ marginTop: '8px', textAlign: 'center' }}>
+                      <button
+                        type="button"
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#059669',
+                          fontSize: '0.78rem',
+                          fontWeight: '600',
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: '4px 8px'
+                        }}
+                        onClick={handleSimulatePaymentSuccess}
+                      >
+                        Đã chuyển tiền? Bấm để hoàn tất đặt vé ngay
+                      </button>
                     </div>
                   </>
                 )}
