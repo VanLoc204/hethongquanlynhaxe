@@ -463,24 +463,6 @@ const ShipmentPage = () => {
                       Hệ thống tự động kích hoạt mã vận đơn gửi hàng ngay khi nhận được thanh toán.
                     </div>
                   </div>
-
-                  <div style={{ marginTop: '10px', textAlign: 'center' }}>
-                    <button
-                      type="button"
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#059669',
-                        fontSize: '0.78rem',
-                        fontWeight: '600',
-                        textDecoration: 'underline',
-                        cursor: 'pointer'
-                      }}
-                      onClick={handleSimulatePaymentSuccess}
-                    >
-                      Đã chuyển tiền? Bấm để hoàn tất tạo vận đơn ngay
-                    </button>
-                  </div>
                 </div>
               </div>
 

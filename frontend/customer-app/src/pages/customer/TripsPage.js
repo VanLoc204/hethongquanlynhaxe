@@ -1994,61 +1994,6 @@ const TripsPage = () => {
                         Hệ thống sẽ tự động xác nhận và xuất hóa đơn điện tử ngay khi bạn hoàn tất chuyển tiền.
                       </div>
                     </div>
-
-                    <button
-                      type="button"
-                      className="btn btn-outline-primary"
-                      style={{
-                        marginTop: '12px',
-                        width: '100%',
-                        padding: '9px 12px',
-                        fontSize: '0.84rem',
-                        fontWeight: '700',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        borderRadius: '8px',
-                        border: '1px solid #2563eb',
-                        color: '#2563eb',
-                        backgroundColor: '#ffffff',
-                        cursor: 'pointer'
-                      }}
-                      onClick={async () => {
-                        try {
-                          const backendOrigin = API_BASE.replace(/\/api\/.*$/, '');
-                          const res = await axios.get(`${backendOrigin}/api/bookings/order/${createdBooking?.orderCode}`);
-                          if (res.data?.success && res.data.booking?.status === 'paid') {
-                            setCreatedBooking(prev => ({ ...prev, status: 'paid' }));
-                            setBookingSuccess(true);
-                          } else {
-                            alert('Hệ thống đang đồng bộ dữ liệu giao dịch từ MBBank/PayOS. Nếu bạn đã chuyển khoản xong, vui lòng bấm "Xác nhận chuyển khoản thành công" bên dưới!');
-                          }
-                        } catch(e) {}
-                      }}
-                    >
-                      <RotateCcw size={14} />
-                      <span>Kiểm tra trạng thái thanh toán</span>
-                    </button>
-
-                    <div style={{ marginTop: '8px', textAlign: 'center' }}>
-                      <button
-                        type="button"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#059669',
-                          fontSize: '0.78rem',
-                          fontWeight: '600',
-                          textDecoration: 'underline',
-                          cursor: 'pointer',
-                          padding: '4px 8px'
-                        }}
-                        onClick={handleSimulatePaymentSuccess}
-                      >
-                        Đã chuyển tiền? Bấm để hoàn tất đặt vé ngay
-                      </button>
-                    </div>
                   </>
                 )}
               </div>
