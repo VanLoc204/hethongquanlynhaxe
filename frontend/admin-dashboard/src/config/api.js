@@ -1,4 +1,3 @@
-import API_BASE_URL from '../config/api';
 // ============================================================
 // CẤU HÌNH API TRUNG TÂM - ADMIN DASHBOARD
 // Khi up host, chỉ cần đặt biến môi trường REACT_APP_API_URL
@@ -7,6 +6,6 @@ import API_BASE_URL from '../config/api';
 // ============================================================
 
 const API_BASE_URL =
-  process.env.REACT_APP_API_URL || API_BASE_URL;
+  process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 export default API_BASE_URL;
