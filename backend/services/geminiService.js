@@ -419,6 +419,13 @@ const getRuleBasedResponse = (userText) => {
     };
   }
 
+  if (text.includes('chuyến xe') || text.includes('chuyến nào') || text.includes('hôm nay') || text.includes('lịch trình') || text.includes('giờ chạy') || text.includes('giờ xuất bến') || text.includes('tuyến') || text.includes('đặt vé') || text.includes('giá vé')) {
+    return {
+      reply: 'Dạ, lịch trình các tuyến xe nổi bật hôm nay của An Bình Lines gồm có:\n• Tuyến TP. Hồ Chí Minh ⇄ Đà Lạt:\n  - Khởi hành: 06:30, 08:00, 13:00, 22:00, 23:30 hàng ngày\n  - Dòng xe: Limousine 9 phòng VIP & Giường nằm cao cấp\n  - Giá vé: 220.000 đ – 300.000 đ/vé\n• Tuyến TP. Hồ Chí Minh ⇄ Cần Thơ:\n  - Khởi hành: 07:00, 09:30, 14:00, 17:30 hàng ngày\n  - Dòng xe: Ghế ngồi 29 chỗ & Giường nằm\n  - Giá vé: 150.000 đ – 180.000 đ/vé\n\nQuý khách có thể bấm vào mục "Tìm chuyến" trên thanh menu để chọn ngày giờ và đặt vé trực tiếp có chọn chỗ ngồi nhé!',
+      suggestedTripIds: []
+    };
+  }
+
   return {
     reply: 'Dạ, em là Trợ lý ảo An Bình AI. Em luôn sẵn sàng hỗ trợ quý khách tra cứu lịch trình chuyến xe, giá vé, các mã voucher ưu đãi và chính sách đặt vé của An Bình Lines 24/7!',
     suggestedTripIds: []

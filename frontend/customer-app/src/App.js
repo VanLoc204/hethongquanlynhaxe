@@ -31,7 +31,6 @@ import TrackJourneyPage from './pages/customer/TrackJourneyPage';
 import ShipmentPage from './pages/customer/ShipmentPage';
 import AIAssistantPage from './pages/customer/AIAssistantPage';
 import ProfilePage from './pages/customer/ProfilePage';
-import AIChatbotWidget from './components/AIChatbotWidget';
 import ScrollToTop from './components/ScrollToTop';
 
 // Protected Route - chỉ dành cho khách hàng đã đăng nhập
@@ -222,9 +221,6 @@ const AppContent = () => {
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         </Routes>
       </main>
-
-      {/* Floating AI Chatbot Widget (ẩn trên Login/Register và trên trang AI Assistant chuyên biệt) */}
-      {!isAuthPage && !isAssistantPage && <AIChatbotWidget />}
 
       {/* Footer Dark Navy Luxury theo thiết kế */}
       {!isAuthPage && (
