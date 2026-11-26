@@ -57,6 +57,15 @@ app.use((req, res, next) => {
 app.use(systemLogger);
 app.use('/face-models', express.static(path.join(__dirname, 'public/face-models')));
 
+// Health check endpoints (hỗ trợ Render/UptimeRobot/Docker)
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json({
+    status: 'UP',
+    timestamp: new Date().toISOString(),
+    service: 'anbinh-backend'
+  });
+});
+
 // Routes
 const { payosWebhook } = require('./controllers/bookingController');
 
