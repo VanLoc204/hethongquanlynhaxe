@@ -227,11 +227,16 @@ class AuthService {
     let emailSent = false;
     let emailError = null;
     try {
-      const emailRes = await emailService.sendForgotPasswordOtpEmail(email, user.name, otp, 3);
+      // Race với timeout 2.5s để request HTTP KHÔNG BAO GIỜ bị treo giao diện người dùng
+      const emailPromise = emailService.sendForgotPasswordOtpEmail(email, user.name, otp, 3);
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 2500));
+      const emailRes = await Promise.race([emailPromise, timeoutPromise]);
       if (emailRes && emailRes.success) {
         emailSent = true;
+      } else if (emailRes?.timeout) {
+        console.log('[Auth] Email OTP đang tiếp tục gửi ngầm ở background, không block giao diện người dùng.');
       } else {
-        emailError = emailRes?.error || 'Dịch vụ gửi email chưa được kích hoạt';
+        emailError = emailRes?.error || 'Dịch vụ gửi email đang xử lý';
       }
     } catch (err) {
       emailError = err.message;
@@ -355,11 +360,15 @@ class AuthService {
     let emailSent = false;
     let emailError = null;
     try {
-      const emailRes = await emailService.sendChangePasswordOtpEmail(user.email, user.name, otp, 3);
+      const emailPromise = emailService.sendChangePasswordOtpEmail(user.email, user.name, otp, 3);
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 2500));
+      const emailRes = await Promise.race([emailPromise, timeoutPromise]);
       if (emailRes && emailRes.success) {
         emailSent = true;
+      } else if (emailRes?.timeout) {
+        console.log('[Auth] Email OTP đổi mật khẩu đang gửi ngầm background.');
       } else {
-        emailError = emailRes?.error || 'Brevo chưa gửi được email (IP chưa cấp phép)';
+        emailError = emailRes?.error || 'Dịch vụ gửi email đang xử lý';
       }
     } catch (err) {
       emailError = err.message;

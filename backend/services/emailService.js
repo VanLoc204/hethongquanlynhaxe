@@ -11,57 +11,46 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
  * 4. Brevo Transactional REST API (BREVO_API_KEY)
  */
 const sendEmail = async (toEmail, toName, subject, htmlContent) => {
-  // 1. Ưu tiên gửi qua Gmail SMTP nếu được cấu hình GMAIL_USER và GMAIL_APP_PASSWORD
-  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+  // 1. Brevo REST API (HTTPS Port 443) - Ưu tiên hàng đầu trên Cloud (Render) vì không bị chặn port SMTP
+  const apiKey = process.env.BREVO_API_KEY;
+  if (apiKey && apiKey !== 'fake-key') {
     try {
-      const nodemailer = require('nodemailer');
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '')
-        }
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': apiKey,
+          'content-type': 'application/json',
+          'accept': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: {
+            name: 'An Bình Lines',
+            email: process.env.SENDER_EMAIL || process.env.GMAIL_USER || 'hovanloc.lv@gmail.com'
+          },
+          to: [
+            {
+              email: toEmail,
+              name: toName || toEmail
+            }
+          ],
+          subject: subject,
+          htmlContent: htmlContent
+        })
       });
-      const info = await transporter.sendMail({
-        from: `"An Bình Lines" <${process.env.GMAIL_USER}>`,
-        to: `"${toName}" <${toEmail}>`,
-        subject: subject,
-        html: htmlContent
-      });
-      console.log('[Gmail SMTP] Email gửi thành công tới:', toEmail, info.messageId);
-      return { success: true, provider: 'gmail_smtp', messageId: info.messageId };
-    } catch (gmailErr) {
-      console.error('[Gmail SMTP Error]:', gmailErr.message);
+
+      const data = await response.json();
+      if (response.ok) {
+        console.log('[Brevo API Response]: Email gửi thành công tới:', toEmail, data);
+        return { success: true, provider: 'brevo', data };
+      } else {
+        console.warn('⚠️ [Brevo API Warning]:', data.message || data);
+      }
+    } catch (err) {
+      console.warn('[Brevo API Network Warning]:', err.message);
     }
   }
 
-  // 2. Gửi qua SMTP chung (hỗ trợ Brevo SMTP relay, Mailgun, SendGrid hoặc server SMTP riêng)
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    try {
-      const nodemailer = require('nodemailer');
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: Number(process.env.SMTP_PORT) === 465,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-      const info = await transporter.sendMail({
-        from: `"An Bình Lines" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
-        to: `"${toName}" <${toEmail}>`,
-        subject: subject,
-        html: htmlContent
-      });
-      console.log('[Custom SMTP] Email gửi thành công tới:', toEmail, info.messageId);
-      return { success: true, provider: 'custom_smtp', messageId: info.messageId };
-    } catch (smtpErr) {
-      console.error('[Custom SMTP Error]:', smtpErr.message);
-    }
-  }
-
-  // 3. Gửi qua Resend API nếu có cấu hình RESEND_API_KEY
+  // 2. Gửi qua Resend API nếu có cấu hình RESEND_API_KEY (HTTPS Port 443)
   if (process.env.RESEND_API_KEY) {
     try {
       const res = await fetch('https://api.resend.com/emails', {
@@ -82,68 +71,76 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
         console.log('[Resend API] Email gửi thành công tới:', toEmail, data.id);
         return { success: true, provider: 'resend', data };
       } else {
-        console.error('[Resend API Error]:', data);
+        console.warn('[Resend API Warning]:', data);
       }
     } catch (resendErr) {
-      console.error('[Resend API Error]:', resendErr.message);
+      console.warn('[Resend API Network Warning]:', resendErr.message);
     }
   }
 
-  // 4. Gửi qua Brevo Transactional REST API
-  const apiKey = process.env.BREVO_API_KEY;
-
-  if (!apiKey || apiKey === 'fake-key') {
-    console.log('============================================================');
-    console.log(`[MOCK EMAIL SENT] TO: ${toName} <${toEmail}>`);
-    console.log(`SUBJECT: ${subject}`);
-    console.log(`CONTENT: (Mocked template generated successfully. Vui lòng cấu hình GMAIL_USER/GMAIL_APP_PASSWORD hoặc BREVO_API_KEY)`);
-    console.log('============================================================');
-    return { success: false, message: 'Dịch vụ email chưa được kích hoạt khóa hợp lệ', isMock: true };
-  }
-
-  try {
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': apiKey,
-        'content-type': 'application/json',
-        'accept': 'application/json'
-      },
-      body: JSON.stringify({
-        sender: {
-          name: 'An Bình Lines',
-          email: process.env.SENDER_EMAIL || 'hovanloc.lv@gmail.com'
-        },
-        to: [
-          {
-            email: toEmail,
-            name: toName
-          }
-        ],
+  // 3. Gmail SMTP (với connectionTimeout 3000ms để không bao giờ treo request nếu Render chặn port SMTP 465/587)
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        connectionTimeout: 3000,
+        greetingTimeout: 3000,
+        socketTimeout: 3500,
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '')
+        }
+      });
+      const info = await transporter.sendMail({
+        from: `"An Bình Lines" <${process.env.GMAIL_USER}>`,
+        to: `"${toName}" <${toEmail}>`,
         subject: subject,
-        htmlContent: htmlContent
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      console.error('\n======================================================');
-      console.error('⚠️ [Brevo API Error]:', data.message || data);
-      if (data.code === 'unauthorized') {
-        console.error('👉 Khóa API Brevo hiện tại chưa được kích hoạt hoặc đã bị khóa.');
-        console.error('   Vui lòng truy cập https://app.brevo.com/settings/keys/api để tạo API key mới,');
-        console.error('   hoặc cấu hình GMAIL_USER và GMAIL_APP_PASSWORD trong Render Environment Variables.');
-      }
-      console.error('======================================================\n');
-      return { success: false, error: data.message, code: data.code, data };
+        html: htmlContent
+      });
+      console.log('[Gmail SMTP] Email gửi thành công tới:', toEmail, info.messageId);
+      return { success: true, provider: 'gmail_smtp', messageId: info.messageId };
+    } catch (gmailErr) {
+      console.warn('[Gmail SMTP Warning]:', gmailErr.message);
     }
-
-    console.log('[Brevo API Response]: Email gửi thành công:', data);
-    return { success: true, provider: 'brevo', data };
-  } catch (err) {
-    console.error('[Brevo SMTP Error]:', err);
-    return { success: false, error: err.message };
   }
+
+  // 4. Custom SMTP chung (hỗ trợ Mailgun, SendGrid hoặc server SMTP riêng)
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: Number(process.env.SMTP_PORT) === 465,
+        connectionTimeout: 3000,
+        greetingTimeout: 3000,
+        socketTimeout: 3500,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+      const info = await transporter.sendMail({
+        from: `"An Bình Lines" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
+        to: `"${toName}" <${toEmail}>`,
+        subject: subject,
+        html: htmlContent
+      });
+      console.log('[Custom SMTP] Email gửi thành công tới:', toEmail, info.messageId);
+      return { success: true, provider: 'custom_smtp', messageId: info.messageId };
+    } catch (smtpErr) {
+      console.warn('[Custom SMTP Warning]:', smtpErr.message);
+    }
+  }
+
+  // Fallback Mock Log
+  console.log('============================================================');
+  console.log(`[EMAIL NOTICE] TO: ${toName} <${toEmail}>`);
+  console.log(`SUBJECT: ${subject}`);
+  console.log('Vui lòng kiểm tra lại cấu hình Brevo API key hoặc xác thực IP trong email Brevo.');
+  console.log('============================================================');
+  return { success: false, message: 'Dịch vụ email chưa hoàn tất gửi thật', isMock: true };
 };
 
 /**

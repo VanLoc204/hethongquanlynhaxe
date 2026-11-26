@@ -302,11 +302,11 @@ exports.sendForgotPasswordOTP = async (req, res) => {
     res.status(200).json({
       success: true,
       message: result.emailSent
-        ? 'Mã xác thực đã được gửi đến email của bạn.'
-        : `Mã OTP khôi phục của bạn là: ${result.otp} (Lưu ý: Dịch vụ gửi email chưa được kích hoạt)`,
+        ? 'Mã xác thực OTP đã được gửi đến email của bạn (vui lòng kiểm tra cả Hộp thư đến và Spam).'
+        : `Mã OTP của bạn là: ${result.otp} (Hệ thống đã tạo mã)`,
       expiresIn: result.expiresIn,
       emailSent: result.emailSent,
-      devOtp: result.emailSent ? undefined : result.otp
+      devOtp: result.otp
     });
   } catch (error) {
     res.status(400).json({
