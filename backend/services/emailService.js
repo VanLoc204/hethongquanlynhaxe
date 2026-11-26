@@ -4,7 +4,11 @@ dotenv.config();
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 /**
- * Send an email using Gmail SMTP (if configured) or Brevo Transactional API
+ * Send an email using multiple providers:
+ * 1. Gmail SMTP (GMAIL_USER & GMAIL_APP_PASSWORD)
+ * 2. Custom SMTP (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)
+ * 3. Resend API (RESEND_API_KEY)
+ * 4. Brevo Transactional REST API (BREVO_API_KEY)
  */
 const sendEmail = async (toEmail, toName, subject, htmlContent) => {
   // 1. Ưu tiên gửi qua Gmail SMTP nếu được cấu hình GMAIL_USER và GMAIL_APP_PASSWORD
@@ -15,7 +19,7 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
         service: 'gmail',
         auth: {
           user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_APP_PASSWORD
+          pass: process.env.GMAIL_APP_PASSWORD.replace(/\s+/g, '')
         }
       });
       const info = await transporter.sendMail({
@@ -24,23 +28,77 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
         subject: subject,
         html: htmlContent
       });
-      console.log('[Gmail SMTP] Email hóa đơn điện tử đã gửi thành công tới:', toEmail, info.messageId);
+      console.log('[Gmail SMTP] Email gửi thành công tới:', toEmail, info.messageId);
       return { success: true, provider: 'gmail_smtp', messageId: info.messageId };
     } catch (gmailErr) {
       console.error('[Gmail SMTP Error]:', gmailErr.message);
     }
   }
 
-  // 2. Gửi qua Brevo Transactional REST API
+  // 2. Gửi qua SMTP chung (hỗ trợ Brevo SMTP relay, Mailgun, SendGrid hoặc server SMTP riêng)
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: Number(process.env.SMTP_PORT) === 465,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+      const info = await transporter.sendMail({
+        from: `"An Bình Lines" <${process.env.SENDER_EMAIL || process.env.SMTP_USER}>`,
+        to: `"${toName}" <${toEmail}>`,
+        subject: subject,
+        html: htmlContent
+      });
+      console.log('[Custom SMTP] Email gửi thành công tới:', toEmail, info.messageId);
+      return { success: true, provider: 'custom_smtp', messageId: info.messageId };
+    } catch (smtpErr) {
+      console.error('[Custom SMTP Error]:', smtpErr.message);
+    }
+  }
+
+  // 3. Gửi qua Resend API nếu có cấu hình RESEND_API_KEY
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM || 'An Binh Lines <onboarding@resend.dev>',
+          to: [toEmail],
+          subject: subject,
+          html: htmlContent
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        console.log('[Resend API] Email gửi thành công tới:', toEmail, data.id);
+        return { success: true, provider: 'resend', data };
+      } else {
+        console.error('[Resend API Error]:', data);
+      }
+    } catch (resendErr) {
+      console.error('[Resend API Error]:', resendErr.message);
+    }
+  }
+
+  // 4. Gửi qua Brevo Transactional REST API
   const apiKey = process.env.BREVO_API_KEY;
 
   if (!apiKey || apiKey === 'fake-key') {
     console.log('============================================================');
     console.log(`[MOCK EMAIL SENT] TO: ${toName} <${toEmail}>`);
     console.log(`SUBJECT: ${subject}`);
-    console.log(`CONTENT: (Mocked template generated successfully. Please set BREVO_API_KEY in .env for real email sending)`);
+    console.log(`CONTENT: (Mocked template generated successfully. Vui lòng cấu hình GMAIL_USER/GMAIL_APP_PASSWORD hoặc BREVO_API_KEY)`);
     console.log('============================================================');
-    return { success: true, message: 'Mock email logged successfully' };
+    return { success: false, message: 'Dịch vụ email chưa được kích hoạt khóa hợp lệ', isMock: true };
   }
 
   try {
@@ -71,17 +129,17 @@ const sendEmail = async (toEmail, toName, subject, htmlContent) => {
     if (!response.ok) {
       console.error('\n======================================================');
       console.error('⚠️ [Brevo API Error]:', data.message || data);
-      if (data.code === 'unauthorized' && data.message?.includes('unrecognised IP address')) {
-        console.error('👉 LƯU Ý BẢO MẬT BREVO: IP hiện tại của bạn chưa được cấp phép!');
-        console.error('   Vui lòng truy cập https://app.brevo.com/security/authorised_ips');
-        console.error('   để thêm địa chỉ IP hiển thị trong thông báo lỗi trên.');
+      if (data.code === 'unauthorized') {
+        console.error('👉 Khóa API Brevo hiện tại chưa được kích hoạt hoặc đã bị khóa.');
+        console.error('   Vui lòng truy cập https://app.brevo.com/settings/keys/api để tạo API key mới,');
+        console.error('   hoặc cấu hình GMAIL_USER và GMAIL_APP_PASSWORD trong Render Environment Variables.');
       }
       console.error('======================================================\n');
       return { success: false, error: data.message, code: data.code, data };
     }
 
     console.log('[Brevo API Response]: Email gửi thành công:', data);
-    return { success: true, data };
+    return { success: true, provider: 'brevo', data };
   } catch (err) {
     console.error('[Brevo SMTP Error]:', err);
     return { success: false, error: err.message };

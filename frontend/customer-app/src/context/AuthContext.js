@@ -203,7 +203,9 @@ export const AuthProvider = ({ children }) => {
       return { 
         success: true, 
         message: res.data.message, 
-        expiresIn: res.data.expiresIn || 180
+        expiresIn: res.data.expiresIn || 180,
+        emailSent: res.data.emailSent,
+        devOtp: res.data.devOtp
       };
     } catch (err) {
       const errMsg = err.response?.data?.message || 'Không thể gửi mã xác thực. Vui lòng thử lại.';

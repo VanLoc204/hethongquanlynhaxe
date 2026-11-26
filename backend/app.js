@@ -69,20 +69,25 @@ app.get(['/health', '/api/health'], (req, res) => {
 // Routes
 const { payosWebhook } = require('./controllers/bookingController');
 
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/trips', tripRoutes);
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/pricing', pricingRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/system', systemRoutes);
-app.use('/api/targets', targetRoutes);
-app.use('/api/promotions', promotionRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.post('/api/payment/webhook', payosWebhook);
+// Mount routes with universal support (both /api/... and direct /... for compatibility with all frontends)
+const mountRoutes = (prefix = '') => {
+  app.use(`${prefix}/auth`, authRoutes);
+  app.use(`${prefix}/users`, userRoutes);
+  app.use(`${prefix}/trips`, tripRoutes);
+  app.use(`${prefix}/bookings`, bookingRoutes);
+  app.use(`${prefix}/pricing`, pricingRoutes);
+  app.use(`${prefix}/chat`, chatRoutes);
+  app.use(`${prefix}/system`, systemRoutes);
+  app.use(`${prefix}/targets`, targetRoutes);
+  app.use(`${prefix}/promotions`, promotionRoutes);
+  app.use(`${prefix}/attendance`, attendanceRoutes);
+};
 
-// Direct payOS Webhook Endpoint
-app.post('/payment/webhook', payosWebhook);
+mountRoutes('/api');
+mountRoutes('');
+
+// PayOS Webhook (supports both /api/payment/webhook and /payment/webhook)
+app.post(['/api/payment/webhook', '/payment/webhook'], payosWebhook);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

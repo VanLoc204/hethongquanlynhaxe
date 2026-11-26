@@ -224,14 +224,22 @@ class AuthService {
     }, expiresInSec * 1000);
 
     // Gửi email OTP bằng template chuẩn An Bình Lines đồng bộ như Hóa đơn vé xe
+    let emailSent = false;
+    let emailError = null;
     try {
-      await emailService.sendForgotPasswordOtpEmail(email, user.name, otp, 3);
+      const emailRes = await emailService.sendForgotPasswordOtpEmail(email, user.name, otp, 3);
+      if (emailRes && emailRes.success) {
+        emailSent = true;
+      } else {
+        emailError = emailRes?.error || 'Dịch vụ gửi email chưa được kích hoạt';
+      }
     } catch (err) {
+      emailError = err.message;
       console.warn('[Email OTP Warning]:', err.message);
     }
 
-    console.log(`[Auth] Mã OTP khôi phục mật khẩu cho ${email}: ${otp} (Hiệu lực 3 phút)`);
-    return { email, expiresIn: expiresInSec };
+    console.log(`[Auth] Mã OTP khôi phục mật khẩu cho ${email}: ${otp} (Hiệu lực 3 phút) | Đã gửi email: ${emailSent}`);
+    return { email, expiresIn: expiresInSec, emailSent, emailError, otp };
   }
 
   // 2. Xác thực mã OTP và cấp resetToken dùng 1 lần (10 phút)

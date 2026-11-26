@@ -85,7 +85,7 @@ const LoginPage = () => {
       if (res.ok && data.success) {
         setForgotTimer(data.expiresIn || 180);
         setForgotStep(2);
-        setModalSuccess('Mã xác thực OTP đã được gửi đến email của bạn. Mã có hiệu lực trong 3 phút.');
+        setModalSuccess(data.message || 'Mã xác thực OTP đã được gửi đến email của bạn. Mã có hiệu lực trong 3 phút.');
       } else {
         setModalError(data.message || 'Không tìm thấy tài khoản liên kết với email này.');
       }

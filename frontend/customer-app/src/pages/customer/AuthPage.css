@@ -127,7 +127,8 @@
   background-position: center;
   background-repeat: no-repeat;
   overflow: hidden;
-  min-height: 0; /* Cho phép flex item co lại */
+  min-height: 0;
+  /* Cho phép flex item co lại */
 }
 
 .auth-hero-overlay {
@@ -150,9 +151,9 @@
   -webkit-backdrop-filter: blur(20px);
   /* COLOR TRANSITION & WIPE */
   transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-              color 0.4s ease;
+    border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.4s ease;
 }
 
 /* Shimmer Wipe Effect */
@@ -174,8 +175,13 @@
 }
 
 @keyframes cardWipeSweep {
-  0% { left: -150%; }
-  100% { left: 150%; }
+  0% {
+    left: -150%;
+  }
+
+  100% {
+    left: 150%;
+  }
 }
 
 /* Mode: LOGIN (Light Theme) */
@@ -649,19 +655,23 @@
     display: flex;
     flex-direction: column;
   }
+
   .auth-header {
     padding: 0.6rem 1rem;
     height: 56px;
     flex-shrink: 0;
   }
+
   /* Ẩn các nút Đăng nhập / Đăng ký trùng lặp trên thanh header khi xem trên mobile (vì trong Card đã có tab chuyển) */
   .auth-header-btn-login,
   .auth-header-btn-register {
     display: none !important;
   }
+
   .auth-header-nav {
     gap: 8px;
   }
+
   .auth-header-link {
     font-size: 0.85rem;
     padding: 6px 12px;
@@ -672,6 +682,7 @@
     display: inline-flex;
     align-items: center;
   }
+
   .auth-hero-container {
     justify-content: center;
     align-items: center;
@@ -681,6 +692,7 @@
     background-position: center center;
     background-size: cover;
   }
+
   .auth-card {
     max-width: 100%;
     width: 100%;
@@ -688,6 +700,7 @@
     padding: 18px 16px;
     border-radius: 16px;
   }
+
   .auth-footer {
     flex-direction: column;
     height: auto;
@@ -697,7 +710,9 @@
     background: #ffffff;
     flex-shrink: 0;
   }
-  .auth-footer-left, .auth-footer-right {
+
+  .auth-footer-left,
+  .auth-footer-right {
     flex-wrap: wrap;
     justify-content: center;
     gap: 8px;
@@ -709,27 +724,34 @@
   .auth-brand-name {
     font-size: 1.05rem;
   }
+
   .auth-brand-icon-box {
     width: 28px;
     height: 28px;
   }
+
   .auth-card {
     padding: 16px 14px;
   }
+
   .auth-card-title {
     font-size: 1.25rem;
   }
+
   .auth-card-subtitle {
     font-size: 0.78rem;
     margin-bottom: 10px;
   }
+
   .auth-input-group {
     margin-bottom: 10px;
   }
+
   .auth-input-wrapper input {
     font-size: 0.88rem;
     padding: 9px 10px 9px 36px;
   }
+
   .auth-btn-submit {
     padding: 10px 16px;
     font-size: 0.92rem;
