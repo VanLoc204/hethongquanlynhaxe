@@ -638,29 +638,100 @@
   box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.3);
 }
 
-/* Responsive */
+/* Responsive Mobile & Tablet */
 @media (max-width: 900px) {
   .auth-wrapper {
+    min-height: 100vh;
     height: auto;
     max-height: none;
     overflow-y: auto;
+    background: #0f172a;
+    display: flex;
+    flex-direction: column;
   }
   .auth-header {
-    padding: 0.6rem 1.25rem;
+    padding: 0.6rem 1rem;
+    height: 56px;
+    flex-shrink: 0;
+  }
+  /* Ẩn các nút Đăng nhập / Đăng ký trùng lặp trên thanh header khi xem trên mobile (vì trong Card đã có tab chuyển) */
+  .auth-header-btn-login,
+  .auth-header-btn-register {
+    display: none !important;
+  }
+  .auth-header-nav {
+    gap: 8px;
+  }
+  .auth-header-link {
+    font-size: 0.85rem;
+    padding: 6px 12px;
+    background: #eff6ff;
+    color: #2563eb;
+    border-radius: 8px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
   }
   .auth-hero-container {
     justify-content: center;
-    padding: 24px 14px;
+    align-items: center;
+    padding: 20px 14px;
+    flex: 1 0 auto;
+    min-height: calc(100vh - 110px);
+    background-position: center center;
+    background-size: cover;
+  }
+  .auth-card {
+    max-width: 100%;
+    width: 100%;
+    margin: auto 0;
+    padding: 18px 16px;
+    border-radius: 16px;
   }
   .auth-footer {
     flex-direction: column;
     height: auto;
-    gap: 8px;
-    padding: 0.8rem 1.25rem;
+    gap: 6px;
+    padding: 0.75rem 1rem;
     text-align: center;
+    background: #ffffff;
+    flex-shrink: 0;
   }
   .auth-footer-left, .auth-footer-right {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 8px;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-brand-name {
+    font-size: 1.05rem;
+  }
+  .auth-brand-icon-box {
+    width: 28px;
+    height: 28px;
+  }
+  .auth-card {
+    padding: 16px 14px;
+  }
+  .auth-card-title {
+    font-size: 1.25rem;
+  }
+  .auth-card-subtitle {
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+  }
+  .auth-input-group {
+    margin-bottom: 10px;
+  }
+  .auth-input-wrapper input {
+    font-size: 0.88rem;
+    padding: 9px 10px 9px 36px;
+  }
+  .auth-btn-submit {
+    padding: 10px 16px;
+    font-size: 0.92rem;
   }
 }
