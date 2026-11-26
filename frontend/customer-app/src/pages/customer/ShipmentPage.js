@@ -432,19 +432,55 @@ const ShipmentPage = () => {
                 <div className="glass-card" style={{ padding: '1.5rem', backgroundColor: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '12px', textAlign: 'center', maxWidth: '400px', margin: '0 auto' }}>
                   <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
                   
-                  <img 
-                    src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${createdShipment.fee}&addInfo=SmartShip%20${createdShipment.orderCode}&accountName=HO%20VAN%20LOC`} 
-                    alt="VietQR PayOS" 
-                    style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
-                  />
-                  
-                  <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '6px', margin: '0 auto', maxWidth: '300px' }}>
-                    <div>Ngân hàng: <strong>MBBank</strong></div>
-                    <div>Số tài khoản: <strong>0919210046</strong></div>
-                    <div>Chủ tài khoản: <strong>HO VAN LOC</strong></div>
-                    <div>Số tiền: <strong style={{ color: 'var(--accent)' }}>{formatCurrency(createdShipment.fee)}</strong></div>
-                    <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartShip {createdShipment.orderCode}</strong></div>
-                  </div>
+                  {(() => {
+                    const payosAcc = createdShipment?.payosData?.accountNumber || '0919210046';
+                    const payosQr = createdShipment?.payosData?.qrCode
+                      ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(createdShipment.payosData.qrCode)}`
+                      : `https://img.vietqr.io/image/MB-${payosAcc}-compact2.png?amount=${createdShipment.fee}&addInfo=SmartShip%20${createdShipment.orderCode}&accountName=HO%20VAN%20LOC`;
+
+                    return (
+                      <>
+                        <img 
+                          src={payosQr} 
+                          alt="VietQR PayOS" 
+                          style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
+                        />
+                        
+                        <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '6px', margin: '0 auto', maxWidth: '300px' }}>
+                          <div>Ngân hàng: <strong>MBBank</strong></div>
+                          <div>Số tài khoản: <strong>{payosAcc}</strong></div>
+                          <div>Chủ tài khoản: <strong>{createdShipment?.payosData?.accountName || 'HO VAN LOC'}</strong></div>
+                          <div>Số tiền: <strong style={{ color: 'var(--accent)' }}>{formatCurrency(createdShipment.fee)}</strong></div>
+                          <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartShip {createdShipment.orderCode}</strong></div>
+                        </div>
+
+                        {createdShipment?.payosData?.checkoutUrl && (
+                          <div style={{ marginTop: '12px' }}>
+                            <a
+                              href={createdShipment.payosData.checkoutUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-primary"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                width: '100%',
+                                padding: '10px 14px',
+                                fontSize: '0.85rem',
+                                fontWeight: '700',
+                                borderRadius: '8px',
+                                textDecoration: 'none'
+                              }}
+                            >
+                              <span>Mở trang thanh toán PayOS trực tiếp</span>
+                            </a>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   <div style={{
                     marginTop: '1.25rem',

@@ -1963,19 +1963,56 @@ const TripsPage = () => {
                   <>
                     <p style={{ fontWeight: '700', color: 'var(--primary)', marginBottom: '12px' }}>QUÉT MÃ THANH TOÁN VIETQR (PAYOS)</p>
 
-                    <img
-                      src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${createdBooking?.totalAmount ?? (trip.price * selectedSeats.length)}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`}
-                      alt="VietQR PayOS"
-                      style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
-                    />
+                    {(() => {
+                      const payosAcc = createdBooking?.payosData?.accountNumber || '0919210046';
+                      const payosQr = createdBooking?.payosData?.qrCode
+                        ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(createdBooking.payosData.qrCode)}`
+                        : `https://img.vietqr.io/image/MB-${payosAcc}-compact2.png?amount=${createdBooking?.totalAmount ?? (trip.price * selectedSeats.length)}&addInfo=SmartBus%20${createdBooking?.orderCode}&accountName=HO%20VAN%20LOC`;
 
-                    <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '6px', margin: '0 auto', maxWidth: '300px' }}>
-                      <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
-                      <div>Số tài khoản: <strong>0919210046</strong></div>
-                      <div>Chủ tài khoản: <strong>HO VAN LOC</strong></div>
-                      <div>Số tiền: <strong style={{ color: 'var(--accent)' }}>{formatCurrency(createdBooking?.totalAmount ?? (trip.price * selectedSeats.length))}</strong></div>
-                      <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartBus {createdBooking?.orderCode}</strong></div>
-                    </div>
+                      return (
+                        <>
+                          <img
+                            src={payosQr}
+                            alt="VietQR PayOS"
+                            style={{ width: '100%', maxWidth: '220px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginBottom: '1rem' }}
+                          />
+
+                          <div style={{ textAlign: 'left', fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: '6px', margin: '0 auto', maxWidth: '300px' }}>
+                            <div>Ngân hàng: <strong>MBBank (Ngân hàng Quân Đội)</strong></div>
+                            <div>Số tài khoản: <strong>{payosAcc}</strong></div>
+                            <div>Chủ tài khoản: <strong>{createdBooking?.payosData?.accountName || 'HO VAN LOC'}</strong></div>
+                            <div>Số tiền: <strong style={{ color: 'var(--accent)' }}>{formatCurrency(createdBooking?.totalAmount ?? (trip.price * selectedSeats.length))}</strong></div>
+                            <div>Nội dung chuyển khoản: <strong style={{ color: 'var(--primary)' }}>SmartBus {createdBooking?.orderCode}</strong></div>
+                          </div>
+
+                          {createdBooking?.payosData?.checkoutUrl && (
+                            <div style={{ marginTop: '12px' }}>
+                              <a
+                                href={createdBooking.payosData.checkoutUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-primary"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '8px',
+                                  width: '100%',
+                                  padding: '10px 14px',
+                                  fontSize: '0.85rem',
+                                  fontWeight: '700',
+                                  borderRadius: '8px',
+                                  textDecoration: 'none'
+                                }}
+                              >
+                                <span>Mở trang thanh toán PayOS trực tiếp</span>
+                                <ArrowRight size={15} />
+                              </a>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     <div style={{
                       marginTop: '1.25rem',
