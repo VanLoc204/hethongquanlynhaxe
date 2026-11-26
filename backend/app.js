@@ -86,6 +86,12 @@ const mountRoutes = (prefix = '') => {
 mountRoutes('/api');
 mountRoutes('');
 
+// Universal aliases for search endpoint (/search and /api/search)
+app.use(['/search', '/api/search'], (req, res, next) => {
+  req.url = '/search' + (req.url.startsWith('?') ? req.url : (req.url === '/' ? '' : req.url));
+  tripRoutes(req, res, next);
+});
+
 // PayOS Webhook (supports both /api/payment/webhook and /payment/webhook)
 app.post(['/api/payment/webhook', '/payment/webhook'], payosWebhook);
 

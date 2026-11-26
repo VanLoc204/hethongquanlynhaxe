@@ -3,7 +3,7 @@ import API_BASE_URL from '../../config/api';
 import axios from 'axios';
 import { Package, Truck, User, Phone, MapPin, DollarSign, Search, CheckCircle2, ArrowLeft, Mail, QrCode, CreditCard } from 'lucide-react';
 
-const API_BASE = API_BASE_URL;
+const API_BASE = API_BASE_URL + '/api/trips';
 
 const ShipmentPage = () => {
   const [activeTab, setActiveTab] = useState('create');

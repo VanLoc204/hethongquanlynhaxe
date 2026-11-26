@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import './TripsPage.css';
 
-const API_BASE = API_BASE_URL;
+const API_BASE = API_BASE_URL + '/api/trips';
 
 const TripsPage = () => {
   const { search } = useLocation();

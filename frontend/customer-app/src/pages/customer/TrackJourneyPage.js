@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import './TrackJourneyPage.css';
 
-const API_BASE = API_BASE_URL;
+const API_BASE = API_BASE_URL + '/api';
 
 const TrackJourneyPage = () => {
   const { user, isAuthenticated, token } = useContext(AuthContext);
