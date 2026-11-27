@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const morgan = require('morgan');
 
 const authRoutes = require('./routes/authRoutes');
@@ -25,6 +26,7 @@ app.locals.serverBootId = SERVER_BOOT_ID;
 
 // Global Middlewares
 app.set('trust proxy', 1);
+app.use(compression());
 // CORS: Cho phép frontend từ localhost (dev) và từ host production (Render/Vercel)
 const allowedOrigins = [
   'http://localhost:3000',

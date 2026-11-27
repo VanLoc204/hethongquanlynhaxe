@@ -30,6 +30,10 @@ const OpsTrackingPage = () => {
     const confirmMsg = `Bạn có chắc chắn muốn xác nhận HỦY chuyến xe "${route}" (Xe ${plate}) do đã quá giờ đến nơi mà chưa xuất bến?`;
     if (!window.confirm(confirmMsg)) return;
 
+    // Cập nhật lạc quan (Optimistic Update) tức thì trong 0ms:
+    setAllTrips(prev => prev.map(t => t._id === trip._id ? { ...t, status: 'cancelled' } : t));
+    showToast('Đã hủy chuyến xe thành công.');
+
     try {
       const res = await fetch(`${API_BASE}/trips/${trip._id}/update-journey`, {
         method: 'PATCH',
@@ -43,13 +47,14 @@ const OpsTrackingPage = () => {
         })
       });
       const data = await res.json();
-      if (data.success) {
-        showToast('Đã hủy chuyến xe thành công.');
-        fetchRealTrips(false);
-      } else {
+      if (!data.success) {
+        fetchRealTrips(true);
         alert(data.message || 'Không thể hủy chuyến xe.');
+      } else {
+        fetchRealTrips(true);
       }
     } catch {
+      fetchRealTrips(true);
       alert('Lỗi kết nối khi cập nhật chuyến xe.');
     }
   };
@@ -59,6 +64,10 @@ const OpsTrackingPage = () => {
     const route = trip.routeId ? `${trip.routeId.startPoint} - ${trip.routeId.endPoint}` : 'chuyến xe';
     const confirmMsg = `Bạn có chắc chắn muốn xác nhận chuyến xe "${route}" (Xe ${plate}) ĐÃ HOÀN THÀNH ngoài thực tế?`;
     if (!window.confirm(confirmMsg)) return;
+
+    // Cập nhật lạc quan (Optimistic Update) tức thì trong 0ms:
+    setAllTrips(prev => prev.map(t => t._id === trip._id ? { ...t, journeyStatus: 'completed' } : t));
+    showToast('Đã xác nhận chuyến xe hoàn thành.');
 
     try {
       const res = await fetch(`${API_BASE}/trips/${trip._id}/update-journey`, {
@@ -75,13 +84,14 @@ const OpsTrackingPage = () => {
         })
       });
       const data = await res.json();
-      if (data.success) {
-        showToast('Đã xác nhận chuyến xe hoàn thành.');
-        fetchRealTrips(false);
-      } else {
+      if (!data.success) {
+        fetchRealTrips(true);
         alert(data.message || 'Không thể hoàn thành chuyến xe.');
+      } else {
+        fetchRealTrips(true);
       }
     } catch {
+      fetchRealTrips(true);
       alert('Lỗi kết nối khi cập nhật chuyến xe.');
     }
   };
@@ -132,12 +142,13 @@ const OpsTrackingPage = () => {
     document.head.appendChild(script);
   }, []);
 
-  // 2. Fetch real trips from database (with silent background polling every 3s)
+  // 2. Fetch real trips from database (with date filter and silent background polling every 20s)
   const fetchRealTrips = async (isBackground = false) => {
     try {
       if (!isBackground) setLoading(true);
       const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-      const res = await fetch(`${API_BASE}/trips/ops/trips`, { headers });
+      const dateParam = selectedDate ? `?date=${selectedDate}` : '';
+      const res = await fetch(`${API_BASE}/trips/ops/trips${dateParam}`, { headers });
       const data = await res.json();
       if (data.success && data.trips) {
         setAllTrips(data.trips);
@@ -151,12 +162,12 @@ const OpsTrackingPage = () => {
 
   useEffect(() => {
     fetchRealTrips(false);
-    // Real-time polling every 3s to listen to driver's real GPS updates from MongoDB
+    // Real-time polling every 20s để cập nhật định vị GPS nhẹ nhàng không nghẽn server
     const interval = setInterval(() => {
       fetchRealTrips(true);
-    }, 3000);
+    }, 20000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, selectedDate]);
 
   // 3. Filter trips for the selected date (Today by default)
   const tripsForDate = useMemo(() => {

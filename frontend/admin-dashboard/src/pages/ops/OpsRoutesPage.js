@@ -618,8 +618,8 @@ const StopMapPickerModal = ({ stop, stopIndex, onConfirm, onClose }) => {
 
 const OpsRoutesPage = () => {
   const { token } = useContext(AuthContext);
-  const [routes, setRoutes] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [routes, setRoutes] = useState(() => (typeof window !== 'undefined' ? window.__cachedOpsRoutes || [] : []));
+  const [loading, setLoading] = useState(() => !(typeof window !== 'undefined' && window.__cachedOpsRoutes?.length > 0));
   const [showModal, setShowModal] = useState(false);
   const [editingRoute, setEditingRoute] = useState(null);
   const [toast, setToast] = useState(null);
@@ -650,8 +650,10 @@ const OpsRoutesPage = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchRoutes = async () => {
-    setLoading(true);
+  const fetchRoutes = async (silent = false) => {
+    if (!silent && routes.length === 0) {
+      setLoading(true);
+    }
     try {
       const res = await fetch(`${API_BASE}/trips/ops/routes`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -659,6 +661,9 @@ const OpsRoutesPage = () => {
       const data = await res.json();
       if (data.success) {
         setRoutes(data.routes || []);
+        if (typeof window !== 'undefined') {
+          window.__cachedOpsRoutes = data.routes || [];
+        }
         if (data.routes && data.routes.length > 0 && !expandedRouteId) {
           setExpandedRouteId(data.routes[0]._id);
         }
@@ -674,7 +679,7 @@ const OpsRoutesPage = () => {
 
   useEffect(() => {
     if (token) {
-      fetchRoutes();
+      fetchRoutes(routes.length > 0);
     }
   }, [token]);
 

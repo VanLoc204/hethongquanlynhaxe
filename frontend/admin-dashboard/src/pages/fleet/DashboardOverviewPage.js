@@ -3118,104 +3118,72 @@ const GeneralManagerOverview = ({
 
 const DashboardOverviewPage = ({ setActiveTab }) => {
   const { user, token } = useContext(AuthContext);
-  const [busCount, setBusCount] = useState(0);
-  const [busList, setBusList] = useState([]);
-  const [routeCount, setRouteCount] = useState(0);
-  const [tripCount, setTripCount] = useState(0);
-  const [totalBookedSeats, setTotalBookedSeats] = useState(0);
-  const [revenue, setRevenue] = useState(0);
-  const [avgRating, setAvgRating] = useState(4.5);
-  const [recentTrips, setRecentTrips] = useState([]);
-  const [activeRoutes, setActiveRoutes] = useState([]);
-  const [staffList, setStaffList] = useState([]);
-  const [liveAuditLogs, setLiveAuditLogs] = useState([]);
-  const [healthData, setHealthData] = useState(null);
-  const [revenueTrend, setRevenueTrend] = useState('');
-  const [seatsTrend, setSeatsTrend] = useState('');
-  const [tripsTrend, setTripsTrend] = useState('');
-  const [ratingTrend, setRatingTrend] = useState('');
-  const [todaysTripsCount, setTodaysTripsCount] = useState(0);
-  const [todaysTripsList, setTodaysTripsList] = useState([]);
-  const [maintenanceRecords, setMaintenanceRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cached = typeof window !== 'undefined' ? window.__cachedDashboardOverview : null;
+
+  const [busCount, setBusCount] = useState(() => cached?.busCount || 0);
+  const [busList, setBusList] = useState(() => cached?.busList || []);
+  const [routeCount, setRouteCount] = useState(() => cached?.routeCount || 0);
+  const [tripCount, setTripCount] = useState(() => cached?.tripCount || 0);
+  const [totalBookedSeats, setTotalBookedSeats] = useState(() => cached?.totalBookedSeats || 0);
+  const [revenue, setRevenue] = useState(() => cached?.revenue || 0);
+  const [avgRating, setAvgRating] = useState(() => cached?.avgRating || 4.5);
+  const [recentTrips, setRecentTrips] = useState(() => cached?.recentTrips || []);
+  const [activeRoutes, setActiveRoutes] = useState(() => cached?.activeRoutes || []);
+  const [staffList, setStaffList] = useState(() => cached?.staffList || []);
+  const [liveAuditLogs, setLiveAuditLogs] = useState(() => cached?.liveAuditLogs || []);
+  const [healthData, setHealthData] = useState(() => cached?.healthData || null);
+  const [revenueTrend, setRevenueTrend] = useState(() => cached?.revenueTrend || '');
+  const [seatsTrend, setSeatsTrend] = useState(() => cached?.seatsTrend || '');
+  const [tripsTrend, setTripsTrend] = useState(() => cached?.tripsTrend || '');
+  const [ratingTrend, setRatingTrend] = useState(() => cached?.ratingTrend || '');
+  const [todaysTripsCount, setTodaysTripsCount] = useState(() => cached?.todaysTripsCount || 0);
+  const [todaysTripsList, setTodaysTripsList] = useState(() => cached?.todaysTripsList || []);
+  const [maintenanceRecords, setMaintenanceRecords] = useState(() => cached?.maintenanceRecords || []);
+  const [loading, setLoading] = useState(() => !cached);
 
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      if (!window.__cachedDashboardOverview) {
+        setLoading(true);
+      }
       try {
-        // Fetch staff for admin
-        if (user?.role === 'admin' || user?.role === 'general_manager') {
-          try {
-            const staffRes = await fetch(`${API_BASE}/users/staff`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const staffData = await staffRes.json();
-            if (staffData.success) {
-              setStaffList(staffData.staff);
-            }
-          } catch (e) {
-            console.error('Error fetching staff list:', e);
-          }
+        const headers = { 'Authorization': `Bearer ${token}` };
 
-          // Fetch system logs & health for admin/GM
-          try {
-            const logsRes = await fetch(`${API_BASE}/system/logs`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const logsData = await logsRes.json();
-            if (logsData.success) {
-              setLiveAuditLogs(logsData.logs || []);
-            }
+        // 1. Tải song song toàn bộ dữ liệu bảng điều khiển (Parallel Fetching)
+        const [staffRes, logsRes, healthRes, busesRes, maintRes, routesRes, tripsRes] = await Promise.all([
+          (user?.role === 'admin' || user?.role === 'general_manager')
+            ? fetch(`${API_BASE}/users/staff`, { headers }).then(r => r.json()).catch(() => ({}))
+            : Promise.resolve({}),
+          (user?.role === 'admin' || user?.role === 'general_manager')
+            ? fetch(`${API_BASE}/system/logs`, { headers }).then(r => r.json()).catch(() => ({}))
+            : Promise.resolve({}),
+          (user?.role === 'admin' || user?.role === 'general_manager')
+            ? fetch(`${API_BASE}/system/health`, { headers }).then(r => r.json()).catch(() => ({}))
+            : Promise.resolve({}),
+          fetch(`${API_BASE}/trips/fleet/buses`, { headers }).then(r => r.json()).catch(() => ({})),
+          fetch(`${API_BASE}/trips/fleet/maintenance-records`, { headers }).then(r => r.json()).catch(() => ({})),
+          fetch(`${API_BASE}/trips/ops/routes`, { headers }).then(r => r.json()).catch(() => ({})),
+          fetch(`${API_BASE}/trips/ops/trips`, { headers }).then(r => r.json()).catch(() => ({}))
+        ]);
 
-            const healthRes = await fetch(`${API_BASE}/system/health`, {
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const healthJson = await healthRes.json();
-            if (healthJson.success) {
-              setHealthData(healthJson.data);
-            }
-          } catch (e) {
-            console.error('Error fetching system logs/health:', e);
-          }
-        }
+        if (staffRes.success) setStaffList(staffRes.staff || []);
+        if (logsRes.success) setLiveAuditLogs(logsRes.logs || []);
+        if (healthRes.success) setHealthData(healthRes.data || null);
 
-        // Fetch buses
-        const busesRes = await fetch(`${API_BASE}/trips/fleet/buses`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const busesData = await busesRes.json();
-        const busesArr = busesData.success ? busesData.buses : [];
+        const busesArr = busesRes.success ? busesRes.buses : [];
         setBusCount(busesArr.length);
         setBusList(busesArr);
 
-        // Fetch real maintenance records from MongoDB
-        try {
-          const maintRes = await fetch(`${API_BASE}/trips/fleet/maintenance-records`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          const maintData = await maintRes.json();
-          if (maintData.success) {
-            setMaintenanceRecords(maintData.records || []);
-          }
-        } catch (mErr) {
-          console.error('Error fetching maintenance records:', mErr);
+        if (maintRes.success) {
+          setMaintenanceRecords(maintRes.records || []);
         }
 
-        // Fetch routes
-        const routesRes = await fetch(`${API_BASE}/trips/ops/routes`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const routesData = await routesRes.json();
-        if (routesData.success) {
-          setRouteCount(routesData.routes.length);
-          setActiveRoutes(routesData.routes);
+        if (routesRes.success) {
+          setRouteCount(routesRes.routes.length);
+          setActiveRoutes(routesRes.routes);
         }
 
-        // Fetch trips
-        const tripsRes = await fetch(`${API_BASE}/trips/ops/trips`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const tripsData = await tripsRes.json();
+        const tripsData = tripsRes;
         if (tripsData.success) {
           const allTrips = tripsData.trips || [];
           setTripCount(allTrips.length);
@@ -3295,10 +3263,40 @@ const DashboardOverviewPage = ({ setActiveTab }) => {
             return `▲ +${seatFillRate}% ${suffixStr}`;
           };
 
-          setRevenueTrend(calcTrend(thisMonthRev, prevMonthRev, 'so với tháng trước'));
-          setSeatsTrend(calcTrend(thisMonthSeats, prevMonthSeats, 'lượt khách đặt'));
-          setTripsTrend(calcTrend(thisMonthTrips, prevMonthTrips, 'hiệu suất khai thác'));
-          setRatingTrend(`▲ +${(computedRating / 5 * 100).toFixed(1)}% mức độ hài lòng`);
+          const rTrend = calcTrend(thisMonthRev, prevMonthRev, 'so với tháng trước');
+          const sTrend = calcTrend(thisMonthSeats, prevMonthSeats, 'lượt khách đặt');
+          const tTrend = calcTrend(thisMonthTrips, prevMonthTrips, 'hiệu suất khai thác');
+          const ratTrend = `▲ +${(computedRating / 5 * 100).toFixed(1)}% mức độ hài lòng`;
+
+          setRevenueTrend(rTrend);
+          setSeatsTrend(sTrend);
+          setTripsTrend(tTrend);
+          setRatingTrend(ratTrend);
+
+          // Lưu cache RAM để lần chuyển tab sau hiển thị tức thì trong 0ms
+          if (typeof window !== 'undefined') {
+            window.__cachedDashboardOverview = {
+              busCount: busesArr.length,
+              busList: busesArr,
+              routeCount: routesRes.routes?.length || 0,
+              activeRoutes: routesRes.routes || [],
+              maintenanceRecords: maintRes.records || [],
+              staffList: staffRes.staff || [],
+              liveAuditLogs: logsRes.logs || [],
+              healthData: healthRes.data || null,
+              tripCount: allTrips.length,
+              recentTrips: allTrips,
+              todaysTripsCount: todayTrips.length,
+              todaysTripsList: todayTrips.length > 0 ? todayTrips : allTrips.slice(0, 5),
+              totalBookedSeats: seatsCount,
+              revenue: calculatedRevenue,
+              avgRating: computedRating,
+              revenueTrend: rTrend,
+              seatsTrend: sTrend,
+              tripsTrend: tTrend,
+              ratingTrend: ratTrend
+            };
+          }
         }
       } catch (err) {
         console.error('Error fetching dashboard statistics:', err);

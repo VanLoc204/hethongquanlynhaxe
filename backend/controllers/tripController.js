@@ -799,7 +799,8 @@ exports.deleteRoute = async (req, res) => {
 // @access  Private (Ops Manager)
 exports.getTrips = async (req, res) => {
   try {
-    const trips = await tripService.getTrips();
+    const { date, status, routeId } = req.query;
+    const trips = await tripService.getTrips({ date, status, routeId });
     res.status(200).json({
       success: true,
       count: trips.length,

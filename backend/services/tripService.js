@@ -555,8 +555,24 @@ class TripService {
     return true;
   }
 
-  async getTrips() {
-    const trips = await tripRepository.findWithPopulate({}, { departureTime: -1 });
+  async getTrips(filters = {}) {
+    const query = {};
+    if (filters.status) {
+      query.status = filters.status;
+    }
+    if (filters.routeId) {
+      query.routeId = filters.routeId;
+    }
+    if (filters.date) {
+      const targetDate = String(filters.date).trim();
+      const startOfDay = new Date(`${targetDate}T00:00:00.000+07:00`);
+      const endOfDay = new Date(`${targetDate}T23:59:59.999+07:00`);
+      if (!isNaN(startOfDay.getTime())) {
+        query.departureTime = { $gte: startOfDay, $lte: endOfDay };
+      }
+    }
+
+    const trips = await tripRepository.findWithPopulate(query, { departureTime: -1 });
     if (!trips || trips.length === 0) return [];
 
     const tripIds = trips.map(t => t._id);
