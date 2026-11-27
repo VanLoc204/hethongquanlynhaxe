@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 
@@ -337,6 +337,233 @@ const AgentBookingPage = ({ setActiveTab }) => {
       setPrintTarget(finalBooking);
       fetchInitialData();
     }
+  };
+
+  // Sinh sơ đồ ghế ngồi chuẩn theo từng loại xe (đồng bộ 100% với ứng dụng khách hàng)
+  const getSeatLayout = (totalSeats, busType = '') => {
+    const lowerFloor = [];
+    const upperFloor = [];
+    const typeStr = (busType || '').toLowerCase();
+
+    // Xác định xe 2 tầng (giường nằm hoặc limousine phòng cabin)
+    const isDoubleDecker =
+      typeStr.includes('giường') ||
+      typeStr.includes('phòng') ||
+      typeStr.includes('cabin') ||
+      totalSeats === 20 ||
+      totalSeats === 22 ||
+      totalSeats === 24 ||
+      totalSeats === 32 ||
+      totalSeats === 34 ||
+      totalSeats === 40 ||
+      totalSeats === 44;
+
+    if (isDoubleDecker) {
+      // 1. Xe giường phòng cabin VIP: 20, 22, 24 phòng (3 cột, 2 dãy cabin, 2 tầng)
+      if (totalSeats === 20 || totalSeats === 22 || totalSeats === 24) {
+        if (totalSeats === 20) {
+          lowerFloor.push(['A1', null, null]);
+          lowerFloor.push(['A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7']);
+          lowerFloor.push(['A8', 'A9', 'A10']);
+
+          upperFloor.push(['B1', null, null]);
+          upperFloor.push(['B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7']);
+          upperFloor.push(['B8', 'B9', 'B10']);
+        } else if (totalSeats === 22) {
+          lowerFloor.push(['A1', null, 'A2']);
+          lowerFloor.push(['A3', null, 'A4']);
+          lowerFloor.push(['A5', null, 'A6']);
+          lowerFloor.push(['A7', null, 'A8']);
+          lowerFloor.push(['A9', 'A10', 'A11']);
+
+          upperFloor.push(['B1', null, 'B2']);
+          upperFloor.push(['B3', null, 'B4']);
+          upperFloor.push(['B5', null, 'B6']);
+          upperFloor.push(['B7', null, 'B8']);
+          upperFloor.push(['B9', 'B10', 'B11']);
+        } else if (totalSeats === 24) {
+          lowerFloor.push(['A1', null, null]);
+          lowerFloor.push(['A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7']);
+          lowerFloor.push(['A8', null, 'A9']);
+          lowerFloor.push(['A10', 'A11', 'A12']);
+
+          upperFloor.push(['B1', null, null]);
+          upperFloor.push(['B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7']);
+          upperFloor.push(['B8', null, 'B9']);
+          upperFloor.push(['B10', 'B11', 'B12']);
+        }
+        return { lowerFloor, upperFloor, columns: 3 };
+      }
+
+      // 2. Xe Giường nằm truyền thống: 32, 34, 40, 44 chỗ (5 cột, 3 dãy giường, 2 tầng)
+      if (totalSeats === 32 || totalSeats === 34 || totalSeats === 40 || totalSeats === 44) {
+        if (totalSeats === 32) {
+          lowerFloor.push(['A1', null, null, null, 'A2']);
+          lowerFloor.push(['A3', null, 'A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7', null, 'A8']);
+          lowerFloor.push(['A9', null, 'A10', null, 'A11']);
+          lowerFloor.push(['A12', 'A13', 'A14', 'A15', 'A16']);
+
+          upperFloor.push(['B1', null, null, null, 'B2']);
+          upperFloor.push(['B3', null, 'B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7', null, 'B8']);
+          upperFloor.push(['B9', null, 'B10', null, 'B11']);
+          upperFloor.push(['B12', 'B13', 'B14', 'B15', 'B16']);
+        } else if (totalSeats === 34) {
+          lowerFloor.push(['A1', null, 'A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5', null, 'A6']);
+          lowerFloor.push(['A7', null, 'A8', null, 'A9']);
+          lowerFloor.push(['A10', null, 'A11', null, 'A12']);
+          lowerFloor.push(['A13', 'A14', 'A15', 'A16', 'A17']);
+
+          upperFloor.push(['B1', null, 'B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5', null, 'B6']);
+          upperFloor.push(['B7', null, 'B8', null, 'B9']);
+          upperFloor.push(['B10', null, 'B11', null, 'B12']);
+          upperFloor.push(['B13', 'B14', 'B15', 'B16', 'B17']);
+        } else if (totalSeats === 40) {
+          lowerFloor.push(['A1', null, 'A2', null, 'A3']);
+          lowerFloor.push(['A4', null, 'A5', null, 'A6']);
+          lowerFloor.push(['A7', null, 'A8', null, 'A9']);
+          lowerFloor.push(['A10', null, 'A11', null, 'A12']);
+          lowerFloor.push(['A13', null, 'A14', null, 'A15']);
+          lowerFloor.push(['A16', 'A17', 'A18', 'A19', 'A20']);
+
+          upperFloor.push(['B1', null, 'B2', null, 'B3']);
+          upperFloor.push(['B4', null, 'B5', null, 'B6']);
+          upperFloor.push(['B7', null, 'B8', null, 'B9']);
+          upperFloor.push(['B10', null, 'B11', null, 'B12']);
+          upperFloor.push(['B13', null, 'B14', null, 'B15']);
+          upperFloor.push(['B16', 'B17', 'B18', 'B19', 'B20']);
+        } else if (totalSeats === 44) {
+          lowerFloor.push(['A1', null, null, null, 'A2']);
+          lowerFloor.push(['A3', null, 'A4', null, 'A5']);
+          lowerFloor.push(['A6', null, 'A7', null, 'A8']);
+          lowerFloor.push(['A9', null, 'A10', null, 'A11']);
+          lowerFloor.push(['A12', null, 'A13', null, 'A14']);
+          lowerFloor.push(['A15', null, 'A16', null, 'A17']);
+          lowerFloor.push(['A18', 'A19', 'A20', 'A21', 'A22']);
+
+          upperFloor.push(['B1', null, null, null, 'B2']);
+          upperFloor.push(['B3', null, 'B4', null, 'B5']);
+          upperFloor.push(['B6', null, 'B7', null, 'B8']);
+          upperFloor.push(['B9', null, 'B10', null, 'B11']);
+          upperFloor.push(['B12', null, 'B13', null, 'B14']);
+          upperFloor.push(['B15', null, 'B16', null, 'B17']);
+          upperFloor.push(['B18', 'B19', 'B20', 'B21', 'B22']);
+        }
+        return { lowerFloor, upperFloor, columns: 5 };
+      }
+    }
+
+    // 3. Single Decker Layouts (1 Tầng)
+    // 3.1 Limousine ghế ngồi: 9 chỗ (3 cột)
+    if (totalSeats === 9) {
+      lowerFloor.push(['A1', null, 'A2']);
+      lowerFloor.push(['A3', null, 'A4']);
+      lowerFloor.push(['A5', null, 'A6']);
+      lowerFloor.push(['A7', 'A8', 'A9']);
+      return { lowerFloor, upperFloor: [], columns: 3 };
+    }
+
+    // 3.2 Limousine ghế ngồi: 19 chỗ (3 cột)
+    if (totalSeats === 19) {
+      lowerFloor.push(['A1', null, 'A2']);
+      lowerFloor.push(['A3', null, 'A4']);
+      lowerFloor.push(['A5', null, 'A6']);
+      lowerFloor.push(['A7', null, 'A8']);
+      lowerFloor.push(['A9', null, 'A10']);
+      lowerFloor.push(['A11', null, 'A12']);
+      lowerFloor.push(['A13', null, 'A14']);
+      lowerFloor.push(['A15', null, 'A16']);
+      lowerFloor.push(['A17', 'A18', 'A19']);
+      return { lowerFloor, upperFloor: [], columns: 3 };
+    }
+
+    // 3.3 Xe ghế ngồi 16 chỗ (4 cột)
+    if (totalSeats === 16) {
+      lowerFloor.push(['A1', 'A2', null, 'A3']);
+      lowerFloor.push(['A4', 'A5', null, 'A6']);
+      lowerFloor.push(['A7', 'A8', null, 'A9']);
+      lowerFloor.push(['A10', 'A11', null, 'A12']);
+      lowerFloor.push(['A13', 'A14', 'A15', 'A16']);
+      return { lowerFloor, upperFloor: [], columns: 4 };
+    }
+
+    // 3.4 Xe ghế ngồi 29 chỗ (5 cột)
+    if (totalSeats === 29) {
+      lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
+      lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
+      lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
+      lowerFloor.push(['A13', 'A14', null, 'A15', 'A16']);
+      lowerFloor.push(['A17', 'A18', null, 'A19', 'A20']);
+      lowerFloor.push(['A21', 'A22', null, 'A23', 'A24']);
+      lowerFloor.push(['A25', 'A26', 'A27', 'A28', 'A29']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // 3.5 Xe ghế ngồi 35 chỗ (5 cột)
+    if (totalSeats === 35) {
+      lowerFloor.push([null, null, null, 'A1', 'A2']);
+      lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
+      lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
+      lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
+      lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
+      lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
+      lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
+      lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
+      lowerFloor.push(['A31', 'A32', 'A33', 'A34', 'A35']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // 3.6 Xe ghế ngồi 45 chỗ (5 cột)
+    if (totalSeats === 45) {
+      lowerFloor.push(['A1', 'A2', null, 'A3', 'A4']);
+      lowerFloor.push(['A5', 'A6', null, 'A7', 'A8']);
+      lowerFloor.push(['A9', 'A10', null, 'A11', 'A12']);
+      lowerFloor.push(['A13', 'A14', null, 'A15', 'A16']);
+      lowerFloor.push(['A17', 'A18', null, 'A19', 'A20']);
+      lowerFloor.push(['A21', 'A22', null, 'A23', 'A24']);
+      lowerFloor.push(['A25', 'A26', null, 'A27', 'A28']);
+      lowerFloor.push(['A29', 'A30', null, 'A31', 'A32']);
+      lowerFloor.push(['A33', 'A34', null, 'A35', 'A36']);
+      lowerFloor.push(['A37', 'A38', null, 'A39', 'A40']);
+      lowerFloor.push(['A41', 'A42', 'A43', 'A44', 'A45']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // 3.7 Xe ghế ngồi 47 chỗ (5 cột)
+    if (totalSeats === 47) {
+      lowerFloor.push([null, null, null, 'A1', 'A2']);
+      lowerFloor.push(['A3', 'A4', null, 'A5', 'A6']);
+      lowerFloor.push(['A7', 'A8', null, 'A9', 'A10']);
+      lowerFloor.push(['A11', 'A12', null, 'A13', 'A14']);
+      lowerFloor.push(['A15', 'A16', null, 'A17', 'A18']);
+      lowerFloor.push(['A19', 'A20', null, 'A21', 'A22']);
+      lowerFloor.push(['A23', 'A24', null, 'A25', 'A26']);
+      lowerFloor.push(['A27', 'A28', null, 'A29', 'A30']);
+      lowerFloor.push(['A31', 'A32', null, 'A33', 'A34']);
+      lowerFloor.push(['A35', 'A36', null, 'A37', 'A38']);
+      lowerFloor.push(['A39', 'A40', null, 'A41', 'A42']);
+      lowerFloor.push(['A43', 'A44', 'A45', 'A46', 'A47']);
+      return { lowerFloor, upperFloor: [], columns: 5 };
+    }
+
+    // Fallback mặc định
+    for (let r = 1; r <= 8; r++) {
+      const idx = (r - 1) * 2;
+      lowerFloor.push([`A${idx + 1}`, null, `B${idx + 1}`, null, `C${idx + 1}`]);
+      upperFloor.push([`A${idx + 2}`, null, `B${idx + 2}`, null, `C${idx + 2}`]);
+    }
+    return { lowerFloor, upperFloor, columns: 5 };
   };
 
   const normalizeText = (text) => {
@@ -1597,31 +1824,14 @@ const AgentBookingPage = ({ setActiveTab }) => {
                 {(() => {
                   const { lowerFloor, upperFloor, columns } = (selectedTrip.busId?.seatLayout && selectedTrip.busId.seatLayout.lowerFloor)
                     ? selectedTrip.busId.seatLayout
-                    : {
-                        columns: 3,
-                        lowerFloor: [
-                          ['A1', 'A2', 'A3'],
-                          ['A4', 'A5', 'A6'],
-                          ['A7', 'A8', 'A9'],
-                          ['A10', 'A11', 'A12'],
-                          ['A13', 'A14', 'A15'],
-                          ['A16', 'A17', 'A18']
-                        ],
-                        upperFloor: [
-                          ['B1', 'B2', 'B3'],
-                          ['B4', 'B5', 'B6'],
-                          ['B7', 'B8', 'B9'],
-                          ['B10', 'B11', 'B12'],
-                          ['B13', 'B14', 'B15'],
-                          ['B16', 'B17', 'B18']
-                        ]
-                      };
+                    : getSeatLayout(selectedTrip.busId?.totalSeats || 36, selectedTrip.busId?.type || '');
                   const hasUpperFloor = upperFloor && upperFloor.length > 0;
                   const activeFloor = (selectedFloor === 'upper' && hasUpperFloor) ? 'upper' : 'lower';
                   const currentFloorRows = activeFloor === 'lower' ? lowerFloor : upperFloor;
+                  const seatGridMaxWidth = columns >= 5 ? '360px' : (columns === 4 ? '330px' : '290px');
 
                   return (
-                    <div style={{ width: '100%', maxWidth: '300px' }}>
+                    <div style={{ width: '100%', maxWidth: seatGridMaxWidth }}>
                       {hasUpperFloor && (
                         <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '1rem' }}>
                           <button
@@ -2292,33 +2502,17 @@ const AgentBookingPage = ({ setActiveTab }) => {
               <div>Nội dung CK: <strong style={{ color: '#0f172a' }}>ANBINH {showQRModal.orderCode}</strong></div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '1.25rem' }}>
-              <button
-                type="button"
-                onClick={handleManualConfirmPaid}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#2563eb',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontSize: '0.78rem',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                Khách Đã Thanh Toán &amp; In Vé
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.25rem' }}>
               <button
                 type="button"
                 onClick={() => setShowQRModal(null)}
                 style={{
-                  padding: '8px 14px',
+                  padding: '9px 28px',
                   backgroundColor: '#f1f5f9',
                   color: '#475569',
                   border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  fontSize: '0.78rem',
+                  borderRadius: '8px',
+                  fontSize: '0.82rem',
                   fontWeight: '700',
                   cursor: 'pointer'
                 }}
