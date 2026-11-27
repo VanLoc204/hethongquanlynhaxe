@@ -8,12 +8,16 @@ const forgotOtpStore = new Map();
 const forgotResetTokenStore = new Map();
 const changePasswordOtpStore = new Map();
 
+// Bộ nhớ đệm xác thực email khi Đăng Ký Tài Khoản mới
+const registerOtpStore = new Map();
+const registerVerifiedStore = new Map();
+
 class AuthService {
   generateToken(user) {
     return jwt.sign(
       { id: user._id, name: user.name, role: user.role, branch: user.branch },
       process.env.JWT_SECRET || 'super_secret_jwt_key_for_smart_bus_system_2026',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '2h' }
     );
   }
 
@@ -69,7 +73,95 @@ class AuthService {
     }
   }
 
-  async registerUser({ name, email, phone, password }) {
+  // 0. Gửi mã OTP xác thực Email trước khi đăng ký tài khoản
+  async sendRegisterOTP(rawEmail) {
+    const email = (rawEmail || '').trim().toLowerCase();
+    this.validateEmailPolicy(email);
+
+    // Kiểm tra xem email đã được đăng ký trước đó chưa
+    const existing = await userRepository.findByEmail(email);
+    if (existing) {
+      throw new Error('Địa chỉ email này đã được sử dụng. Vui lòng chọn email khác hoặc Đăng nhập.');
+    }
+
+    // Tạo mã OTP 6 chữ số
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresInSec = 180; // 3 phút
+    const expiresAt = Date.now() + expiresInSec * 1000;
+
+    registerOtpStore.set(email, { otp, expiresAt, attempts: 0 });
+
+    setTimeout(() => {
+      const cur = registerOtpStore.get(email);
+      if (cur && cur.expiresAt <= Date.now()) {
+        registerOtpStore.delete(email);
+      }
+    }, expiresInSec * 1000);
+
+    let emailSent = false;
+    let emailError = null;
+    try {
+      const emailPromise = emailService.sendRegisterOtpEmail(email, otp, 3);
+      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 2500));
+      const emailRes = await Promise.race([emailPromise, timeoutPromise]);
+      if (emailRes && emailRes.success) {
+        emailSent = true;
+      } else if (emailRes?.timeout) {
+        console.log('[Register] Email OTP đang gửi background...');
+      } else {
+        emailError = emailRes?.error || 'Dịch vụ gửi email đang xử lý';
+      }
+    } catch (err) {
+      emailError = err.message;
+      console.warn('[Register Email OTP Warning]:', err.message);
+    }
+
+    console.log(`[Register] Mã OTP xác thực email cho ${email}: ${otp} (Hiệu lực 3 phút) | Đã gửi: ${emailSent}`);
+    return { email, expiresIn: expiresInSec, emailSent, emailError };
+  }
+
+  // 0.1. Xác thực mã OTP đăng ký và cấp token xác minh tạm thời
+  async verifyRegisterOTP(rawEmail, rawOtp) {
+    const email = (rawEmail || '').trim().toLowerCase();
+    const otp = (rawOtp || '').trim();
+
+    if (!email) throw new Error('Vui lòng cung cấp email.');
+    if (!otp) throw new Error('Vui lòng nhập mã xác thực OTP 6 số.');
+
+    const data = registerOtpStore.get(email);
+    if (!data || Date.now() > data.expiresAt) {
+      registerOtpStore.delete(email);
+      throw new Error('Mã xác thực đã hết hạn hoặc không tồn tại. Vui lòng bấm gửi lại mã.');
+    }
+
+    if (data.otp !== otp) {
+      data.attempts = (data.attempts || 0) + 1;
+      if (data.attempts >= 5) {
+        registerOtpStore.delete(email);
+        throw new Error('Bạn đã nhập sai mã quá 5 lần. Vui lòng gửi lại mã mới.');
+      }
+      throw new Error('Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại email.');
+    }
+
+    // OTP chính xác -> Tạo verification token có hiệu lực 15 phút
+    registerOtpStore.delete(email);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    registerVerifiedStore.set(email, {
+      token: verificationToken,
+      expiresAt: Date.now() + 15 * 60 * 1000
+    });
+
+    setTimeout(() => {
+      const cur = registerVerifiedStore.get(email);
+      if (cur && cur.expiresAt <= Date.now()) {
+        registerVerifiedStore.delete(email);
+      }
+    }, 15 * 60 * 1000);
+
+    return { success: true, email, verificationToken, message: 'Xác thực email thành công!' };
+  }
+
+  async registerUser({ name, email, phone, password, verificationToken }) {
     // 0. Validate Name, Email, Password Policy
     this.validateNamePolicy(name);
     this.validateEmailPolicy(email);
@@ -77,6 +169,12 @@ class AuthService {
 
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
+
+    // 0.1. Kiểm tra xác thực email (bắt buộc email phải được xác thực trước khi tạo tài khoản)
+    const verifiedData = registerVerifiedStore.get(cleanEmail);
+    if (!verifiedData || verifiedData.expiresAt <= Date.now() || (verificationToken && verifiedData.token !== verificationToken)) {
+      throw new Error('Vui lòng bấm "Xác thực email" và nhập mã OTP gửi tới hòm thư trước khi hoàn tất đăng ký.');
+    }
 
     // 1. Check existing phone
     const existingUserByPhone = await userRepository.findByPhone(phone);
@@ -98,6 +196,9 @@ class AuthService {
       password,
       role: 'customer'
     });
+
+    // Xóa trạng thái đã xác thực sau khi đăng ký thành công
+    registerVerifiedStore.delete(cleanEmail);
 
     const token = this.generateToken(user);
     return { user, token };

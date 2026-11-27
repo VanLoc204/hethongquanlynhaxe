@@ -1,6 +1,8 @@
 const express = require('express');
 const {
   register,
+  sendRegisterOTP,
+  verifyRegisterOTP,
   login,
   getMe,
   updateDetails,
@@ -18,6 +20,8 @@ const router = express.Router();
 
 // Public routes
 router.post('/register', register);
+router.post('/register/send-otp', sendRegisterOTP);
+router.post('/register/verify-otp', verifyRegisterOTP);
 router.post('/login', login);
 router.post('/forgotpassword', forgotPassword);
 router.post('/forgotpassword/send-otp', sendForgotPasswordOTP);

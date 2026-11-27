@@ -325,6 +325,59 @@ exports.sendShipmentInvoiceEmail = async (shipment) => {
 };
 
 /**
+ * Send Register Account OTP Verification Email
+ */
+exports.sendRegisterOtpEmail = async (toEmail, otp, expiresInMinutes = 3) => {
+  if (!toEmail) return { success: false, error: 'Email không được để trống' };
+
+  const subject = `[An Bình Lines] Mã xác thực đăng ký tài khoản - Mã số #${otp}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+      <div style="background-color: #2563eb; color: white; padding: 24px; text-align: center;">
+        <h2 style="margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 1px;">XÁC THỰC EMAIL ĐĂNG KÝ TÀI KHOẢN</h2>
+        <p style="margin: 8px 0 0 0; opacity: 0.9;">Chào mừng bạn đến với hệ thống vé xe khách An Bình Lines</p>
+      </div>
+      
+      <div style="padding: 24px; color: #334155; line-height: 1.6;">
+        <h3 style="color: #2563eb; border-bottom: 2px dashed #e2e8f0; padding-bottom: 8px; margin-top: 0;">Mã xác thực email của bạn</h3>
+        
+        <p style="margin: 0 0 16px 0; color: #475569; font-size: 15px;">
+          Xin chào quý khách,<br/>
+          Hệ thống nhận được yêu cầu đăng ký tài khoản thành viên mới với địa chỉ email này. Để xác thực email này là có thật và hoàn tất việc tạo tài khoản, vui lòng nhập mã OTP 6 chữ số dưới đây:
+        </p>
+
+        <div style="background-color: #eff6ff; border: 2px dashed #2563eb; border-radius: 10px; padding: 20px; text-align: center; margin: 24px 0;">
+          <span style="display: inline-block; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #1d4ed8; font-family: monospace;">
+            ${otp}
+          </span>
+        </div>
+
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 13.5px; color: #dc2626; font-weight: bold;">
+            ⏱️ Mã OTP này có hiệu lực trong vòng ${expiresInMinutes} phút (${expiresInMinutes * 60} giây).
+          </p>
+          <p style="margin: 6px 0 0 0; font-size: 12.5px; color: #64748b;">
+            Sau khi đăng ký thành công, email này sẽ được dùng để nhận hóa đơn vé điện tử và cấp lại mật khẩu khi cần thiết.
+          </p>
+        </div>
+
+        <p style="font-size: 13px; color: #64748b; margin-bottom: 0;">
+          Nếu bạn không thực hiện đăng ký tài khoản tại An Bình Lines, xin vui lòng bỏ qua thư này.
+        </p>
+      </div>
+
+      <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+        Email này được gửi tự động từ hệ thống An Bình Lines. Vui lòng không trả lời email này.<br>
+        An Bình Lines - Dịch vụ vận tải hành khách chất lượng cao.
+      </div>
+    </div>
+  `;
+
+  return await sendEmail(toEmail, 'Thành viên mới', subject, htmlContent);
+};
+
+/**
  * Send Forgot Password OTP Verification Email
  * Designed with the exact same template, branding, and high delivery structure as Booking Invoice Email
  */

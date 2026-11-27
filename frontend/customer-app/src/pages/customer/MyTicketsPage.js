@@ -136,10 +136,7 @@ const MyTicketsPage = () => {
     let isMounted = true;
     const interval = setInterval(async () => {
       try {
-        const backendOrigin = (typeof window !== 'undefined' && window.location.hostname !== 'localhost')
-          ? `${window.location.protocol}//${window.location.hostname}:8000`
-          : API_BASE_URL;
-        const res = await axios.get(`${backendOrigin}/api/bookings/order/${ticket.orderCode}`);
+        const res = await axios.get(`${API_BASE_URL}/api/bookings/order/${ticket.orderCode}`);
         if (!isMounted) return;
 
         if (res.data?.success && res.data.booking?.status === 'paid') {

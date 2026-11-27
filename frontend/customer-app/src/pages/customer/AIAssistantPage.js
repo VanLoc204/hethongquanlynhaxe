@@ -724,8 +724,12 @@ const AIAssistantPage = () => {
     setSelectedFloor('lower');
     setModalStep('form');
     setBookingError('');
-    const firstPickup = tripData.pickupPoints?.[0]?.location || tripData.pickupPoints?.[0]?.name || 'Bến Xe Miền Tây';
-    const firstDropoff = tripData.dropoffPoints?.[0]?.location || tripData.dropoffPoints?.[0]?.name || 'Bến Xe Liên Tỉnh Đà Lạt';
+    const firstPickup = (tripData.pickupPoints && tripData.pickupPoints.length > 0)
+      ? (tripData.pickupPoints[0].location || tripData.pickupPoints[0].name || tripData.pickupPoints[0].address)
+      : (tripData.routeId?.startPoint || 'Bến Xe Miền Tây');
+    const firstDropoff = (tripData.dropoffPoints && tripData.dropoffPoints.length > 0)
+      ? (tripData.dropoffPoints[0].location || tripData.dropoffPoints[0].name || tripData.dropoffPoints[0].address)
+      : (tripData.routeId?.endPoint || 'Bến Xe Liên Tỉnh Đà Lạt');
     setSelectedPickup(firstPickup);
     setSelectedDropoff(firstDropoff);
   };
@@ -1463,7 +1467,10 @@ const AIAssistantPage = () => {
                       value={selectedPickup}
                       onChange={e => setSelectedPickup(e.target.value)}
                     >
-                      {(bookingModalTrip.pickupPoints || [{ location: 'Bến Xe Miền Tây' }]).map((p, idx) => {
+                      {((bookingModalTrip.pickupPoints && bookingModalTrip.pickupPoints.length > 0)
+                        ? bookingModalTrip.pickupPoints
+                        : [{ location: bookingModalTrip?.routeId?.startPoint || 'Bến Xe Miền Tây' }]
+                      ).map((p, idx) => {
                         const loc = p.location || p.name || p.address || 'Điểm đón';
                         const time = p.time ? `${p.time} - ` : '';
                         return (
@@ -1482,7 +1489,10 @@ const AIAssistantPage = () => {
                       value={selectedDropoff}
                       onChange={e => setSelectedDropoff(e.target.value)}
                     >
-                      {(bookingModalTrip.dropoffPoints || [{ location: 'Bến Xe Liên Tỉnh Đà Lạt' }]).map((p, idx) => {
+                      {((bookingModalTrip.dropoffPoints && bookingModalTrip.dropoffPoints.length > 0)
+                        ? bookingModalTrip.dropoffPoints
+                        : [{ location: bookingModalTrip?.routeId?.endPoint || 'Bến Xe Liên Tỉnh Đà Lạt' }]
+                      ).map((p, idx) => {
                         const loc = p.location || p.name || p.address || 'Điểm trả';
                         const time = p.time ? `${p.time} - ` : '';
                         return (

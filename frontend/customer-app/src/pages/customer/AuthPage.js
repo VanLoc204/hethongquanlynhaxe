@@ -109,9 +109,22 @@ const AuthPage = ({ initialMode = 'login' }) => {
   const [forgotTimer, setForgotTimer] = useState(0); // 180s = 3 phút
   const [isSubmittingForgot, setIsSubmittingForgot] = useState(false);
 
+  // Registration Email OTP verification states
+  const [isSendingRegOtp, setIsSendingRegOtp] = useState(false);
+  const [isVerifyingRegOtp, setIsVerifyingRegOtp] = useState(false);
+  const [showRegOtpInput, setShowRegOtpInput] = useState(false);
+  const [regOtp, setRegOtp] = useState('');
+  const [regOtpTimer, setRegOtpTimer] = useState(0);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [emailVerificationToken, setEmailVerificationToken] = useState('');
+  const [regOtpSuccess, setRegOtpSuccess] = useState('');
+  const [regOtpError, setRegOtpError] = useState('');
+
   const {
     login,
     register,
+    sendRegisterOtp,
+    verifyRegisterOtp,
     sendForgotOtp,
     verifyForgotOtp,
     resetForgotPass,
@@ -121,7 +134,18 @@ const AuthPage = ({ initialMode = 'login' }) => {
     loading
   } = useContext(AuthContext);
 
-  // Bộ đếm ngược 3 phút (180s) cho mã OTP và nút gửi lại
+  // Bộ đếm ngược cho OTP xác thực email đăng ký
+  useEffect(() => {
+    let interval = null;
+    if (regOtpTimer > 0) {
+      interval = setInterval(() => {
+        setRegOtpTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [regOtpTimer]);
+
+  // Bộ đếm ngược 3 phút (180s) cho mã OTP và nút gửi lại (Quên mật khẩu)
   useEffect(() => {
     let interval = null;
     if (forgotTimer > 0) {
@@ -251,6 +275,59 @@ const AuthPage = ({ initialMode = 'login' }) => {
     }
   };
 
+  // Gửi mã OTP xác thực Email khi Đăng Ký
+  const handleSendRegisterOtp = async () => {
+    if (isSendingRegOtp || regOtpTimer > 0) return;
+    setRegOtpError('');
+    setRegOtpSuccess('');
+
+    const emailErr = validateEmailInput(regEmail);
+    if (emailErr) {
+      setRegErrors(prev => ({ ...prev, email: emailErr }));
+      return;
+    }
+
+    setIsSendingRegOtp(true);
+    const res = await sendRegisterOtp(regEmail);
+    setIsSendingRegOtp(false);
+
+    if (res && res.success) {
+      setShowRegOtpInput(true);
+      setRegOtpTimer(180);
+      setRegOtpSuccess('Mã OTP xác thực đã được gửi về email của bạn.');
+    } else {
+      setRegOtpError(res.message || 'Không thể gửi mã xác thực email.');
+    }
+  };
+
+  // Xác thực mã OTP 6 số khi Đăng Ký
+  const handleVerifyRegisterOtp = async () => {
+    if (isVerifyingRegOtp) return;
+    setRegOtpError('');
+    setRegOtpSuccess('');
+
+    const clean = (regOtp || '').trim();
+    if (!clean || clean.length !== 6) {
+      setRegOtpError('Vui lòng nhập đủ 6 chữ số mã xác thực OTP.');
+      return;
+    }
+
+    setIsVerifyingRegOtp(true);
+    const res = await verifyRegisterOtp(regEmail, clean);
+    setIsVerifyingRegOtp(false);
+
+    if (res && res.success) {
+      setIsEmailVerified(true);
+      setEmailVerificationToken(res.verificationToken);
+      setShowRegOtpInput(false);
+      setRegOtpSuccess('Xác thực email thành công! Bạn có thể hoàn tất đăng ký.');
+      setRegErrors(prev => ({ ...prev, email: '' }));
+      setValidationError('');
+    } else {
+      setRegOtpError(res.message || 'Mã xác thực không chính xác hoặc đã hết hạn.');
+    }
+  };
+
   // Submit Register
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
@@ -282,6 +359,13 @@ const AuthPage = ({ initialMode = 'login' }) => {
       hasError = true;
     }
 
+    // Yêu cầu bắt buộc phải xác thực email trước khi đăng ký
+    if (!hasError && (!isEmailVerified || !emailVerificationToken)) {
+      newErrors.email = 'Vui lòng bấm "Gửi mã" và xác thực email trước khi đăng ký.';
+      setValidationError('Vui lòng xác thực email của bạn bằng mã OTP trước khi tạo tài khoản.');
+      hasError = true;
+    }
+
     const passError = validatePasswordSecurity(regPassword);
     if (passError) {
       newErrors.password = passError;
@@ -302,7 +386,7 @@ const AuthPage = ({ initialMode = 'login' }) => {
     }
 
     setRegErrors({ name: '', phone: '', email: '', password: '', confirmPassword: '' });
-    const res = await register(name, email, phone, regPassword);
+    const res = await register(name, email, phone, regPassword, emailVerificationToken);
     if (res && res.success) {
       navigate('/');
     }
@@ -644,26 +728,146 @@ const AuthPage = ({ initialMode = 'login' }) => {
                 </div>
               </div>
 
-              {/* Hàng 2: Email (1 cột) */}
+              {/* Hàng 2: Email có nút Xác thực OTP qua Email */}
               <div className="auth-form-group">
-                <label className="auth-form-label">Email *</label>
+                <div className="auth-form-label-row">
+                  <label className="auth-form-label">Email *</label>
+                  {isEmailVerified ? (
+                    <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <CheckCircle2 size={13} /> Email đã xác thực
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSendRegisterOtp}
+                      disabled={isSendingRegOtp || regOtpTimer > 0}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: regOtpTimer > 0 ? '#94a3b8' : '#2563eb',
+                        fontSize: '0.78rem',
+                        fontWeight: '700',
+                        cursor: regOtpTimer > 0 ? 'not-allowed' : 'pointer',
+                        textDecoration: 'underline',
+                        padding: 0
+                      }}
+                    >
+                      {isSendingRegOtp ? 'Đang gửi mã...' : regOtpTimer > 0 ? `Gửi lại sau (${formatTimer(regOtpTimer)})` : 'Xác thực email'}
+                    </button>
+                  )}
+                </div>
+
                 <div className="auth-input-wrapper">
                   <Mail size={15} className="auth-input-icon" />
                   <input
                     type="email"
-                    className={`auth-input ${regErrors.email ? 'has-error' : ''}`}
+                    className={`auth-input ${regErrors.email ? 'has-error' : ''} ${isEmailVerified ? 'is-verified' : ''}`}
                     placeholder="email@example.com"
                     value={regEmail}
                     onChange={(e) => {
                       setRegEmail(e.target.value);
+                      setIsEmailVerified(false);
+                      setEmailVerificationToken('');
+                      setShowRegOtpInput(false);
+                      setRegOtpSuccess('');
+                      setRegOtpError('');
                       if (regErrors.email) setRegErrors(prev => ({ ...prev, email: '' }));
                       if (validationError) setValidationError('');
                     }}
-                    disabled={loading}
+                    disabled={loading || isEmailVerified}
                   />
+                  {isEmailVerified && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEmailVerified(false);
+                        setEmailVerificationToken('');
+                        setShowRegOtpInput(false);
+                        setRegOtpSuccess('');
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        fontSize: '0.74rem',
+                        cursor: 'pointer',
+                        paddingRight: '8px'
+                      }}
+                      title="Đổi địa chỉ email khác"
+                    >
+                      Đổi email
+                    </button>
+                  )}
                 </div>
                 {regErrors.email && (
                   <span className="auth-field-error">{regErrors.email}</span>
+                )}
+
+                {/* Khung nhập mã OTP khi bấm Xác thực email */}
+                {showRegOtpInput && !isEmailVerified && (
+                  <div style={{ marginTop: '8px', padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#1e40af', fontWeight: '700', marginBottom: '6px' }}>
+                      Nhập mã OTP 6 số đã gửi đến hộp thư ({formatTimer(regOtpTimer)}):
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="text"
+                        maxLength="6"
+                        placeholder="------"
+                        value={regOtp}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/\D/g, '').slice(0, 6);
+                          setRegOtp(v);
+                          if (regOtpError) setRegOtpError('');
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontSize: '0.95rem',
+                          fontWeight: '800',
+                          letterSpacing: '4px',
+                          textAlign: 'center',
+                          background: '#ffffff',
+                          color: '#0f172a'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyRegisterOtp}
+                        disabled={isVerifyingRegOtp || regOtp.length !== 6}
+                        style={{
+                          padding: '6px 14px',
+                          background: regOtp.length === 6 ? '#2563eb' : '#94a3b8',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '0.78rem',
+                          fontWeight: '700',
+                          cursor: regOtp.length === 6 ? 'pointer' : 'not-allowed',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {isVerifyingRegOtp ? 'Đang duyệt...' : 'Xác nhận OTP'}
+                      </button>
+                    </div>
+                    {regOtpError && (
+                      <div style={{ color: '#dc2626', fontSize: '0.72rem', marginTop: '5px', fontWeight: '600' }}>
+                        {regOtpError}
+                      </div>
+                    )}
+                    {regOtpSuccess && (
+                      <div style={{ color: '#16a34a', fontSize: '0.72rem', marginTop: '5px', fontWeight: '600' }}>
+                        {regOtpSuccess}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {isEmailVerified && (
+                  <span style={{ fontSize: '0.72rem', color: '#16a34a', fontWeight: '600', marginTop: '3px', display: 'block' }}>
+                    ✓ Email đã được xác minh chính xác (hợp lệ để nhận hóa đơn và khôi phục MK).
+                  </span>
                 )}
               </div>
 

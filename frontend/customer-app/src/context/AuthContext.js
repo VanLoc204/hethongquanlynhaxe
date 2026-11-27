@@ -8,7 +8,10 @@ const API_URL = API_BASE_URL + '/api/auth';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  // Ưu tiên sessionStorage: Đóng trình duyệt sẽ tự động kết thúc phiên (không lưu vĩnh viễn)
+  const [token, setToken] = useState(() => {
+    return sessionStorage.getItem('token') || localStorage.getItem('token');
+  });
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,7 +33,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const res = await axios.get(`${API_URL}/me`);
         if (res.data.success) {
-          const storedBootId = localStorage.getItem('customer_server_boot_id');
+          const storedBootId = sessionStorage.getItem('customer_server_boot_id') || localStorage.getItem('customer_server_boot_id');
           // Nếu máy chủ vừa khởi động lại (bootId không khớp hoặc session cũ chưa có bootId):
           if (res.data.serverBootId && (!storedBootId || storedBootId !== res.data.serverBootId)) {
             console.warn('[Customer Auth] Máy chủ đã khởi động lại phiên mới. Đặt lại session.');
@@ -38,7 +41,7 @@ export const AuthProvider = ({ children }) => {
             return;
           }
           if (res.data.serverBootId) {
-            localStorage.setItem('customer_server_boot_id', res.data.serverBootId);
+            sessionStorage.setItem('customer_server_boot_id', res.data.serverBootId);
           }
           setUser(res.data.user);
           setIsAuthenticated(true);
@@ -46,7 +49,7 @@ export const AuthProvider = ({ children }) => {
           logout();
         }
       } catch (err) {
-        console.error('Error loading user profile:', err);
+        console.error('Error loading user profile or token expired:', err);
         logout();
       } finally {
         setLoading(false);
@@ -62,9 +65,11 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await axios.post(`${API_URL}/login`, { loginKey, password });
       if (res.data.success) {
-        localStorage.setItem('token', res.data.token);
+        // Lưu vào sessionStorage để khi đóng tab/trình duyệt sẽ tự động hết phiên
+        sessionStorage.setItem('token', res.data.token);
+        localStorage.removeItem('token'); // Xóa khỏi localStorage vĩnh viễn
         if (res.data.serverBootId) {
-          localStorage.setItem('customer_server_boot_id', res.data.serverBootId);
+          sessionStorage.setItem('customer_server_boot_id', res.data.serverBootId);
         }
         setToken(res.data.token);
         setUser(res.data.user);
@@ -81,15 +86,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Register User
-  const registerUser = async (name, email, phone, password) => {
+  const registerUser = async (name, email, phone, password, verificationToken) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.post(`${API_URL}/register`, { name, email, phone, password });
+      const res = await axios.post(`${API_URL}/register`, { name, email, phone, password, verificationToken });
       if (res.data.success) {
-        localStorage.setItem('token', res.data.token);
+        sessionStorage.setItem('token', res.data.token);
+        localStorage.removeItem('token');
         if (res.data.serverBootId) {
-          localStorage.setItem('customer_server_boot_id', res.data.serverBootId);
+          sessionStorage.setItem('customer_server_boot_id', res.data.serverBootId);
         }
         setToken(res.data.token);
         setUser(res.data.user);
@@ -107,8 +113,11 @@ export const AuthProvider = ({ children }) => {
 
   // Logout User
   const logout = () => {
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('customer_server_boot_id');
     localStorage.removeItem('token');
     localStorage.removeItem('customer_server_boot_id');
+    delete axios.defaults.headers.common['Authorization'];
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
@@ -173,6 +182,39 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       const errMsg = err.response?.data?.message || 'Mã xác thực không chính xác hoặc đã hết hạn.';
       setError(errMsg);
+      return { success: false, message: errMsg };
+    }
+  };
+
+  // Gửi mã OTP xác thực email khi Đăng Ký tài khoản mới
+  const sendRegisterOtp = async (email) => {
+    setError(null);
+    try {
+      const res = await axios.post(`${API_URL}/register/send-otp`, { email });
+      return {
+        success: true,
+        message: res.data.message,
+        expiresIn: res.data.expiresIn || 180,
+        emailSent: res.data.emailSent
+      };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Không thể gửi mã xác thực email. Vui lòng kiểm tra lại.';
+      return { success: false, message: errMsg };
+    }
+  };
+
+  // Xác thực mã OTP đăng ký tài khoản
+  const verifyRegisterOtp = async (email, otp) => {
+    setError(null);
+    try {
+      const res = await axios.post(`${API_URL}/register/verify-otp`, { email, otp });
+      return {
+        success: true,
+        message: res.data.message,
+        verificationToken: res.data.verificationToken
+      };
+    } catch (err) {
+      const errMsg = err.response?.data?.message || 'Mã xác thực không chính xác hoặc đã hết hạn.';
       return { success: false, message: errMsg };
     }
   };
@@ -247,6 +289,8 @@ export const AuthProvider = ({ children }) => {
         error,
         login,
         register: registerUser,
+        sendRegisterOtp,
+        verifyRegisterOtp,
         logout,
         setError,
         updateProfile,

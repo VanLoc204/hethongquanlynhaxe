@@ -58,12 +58,67 @@ async function buildUserResponse(user) {
   };
 }
 
+// @desc    Send OTP to email for registration verification
+// @route   POST /api/auth/register/send-otp
+// @access  Public
+exports.sendRegisterOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp địa chỉ email.'
+      });
+    }
+
+    const result = await authService.sendRegisterOTP(email);
+    res.status(200).json({
+      success: true,
+      message: 'Mã xác thực OTP đã được gửi đến email của bạn (vui lòng kiểm tra Hộp thư đến hoặc Spam).',
+      expiresIn: result.expiresIn,
+      emailSent: result.emailSent
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Không thể gửi mã xác thực email.'
+    });
+  }
+};
+
+// @desc    Verify OTP for registration
+// @route   POST /api/auth/register/verify-otp
+// @access  Public
+exports.verifyRegisterOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp email và mã xác thực OTP 6 số.'
+      });
+    }
+
+    const result = await authService.verifyRegisterOTP(email, otp);
+    res.status(200).json({
+      success: true,
+      message: result.message || 'Xác thực email thành công.',
+      verificationToken: result.verificationToken
+    });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Mã xác thực không hợp lệ hoặc đã hết hạn.'
+    });
+  }
+};
+
 // @desc    Register a new customer
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, verificationToken } = req.body;
 
     if (!name || !email || !phone || !password) {
       return res.status(400).json({
@@ -72,7 +127,7 @@ exports.register = async (req, res) => {
       });
     }
 
-    const { user, token } = await authService.registerUser({ name, email, phone, password });
+    const { user, token } = await authService.registerUser({ name, email, phone, password, verificationToken });
     
     // Tự động tạo CustomerProfile cho khách hàng mới đăng ký
     await CustomerProfile.findOneAndUpdate(
