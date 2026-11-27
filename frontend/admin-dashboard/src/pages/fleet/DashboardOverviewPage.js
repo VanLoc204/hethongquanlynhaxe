@@ -1,4 +1,4 @@
-﻿import React, { useContext, useState, useEffect, useMemo } from 'react';
+import React, { useContext, useState, useEffect, useMemo } from 'react';
 import API_BASE_URL from '../../config/api';
 import { AuthContext } from '../../context/AuthContext';
 import StatCard from '../../components/StatCard';
