@@ -18,6 +18,7 @@ const {
   getShiftHistory,
   lookupTickets,
   createCounterBooking,
+  confirmCounterPayment,
   cancelTicketAtCounter,
   resendTicketNotification,
   getBanksList,
@@ -92,6 +93,7 @@ router.get('/shift/counter-balance', protect, getCounterBalance);
 router.get('/shift/history', protect, getShiftHistory);
 router.get('/agent/tickets', protect, lookupTickets);
 router.post('/agent/book', protect, createCounterBooking);
+router.patch('/agent/confirm-paid/:orderCode', protect, confirmCounterPayment);
 router.post('/agent/cancel-ticket/:id', protect, cancelTicketAtCounter);
 router.post('/agent/resend-ticket/:id', protect, resendTicketNotification);
 router.get('/member-by-phone/:phone', getMemberByPhone);

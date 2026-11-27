@@ -17,6 +17,7 @@ const TripIncident = require('../models/TripIncident');
 const Incident = require('../models/Incident');
 const Review = require('../models/Review');
 const payosPayoutService = require('../services/payosPayoutService');
+const payosPaymentService = require('../services/payosPaymentService');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
@@ -1381,7 +1382,9 @@ exports.createCounterBooking = async (req, res) => {
       orderCodeExists = await Booking.findOne({ orderCode }).lean();
     }
 
-    // 7. Create booking with status PAID
+    // 7. Create booking: 'paid' for cash/0đ, 'pending' for cashless chờ chuyển khoản PayOS
+    const initialStatus = (paymentMethod === 'cashless' && finalAmountToPay > 0) ? 'pending' : 'paid';
+
     const booking = await Booking.create({
       tripId,
       userId: passenger._id.toString(),
@@ -1393,7 +1396,7 @@ exports.createCounterBooking = async (req, res) => {
       customerEmail: customerEmail ? customerEmail.trim().toLowerCase() : '',
       customerBirthYear: 2000,          // Dummy fallback
       customerCCCD: 'COUNTER_BOOKING',  // Dummy fallback
-      status: 'paid',                   // Counter booking is paid immediately
+      status: initialStatus,
       paymentType: 'immediate',
       orderCode,
       pricePerSeat: trip.price,
@@ -1402,6 +1405,26 @@ exports.createCounterBooking = async (req, res) => {
       discountFromPoints: actualPointsUsed,
       totalAmount: finalAmountToPay
     });
+
+    // Tạo liên kết thanh toán PayOS & QR Code tự động cho quầy vé
+    let payosData = null;
+    if (paymentMethod === 'cashless' && finalAmountToPay > 0) {
+      try {
+        const linkRes = await payosPaymentService.createPaymentLink({
+          orderCode: booking.orderCode,
+          amount: finalAmountToPay,
+          description: `ANBINH ${booking.orderCode}`.slice(0, 25),
+          buyerName: customerName,
+          buyerPhone: customerPhone,
+          buyerEmail: customerEmail ? customerEmail.trim() : undefined
+        });
+        if (linkRes && linkRes.success) {
+          payosData = linkRes;
+        }
+      } catch (payosErr) {
+        console.warn('[Counter Booking PayOS Link Error]:', payosErr.message);
+      }
+    }
 
     // 8. Update Trip bookedSeats map
     trip.bookedSeats = [...(trip.bookedSeats || []), ...seats];
@@ -1424,29 +1447,31 @@ exports.createCounterBooking = async (req, res) => {
     session.ticketsSold.push(booking._id);
     await session.save();
 
-    // 10. Credit Points to Customer on actual paid amount
-    const tier = passenger.membershipTier || 'Bronze';
-    let multiplier = 0.01;
-    if (tier === 'Silver') multiplier = 0.02;
-    else if (tier === 'Gold') multiplier = 0.03;
-    else if (tier === 'Platinum') multiplier = 0.05;
+    // 10. Credit Points to Customer on actual paid amount (nếu đã thanh toán)
+    if (initialStatus === 'paid') {
+      const tier = passenger.membershipTier || 'Bronze';
+      let multiplier = 0.01;
+      if (tier === 'Silver') multiplier = 0.02;
+      else if (tier === 'Gold') multiplier = 0.03;
+      else if (tier === 'Platinum') multiplier = 0.05;
 
-    const earnedPoints = Math.floor(finalAmountToPay * multiplier);
-    passenger.points = (passenger.points || 0) + earnedPoints;
+      const earnedPoints = Math.floor(finalAmountToPay * multiplier);
+      passenger.points = (passenger.points || 0) + earnedPoints;
 
-    // Evaluate tier promotions
-    if (passenger.points >= 2000) passenger.membershipTier = 'Platinum';
-    else if (passenger.points >= 1000) passenger.membershipTier = 'Gold';
-    else if (passenger.points >= 500) passenger.membershipTier = 'Silver';
+      // Evaluate tier promotions
+      if (passenger.points >= 2000) passenger.membershipTier = 'Platinum';
+      else if (passenger.points >= 1000) passenger.membershipTier = 'Gold';
+      else if (passenger.points >= 500) passenger.membershipTier = 'Silver';
 
-    await passenger.save();
+      await passenger.save();
+    }
 
-    // 10. Tự động gửi Email hóa đơn vé điện tử (nếu khách cung cấp email)
+    // 11. Tự động gửi Email hóa đơn vé điện tử (nếu đã thanh toán và có email)
     const { sendBookingInvoiceEmail } = require('../services/emailService');
 
     let emailSent = false;
     let emailNote = '';
-    if (booking.customerEmail) {
+    if (initialStatus === 'paid' && booking.customerEmail) {
       try {
         const emailRes = await sendBookingInvoiceEmail(booking, trip);
         if (emailRes && emailRes.success) {
@@ -1470,8 +1495,10 @@ exports.createCounterBooking = async (req, res) => {
       emailRecipient: booking.customerEmail || null
     };
 
-    let replyMsg = `Đặt vé thành công! Mã vé: #${booking.orderCode || booking._id.toString().slice(-6).toUpperCase()}.`;
-    if (booking.customerEmail) {
+    let replyMsg = initialStatus === 'pending'
+      ? `Đang chờ khách quét mã VietQR thanh toán... Mã vé: #${booking.orderCode}.`
+      : `Đặt vé thành công! Mã vé: #${booking.orderCode || booking._id.toString().slice(-6).toUpperCase()}.`;
+    if (booking.customerEmail && initialStatus === 'paid') {
       if (emailSent) {
         replyMsg += ` Đã gửi Hóa đơn điện tử kèm mã QR tới Email ${booking.customerEmail}.`;
       } else {
@@ -1482,12 +1509,80 @@ exports.createCounterBooking = async (req, res) => {
     res.status(201).json({
       success: true,
       message: replyMsg,
-      booking: bookingJson
+      booking: bookingJson,
+      payosData
     });
 
   } catch (error) {
     console.error('Lỗi đặt vé tại quầy:', error);
-    res.status(500).json({ success: false, message: 'Lỗi hệ thống khi đặt vé tại quầy.' });
+    res.status(500).json({ success: false, message: error.message || 'Lỗi xử lý đặt vé tại quầy.' });
+  }
+};
+
+// @desc    Manually confirm payment for counter booking (agent fallback)
+// @route   PATCH /api/users/agent/confirm-paid/:orderCode
+// @access  Private (Ticket Agent)
+exports.confirmCounterPayment = async (req, res) => {
+  try {
+    const { orderCode } = req.params;
+    const booking = await Booking.findOne({ orderCode: Number(orderCode) });
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy vé tương ứng.' });
+    }
+
+    if (booking.status !== 'paid') {
+      booking.status = 'paid';
+      await booking.save();
+
+      // Ensure seats are unlocked and broadcasted
+      const seatLockService = require('../services/seatLockService');
+      seatLockService.unlockSeats(booking.tripId.toString(), booking.seats);
+      seatLockService.broadcast(booking.tripId.toString(), 'BOOKED_SEATS', {
+        tripId: booking.tripId.toString(),
+        bookedSeats: booking.seats
+      });
+
+      // Credit points to passenger
+      try {
+        const passenger = await User.findById(booking.userId);
+        if (passenger) {
+          const tier = passenger.membershipTier || 'Bronze';
+          let multiplier = 0.01;
+          if (tier === 'Silver') multiplier = 0.02;
+          else if (tier === 'Gold') multiplier = 0.03;
+          else if (tier === 'Platinum') multiplier = 0.05;
+
+          const earnedPoints = Math.floor((booking.totalAmount || 0) * multiplier);
+          if (earnedPoints > 0) {
+            passenger.points = (passenger.points || 0) + earnedPoints;
+            if (passenger.points >= 2000) passenger.membershipTier = 'Platinum';
+            else if (passenger.points >= 1000) passenger.membershipTier = 'Gold';
+            else if (passenger.points >= 500) passenger.membershipTier = 'Silver';
+            await passenger.save();
+          }
+        }
+      } catch (ptsErr) {
+        console.error('[confirmCounterPayment] Points crediting error:', ptsErr.message);
+      }
+
+      // Send invoice email if email provided
+      try {
+        if (booking.customerEmail) {
+          const trip = await Trip.findById(booking.tripId).populate('routeId').populate('busId');
+          if (trip) {
+            const { sendBookingInvoiceEmail } = require('../services/emailService');
+            await sendBookingInvoiceEmail(booking, trip);
+          }
+        }
+      } catch (mailErr) {
+        console.error('[confirmCounterPayment] Email error:', mailErr.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, message: 'Đã xác nhận thanh toán vé thành công.', booking });
+  } catch (error) {
+    console.error('Lỗi xác nhận thanh toán vé tại quầy:', error);
+    return res.status(500).json({ success: false, message: 'Lỗi hệ thống khi xác nhận thanh toán.' });
   }
 };
 

@@ -275,6 +275,70 @@ const AgentBookingPage = ({ setActiveTab }) => {
     fetchInitialData();
   }, [token]);
 
+  // Tự động lắng nghe Webhook PayOS cho đơn đặt vé tại quầy (Polling mỗi 2 giây)
+  useEffect(() => {
+    if (!showQRModal || !showQRModal.orderCode) return;
+
+    let isSubscribed = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/bookings/order/${showQRModal.orderCode}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (isSubscribed && data.success && data.booking && data.booking.status === 'paid') {
+          clearInterval(interval);
+          setSuccess(`Khách hàng đã thanh toán thành công qua PayOS (Mã vé: #${data.booking.orderCode})! Hệ thống đang tự động in vé...`);
+          const finalPaidBooking = {
+            ...showQRModal,
+            ...data.booking,
+            tripId: showQRModal.tripId || data.booking.tripId
+          };
+          setShowQRModal(null);
+          setPrintTarget(finalPaidBooking);
+          fetchInitialData();
+        }
+      } catch (err) {
+        console.warn('[Polling PayOS counter status error]:', err.message);
+      }
+    }, 2000);
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [showQRModal]);
+
+  const handleManualConfirmPaid = async () => {
+    if (!showQRModal || !showQRModal.orderCode) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/users/agent/confirm-paid/${showQRModal.orderCode}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSuccess(`Đã xác nhận thanh toán vé #${showQRModal.orderCode} thành công!`);
+        const finalBooking = { ...showQRModal, status: 'paid' };
+        setShowQRModal(null);
+        setPrintTarget(finalBooking);
+        fetchInitialData();
+      } else {
+        const finalBooking = { ...showQRModal, status: 'paid' };
+        setShowQRModal(null);
+        setPrintTarget(finalBooking);
+        fetchInitialData();
+      }
+    } catch (err) {
+      const finalBooking = { ...showQRModal, status: 'paid' };
+      setShowQRModal(null);
+      setPrintTarget(finalBooking);
+      fetchInitialData();
+    }
+  };
+
   const normalizeText = (text) => {
     if (!text) return '';
     return text
@@ -588,7 +652,8 @@ const AgentBookingPage = ({ setActiveTab }) => {
         );
         const printedBooking = {
           ...data.booking,
-          tripId: selectedTrip
+          tripId: selectedTrip,
+          payosData: data.payosData || null
         };
         if (paymentMethod === 'cashless') {
           setShowQRModal(printedBooking);
@@ -2171,39 +2236,68 @@ const AgentBookingPage = ({ setActiveTab }) => {
           backgroundColor: 'rgba(15, 23, 42, 0.7)', zIndex: 9999,
           display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem'
         }}>
-          <div style={{ maxWidth: '380px', width: '100%', backgroundColor: '#ffffff', borderRadius: '14px', padding: '1.25rem', textAlign: 'center' }}>
-            <h3 style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: '800', color: '#0f172a' }}>
+          <div style={{
+            maxWidth: '400px', width: '100%', backgroundColor: '#ffffff', borderRadius: '16px',
+            padding: '1.5rem', textAlign: 'center',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)'
+          }}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '1.05rem', fontWeight: '800', color: '#0f172a' }}>
               Quét Mã VietQR Thanh Toán
             </h3>
-            <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: '#64748b' }}>
+            <p style={{ margin: '0 0 0.85rem 0', fontSize: '0.78rem', color: '#64748b' }}>
               Hướng màn hình cho khách hàng quét mã bằng ứng dụng Ngân Hàng bất kỳ.
             </p>
 
-            <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'inline-block' }}>
+            {/* Trạng thái lắng nghe tự động PayOS Webhook */}
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 14px',
+              backgroundColor: '#eff6ff',
+              borderRadius: '20px',
+              border: '1px solid #bfdbfe',
+              marginBottom: '0.85rem'
+            }}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: '#2563eb',
+                boxShadow: '0 0 0 3px rgba(37, 99, 235, 0.25)',
+                display: 'inline-block'
+              }}></span>
+              <span style={{ fontSize: '0.75rem', color: '#1e40af', fontWeight: '700' }}>
+                Đang chờ nhận tiền qua PayOS Webhook...
+              </span>
+            </div>
+
+            <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'inline-block' }}>
               <img
-                src={`https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${(showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1)}&addInfo=ANBINH%20${showQRModal.orderCode}&accountName=HO%20VAN%20LOC`}
+                src={
+                  showQRModal.payosData?.qrCode
+                    ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(showQRModal.payosData.qrCode)}`
+                    : `https://img.vietqr.io/image/MB-0919210046-compact2.png?amount=${showQRModal.totalAmount ?? ((showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1))}&addInfo=ANBINH%20${showQRModal.orderCode}&accountName=HO%20VAN%20LOC`
+                }
                 alt="VietQR Code"
-                style={{ width: '210px', maxWidth: '100%', borderRadius: '6px', display: 'block' }}
+                style={{ width: '210px', height: '210px', maxWidth: '100%', borderRadius: '8px', display: 'block', margin: '0 auto' }}
               />
             </div>
 
-            <div style={{ marginTop: '0.85rem', fontSize: '0.85rem', fontWeight: '800', color: '#2563eb' }}>
-              Số tiền: {formatCurrency((showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1))}
+            <div style={{ marginTop: '0.85rem', fontSize: '0.95rem', fontWeight: '800', color: '#2563eb' }}>
+              Số tiền: {formatCurrency(showQRModal.totalAmount ?? ((showQRModal.tripId?.price || 0) * (showQRModal.seats?.length || 1)))}
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '4px', textAlign: 'left', display: 'inline-block' }}>
-              <div>Ngân hàng: <strong>MBBank (0919210046 - HO VAN LOC)</strong></div>
+            <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '6px', textAlign: 'left', display: 'inline-block', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', border: '1px solid #f1f5f9' }}>
+              <div>Ngân hàng: <strong>{showQRModal.payosData?.bin ? `${showQRModal.payosData.bin} - ${showQRModal.payosData.accountNumber}` : 'MBBank (0919210046 - HO VAN LOC)'}</strong></div>
               <div>Nội dung CK: <strong style={{ color: '#0f172a' }}>ANBINH {showQRModal.orderCode}</strong></div>
             </div>
 
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '1.25rem' }}>
               <button
                 type="button"
-                onClick={() => {
-                  setPrintTarget(showQRModal);
-                  setShowQRModal(null);
-                }}
+                onClick={handleManualConfirmPaid}
                 style={{
-                  padding: '7px 16px',
+                  padding: '8px 16px',
                   backgroundColor: '#2563eb',
                   color: '#ffffff',
                   border: 'none',
@@ -2219,7 +2313,7 @@ const AgentBookingPage = ({ setActiveTab }) => {
                 type="button"
                 onClick={() => setShowQRModal(null)}
                 style={{
-                  padding: '7px 14px',
+                  padding: '8px 14px',
                   backgroundColor: '#f1f5f9',
                   color: '#475569',
                   border: '1px solid #cbd5e1',
