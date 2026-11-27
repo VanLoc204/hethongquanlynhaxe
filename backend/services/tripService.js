@@ -10,16 +10,16 @@ const { sendShipmentInvoiceEmail } = require('./emailService');
 const redisGpsService = require('./redisGpsService');
 
 class TripService {
-  async applyPricingRules(tripObj) {
+  async applyPricingRules(tripObj, cachedRules = null) {
     if (!tripObj) return tripObj;
 
     try {
       const departureDate = new Date(tripObj.departureTime);
       const day = departureDate.getDay();
 
-      const activeRules = await mongoose.connection.db.collection('pricingrules')
+      const activeRules = cachedRules || (await mongoose.connection.db.collection('pricingrules')
         .find({ isActive: true })
-        .toArray();
+        .toArray().catch(() => []));
 
       let finalPrice = tripObj.price;
       
@@ -43,7 +43,7 @@ class TripService {
           busMatch = busType.toLowerCase().includes(rule.busType.toLowerCase());
         }
 
-        const dayMatch = rule.dayOfWeek.length === 0 || rule.dayOfWeek.includes(day);
+        const dayMatch = !rule.dayOfWeek || rule.dayOfWeek.length === 0 || rule.dayOfWeek.includes(day);
 
         if (routeMatch && busMatch && dayMatch) {
           if (rule.adjustmentType === 'percentage') {
@@ -164,7 +164,7 @@ class TripService {
 
     const trips = await tripRepository.findWithPopulate(query, { departureTime: 1 });
 
-    const tripsWithBookedSeats = [];
+    const validTrips = [];
     for (const t of trips) {
       const routeIdStr = t.routeId?._id ? t.routeId._id.toString() : (t.routeId ? t.routeId.toString() : '');
       const busType = t.busId?.type || '';
@@ -180,14 +180,36 @@ class TripService {
       if (!basePriceDoc || basePriceDoc.price === undefined || basePriceDoc.price === null) {
         continue;
       }
-
-      const bookingsForTrip = await bookingRepository.find({ tripId: t._id, status: { $ne: 'cancelled' } });
-      const seatsList = bookingsForTrip.flatMap(b => b.seats);
-      let tripObj = t.toObject();
-      tripObj.bookedSeats = seatsList;
-      tripObj = await this.applyPricingRules(tripObj);
-      tripsWithBookedSeats.push(tripObj);
+      validTrips.push(t);
     }
+
+    if (validTrips.length === 0) return [];
+
+    const tripIds = validTrips.map(t => t._id);
+    const [activeRules, allBookings] = await Promise.all([
+      mongoose.connection.db.collection('pricingrules').find({ isActive: true }).toArray().catch(() => []),
+      bookingRepository.find({ tripId: { $in: tripIds }, status: { $ne: 'cancelled' } }).catch(() => [])
+    ]);
+
+    const bookingsByTripId = new Map();
+    for (const b of allBookings) {
+      const tIdStr = b.tripId?.toString();
+      if (!tIdStr) continue;
+      if (!bookingsByTripId.has(tIdStr)) {
+        bookingsByTripId.set(tIdStr, []);
+      }
+      bookingsByTripId.get(tIdStr).push(b);
+    }
+
+    const tripsWithBookedSeats = await Promise.all(validTrips.map(async (t) => {
+      const tIdStr = t._id.toString();
+      const bookingsForTrip = bookingsByTripId.get(tIdStr) || [];
+      const seatsList = bookingsForTrip.flatMap(b => b.seats || []);
+      let tripObj = t.toObject ? t.toObject() : { ...t };
+      tripObj.bookedSeats = seatsList;
+      tripObj = await this.applyPricingRules(tripObj, activeRules);
+      return tripObj;
+    }));
 
     return tripsWithBookedSeats;
   }
@@ -535,33 +557,52 @@ class TripService {
 
   async getTrips() {
     const trips = await tripRepository.findWithPopulate({}, { departureTime: -1 });
-    
-    // Tính toán dữ liệu thực tế từ bookings cho từng chuyến
+    if (!trips || trips.length === 0) return [];
+
+    const tripIds = trips.map(t => t._id);
+
+    // Tải một lần toàn bộ pricing rules và bookings (Gom truy vấn tránh N+1)
+    const [activeRules, allBookings] = await Promise.all([
+      mongoose.connection.db.collection('pricingrules').find({ isActive: true }).toArray().catch(() => []),
+      bookingRepository.find({ tripId: { $in: tripIds }, status: { $ne: 'cancelled' } }).catch(() => [])
+    ]);
+
+    // Gom nhóm bookings theo tripId trong RAM (tốc độ O(1))
+    const bookingsByTripId = new Map();
+    for (const b of allBookings) {
+      const tIdStr = b.tripId?.toString();
+      if (!tIdStr) continue;
+      if (!bookingsByTripId.has(tIdStr)) {
+        bookingsByTripId.set(tIdStr, []);
+      }
+      bookingsByTripId.get(tIdStr).push(b);
+    }
+
+    // Tính toán dữ liệu thực tế từ bookings cho từng chuyến siêu tốc trên RAM
     const tripsWithBookings = await Promise.all(trips.map(async (t) => {
-      const bookingsForTrip = await bookingRepository.find({ tripId: t._id, status: { $ne: 'cancelled' } });
-      const seatsList = bookingsForTrip.flatMap(b => b.seats);
+      const tIdStr = t._id.toString();
+      const bookingsForTrip = bookingsByTripId.get(tIdStr) || [];
+      const seatsList = bookingsForTrip.flatMap(b => b.seats || []);
 
       // Doanh thu thực tế = tổng totalAmount của các booking đã lưu lúc đặt
-      // Ưu tiên dùng booking.totalAmount (chính xác), fallback booking.pricePerSeat × seats, fallback trip.price × seats
       const actualRevenue = bookingsForTrip.reduce((sum, b) => {
         if (b.totalAmount && b.totalAmount > 0) {
           return sum + b.totalAmount;
         }
         if (b.pricePerSeat && b.pricePerSeat > 0) {
-          return sum + (b.pricePerSeat * b.seats.length);
+          return sum + (b.pricePerSeat * (b.seats?.length || 1));
         }
-        // Fallback cho bookings cũ chưa có trường totalAmount
-        return sum + (t.price * b.seats.length);
+        return sum + (t.price * (b.seats?.length || 1));
       }, 0);
 
-      let tripObj = t.toObject();
-      const liveGpsCache = await redisGpsService.getLiveGps(t._id.toString());
+      let tripObj = t.toObject ? t.toObject() : { ...t };
+      const liveGpsCache = await redisGpsService.getLiveGps(tIdStr);
       if (liveGpsCache) {
         tripObj.liveGps = liveGpsCache;
       }
       tripObj.bookedSeats = seatsList;
-      tripObj.actualRevenue = actualRevenue; // Doanh thu thực tế từ bookings
-      tripObj = await this.applyPricingRules(tripObj); // Cập nhật trip.price cho hiển thị giá hiện tại (KHÔNG dùng để tính doanh thu)
+      tripObj.actualRevenue = actualRevenue;
+      tripObj = await this.applyPricingRules(tripObj, activeRules);
       return tripObj;
     }));
 

@@ -57,7 +57,17 @@ app.use((req, res, next) => {
 app.use(systemLogger);
 app.use('/face-models', express.static(path.join(__dirname, 'public/face-models')));
 
-// Health check endpoints (hỗ trợ Render/UptimeRobot/Docker)
+// Root & Health check endpoints (hỗ trợ Render probe/UptimeRobot/Docker/Trình duyệt)
+app.all(['/', '/api'], (req, res) => {
+  res.status(200).json({
+    status: 'ONLINE',
+    service: 'anbinh-backend',
+    message: 'Hệ Thống Quản Lý Nhà Xe An Bình Lines API Monolith đang hoạt động ổn định.',
+    version: '2.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({
     status: 'UP',
